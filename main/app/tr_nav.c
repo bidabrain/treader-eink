@@ -10,11 +10,18 @@ extern const app_desc_t app_book;
 extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
 
+// 番茄标签上次停留的页面（书架或书城）。/ Last page under the Tomato tab (shelf or store).
+static const app_desc_t* s_tomato_page = &app_tr_tomato;
+
+void tr_nav_set_tomato_page(const app_desc_t* page) {
+    if (page) s_tomato_page = page;
+}
+
 const app_desc_t* tr_nav_tab_app(int tab) {
     switch (tab) {
     case TR_TAB_HOME: return &app_tr_home;
     case TR_TAB_LIBRARY: return &app_book;
-    case TR_TAB_TOMATO: return &app_tr_tomato;
+    case TR_TAB_TOMATO: return s_tomato_page;
     case TR_TAB_SETTINGS: return &app_tr_settings;
     default: return NULL;
     }

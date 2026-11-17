@@ -43,6 +43,8 @@
 #include "ui_kit.h"
 #include "ui_menu.h"
 #include "ui_gesture.h"
+#include "pinyin_ime.h"
+#include "book_cover.h"
 #include "tomato.h"
 
 #define TAG "app_loop"
@@ -215,17 +217,48 @@ static bool try_load_saved_sd_font(bool allow_probe) {
 
 // 先停文件使用者，再换字体；此处只观察挂载，不卸载也不重新挂载。
 // Stop file consumers before font fallback; observe mounting without unmounting or remounting.
+// Treader：卡重新插上（或开机后才插）就自动重挂；只在我们发起重挂后才算“重新得到卡”。
+// Treader: remount automatically when a card is reinserted (or inserted after boot); only a remount we started
+// counts as regaining the card.
+static bool s_last_present;
+static bool s_remount_pending;
+
 static bool poll_media(app_ctx_t* ctx, const app_desc_t* current,
                        bool* mounted, bool* invalidated) {
     read_pico_sd_info_t info = {0};
     esp_err_t err = read_pico_sd_get_info(&info);
     if (err == ESP_ERR_NOT_FINISHED) return false;
     bool ready = err == ESP_OK && info.mounted;
+    const bool inserted = info.present && !s_last_present;
+    s_last_present = info.present;
+    if (s_remount_pending && ready) {
+        // 新卡挂好了：清掉旧卡的缓存，让当前页重新进入，字体由下面的定期重试恢复。
+        // The new card is mounted: drop old-card caches and re-enter the page; the periodic retry restores the font.
+        s_remount_pending = false;
+        *mounted = true;
+        *invalidated = false;
+        pinyin_ime_unload();
+        book_cover_release();
+        if (current->on_exit) current->on_exit(ctx);
+        if (current->on_enter) current->on_enter(ctx);
+        ESP_LOGI(TAG, "card remounted");
+        return true;
+    }
+    if (!ready && info.present && (inserted || err == ESP_ERR_INVALID_STATE) && !tomato_sync_busy()) {
+        // 失效的卡要先确认没有使用者再重挂：页面已在丢卡时收尾，字体已切回内置。
+        // Remount only with no users left: the page wound down at loss and the font is already built in.
+        if (ttf_font_ready() && !ttf_font_is_builtin()) ttf_font_open_builtin();
+        if (read_pico_sd_remount() == ESP_ERR_NOT_FINISHED) s_remount_pending = true;
+        else s_remount_pending = false;
+    }
+    if (!info.present) s_remount_pending = false;
     bool lost = *mounted && !ready;
     *mounted = ready;
     if (ready) *invalidated = false;
     if (!lost) return false;
     *invalidated = true;
+    // 后台同步还在写卡就让它停下。/ Stop a background sync that is still writing to the card.
+    tomato_sync_cancel();
     if (current->on_media_lost) current->on_media_lost(ctx);
     if (ttf_font_ready() && !ttf_font_is_builtin()) ttf_font_open_builtin();
     return true;

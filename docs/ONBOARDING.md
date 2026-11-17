@@ -8,7 +8,7 @@ This document is for **first-time human developers and AI agents**. After readin
 > 1. 代码文件头里的 `冻结 / Frozen:` 段落（产品决策）
 > 2. [AGENTS.md](../AGENTS.md)（规则、契约、术语表、注释规范）
 > 3. 本文（背景、流程、操作手册、交接约定）
-> 4. [README.md](../README.md) / [README.zh-CN.md](../README.zh-CN.md) / [README.ja-JP.md](../README.ja-JP.md)（产品概述、完整引脚表）
+> 4. [README.md](../README.md)（Treader 介绍）；官方原版 [README](official/README.md) / [README.zh-CN](official/README.zh-CN.md) / [README.ja-JP](official/README.ja-JP.md)（完整引脚表）
 > 5. 官方在线文档：<https://dot.mindreset.tech/docs/read_0>（产品）、[/start](https://dot.mindreset.tech/docs/read_0/start)（基本操作）、[/firmware](https://dot.mindreset.tech/docs/read_0/firmware)（编译刷写）
 >
 > 如本文与上面 1–2 冲突，以 1–2 为准并修正本文。
@@ -44,7 +44,7 @@ This document is for **first-time human developers and AI agents**. After readin
 
 ## 2. 硬件速览 / Hardware at a glance
 
-完整引脚表与型号见 [README.md](../README.md)。这里只给开发时最常查的部分。
+完整引脚表与型号见 [官方原版说明](official/README.zh-CN.md)。这里只给开发时最常查的部分。
 
 | 模块 | 器件 | 接口 / 引脚 | 备注 |
 | --- | --- | --- | --- |

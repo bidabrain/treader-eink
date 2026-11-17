@@ -39,6 +39,23 @@ esp_err_t tomato_http_json(const tomato_config_t* cfg, const char* method, const
 esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, const char* dest,
                                const volatile bool* cancel, volatile uint32_t* bytes);
 
+/// GET 一个完整 URL 存到 dest（不超过 max 字节）。image 为真时只收 JPEG/PNG，否则不写文件。
+/// GET a full URL into dest (at most max bytes). With image set, only JPEG/PNG content is written.
+esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel);
+
+/* ---- 书城 / Bookstore ---- */
+
+/// 榜单站点根地址（去掉末尾斜杠和 /api/...）。/ Rank site root (no trailing slash or /api/...).
+void tomato_rank_base(char* out, size_t cap);
+bool tomato_rank_index_url(char* out, size_t cap);
+bool tomato_rank_cat_url(const tomato_rank_cat_t* cat, char* out, size_t cap);
+const char* tomato_rank_index_path(void);
+void tomato_rank_cat_path(const tomato_rank_cat_t* cat, char* out, size_t cap);
+/// 读缓存里的榜单日期。/ Read the cached rank date.
+bool tomato_rank_index_date(char* out, size_t cap);
+/// 删掉所有分类缓存（榜单换日期时）。/ Delete all category caches (when the rank date changes).
+void tomato_rank_drop_categories(void);
+
 /// GET 一个完整 URL，边收边数 key_a / key_b 出现次数，返回较大者。/ GET a full URL and count key occurrences while streaming.
 esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char* key_b,
                                  const volatile bool* cancel, int* count);

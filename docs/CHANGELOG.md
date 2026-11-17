@@ -1,7 +1,26 @@
 # 版本变更 / Changelog
 
-按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.zh-CN.md)。
+按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
+
+## 2026-11-17 · Treader 0.1.0
+
+- 封面：EPUB 显示书内封面，番茄书下载时一起取封面；书库、首页和锁屏显示图片封面，缩略图缓存在 TF 卡 `.treader/covers/`。
+  Covers: EPUBs show their embedded cover and Tomato downloads fetch one; the library, home and lock screen show image covers cached under `.treader/covers/` on the TF card.
+- 设置新增“关于 Treader”：版本、项目地址和开源致谢；设备信息从这里进入。
+  Settings gains "About Treader" with the version, project link and open-source credits; device info opens from there.
+- 书城：番茄页加“书架 / 书城”切换，按频道和分类看 FanqieRankTracker 榜单，详情页直接下载到书库；榜单地址可在设置里改，编译时可用 `STORE_URL` 设默认。
+  Bookstore: a "shelf / store" switch on the Tomato tab browses FanqieRankTracker ranks by channel and category and downloads from the detail page; the rank URL is configurable in Settings with a `STORE_URL` build default.
+- 设置里“Wi-Fi”和“导入书籍”合并为“Wi-Fi 与传书”。
+  Settings merges "Wi-Fi" and "Import books" into "Wi-Fi and transfer".
+- 锁屏壁纸：设置里从 TF 卡 `wallpapers` 文件夹选图并全屏预览；锁屏铺满壁纸，底部显示在读的书和电量。
+  Lock wallpaper: pick an image from the card's `wallpapers` folder in Settings with a full-screen preview; the lock shows it with the current book and battery.
+- 设置新增“TF 卡”：状态、重新挂载、两步确认的格式化，格式化后建好 Treader 用的文件夹。
+  Settings gains "TF card": status, remount, and a twice-confirmed format that recreates Treader's folders.
+- 拔卡后重新插卡会自动挂载并恢复；书和图片只存 TF 卡，不再使用内置 storage 分区。
+  Reinserting a card remounts it automatically; books and images live only on the card, no longer in internal storage.
+- 番茄服务器可在编译时内置（`local.properties`，同安卓版）；设置里填写的优先，界面不显示内置地址和密码。
+  A default Tomato server can be built in via `local.properties` (as in the Android app); a server set in Settings wins, and the UI never shows the built-in one.
 
 ## 2026-10-09
 

@@ -1,177 +1,249 @@
-# Read Pico Demo Firmware
+# Treader
 
-**Languages:** [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja-JP.md)
-
-[Contributing](CONTRIBUTING.md) · [Support](SUPPORT.md) · [Security](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
-
-[![License](https://img.shields.io/github/license/MindReset/read_pico_firmware?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
-[![Build](https://img.shields.io/github/actions/workflow/status/MindReset/read_pico_firmware/build.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/MindReset/read_pico_firmware/actions)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.1-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
 ![Target](https://img.shields.io/badge/target-ESP32--S3-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge)](LICENSE)
 
-Read Pico is an ESP32-S3 development board in the Read series with a 4.7" monochrome e-paper panel,
-made by Shenzhen MindReset Technology Co., Ltd. for developers building open-source
-e-paper firmware. This repository contains the factory firmware shipped with the board.
+**Treader 是给小纸 Pico（Read Pico）用的墨水屏阅读固件**：本地 TXT / EPUB 阅读、番茄小说搜索下载与更新、番茄榜单书城、WebDAV 进度同步，全部为 4.7 寸 16 级灰度墨水屏和 ESP32-S3 的性能重新设计。
 
-The firmware provides separate demo and diagnostic pages for the display, touch,
-accelerometer, power, keys, TF card, fonts, sleep and wake. Use them to check the
-hardware and as reference implementations for your own firmware.
+它基于 MindReset 官方的 [Read Pico 示例固件](https://github.com/MindReset/read_pico_firmware)，把演示页换成了一套完整的阅读系统，并移植了安卓版 [番茄阅读器 Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（不含 TTS）。
 
-The board support, PMU protocol host and chip drivers are independent components
-that can be reused. This is a hardware demo, not a finished reader product.
+> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
 
-Agent-facing layout, `app_desc_t` contract, glossary and comment style are in
-[AGENTS.md](AGENTS.md).
+> ⚠️ 非官方固件，与 MindReset、番茄小说没有隶属关系。刷机前请备份原固件。
 
-## Documentation & More Devices
+## 功能
 
-- [Official Read Pico documentation](https://dot.mindreset.tech/docs/read_0)
-- [Dot Open Platform](https://github.com/MindReset/dot_open_platform): explore other Dot devices and projects, including Quote/0 hardware resources and Rand/0 local display integration, with firmware examples, pin maps, and enclosure files.
+**阅读**
+- 书库：TF 卡 `books/` 里的 TXT、EPUB，按书名或最近阅读排序，拼音首字母搜索，按来源筛选（番茄 / 其他书）
+- 图片封面：EPUB 自带封面、番茄书下载时一起取封面；书库、首页、锁屏都显示
+- 阅读器：目录、字号、逐书记住进度、清残影；局部 DU 快刷翻页，周期性 GC16 压灰底
+- 首页：日期、继续阅读、最近翻过的书、番茄更新提示
 
-## Hardware
+**番茄小说**（需要[自建下载服务器](#自建番茄下载服务器)）
+- 搜索：点结果先看简介、分类、章节、字数，再决定下载
+- 下载：服务器生成 TXT 后存进 `books/`，在书库里像普通书一样阅读
+- 检查更新与下载分开：都只在你点的时候运行，**不会自动检查**；正在读的那本不替换
+- 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，详情页直接下载
 
-| Item | Specification |
+**系统**
+- 拼音输入法：全拼、九键、英文、符号，离线词库在 TF 卡上
+- 锁屏：书卡样式（在读的书和进度）或 TF 卡 `wallpapers/` 里的壁纸，在设置里选图、全屏预览
+- WebDAV：同步阅读进度和番茄书架（坚果云、Nextcloud 等），只在点“立即同步”时运行
+- TF 卡管理：状态、重新挂载、两步确认的格式化（格式化后自动建好文件夹）
+- 拔卡不崩，重新插卡自动挂载；**书、图片和缓存只存 TF 卡**，系统 flash 只放固件和设置
+- 联网时用 SNTP 对时并写进电源管理芯片的 RTC，断电后时间仍在
+
+界面设计稿：[系统与阅读](docs/design/ui.html)、[书城](docs/design/store.html)（下载后用浏览器打开）。
+
+## 硬件
+
+| 项目 | 规格 |
 | --- | --- |
-| MCU | ESP32-S3, 16 MB flash and 8 MB Octal PSRAM, both at 120 MHz |
-| Display | 4.7" monochrome e-paper, 1216 × 684, 16 gray levels, 16-bit parallel interface driven by the LCD peripheral |
-| EPD power | SY7636A; PGOOD read through the IO expander |
-| PMU | CW32L010 with a custom I2C protocol for battery, charging/discharging, indicator LED, RTC, alarms and power control |
-| Touch | CST836U, two touch points, interrupt and deep-sleep wake |
-| Accelerometer | SC7A20H, tap, orientation, free-fall and FIFO |
-| IO expander | FCA9555, EPD control pins and card detection |
-| Storage | TF card over 1-bit SDMMC; fonts loaded from the card |
-| Other | Buzzer and three capacitive key zones |
+| 设备 | 小纸 Pico（Read Pico，RDP-G01-W） |
+| 主控 | ESP32-S3，16 MB flash，8 MB PSRAM |
+| 屏幕 | 4.7 寸墨水屏，1216 × 684，16 级灰度，触摸 |
+| 存储 | TF 卡（FAT32，书和资源都放这里） |
 
-## Build & Flash
+完整的硬件表、引脚和底层组件说明见官方固件的原版说明：[docs/official/README.zh-CN.md](docs/official/README.zh-CN.md)。
 
-Requires ESP-IDF v6.1. `components/read_pico/read_pico_flash_hpm.c` depends on
-`esp_flash_chips/spi_flash_override.h`, which is available only in v6.
+## 快速开始
 
-```sh
+### 1. 准备 TF 卡
+
+格式化成 FAT32，把仓库里的文件复制到卡的根目录：
+
+| 卡上路径 | 来源 | 说明 |
+| --- | --- | --- |
+| `fonts/` | 仓库 `sdcard/fonts/` | 中文字体（寒蝉端黑体，16 MB），**必需**，否则书名和正文会缺字 |
+| `ime/` | 仓库 `sdcard/ime/` | 拼音词库（约 1 MB），要输入中文就必需 |
+| `books/` | 自己放 | TXT、EPUB；番茄下载的书也放这里 |
+| `wallpapers/` | 自己放 | 锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图 |
+| `tomato/config.json` | 可选 | 服务器、WebDAV、榜单地址，也可以在设备“设置”里填 |
+
+设备会自己生成 `tomato/` 下的书架、书城缓存，以及 `.treader/` 下的封面和壁纸缓存（可以整个删掉）。已经刷好 Treader 的话，也可以在“设置 → TF 卡”里格式化，它会建好上面这些文件夹。
+
+### 2. 编译
+
+需要 [ESP-IDF v6.1](https://docs.espressif.com/projects/esp-idf/)：
+
+```bash
 idf.py set-target esp32s3
 idf.py build
-idf.py -p /dev/cu.usbmodem* flash monitor
 ```
 
-The 120 MHz flash / PSRAM timing in `sdkconfig.defaults` depends on the flash part
-installed on the board. CI uses `sdkconfig.ci` with default timing only to check
-compilation; see [.github/workflows/build.yml](.github/workflows/build.yml).
+想把自己的番茄服务器编进固件（类似安卓版的 `local.properties`），见[内置默认服务器](#内置默认服务器可选)。
 
-If the device is not recognized after waking from sleep during development or
-flashing:
+### 3. 刷机
 
-1. Try a USB Type-A data cable.
-2. Put the device to sleep and wake it again.
-3. Reboot the board and retry.
+USB-C 连接设备。第一次刷之前先备份原固件（整片 16 MB）：
 
-The panel VCOM is calibrated at the factory and stored in the PMU. The firmware
-reads it once at boot to configure the driver; it is neither stored locally nor
-user-editable.
-
-## Pages
-
-The function menu lists pages in the order defined in
-[main/app/app_registry.c](main/app/app_registry.c).
-
-| Page | Content |
-| --- | --- |
-| Overview | Boot I2C scan, IDs, battery and charging status, build time |
-| EPD Refresh | Full-screen GC16, partial DU, 16-gray and fast 8-gray ladders, each with measured refresh time |
-| Reading | Built-in text, DU / GL16 / GC16 page turns, font size adjustment in the header |
-| Touch | Two-point tracking with continuous DU, full-page settle on lift, deep sleep and automatic wake |
-| Accel | Live three-axis readings and tilt, tap count, orientation |
-| IMU Lab | Sampling parameters and self-test |
-| Power | Battery voltage, level and charging status; EPD rails, temperature, faults and read-only SY7636A configuration |
-| PMU | Protocol status, events, configuration and commands |
-| Power Key | `key_raw_events`, press/release levels and DOWN/UP/SHORT/LONG events |
-| Sleep | Light sleep with key or pickup wake, deep sleep and power off |
-| Storage | TF card capacity and mount status, remount, format and buzzer |
-| Font | Select TTF files from the card, preview typesetting and cycle font weight |
-| IOE | Port-0 levels and interrupts, touch-reset pulse from the bottom bar |
-| Device | Device probes and command ACKs; power-cut items are recorded in the backend only |
-| Books | UTF-8 / GBK TXT and EPUB from TF or internal storage, chapters, font size and per-book progress; swipe to turn, hold text for TOC and hold a shelf row for details, progress reset or confirmed deletion; filter storage sources, sort by name or recent reading, and search by pinyin, initials or English; single-book actions use a popup, while management supports batch selection, progress reset/deletion and rescan; experimental shake-to-turn defaults off. EPUB navigation supports NCX and nav documents. |
-| Transfer | Device hotspot or existing WiFi, with browser TXT/EPUB upload and complete TTF font uploads to TF; TF card preferred, internal storage limited to 1 MB per file. Scan the hotspot QR to join, or select a 2.4 GHz network and enter its password on the touchscreen. Web provisioning remains available. The browser lists and searches books in the current upload destination, confirms replacement or deletion, and supports upload cancellation and retry. Saved WiFi can be forgotten on the device. Leaving the page stops networking. |
-
-In Books, KEY1 / KEY2 / KEY3 select previous page / toolbar / next page. The toolbar includes full refresh. Hold KEY2 for 500 ms to open the demo menu. Other pages retain KEY2 full GC16 refresh and KEY3 menu. Menu rows select on release; slide away to cancel.
-
-## Repository Layout
-
-```text
-main/
-  app_main.c        Boot wiring, then app_loop
-  app/              App interface (app.h), registry and event loop
-  apps/             One demo per file, exporting only app_desc_t
-  ui/               ui_kit drawing primitives and layout constants; ui_menu two-level menu
-  font/             stb_truetype glyph cache
-  factory/          Device self-test and factory VCOM calibration
-components/
-  read_pico/        Board BSP: I2C, EPD definition/timing, TF card, buzzer, flash HPM
-  read_pico_pmu/    CW32L010 protocol host
-  epdiy/            E-paper renderer, trimmed to the LCD peripheral path
-  continuous_du/    Continuous DU with phases accumulated across scans for finger tracking
-  cst836u/ sc7a20h/ fca9555/ sy7636a/    Chip drivers
-  e0470_epaper_waveform/                 Panel waveform tables and trimming functions
-  pwm_audio/        LEDC PWM audio, one buzzer backend
-assets/             Image sources for main/assets/*.bin
-tools/              Font and image conversion scripts
+```bash
+python -m esptool --port COM5 read-flash 0 0x1000000 pico-backup.bin
 ```
 
-To add a demo page, create a file in `main/apps/`, implement the `app_desc_t`
-callbacks you need and add it to the menu table in `main/app/app_registry.c`.
-The main loop stays untouched.
+刷入并看日志（`Ctrl+]` 退出）：
 
-## Pinout
+```bash
+idf.py -p COM5 flash monitor
+```
 
-| Function | GPIO |
+- 从官方出厂固件升级不用擦除，Wi-Fi 等设置会保留。从其他第三方固件换过来，先整片擦除：`idf.py -p COM5 erase-flash flash monitor`。
+- **不要把合并镜像（`merge-bin` 生成的单文件）从 0x0 整个写进去**：中间的空隙会覆盖设置分区（NVS），清掉 Wi-Fi 和阅读进度。用 `idf.py flash`，或分别写 `bootloader.bin`（0x0）、`partition-table.bin`（0x8000）、`Read_Pico.bin`（0x10000）。
+- 连不上时按住 BOOT 键再插 USB，进入下载模式。
+
+### 4. 第一次开机
+
+1. 插好 TF 卡开机，进首页。
+2. 设置 → 字体，选寒蝉端黑体。
+3. 设置 → Wi-Fi 与传书，连上 2.4 GHz 网络（也可以在这里用浏览器给设备传书）。
+4. 设置 → 番茄服务器，填你的服务器地址和密码（固件里已内置的话显示“内置服务器”）。
+5. 番茄 → 搜一本书下载试试。第一次联网时会顺便对时。
+
+## 自建番茄下载服务器
+
+Treader 不直接访问番茄的正文接口：搜索、生成 TXT 都交给你自己部署的 [Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader)（Web UI 服务器模式），设备只负责发请求和下载成品。这和安卓版番茄阅读器用的是同一个服务器，**同一台服务器可以同时给安卓版和 Treader 用**。
+
+书城的榜单不经过这台服务器，没有它也能浏览榜单，但下载需要它。
+
+### 部署
+
+任选一种，都要开启 **Web UI 服务器模式**（`--server`）并**设置密码**。
+
+**Docker（推荐，NAS / 服务器 / 软路由）**
+
+```bash
+docker run -d \
+    --name tomato-novel-webui \
+    --restart unless-stopped \
+    -p 18423:18423 \
+    -v /host/data:/data \
+    -e TOMATO_WEB_ADDR=0.0.0.0:18423 \
+    -e TOMATO_WEB_PASSWORD=你的密码 \
+    zhongbai233/tomato-novel-downloader-webui:latest --server --data-dir /data
+```
+
+软路由、NAS 等轻量系统用 `latest-musl` 镜像。`/host/data` 换成主机上存配置和书的目录。
+
+**直接运行（Windows / Linux / macOS / 安卓 Termux）**
+
+从 [Releases](https://github.com/zhongbai2333/Tomato-Novel-Downloader/releases) 下载对应系统的程序，然后：
+
+```bash
+TOMATO_WEB_ADDR=0.0.0.0:18423 TOMATO_WEB_PASSWORD=你的密码 ./TomatoNovelDownloader --server
+```
+
+Windows 上在命令行运行下载到的 `.exe`，加上 `--server --password 你的密码`，并设置环境变量 `TOMATO_WEB_ADDR=0.0.0.0:18423`。Linux / macOS / Termux 也可以用作者的一键脚本安装，详见该项目说明。
+
+要点：
+
+- **监听地址**：默认只监听本机（`127.0.0.1:18423`），设备访问不到。必须设 `TOMATO_WEB_ADDR=0.0.0.0:18423`。
+- **密码**：`TOMATO_WEB_PASSWORD` 或 `--password`。Treader 用请求头 `x-tomato-password` 带上它。
+- **下载格式**：番茄书在设备上统一用 TXT（更新时只追加章节，阅读进度能平滑接上）。服务器询问格式时设备会自动选 TXT；如果你在 Web UI 的配置页把默认格式固定成了 EPUB，请改回 TXT 或“每次询问”。这只影响番茄下载，你自己放进 `books/` 的 EPUB 照常能读。
+- **子路径**：用 `TOMATO_WEB_BASE_PATH=/tomato` 部署在子路径时，设备上的地址也要带上，例如 `https://example.com/tomato`。
+
+### 让设备连得上
+
+| 场景 | 设备上填的地址 | 说明 |
+| --- | --- | --- |
+| 只在家里用 | `http://192.168.1.10:18423` | 服务器和设备在同一个局域网，填服务器的局域网 IP |
+| 在外面也要用 | `https://你的域名` | 用 Nginx / Caddy 等反向代理加 HTTPS，**证书必须是正规 CA 签发的**（如 Let's Encrypt） |
+
+- 设备会校验 HTTPS 证书，**自签名证书连不上**。
+- 设备只连 2.4 GHz Wi-Fi。
+- 暴露到公网时务必开着密码，最好在反向代理上再加限流。
+
+### 自检
+
+部署完先在电脑上确认服务器正常，再填到设备里。
+
+1. **打开 Web UI**：浏览器访问 `http://服务器IP:18423/`，输入密码能进去，搜一本书能出结果，说明服务器本身正常。
+2. **测试设备用到的接口**：在另一台电脑上（不是服务器本机，用来确认局域网能访问）运行下面的命令，`q=` 后面是 URL 编码过的“诡秘之主”：
+
+   ```bash
+   curl -H "x-tomato-password: 你的密码" "http://服务器IP:18423/api/search?q=%E8%AF%A1%E7%A7%98%E4%B9%8B%E4%B8%BB"
+   ```
+
+   | 结果 | 说明 |
+   | --- | --- |
+   | 返回带 `"items"` 的 JSON | 正常，可以填到设备里 |
+   | 401 / 403 | 密码不对 |
+   | 连接被拒绝或超时 | 没有监听 `0.0.0.0`、端口没映射，或者被防火墙挡了 |
+   | HTTPS 报证书错误 | 证书不被信任，设备也会连不上 |
+
+3. **在设备上试**：设置 → 番茄服务器 填好地址和密码 → 番茄 → 搜索一本书 → 下载。失败时页面会提示原因，比如“服务器密码不对”“未设置 Wi-Fi”“Wi-Fi 连接失败”。
+
+设备用到的接口（和安卓版一致）：`GET /api/search`、`POST /api/jobs`、`GET /api/jobs?id=`、`GET /api/library?name=`、`GET /download/<路径>`、检查更新用 `GET /api/updates`。详细说明见安卓版 README 的[下载服务器 API 说明](https://github.com/bidabrain/Tomato-Novel#下载服务器-api-说明)。
+
+### 在设备上填写
+
+三种方式，优先级从高到低：
+
+1. **设备上**：设置 → 番茄服务器，用键盘填地址和密码。地址留空就回到内置服务器。
+2. **TF 卡**：`tomato/config.json`，格式见 [`sdcard/tomato/config.example.json`](sdcard/tomato/config.example.json)：
+   ```json
+   {
+     "server": "http://192.168.1.10:18423",
+     "password": "你的密码",
+     "store_url": "",
+     "webdav_url": "https://dav.jianguoyun.com/dav/treader",
+     "webdav_user": "you@example.com",
+     "webdav_password": "应用密码"
+   }
+   ```
+3. **编译进固件**：见下一节。
+
+### 内置默认服务器（可选）
+
+和安卓版一样，可以在项目根目录建 `local.properties`（已在 `.gitignore` 里，不会提交）：
+
+```properties
+DOWNLOADER_URL=https://你的服务器
+DOWNLOADER_PASSWORD=你的密码
+# 书城榜单网站，可省略
+STORE_URL=https://bidabrain.github.io/FanqieRankTracker
+```
+
+编译时输出 `Treader: built-in Tomato server enabled` 就说明生效了。设置里填过服务器就以填的为准，没填就用内置的。界面上只显示“内置服务器”，不显示地址和密码。
+
+> 地址和密码在固件里是混淆存放的，`strings` 之类的工具搜不到，但懂逆向的人仍然能还原出来，和安卓 APK 一样。**带内置服务器的固件只给自己用，不要公开发布。** `local.properties` 字段留空或删掉，编出的固件就不带内置服务器。
+
+## 书城榜单
+
+书城的数据是 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 网站上的番茄分类榜单 JSON（由 GitHub Actions 定期抓取，发布在 GitHub Pages）。默认地址是 `https://bidabrain.github.io/FanqieRankTracker`。
+
+- 想用自己的榜单：fork 这个仓库并打开 GitHub Pages，然后在 设置 → 书城榜单 填你的网站地址（或在 `local.properties` 里设 `STORE_URL`）。填安卓版用的 `.../api/lastest/all.json` 也可以，会自动截到网站根。
+- 设备按分类取数据（每个约 55 KB），取过的缓存在 TF 卡 `tomato/store/`，点“刷新”才重新联网。
+
+## WebDAV 同步
+
+只在 设置 → 立即同步 时运行，同步**阅读进度**和**番茄书架**，书籍文件本身不传。它是 Treader 设备之间的同步，和安卓版的 WebDAV 数据互不相通。坚果云要用“应用密码”，不是登录密码。合并规则见 [docs/TREADER.md](docs/TREADER.md#webdav-同步)。
+
+## 文档
+
+| 文档 | 内容 |
 | --- | --- |
-| I2C SCL / SDA | 40 / 39 (400 kHz) |
-| EPD data D0–D15 | 4–18, 45 |
-| EPD XLE / XSTL / XCL / SPV / CKV | 3 / 46 / 21 / 47 / 48 |
-| FCA9555 INT# | 41 (also a light-sleep wake source) |
-| CST836U INT# | 43 |
-| SC7A20H INT1 | 1 |
-| TF card CLK / CMD / D0 | 38 / 42 / 44 |
-| Buzzer | 2 |
+| [docs/TREADER.md](docs/TREADER.md) | Treader 的行为细节、TF 卡目录、各模块职责、已知限制 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
+| [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |
+| [docs/official/](docs/official/README.zh-CN.md) | 官方示例固件的原版说明：硬件表、引脚、底层组件 |
 
-EPD power enable, XOE, MODE, VCOM_EN, touch reset and card detection are on FCA9555
-Port-0; see the pin table in [main/apps/app_ioe.c](main/apps/app_ioe.c).
+## 致谢
 
-## Transfer and limitations
+| 项目 | 用途 |
+| --- | --- |
+| [MindReset/read_pico_firmware](https://github.com/MindReset/read_pico_firmware) | 官方示例固件，Treader 的底层（Apache-2.0） |
+| [vroland/epdiy](https://github.com/vroland/epdiy) | 墨水屏驱动（LGPL-3.0） |
+| [zhongbai2333/Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) | 番茄小说下载服务器 |
+| [bidabrain/Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) | 安卓版番茄阅读器，接口与更新规则的来源 |
+| [wen1701/FanqieRankTracker](https://github.com/wen1701/FanqieRankTracker) | 番茄分类榜单数据 |
+| [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico) | 拼音输入引擎与词库格式（Apache-2.0） |
+| jieba、pypinyin | 拼音词库数据（MIT） |
+| 寒蝉端黑体 ChillDuanSans | 中文字体（SIL OFL-1.1） |
+| stb_truetype、stb_image、TJpgDec、cJSON | 字体渲染、图片解码、JSON 解析 |
 
-AP and existing WiFi modes provide a QR code for the upload page. AP can switch between joining WiFi and opening the page. The device labels its build timestamp as UTC.
+## 许可
 
-The transfer server runs only on its page and stops on exit. It uses local-network HTTP without separate login or TLS; peers on that network can manage books in the active upload storage, so use a trusted network. Saved WiFi credentials reside in device NVS and are not returned by public endpoints or logs. NVS/flash encryption is not enabled, so this does not provide physical-access protection.
+代码沿用上游的 [Apache-2.0](LICENSE)；`components/epdiy` 为 LGPL-3.0；字体为 SIL OFL-1.1；第三方组件按各自许可。
 
-Stopping transfer returns to the entry page or menu position. When a mounted TF card becomes unavailable, affected reading/transfer stops and fonts fall back; explicitly remount from the TF page after reinserting it. Removing a card during writes can damage the filesystem. EPUB opens text with image placeholders. Tap a placeholder to load that local JPEG/PNG in a separate, proportionally scaled preview; tap the preview, the return button, or any of the three keys to return to the same text position without repagination. Chapter opening, page turns and prepainting do not decode images. ZIP entries, manifest items and spine chapters are each limited to 32768; OPF/navigation metadata is limited to 4 MiB uncompressed and chapter/image reads to 2 MiB. The ZIP central directory has an 8 MiB limit; title storage has a 1 MiB budget, with numbered fallback titles beyond it. Entries above 4 MiB are rejected even when unused. These are independent memory/resource limits, so chapter count alone does not guarantee acceptance; ZIP64 and books over 32768 entries or chapters are unsupported. Externally replaced files or another card with the same path and file size may still match old reading progress. Pending retries after failed saves are not guaranteed to survive power loss.
-
-Entering Books offers to resume the previous book; staying on the shelf does not open it (KEY1 cancels, KEY3 resumes). The reader parses metadata and the current chapter, then paginates the first two pages or through the saved position. Remaining pagination advances two pages at a time; other chapters load on demand. The page total shows “…” while incomplete; entering the previous chapter at its last page still requires paginating that chapter. Width measurement uses resident font tables without rasterizing a whole chapter. Opening and chapter loading retain waiting hints and visible failure reasons (memory, limits, unsupported format or invalid file).
-
-Swipe page turns commit on release at 64 pixels (previously 120); movement beyond the 24-pixel tap tolerance but below the swipe threshold cancels, and an image-placeholder swipe turns the page without loading the image.
-
-Illustration limits: baseline JPEG favors decode-time scaling with at most 2x enlargement to the display size, up to 16M source pixels and 8192 per side; PNG and progressive JPEG allow up to 1M source pixels and a 4 MiB decoder heap. Output fits 648x1000 grayscale pixels; transparent PNG uses a white background. Only the most recently viewed image in the current chapter is cached; closing a preview and reopening that same image reuses it. Missing, corrupt, oversized or unsupported images show an explanation on request and leave text readable. Repeated references to the same normalized EPUB resource path show “重复图片” and the earliest numbered section among chapters visited during this book opening (EPUB section order includes covers and front matter, so it can differ from printed chapter numbers). Opening image blocks immediately followed by a heading, and recognized references to those same resources, use a separate “标题图” label without the first-location line; other illustrations keep the visited-origin hint. This is not a scan of unread chapters or a claim about the first occurrence in the whole book; the history resets when the book closes. Identical content under different resource paths is not matched. JPEG/PNG references inside SVG wrappers work; pure SVG vectors, CSS backgrounds and remote images do not. See [decoder sources and licenses](main/book/vendor/README.md).
-
-The built-in font covers the UI and demo text only. For external Chinese books, place a complete Chinese TTF in `fonts/` or `assets/fonts/` on the TF card and select it on the Fonts page. The default path is `fonts/ChillDuanSansVF.ttf`; for missing characters, check that the file exists and the selected font covers them. A complete font and its copyright notices are provided in the [TF deployment package](sdcard/README.md). The webpage also accepts fonts into `/sdcard/fonts`: up to 32 MiB per TTF with TrueType outlines, excluding OTF/CFF, TTC and WOFF. Capacity is checked first, replacements require confirmation, and interrupted or invalid uploads retain the old file. Stop transfer, then select the font on the device. Transfer temporarily uses the built-in font to avoid replacing an open font; the saved selection is retained.
-
-See [Changelog](docs/CHANGELOG.md) for feature changes. Offline pinyin data comes from pypinyin under MIT; see the [component license and regeneration notes](components/read_pico_search/README.md).
-
-## Acknowledgments & License
-
-- Firmware: Apache-2.0, see [LICENSE](LICENSE).
-- [epdiy](https://github.com/vroland/epdiy): e-paper timing and rendering. This is a
-  trimmed fork for the board's LCD path, licensed under LGPL-3.0-or-later.
-  Local changes are listed in [components/epdiy/LICENSE](components/epdiy/LICENSE).
-- [stb_truetype](https://github.com/nothings/stb): glyph rasterization, public domain.
-- [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio):
-  Espressif LEDC PWM audio, trimmed copy, Apache-2.0. See
-  [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE).
-- Panel waveform tables ship with the board as-is under Apache-2.0. See
-  [components/e0470_epaper_waveform/LICENSE](components/e0470_epaper_waveform/LICENSE).
-- The built-in font, `main/assets/builtin.ttf`, is a subset of the
-  [ChillDuanSans](https://github.com/Warren2060/ChillDuanSans) variable font by
-  Warren2060, generated by `tools/gen_builtin_font.py`. The unmodified full font
-  and original license are bundled in `sdcard/fonts/`; the modified UI subset
-  is named Read Pico UI. Both remain under SIL OFL-1.1. See [deployment notes](sdcard/README.md).
-
-Thank you for your patience and support.
-
-Shenzhen MindReset Technology Co., Ltd.
+本项目仅供个人学习与非商业用途。下载的小说仅供自己阅读，请遵守番茄小说的服务条款和当地法律法规。

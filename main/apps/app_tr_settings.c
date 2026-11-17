@@ -2,10 +2,11 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 设置：分组清单，入口指向官方的字体、睡眠、传书（含 Wi-Fi）、概览页；
+ * 设置：分组清单，入口指向官方的字体、睡眠、传书（含 Wi-Fi）、概览页；“关于 Treader”在本页显示版本与开源致谢；
  * 番茄服务器和 WebDAV 的地址、账号在本页用键盘编辑；“立即同步”触发 WebDAV 同步。
  *
  * Settings: a grouped list linking to the official font, sleep, transfer (incl. Wi-Fi) and overview pages;
+ * "About Treader" shows the version and open-source credits on this page;
  * Tomato server and WebDAV credentials are edited here with the keyboard; "Sync now" runs WebDAV sync.
  */
 
@@ -15,11 +16,14 @@
 
 #include "app.h"
 #include "book_progress.h"
+#include "esp_app_desc.h"
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
+#include "read_pico_sd.h"
 #include "read_pico_transfer.h"
 #include "tomato.h"
 #include "tr_kbd.h"
+#include "tr_lock.h"
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
@@ -27,7 +31,7 @@
 #include "ui_kit.h"
 #include "ui_menu.h"
 
-#define ROW_H 76
+#define ROW_H 70
 #define POLL_MS 500
 
 extern const app_desc_t app_font_pick;
@@ -35,9 +39,11 @@ extern const app_desc_t app_sleep;
 extern const app_desc_t app_transfer;
 extern const app_desc_t app_home;
 extern const app_desc_t app_selftest;
+extern const app_desc_t app_tr_wall;
+extern const app_desc_t app_tr_card;
 
 typedef enum {
-    R_FONT, R_SLEEP, R_WIFI, R_SERVER, R_IMPORT, R_DAV, R_DAV_SYNC, R_ABOUT, R_SELFTEST, R_COUNT
+    R_FONT, R_SLEEP, R_WALL, R_WIFI, R_SERVER, R_STORE, R_DAV, R_DAV_SYNC, R_CARD, R_ABOUT, R_COUNT
 } row_id_t;
 
 typedef struct {
@@ -47,28 +53,33 @@ typedef struct {
 } row_t;
 
 static const row_t ROWS[R_COUNT] = {
-    [R_FONT] = {"阅读", "字体", 200},
-    [R_SLEEP] = {"电源", "睡眠与锁屏", 324},
-    [R_WIFI] = {"连接", "Wi-Fi", 448},
-    [R_SERVER] = {NULL, "番茄服务器", 524},
-    [R_IMPORT] = {NULL, "导入书籍", 600},
-    [R_DAV] = {"同步", "WebDAV", 724},
-    [R_DAV_SYNC] = {NULL, "立即同步", 800},
-    [R_ABOUT] = {"关于", "关于本机", 924},
-    [R_SELFTEST] = {NULL, "设备自检", 1000},
+    [R_FONT] = {"阅读", "字体", 190},
+    [R_SLEEP] = {"电源", "睡眠与锁屏", 304},
+    [R_WALL] = {NULL, "锁屏壁纸", 374},
+    [R_WIFI] = {"连接", "Wi-Fi 与传书", 488},
+    [R_SERVER] = {NULL, "番茄服务器", 558},
+    [R_STORE] = {NULL, "书城榜单", 628},
+    [R_DAV] = {"同步", "WebDAV", 742},
+    [R_DAV_SYNC] = {NULL, "立即同步", 812},
+    [R_CARD] = {"设备", "TF 卡", 926},
+    [R_ABOUT] = {NULL, "关于 Treader", 996},
 };
 
 // 编辑步骤：番茄（地址→密码）、WebDAV（地址→用户名→密码）。
 // Edit steps: Tomato (URL, password) and WebDAV (URL, user, password).
-typedef enum { E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS } edit_t;
+// 正在看“关于 Treader”。/ The About view is open.
+static bool s_about;
+
+typedef enum { E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL } edit_t;
 
 static const struct { const char* title; const char* hint; const char* go; } EDIT[] = {
     [E_NONE] = {"", "", ""},
-    [E_SRV_URL] = {"番茄服务器地址", "例如 http://192.168.1.10:8080", "下一步"},
+    [E_SRV_URL] = {"番茄服务器地址", "例如 http://192.168.1.10:18423", "下一步"},
     [E_SRV_PASS] = {"番茄服务器密码", "服务器没有设置密码就留空", "保存"},
     [E_DAV_URL] = {"WebDAV 目录地址", "例如 https://dav.jianguoyun.com/dav/treader", "下一步"},
     [E_DAV_USER] = {"WebDAV 用户名", "坚果云填登录邮箱", "下一步"},
     [E_DAV_PASS] = {"WebDAV 密码", "坚果云填“应用密码”，不是登录密码", "保存"},
+    [E_STORE_URL] = {"书城榜单地址", "留空使用默认榜单；填 FanqieRankTracker 网站地址", "保存"},
 };
 
 static edit_t s_edit;
@@ -126,6 +137,11 @@ static void load(void) {
     bool configured = false;
     if (read_pico_transfer_get_saved_wifi(s_wifi, &configured) != ESP_OK || !configured) s_wifi[0] = 0;
     s_has_cfg = tomato_config_load(&s_cfg) == ESP_OK;
+    // 内置服务器的地址和密码不留在页面里，只记“在用内置”。/ Keep no copy of the built-in URL or password, only the flag.
+    if (s_cfg.builtin) {
+        memset(s_cfg.url, 0, sizeof(s_cfg.url));
+        memset(s_cfg.password, 0, sizeof(s_cfg.password));
+    }
     s_has_dav = tomato_webdav_config_load(&s_dav) == ESP_OK;
 }
 
@@ -140,8 +156,12 @@ static void row_value(row_id_t id, char* out, size_t cap) {
     case R_FONT: snprintf(out, cap, "%s ›", ttf_font_is_builtin() ? "内置字体" : ttf_font_display_name()); break;
     case R_SLEEP: snprintf(out, cap, "›"); break;
     case R_WIFI: snprintf(out, cap, "%s ›", s_wifi[0] ? s_wifi : "未设置"); break;
-    case R_SERVER: snprintf(out, cap, "%s ›", s_has_cfg ? host_of(s_cfg.url) : "未设置"); break;
-    case R_IMPORT: snprintf(out, cap, tomato_sync_busy() ? "同步中，稍后再试" : "浏览器上传 ›"); break;
+    case R_SERVER: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
+    case R_STORE: {
+        char url[160];
+        snprintf(out, cap, "%.150s ›", tomato_store_url_load(url, sizeof(url)) == ESP_OK ? host_of(url) : "默认榜单");
+        break;
+    }
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -150,8 +170,20 @@ static void row_value(row_id_t id, char* out, size_t cap) {
         else snprintf(out, cap, s_has_dav ? "进度和番茄书架 ›" : "先设置 WebDAV");
         break;
     }
-    case R_ABOUT: snprintf(out, cap, "电量、存储、版本 ›"); break;
-    case R_SELFTEST: snprintf(out, cap, "屏幕、触摸、电源 ›"); break;
+    case R_ABOUT: snprintf(out, cap, "版本、开源致谢 ›"); break;
+    case R_CARD: {
+        read_pico_sd_info_t info = {0};
+        esp_err_t err = read_pico_sd_get_info(&info);
+        if (err == ESP_OK && info.mounted) snprintf(out, cap, "可用 %.1f GB ›", info.free_bytes / 1073741824.0);
+        else snprintf(out, cap, !info.present ? "没有插卡 ›" : "需要处理 ›");
+        break;
+    }
+    case R_WALL: {
+        char path[288];
+        const char* base = tr_lock_wallpaper_get(path, sizeof(path)) ? strrchr(path, '/') : NULL;
+        snprintf(out, cap, "%.100s ›", base ? base + 1 : "书卡样式");
+        break;
+    }
     default: out[0] = 0; break;
     }
 }
@@ -200,15 +232,68 @@ static void draw_edit(uint8_t* fb) {
     const char* tail = tr_tail_fit(shown, 32, f.width - 48);
     tr_text(fb, f.x + 20, f.y + 22, 32, tail, EPD_DRAW_ALIGN_LEFT, false);
     epd_fill_rect((EpdRect){f.x + 22 + ttf_text_width_px(32, tail), f.y + 18, 3, 46}, UI_GRAY_BLACK, fb);
-    tr_text(fb, TR_MARGIN, 286, 26, EDIT[s_edit].hint, EPD_DRAW_ALIGN_LEFT, false);
+    const char* hint = EDIT[s_edit].hint;
+    if (s_edit == E_SRV_URL && tomato_config_has_builtin()) hint = "留空使用内置服务器；自建的填 http://地址:端口";
+    tr_text(fb, TR_MARGIN, 286, 26, hint, EPD_DRAW_ALIGN_LEFT, false);
     tr_kbd_draw(fb, &s_kbd);
+}
+
+/* ---- 关于 / About ---- */
+
+#define ABOUT_DEVICE_Y 1030
+#define ABOUT_TEST_Y 1106
+
+static const char* const CREDITS[] = {
+    "MindReset Read Pico 示例固件 · Apache-2.0",
+    "epdiy 墨水屏驱动 · LGPL-3.0",
+    "XH View OS 拼音引擎 · Apache-2.0",
+    "jieba、pypinyin 词库数据 · MIT",
+    "寒蝉端黑体 · SIL OFL 1.1",
+    "stb_truetype、stb_image、TJpgDec、cJSON",
+    "Tomato-Novel-Downloader 下载服务",
+};
+
+static void about_row(uint8_t* fb, int y, const char* label, const char* value) {
+    tr_text(fb, TR_MARGIN, y, 30, label, EPD_DRAW_ALIGN_LEFT, false);
+    char v[96];
+    snprintf(v, sizeof(v), "%s", value);
+    tr_fit(v, 28, TR_W - 2 * TR_MARGIN - 160);
+    tr_text(fb, TR_W - TR_MARGIN, y + 2, 28, v, EPD_DRAW_ALIGN_RIGHT, false);
+}
+
+static void draw_about(uint8_t* fb) {
+    const esp_app_desc_t* app = esp_app_get_description();
+    char line[64];
+    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, 96, 100, 36, "关于 Treader", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, 184, 60, "Treader", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, 262, 28, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", EPD_DRAW_ALIGN_LEFT, false);
+    about_row(fb, 336, "版本", app->version);
+    tr_hline(fb, 390, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    snprintf(line, sizeof(line), "%s %s UTC", app->date, app->time);
+    about_row(fb, 410, "构建时间", line);
+    tr_hline(fb, 464, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    about_row(fb, 484, "项目主页", "github.com/bidabrain/treader-eink");
+    tr_text(fb, TR_MARGIN, 584, 26, "开源致谢", EPD_DRAW_ALIGN_LEFT, false);
+    int y = 628;
+    for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++, y += 42)
+        tr_text(fb, TR_MARGIN, y, 28, CREDITS[i], EPD_DRAW_ALIGN_LEFT, false);
+    tr_wrap(fb, TR_MARGIN, y + 16, TR_W - 2 * TR_MARGIN, 26, 38,
+            "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 2);
+    tr_hline(fb, ABOUT_DEVICE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
+    tr_text(fb, TR_MARGIN, ABOUT_DEVICE_Y + 10, 32, "设备信息", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W - TR_MARGIN, ABOUT_DEVICE_Y + 14, 28, "电量、存储、芯片 ›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_hline(fb, ABOUT_TEST_Y - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_text(fb, TR_MARGIN, ABOUT_TEST_Y + 10, 32, "设备自检", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W - TR_MARGIN, ABOUT_TEST_Y + 14, 28, "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT, false);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
     (void)ctx;
     ui_clear_page(fb);
     tr_status_bar(fb);
-    if (s_edit == E_NONE) draw_list(fb);
+    if (s_about) draw_about(fb);
+    else if (s_edit == E_NONE) draw_list(fb);
     else draw_edit(fb);
 }
 
@@ -221,7 +306,11 @@ static void begin_edit(edit_t step, const char* initial) {
 
 static app_redraw_t finish_edit(void) {
     esp_err_t err;
-    if (s_edit == E_SRV_PASS) {
+    if (s_edit == E_STORE_URL) {
+        // 只剩协议头也算没填，恢复默认。/ A bare scheme counts as empty and restores the default.
+        const bool empty = !s_kbd.text[0] || !strcmp(s_kbd.text, "http://") || !strcmp(s_kbd.text, "https://");
+        err = tomato_store_url_save(empty ? "" : s_kbd.text);
+    } else if (s_edit == E_SRV_PASS) {
         tomato_config_t next = {0};
         snprintf(next.url, sizeof(next.url), "%.127s", s_step1);
         snprintf(next.password, sizeof(next.password), "%.63s", s_kbd.text);
@@ -254,6 +343,14 @@ static app_redraw_t touch_edit(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     switch (s_edit) {
     case E_SRV_URL:
         snprintf(s_step1, sizeof(s_step1), "%.159s", s_kbd.text);
+        // 只剩协议头也算没填；没填就清掉自定义服务器，回到内置默认，不用再问密码。
+        // A bare scheme counts as empty; empty clears the custom server and returns to the built-in default.
+        if (!strcmp(s_step1, "http://") || !strcmp(s_step1, "https://")) s_step1[0] = 0;
+        if (!s_step1[0]) {
+            s_edit = E_SRV_PASS;
+            s_kbd.text[0] = 0;
+            return finish_edit();
+        }
         begin_edit(E_SRV_PASS, s_has_cfg ? s_cfg.password : "");
         return APP_REDRAW_PAGE;
     case E_DAV_URL:
@@ -278,12 +375,17 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         case R_FONT: ctx->request_app = &app_font_pick; break;
         case R_SLEEP: ctx->request_app = &app_sleep; break;
         case R_WIFI:
-        case R_IMPORT:
             if (!tomato_sync_busy()) ctx->request_app = &app_transfer;
             break;
+        case R_STORE: {
+            char url[160];
+            begin_edit(E_STORE_URL, tomato_store_url_load(url, sizeof(url)) == ESP_OK ? url : "");
+            return APP_REDRAW_PAGE;
+        }
         case R_SERVER:
             // 地址只用英文和符号。/ Addresses take English letters and symbols only.
-            begin_edit(E_SRV_URL, s_has_cfg ? s_cfg.url : "http://");
+            // 内置服务器不回显；有内置时默认留空。/ Never echo the built-in server; start empty when one exists.
+            begin_edit(E_SRV_URL, s_has_cfg && !s_cfg.builtin ? s_cfg.url : tomato_config_has_builtin() ? "" : "http://");
             return APP_REDRAW_PAGE;
         case R_DAV:
             begin_edit(E_DAV_URL, s_has_dav ? s_dav.url : "https://");
@@ -293,8 +395,9 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             tomato_sync_set_progress_io(export_progress, import_progress);
             if (tomato_sync_start_webdav() == ESP_OK) s_syncing = true;
             return APP_REDRAW_PAGE;
-        case R_ABOUT: ctx->request_app = &app_home; break;
-        case R_SELFTEST: ctx->request_app = &app_selftest; break;
+        case R_ABOUT: s_about = true; return APP_REDRAW_PAGE;
+        case R_WALL: ctx->request_app = &app_tr_wall; break;
+        case R_CARD: ctx->request_app = &app_tr_card; break;
         default: break;
         }
         return APP_REDRAW_NONE;
@@ -307,6 +410,7 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     s_edit = E_NONE;
+    s_about = false;
     s_message[0] = 0;
     // 离开期间同步可能已结束。/ The sync may have finished while away.
     if (s_syncing && !tomato_sync_busy()) s_syncing = false;
@@ -328,6 +432,12 @@ static EpdRect area_hint(app_ctx_t* ctx) {
 }
 
 static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
+    if (s_about) {
+        if (touch->y < 160 && touch->x < 120) { s_about = false; return APP_REDRAW_PAGE; }
+        if (touch->y >= ABOUT_DEVICE_Y - 20 && touch->y < ABOUT_TEST_Y) ctx->request_app = &app_home;
+        else if (touch->y >= ABOUT_TEST_Y && touch->y < ABOUT_TEST_Y + 80) ctx->request_app = &app_selftest;
+        return APP_REDRAW_NONE;
+    }
     if (s_edit == E_NONE) {
         if (tr_nav_touch(ctx, touch->x, touch->y, TR_TAB_SETTINGS)) return APP_REDRAW_NONE;
         return touch_list(ctx, touch->x, touch->y);
@@ -337,6 +447,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
 
 static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     (void)ctx;
+    if (key == UI_KEY_1 && s_about) { s_about = false; return APP_REDRAW_PAGE; }
     if (key != UI_KEY_1 || s_edit == E_NONE) return APP_REDRAW_NONE;
     s_edit = E_NONE;
     return APP_REDRAW_PAGE;
@@ -346,7 +457,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 // While syncing, refresh only the "Sync now" row; when done, show the result with a page refresh.
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     tr_time_poll();
-    if (!s_syncing || s_edit != E_NONE || ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
+    if (!s_syncing || s_edit != E_NONE || s_about || ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
     tomato_status_t st;
     tomato_sync_get_status(&st);

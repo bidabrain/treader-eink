@@ -1,8 +1,8 @@
 # AGENTS.md
 
-面向 AI agent 的仓库入口。人类也可读。产品概述、硬件表、引脚、编译命令见 [README.md](README.md)。
+面向 AI agent 的仓库入口。人类也可读。Treader 的介绍、刷机和自建服务器见 [README.md](README.md)；硬件表和引脚见官方原版说明 [docs/official/README.zh-CN.md](docs/official/README.zh-CN.md)。
 
-Agent entry for this tree. Humans can read it too. Product overview, hardware, pinout and flash commands live in [README.md](README.md).
+Agent entry for this tree. Humans can read it too. Treader overview, flashing and server setup live in [README.md](README.md); hardware and pinout are in the original MindReset README under [docs/official/](docs/official/README.md).
 
 新人（人或 agent）上手看 [docs/ONBOARDING.md](docs/ONBOARDING.md)；接手进行中的任务先看 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
@@ -47,7 +47,7 @@ idf.py build
 | `components/pwm_audio/` | PWM 音频（蜂鸣器底层之一）。/ PWM audio helper. |
 | `docs/CHANGELOG.md` | 按版本简述对用户可见的功能变化与修复。/ Brief user-visible changes and fixes by version. |
 
-功能操作见三份 README；页面契约以本文及 `main/app/app.h` 为准。/ See the READMEs for feature usage; this file and `main/app/app.h` define the page contract.
+功能操作见 README 和 [docs/TREADER.md](docs/TREADER.md)；页面契约以本文及 `main/app/app.h` 为准。/ See the README and docs/TREADER.md for feature usage; this file and `main/app/app.h` define the page contract.
 
 ### 文档交付边界 / Documentation delivery boundary
 

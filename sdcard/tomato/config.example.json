@@ -1,6 +1,7 @@
 {
-  "server": "http://192.168.1.10:8080",
+  "server": "http://192.168.1.10:18423",
   "password": "your-password-here",
+  "store_url": "",
   "webdav_url": "https://dav.jianguoyun.com/dav/treader",
   "webdav_user": "you@example.com",
   "webdav_password": "app-password"

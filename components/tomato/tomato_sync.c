@@ -37,7 +37,7 @@
 #define BUSY_RETRIES 6
 #define DEFER_MAX 8
 
-typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV } op_t;
+typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
 typedef struct {
@@ -60,6 +60,9 @@ static volatile uint32_t s_bytes;
 static op_t s_op;
 static char s_query[96];
 static tomato_hit_t s_target;
+static tomato_rank_cat_t s_rank_cat;
+static bool s_rank_has_cat;
+static tomato_rank_book_t* s_rank_book;   // PSRAM，封面任务用 / PSRAM, for the cover op
 static work_t* s_work;
 static tomato_file_hook_t s_file_hook;
 static tomato_open_check_t s_open_check;
@@ -465,6 +468,10 @@ static void run_search(const tomato_config_t* cfg) {
         tomato_json_str(raw, "update_status", st, sizeof(st));
         h->finished = !strcmp(st, "0");
         tomato_json_str(raw, "abstract", h->abstract, sizeof(h->abstract));
+        // 地址截断就没法用，太长宁可不要。/ A truncated URL is useless; drop it when too long.
+        const cJSON* thumb = cJSON_GetObjectItemCaseSensitive(raw, "thumb_url");
+        if (cJSON_IsString(thumb) && thumb->valuestring && strlen(thumb->valuestring) < sizeof(h->thumb))
+            strcpy(h->thumb, thumb->valuestring);
         if (h->book_id[0] && h->title[0]) n++;
     }
     cJSON_Delete(root);
@@ -476,6 +483,99 @@ static void run_search(const tomato_config_t* cfg) {
     xSemaphoreGive(s_hits_mutex);
     heap_caps_free(hits);
     set_phase(TOMATO_DONE, n ? NULL : "没有找到");
+}
+
+// 复制一个小文件（封面）。/ Copy a small file (a cover).
+static bool copy_file(const char* from, const char* to) {
+    FILE* in = fopen(from, "rb");
+    if (!in) return false;
+    FILE* out = fopen(to, "wb");
+    bool ok = out != NULL;
+    char buf[1024];
+    size_t n;
+    while (ok && (n = fread(buf, 1, sizeof(buf), in)) > 0) ok = fwrite(buf, 1, n, out) == n;
+    fclose(in);
+    if (out) ok = fclose(out) == 0 && ok;
+    if (!ok) remove(to);
+    return ok;
+}
+
+// 封面尽力而为：失败只是显示文字封面，不影响下载结果。
+// Covers are best effort: a failure only means a text cover; the download still succeeds.
+static void fetch_cover(const tomato_book_t* book) {
+    if (!s_target.thumb[0] || !book->file[0] || s_cancel) return;
+    char dest[200];
+    if (snprintf(dest, sizeof(dest), "%s/%s.img", TOMATO_COVER_DIR, book->file) >= (int)sizeof(dest)) return;
+    struct stat st;
+    if (stat(dest, &st) == 0) return;
+    mkdir(TOMATO_COVER_DIR, 0775);
+    set_phase(TOMATO_DOWNLOADING, "下载封面");
+    // 书城详情页已经下过这张封面就直接复制。/ Reuse the cover the bookstore detail already fetched.
+    char cached[96];
+    tomato_rank_cover_path(book->book_id, cached, sizeof(cached));
+    if (copy_file(cached, dest)) return;
+    if (tomato_http_fetch(s_target.thumb, dest, 1024 * 1024, true, &s_cancel) == ESP_OK) return;
+    // 图床有时按格式协商给 WEBP；去掉处理参数再要一次原图。/ Hosts may hand back WEBP; retry the bare image without processing params.
+    char* bare = s_work->url;
+    snprintf(bare, sizeof(s_work->url), "%s", s_target.thumb);
+    char* cut = strchr(bare, '~');
+    if (!cut) cut = strchr(bare, '?');
+    if (!cut || s_cancel) return;
+    *cut = 0;
+    tomato_http_fetch(bare, dest, 1024 * 1024, true, &s_cancel);
+}
+
+/* ---- 书城 / Bookstore ---- */
+
+// 取分类列表；榜单换了日期就清掉旧分类缓存。/ Fetch the index; drop old category caches when the date changes.
+static esp_err_t fetch_rank_index(void) {
+    char old_date[16], new_date[16];
+    tomato_rank_index_date(old_date, sizeof(old_date));
+    if (!tomato_rank_index_url(s_work->url, sizeof(s_work->url))) return ESP_ERR_INVALID_SIZE;
+    esp_err_t err = tomato_http_fetch(s_work->url, tomato_rank_index_path(), 64 * 1024, false, &s_cancel);
+    if (err != ESP_OK) return err;
+    tomato_rank_index_date(new_date, sizeof(new_date));
+    if (strcmp(old_date, new_date)) tomato_rank_drop_categories();
+    return ESP_OK;
+}
+
+static void run_rank(void) {
+    mkdir(TOMATO_DIR, 0775);
+    mkdir(TOMATO_RANK_DIR, 0775);
+    set_phase(TOMATO_SEARCHING, "正在获取榜单");
+    struct stat st;
+    // 只取分类时总是刷新；取某个分类时，没有分类列表才顺带取。/ Index-only always refreshes; a category fetch adds it if missing.
+    if (!s_rank_has_cat || stat(tomato_rank_index_path(), &st) != 0) {
+        esp_err_t err = fetch_rank_index();
+        if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "榜单获取失败，检查网络和榜单地址"); return; }
+    }
+    if (s_rank_has_cat) {
+        char path[96];
+        tomato_rank_cat_path(&s_rank_cat, path, sizeof(path));
+        if (!tomato_rank_cat_url(&s_rank_cat, s_work->url, sizeof(s_work->url))) { fail(ESP_ERR_INVALID_SIZE, "榜单地址太长"); return; }
+        esp_err_t err = tomato_http_fetch(s_work->url, path, 256 * 1024, false, &s_cancel);
+        if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "榜单获取失败，检查网络和榜单地址"); return; }
+    }
+    set_phase(TOMATO_DONE, "榜单已更新");
+}
+
+static void run_rank_cover(void) {
+    if (!s_rank_book || !s_rank_book->cover[0]) { set_phase(TOMATO_DONE, NULL); return; }
+    mkdir(TOMATO_RANK_DIR, 0775);
+    mkdir(TOMATO_RANK_DIR "/covers", 0775);
+    char dest[96];
+    tomato_rank_cover_path(s_rank_book->book_id, dest, sizeof(dest));
+    set_phase(TOMATO_DOWNLOADING, "下载封面");
+    esp_err_t err = tomato_http_fetch(s_rank_book->cover, dest, 1024 * 1024, true, &s_cancel);
+    if (err != ESP_OK && !s_cancel) {
+        // 和番茄下载一样，拿到 WEBP 就去掉处理参数再要一次。/ As with downloads, retry without processing params on WEBP.
+        snprintf(s_work->url, sizeof(s_work->url), "%s", s_rank_book->cover);
+        char* cut = strchr(s_work->url, '~');
+        if (!cut) cut = strchr(s_work->url, '?');
+        if (cut) { *cut = 0; err = tomato_http_fetch(s_work->url, dest, 1024 * 1024, true, &s_cancel); }
+    }
+    if (err == ESP_OK) set_phase(TOMATO_DONE, NULL);
+    else fail(err, "封面下载失败");
 }
 
 static void run_download(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
@@ -498,6 +598,7 @@ static void run_download(const tomato_config_t* cfg, tomato_book_t* shelf, int c
     tomato_shelf_save(shelf, count);
     // 重新下载的书不再算“已删除”。/ A re-downloaded book is no longer "removed".
     tomato_removed_mark(shelf[at].book_id, false);
+    fetch_cover(&shelf[at]);
     set_phase(TOMATO_DONE, "已加入书架");
 }
 
@@ -525,8 +626,9 @@ static void sync_task(void* arg) {
     s_work = heap_caps_calloc(1, sizeof(work_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     int count = 0;
     if (!shelf || !s_work) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
-    // WebDAV 同步不需要番茄服务器。/ WebDAV sync does not need the Tomato server.
-    if (s_op != OP_WEBDAV && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
+    // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
+    const bool needs_server = s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER;
+    if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
     if ((s_op == OP_CHECK && !count) || (s_op == OP_UPDATE && !count_pending(shelf, count))) {
@@ -544,6 +646,8 @@ static void sync_task(void* arg) {
     case OP_UPDATE: run_update(&cfg, shelf, count); break;
     case OP_SEARCH: run_search(&cfg); break;
     case OP_DOWNLOAD: run_download(&cfg, shelf, count); break;
+    case OP_RANK: run_rank(); break;
+    case OP_RANK_COVER: run_rank_cover(); break;
     case OP_WEBDAV: {
         set_phase(TOMATO_WEBDAV, "正在同步");
         char msg[64];
@@ -595,6 +699,22 @@ esp_err_t tomato_sync_start_search(const char* query) {
     if (s_busy) return ESP_ERR_INVALID_STATE;
     tomato_copy_utf8(s_query, sizeof(s_query), query);
     return start(OP_SEARCH);
+}
+
+esp_err_t tomato_sync_start_rank(const tomato_rank_cat_t* cat) {
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    s_rank_has_cat = cat != NULL;
+    if (cat) s_rank_cat = *cat;
+    return start(OP_RANK);
+}
+
+esp_err_t tomato_sync_start_rank_cover(const tomato_rank_book_t* book) {
+    if (!book || !book->book_id[0] || !book->cover[0]) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    if (!s_rank_book) s_rank_book = heap_caps_malloc(sizeof(*s_rank_book), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_rank_book) return ESP_ERR_NO_MEM;
+    *s_rank_book = *book;
+    return start(OP_RANK_COVER);
 }
 
 esp_err_t tomato_sync_start_download(const tomato_hit_t* hit) {

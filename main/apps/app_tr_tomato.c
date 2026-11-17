@@ -2,10 +2,11 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 番茄标签页：番茄书架（检查更新、下载全部更新）、搜索键盘、搜索结果、书籍详情。
+ * 番茄标签页：番茄书架（检查更新、下载全部更新）、搜索键盘、搜索结果、书籍详情。顶部“书架 / 书城”切到书城页。
  * 联网操作全部交给 components/tomato 的后台任务，这里只发起、轮询和显示。
  *
- * Tomato tab: Tomato shelf (check, download all), search keyboard, results and book detail.
+ * Tomato tab: Tomato shelf (check, download all), search keyboard, results and book detail. The top
+ * "shelf / store" segment switches to the bookstore page.
  * All networking runs on the components/tomato task; this page starts, polls and displays.
  *
  * 冻结：检查和下载都只在点击时运行，不自动检查。
@@ -45,6 +46,11 @@
 #define DETAIL_BTN (EpdRect){TR_MARGIN, 960, TR_W - 2 * TR_MARGIN, 88}
 #define FIELD_RECT (EpdRect){96, 84, TR_W - 96 - TR_MARGIN, 80}
 #define RECENT_QUERIES 3
+// 分段按钮下面的内容整体下移。/ Everything below the segment moves down by this much.
+#define SEG_SHIFT 78
+
+extern const app_desc_t app_tr_store;
+extern const app_desc_t app_tr_tomato;
 
 typedef enum { V_LIST = 0, V_SEARCH, V_RESULTS, V_DETAIL } view_t;
 typedef enum { OP_NONE = 0, OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD } op_t;
@@ -158,8 +164,8 @@ static void remember_query(const char* q) {
 /* ---- 列表 / List ---- */
 
 static int list_top(void) {
-    if (tomato_sync_busy() && (s_op == OP_CHECK || s_op == OP_UPDATE)) return 460;
-    return s_pending ? 420 : 320;
+    if (tomato_sync_busy() && (s_op == OP_CHECK || s_op == OP_UPDATE)) return 460 + SEG_SHIFT;
+    return (s_pending ? 420 : 320) + SEG_SHIFT;
 }
 
 static int rows_per_page(void) { return (LIST_BOTTOM - list_top()) / ROW_H; }
@@ -176,14 +182,16 @@ static void draw_list(uint8_t* fb) {
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 150, 116, false);
         tr_text(fb, TR_W - TR_MARGIN, 98, 30, "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
     }
+    static const char* const SEG[2] = {"书架", "书城"};
+    tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, 0);
     char line[96];
     if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) snprintf(line, sizeof(line), "正在%s，可以先去看书", s_op == OP_CHECK ? "检查" : "更新");
     else if (s_status.phase == TOMATO_DONE || s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_status.message);
     else snprintf(line, sizeof(line), "%d 本 · %d 本有新章节", s_count, s_pending);
     tr_fit(line, 28, TR_W - 2 * TR_MARGIN);
-    tr_text(fb, TR_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, 156 + SEG_SHIFT + 6, 28, line, EPD_DRAW_ALIGN_LEFT, false);
 
-    EpdRect field = {TR_MARGIN, 212, TR_W - 2 * TR_MARGIN, 80};
+    EpdRect field = {TR_MARGIN, 212 + SEG_SHIFT, TR_W - 2 * TR_MARGIN, 80};
     tr_pill(fb, field, "", false, 30);
     tr_icon(fb, TR_ICON_SEARCH, field.x + 50, field.y + 40, false);
     tr_text(fb, field.x + 86, field.y + 22, 30, "搜索书名或作者", EPD_DRAW_ALIGN_LEFT, false);
@@ -192,20 +200,20 @@ static void draw_list(uint8_t* fb) {
         if (s_status.total) snprintf(line, sizeof(line), "%d / %d　%s", s_status.current, s_status.total, s_status.message);
         else snprintf(line, sizeof(line), "%s", s_status.message);
         tr_fit(line, 40, TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, 316, 40, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_text(fb, TR_MARGIN, 316 + SEG_SHIFT, 40, line, EPD_DRAW_ALIGN_LEFT, true);
         if (s_status.phase == TOMATO_DOWNLOADING) {
             snprintf(line, sizeof(line), "正在下载 · %.1f MB", s_status.bytes / 1048576.0);
-            tr_text(fb, TR_MARGIN, 370, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+            tr_text(fb, TR_MARGIN, 370 + SEG_SHIFT, 28, line, EPD_DRAW_ALIGN_LEFT, false);
         } else if (s_status.phase == TOMATO_QUEUED) {
-            tr_text(fb, TR_MARGIN, 370, 28, "服务器正在生成 TXT", EPD_DRAW_ALIGN_LEFT, false);
+            tr_text(fb, TR_MARGIN, 370 + SEG_SHIFT, 28, "服务器正在生成 TXT", EPD_DRAW_ALIGN_LEFT, false);
         }
         int pct = s_status.total ? (s_status.current - 1) * 100 / s_status.total : 0;
-        tr_progress(fb, TR_MARGIN, 412, TR_W - 2 * TR_MARGIN - 110, pct);
-        tr_text(fb, TR_W - TR_MARGIN, 396, 30, "取消", EPD_DRAW_ALIGN_RIGHT, false);
-        tr_hline(fb, 446, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
+        tr_progress(fb, TR_MARGIN, 412 + SEG_SHIFT, TR_W - 2 * TR_MARGIN - 110, pct);
+        tr_text(fb, TR_W - TR_MARGIN, 396 + SEG_SHIFT, 30, "取消", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_hline(fb, 446 + SEG_SHIFT, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
     } else if (s_pending) {
         snprintf(line, sizeof(line), "下载全部更新（%d 本）", s_pending);
-        tr_pill(fb, (EpdRect){TR_MARGIN, 316, TR_W - 2 * TR_MARGIN, 80}, line, true, 30);
+        tr_pill(fb, (EpdRect){TR_MARGIN, 316 + SEG_SHIFT, TR_W - 2 * TR_MARGIN, 80}, line, true, 30);
     }
 
     int top = list_top();
@@ -420,6 +428,7 @@ static void on_enter(app_ctx_t* ctx) {
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     tomato_sync_set_file_hook(file_hook);
     tomato_sync_set_open_check(app_book_path_is_open);
+    tr_nav_set_tomato_page(&app_tr_tomato);
     static bool recent_loaded;
     if (!recent_loaded) { load_recent(); recent_loaded = true; }
     load_shelf();
@@ -458,12 +467,13 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         tomato_sync_get_status(&s_status);
         return APP_REDRAW_PAGE;
     }
-    if (y >= 212 && y < 292) { open_search(""); return APP_REDRAW_PAGE; }
-    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE) && y >= 380 && y < 446 && x > TR_W - TR_MARGIN - 140) {
+    if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 1) { ctx->request_app = &app_tr_store; return APP_REDRAW_NONE; }
+    if (y >= 212 + SEG_SHIFT && y < 292 + SEG_SHIFT) { open_search(""); return APP_REDRAW_PAGE; }
+    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE) && y >= 380 + SEG_SHIFT && y < 446 + SEG_SHIFT && x > TR_W - TR_MARGIN - 140) {
         tomato_sync_cancel();
         return APP_REDRAW_NONE;
     }
-    if (!busy && s_pending && y >= 316 && y < 396) {
+    if (!busy && s_pending && y >= 316 + SEG_SHIFT && y < 396 + SEG_SHIFT) {
         start_op(OP_UPDATE, tomato_sync_start_update());
         tomato_sync_get_status(&s_status);
         return APP_REDRAW_PAGE;

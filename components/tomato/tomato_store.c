@@ -20,6 +20,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "tomato_builtin.h"
 #include "tomato_internal.h"
 
 #define FILE_MAX (64 * 1024)
@@ -87,15 +88,45 @@ static esp_err_t write_json(const char* path, const cJSON* root) {
 
 /* ---- 配置 / Config ---- */
 
+bool tomato_config_has_builtin(void) {
+    return TOMATO_BUILTIN_URL_LEN > 0 && TOMATO_BUILTIN_URL_LEN < sizeof(((tomato_config_t*)0)->url) &&
+           TOMATO_BUILTIN_PASS_LEN < sizeof(((tomato_config_t*)0)->password);
+}
+
+// 还原编译时混淆的默认服务器。/ Recover the default server obfuscated at build time.
+static bool load_builtin(tomato_config_t* out) {
+#if TOMATO_BUILTIN_URL_LEN == 0
+    (void)out;
+    return false;
+#else
+    if (!tomato_config_has_builtin()) return false;
+    for (size_t i = 0; i < TOMATO_BUILTIN_URL_LEN; i++) out->url[i] = (char)(TOMATO_BUILTIN_URL[i] ^ TOMATO_BUILTIN_KEY[i % 32]);
+    out->url[TOMATO_BUILTIN_URL_LEN] = 0;
+#if TOMATO_BUILTIN_PASS_LEN > 0
+    for (size_t i = 0; i < TOMATO_BUILTIN_PASS_LEN; i++)
+        out->password[i] = (char)(TOMATO_BUILTIN_PASS[i] ^ TOMATO_BUILTIN_KEY[i % 32]);
+#endif
+    out->password[TOMATO_BUILTIN_PASS_LEN] = 0;
+    out->builtin = true;
+    return true;
+#endif
+}
+
 esp_err_t tomato_config_load(tomato_config_t* out) {
     memset(out, 0, sizeof(*out));
     io_lock();
     cJSON* root = read_json(TOMATO_CONFIG_PATH);
     io_unlock();
-    if (!root) return ESP_ERR_NOT_FOUND;
-    tomato_json_str(root, "server", out->url, sizeof(out->url));
-    tomato_json_str(root, "password", out->password, sizeof(out->password));
-    cJSON_Delete(root);
+    // 设置里填过就用填的，否则用内置默认。/ A server set in Settings wins; otherwise use the built-in default.
+    if (root) {
+        tomato_json_str(root, "server", out->url, sizeof(out->url));
+        tomato_json_str(root, "password", out->password, sizeof(out->password));
+        cJSON_Delete(root);
+    }
+    if (!out->url[0]) {
+        memset(out, 0, sizeof(*out));
+        return load_builtin(out) ? ESP_OK : ESP_ERR_NOT_FOUND;
+    }
     // 去掉末尾斜杠，避免拼出 //api。/ Strip trailing slashes so paths never become //api.
     size_t n = strlen(out->url);
     while (n && out->url[n - 1] == '/') out->url[--n] = 0;
@@ -133,6 +164,23 @@ esp_err_t tomato_config_save(const tomato_config_t* cfg) {
     const char* const keys[] = {"server", "password"};
     const char* const values[] = {cfg->url, cfg->password};
     return save_config_fields(keys, values, 2);
+}
+
+esp_err_t tomato_store_url_load(char* out, size_t cap) {
+    out[0] = 0;
+    io_lock();
+    cJSON* root = read_json(TOMATO_CONFIG_PATH);
+    io_unlock();
+    if (!root) return ESP_ERR_NOT_FOUND;
+    tomato_json_str(root, "store_url", out, cap);
+    cJSON_Delete(root);
+    return out[0] ? ESP_OK : ESP_ERR_NOT_FOUND;
+}
+
+esp_err_t tomato_store_url_save(const char* url) {
+    const char* const keys[] = {"store_url"};
+    const char* const values[] = {url ? url : ""};
+    return save_config_fields(keys, values, 1);
 }
 
 esp_err_t tomato_webdav_config_load(tomato_webdav_config_t* out) {
@@ -263,6 +311,9 @@ esp_err_t tomato_shelf_remove_now(const char* file) {
     for (int i = 0; err == ESP_OK && i < count; i++) {
         if (strcmp(books[i].file, file)) { books[write++] = books[i]; continue; }
         tomato_removed_mark(books[i].book_id, true);
+        char cover[200];
+        snprintf(cover, sizeof(cover), "%s/%.150s.img", TOMATO_COVER_DIR, file);
+        remove(cover);
     }
     if (err == ESP_OK && write != count) err = tomato_shelf_save(books, write);
     io_unlock();

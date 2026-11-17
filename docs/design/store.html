@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treader 书城</title>
+<style>
+  :root { --ink: #000; --paper: #fff; --mid: #6b6b6b; --line: #c8c8c8; --key: #e8e8e8; --page: #dcdcd6; --note: #2b2b2b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #262626; --note: #ddd; } }
+  :root[data-theme="dark"] { --page: #262626; --note: #ddd; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--page); color: var(--note);
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 34px 0 12px; }
+  .lead { font-size: 14px; margin: 0 0 8px; max-width: 940px; line-height: 1.65; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; }
+  figure { margin: 0; width: 342px; }
+  figcaption { font-size: 13px; line-height: 1.55; margin-top: 10px; }
+  figcaption b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .frame { width: 342px; height: 608px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 8px #e9e7e0, 0 0 0 9px #bbb, 0 8px 22px rgba(0,0,0,.3); }
+  .s { position: relative; width: 684px; height: 1216px; background: var(--paper); color: var(--ink);
+    transform: scale(.5); transform-origin: 0 0; font-weight: 500; overflow: hidden; }
+  .a { position: absolute; }
+  .r { right: 40px; text-align: right; }
+  .l { left: 40px; }
+  .mid { color: var(--mid); }
+  .b { font-weight: 700; }
+  .hl { position: absolute; left: 40px; right: 40px; height: 2px; background: var(--ink); }
+  .hl.soft { background: var(--line); }
+  /* 状态栏 */
+  .status { position: absolute; top: 22px; left: 40px; right: 40px; height: 36px; font-size: 28px; display: flex; justify-content: space-between; align-items: center; }
+  .batt { display: inline-flex; align-items: center; gap: 8px; }
+  .batt i { display: inline-block; width: 40px; height: 22px; border: 3px solid #000; border-radius: 5px; position: relative; }
+  .batt i::before { content: ""; position: absolute; left: 2px; top: 2px; bottom: 2px; width: 26px; background: #000; border-radius: 2px; }
+  .batt i::after { content: ""; position: absolute; right: -7px; top: 5px; width: 4px; height: 8px; background: #000; border-radius: 0 2px 2px 0; }
+  /* 标签栏 */
+  .tabs { position: absolute; left: 0; right: 0; top: 1094px; height: 122px; border-top: 2px solid #000; display: flex; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 28px; }
+  .tab .ic { width: 92px; height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 26px; }
+  .tab.on { font-weight: 700; }
+  .tab.on .ic { background: #000; }
+  .tab.on .ic svg { stroke: #fff; }
+  svg.icon { width: 40px; height: 40px; fill: none; stroke: #000; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  /* 文字封面 */
+  .cover { position: absolute; border: 2px solid #000; background: #fff; }
+  .cover .in { position: absolute; inset: 7px; border: 2px solid #000; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 18px 8px 12px; text-align: center; }
+  .cover .au { font-size: 24px; white-space: nowrap; }
+  .cover .ti { font-size: 32px; font-weight: 700; line-height: 40px; }
+  .cover .fm { font-size: 22px; letter-spacing: 1px; }
+  .cover.dark { background: #000; }
+  .cover.dark .in { border-color: #fff; color: #fff; }
+  .mini { position: absolute; width: 70px; height: 96px; border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; writing-mode: vertical-rl; letter-spacing: 0; white-space: nowrap; overflow: hidden; }
+  .mini.dark { background: #000; color: #fff; }
+  /* 进度 */
+  .pbar { position: absolute; height: 10px; background: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 7px); background-size: auto 2px; background-repeat: repeat-x; background-position: 0 4px; }
+  .pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: #000; }
+  .pill { position: absolute; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .pill.blk { background: #000; color: #fff; font-weight: 700; }
+  .pill.out { border: 2px solid #000; }
+  .chip { display: inline-flex; align-items: center; height: 54px; padding: 0 24px; border-radius: 27px; border: 2px solid #000; font-size: 28px; margin-right: 12px; }
+  .chip.on { background: #000; color: #fff; font-weight: 700; }
+  .tag { display: inline-block; font-size: 22px; border: 2px solid #000; border-radius: 6px; padding: 0 8px; line-height: 30px; margin-left: 10px; vertical-align: 4px; font-weight: 500; }
+  .row { position: absolute; left: 40px; right: 40px; display: flex; justify-content: space-between; align-items: center; font-size: 32px; border-bottom: 2px solid var(--line); }
+  .row .v { font-size: 28px; color: var(--mid); }
+  .sec { position: absolute; left: 40px; font-size: 28px; color: var(--mid); }
+  .body { position: absolute; left: 44px; right: 44px; font-size: 40px; line-height: 66px; text-align: justify; font-family: "Noto Serif SC", "Songti SC", "SimSun", serif; font-weight: 400; }
+  .key { position: absolute; background: var(--key); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 36px; }
+  .key.fn { background: #fff; border: 2px solid #000; font-size: 28px; }
+  .key.go { background: #000; color: #fff; font-size: 30px; font-weight: 700; }
+  .quote { position: absolute; left: 0; right: 0; text-align: center; font-size: 34px; }
+  .notes { margin-top: 34px; max-width: 940px; font-size: 14px; line-height: 1.7; }
+  .notes ul { margin: 0; padding-left: 20px; }
+  table { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  td, th { border: 1px solid #999; padding: 4px 8px; text-align: left; vertical-align: top; }
+  @media (max-width: 400px) { figure { width: 100%; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 40 40"><path d="M6 19 20 7l14 12"/><path d="M10 16v17h20V16"/><path d="M17 33v-9h6v9"/></symbol>
+    <symbol id="i-books" viewBox="0 0 40 40"><path d="M7 8v25M13 8v25"/><path d="M19 9l7 24"/><path d="M27 8l6 25"/></symbol>
+    <symbol id="i-tomato" viewBox="0 0 40 40"><circle cx="20" cy="22" r="12"/><path d="M14 10l6 4 6-4M20 14V7"/></symbol>
+    <symbol id="i-set" viewBox="0 0 40 40"><path d="M7 12h26M7 28h26"/><circle cx="15" cy="12" r="4" fill="#fff"/><circle cx="26" cy="28" r="4" fill="#fff"/></symbol>
+    <symbol id="i-search" viewBox="0 0 40 40"><circle cx="17" cy="17" r="10"/><path d="M25 25l9 9"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 40 40"><path d="M32 18a12 12 0 0 0-22-5M8 22a12 12 0 0 0 22 5"/><path d="M10 6v7h7M30 34v-7h-7"/></symbol>
+    <symbol id="i-toc" viewBox="0 0 40 40"><path d="M14 10h20M14 20h20M14 30h20"/><circle cx="7" cy="10" r="1.5"/><circle cx="7" cy="20" r="1.5"/><circle cx="7" cy="30" r="1.5"/></symbol>
+    <symbol id="i-aa" viewBox="0 0 40 40"><path d="M5 32 13 10l8 22M8 25h10"/><path d="M24 32l5-13 5 13M26 28h6"/></symbol>
+    <symbol id="i-flash" viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="26" rx="3"/><path d="M14 20h12M20 14v12"/></symbol>
+    <symbol id="i-mark" viewBox="0 0 40 40"><path d="M11 6h18v28l-9-7-9 7z"/></symbol>
+    <symbol id="i-import" viewBox="0 0 40 40"><path d="M20 6v20M12 18l8 8 8-8"/><path d="M7 28v5h26v-5"/></symbol>
+  </defs>
+</svg>
+
+<h1>Treader 书城设计稿</h1>
+<p class="lead">番茄页里加“书架 / 书城”切换。书城数据来自你的 FanqieRankTracker 榜单（GitHub Pages），按分类取，单个约 55 KB；只在点刷新或第一次打开分类时联网，拉过的缓存在 TF 卡 <code>tomato/store/</code>。示例用的是 10/28 的真实榜单。</p>
+
+<style>
+  .seg { position: absolute; left: 40px; right: 40px; top: 160px; height: 64px; border: 2px solid #000; border-radius: 32px; display: flex; overflow: hidden; }
+  .seg span { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .seg span.on { background: #000; color: #fff; font-weight: 700; }
+  .cats { position: absolute; left: 40px; right: 30px; display: flex; flex-wrap: wrap; gap: 14px 0; }
+  .cats .chip { height: 62px; font-size: 30px; padding: 0 22px; }
+  .rank { position: absolute; left: 40px; width: 64px; font-size: 44px; font-weight: 700; text-align: left; }
+  .imgcover { position: absolute; border: 2px solid #000; background:
+      linear-gradient(160deg, #3a3a3a 0%, #8a8a8a 38%, #d8d8d8 62%, #565656 100%); }
+  .imgcover .t { position: absolute; left: 14px; right: 14px; top: 24px; color: #fff; font-size: 34px; font-weight: 700; line-height: 42px; text-shadow: 0 0 6px #000; }
+  .imgcover .w { position: absolute; left: 14px; bottom: 16px; color: #fff; font-size: 22px; text-shadow: 0 0 4px #000; }
+  .intro { position: absolute; left: 40px; right: 40px; font-size: 30px; line-height: 48px; text-align: justify; }
+</style>
+
+<div class="grid">
+
+<!-- ① 书城首页 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
+  <div class="seg"><span>书架</span><span class="on">书城</span></div>
+  <div class="a l" style="top:258px;font-size:28px">榜单 10/28 · 已缓存</div>
+  <div class="a r" style="top:254px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="a" style="left:40px;top:322px;display:flex;gap:12px">
+    <span class="chip on">男频</span><span class="chip">女频</span>
+  </div>
+  <div class="hl soft" style="top:404px"></div>
+  <div class="cats" style="top:430px">
+    <span class="chip">西方奇幻</span><span class="chip">东方仙侠</span><span class="chip">科幻末世</span>
+    <span class="chip on">都市日常</span><span class="chip">都市修真</span><span class="chip">都市高武</span>
+    <span class="chip">历史古代</span><span class="chip">战神赘婿</span><span class="chip">都市种田</span>
+    <span class="chip">传统玄幻</span><span class="chip">历史脑洞</span><span class="chip">悬疑脑洞</span>
+    <span class="chip">都市脑洞</span><span class="chip">玄幻脑洞</span><span class="chip">悬疑灵异</span>
+    <span class="chip">抗战谍战</span><span class="chip">游戏体育</span><span class="chip">动漫衍生</span>
+    <span class="chip">男频衍生</span>
+  </div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>① 书城</b>番茄页顶部切到“书城”。男频 19 类、女频 18 类，用胶囊按钮平铺，一屏放得下，不用翻页；上次看的频道和分类会记住（黑底）。顶部写榜单日期，“刷新”才联网。</figcaption></figure>
+
+<!-- ② 分类榜单 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">都市日常</div>
+  <div class="a r" style="top:104px;font-size:28px">男频 · 10/28</div>
+  <div class="hl" style="top:170px"></div>
+
+  <div class="rank" style="top:196px">1</div>
+  <div class="a b" style="left:110px;top:192px;font-size:34px">扫黑风暴之怒海惊涛</div>
+  <div class="a" style="left:110px;top:240px;font-size:26px">南第 · 在读 25.4万</div>
+  <div class="hl soft" style="top:290px"></div>
+
+  <div class="rank" style="top:314px">2</div>
+  <div class="a b" style="left:110px;top:310px;font-size:34px">高冷？外冷内齁！你们请攻略我吧</div>
+  <div class="a" style="left:110px;top:358px;font-size:26px">周周爱星星 · 在读 23.2万</div>
+  <div class="hl soft" style="top:408px"></div>
+
+  <div class="rank" style="top:432px">3</div>
+  <div class="a b" style="left:110px;top:428px;font-size:34px">啊？我是背景通天的大佬？</div>
+  <div class="a" style="left:110px;top:476px;font-size:26px">甜番茄味土豆泥 · 在读 17.5万<span class="tag">已在书架</span></div>
+  <div class="hl soft" style="top:526px"></div>
+
+  <div class="rank" style="top:550px">4</div>
+  <div class="a b" style="left:110px;top:546px;font-size:34px">穿书女频，被病娇姐妹缠上了</div>
+  <div class="a" style="left:110px;top:594px;font-size:26px">谁家少年白衣 · 在读 16.8万</div>
+  <div class="hl soft" style="top:644px"></div>
+
+  <div class="rank" style="top:668px">5</div>
+  <div class="a b" style="left:110px;top:664px;font-size:34px">正光加代那些事</div>
+  <div class="a" style="left:110px;top:712px;font-size:26px">气泡水本尊 · 在读 15.2万</div>
+  <div class="hl soft" style="top:762px"></div>
+
+  <div class="rank" style="top:786px">6</div>
+  <div class="a b" style="left:110px;top:782px;font-size:34px">情迷沪上贵妇</div>
+  <div class="a" style="left:110px;top:830px;font-size:26px">长安探花 · 在读 13.7万</div>
+  <div class="hl soft" style="top:880px"></div>
+
+  <div class="rank" style="top:904px">7</div>
+  <div class="a b" style="left:110px;top:900px;font-size:34px">谈了个女朋友，比我大18岁！</div>
+  <div class="a" style="left:110px;top:948px;font-size:26px">麦大麦 · 在读 10.5万</div>
+  <div class="hl soft" style="top:998px"></div>
+
+  <div class="a" style="left:0;right:0;top:1030px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>② 分类榜单</b>20 本分 3 页，每行：排名、书名、作者和在读人数。列表只有文字，不下载封面（20 张图在 ESP32 上要几十秒）。已经在番茄书架上的书标“已在书架”。</figcaption></figure>
+
+<!-- ③ 详情 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a" style="left:96px;top:100px;font-size:30px">都市日常 · 第 1 名</div>
+  <div class="imgcover" style="left:40px;top:180px;width:220px;height:296px"><div class="t">扫黑风暴之怒海惊涛</div><div class="w">番茄小说</div></div>
+  <div class="a b" style="left:292px;top:188px;right:40px;font-size:40px;line-height:52px">扫黑风暴之<br>怒海惊涛</div>
+  <div class="a" style="left:292px;top:310px;font-size:30px">南第</div>
+  <div class="a" style="left:292px;top:360px;font-size:28px">在读 25.4 万</div>
+  <div class="a" style="left:292px;top:404px;font-size:28px">男频 · 都市日常</div>
+  <div class="hl soft" style="top:510px"></div>
+  <div class="intro" style="top:536px">文海县，两任公安局长离奇死亡，全家惨遭灭门。而最后一任，更是死在自己的办公室，脑袋被人放置在自己的办公桌上。陆缨临危受命，上任第一天就与黑恶势力的保护伞展开殊死较量，面对歹徒的嚣张与放肆，面对各种威逼与利诱，是就此退去，还是迎难而上？在生死抉择面前，陆缨选择了第三者……</div>
+  <div class="pill blk" style="left:40px;right:40px;top:1000px;height:84px">下载到书库</div>
+  <div class="a" style="left:0;right:0;top:1112px;text-align:center;font-size:26px">经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到</div>
+</div></div>
+<figcaption><b>③ 书籍详情</b>点榜单里的书进入。只为这一本下载封面（灰度显示），简介来自榜单，不用再联网搜索。底部“下载到书库”直接用榜单里的 book_id 交给番茄服务器，和搜索结果的下载走同一条路。</figcaption></figure>
+
+<!-- ④ 下载中 / 已在书架 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:32</span><span class="batt">81% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a" style="left:96px;top:100px;font-size:30px">都市日常 · 第 3 名</div>
+  <div class="imgcover" style="left:40px;top:180px;width:220px;height:296px;background:linear-gradient(200deg,#202020 0%,#9a9a9a 45%,#e2e2e2 70%,#444 100%)"><div class="t">啊？我是背景通天的大佬？</div><div class="w">番茄小说</div></div>
+  <div class="a b" style="left:292px;top:188px;right:40px;font-size:40px;line-height:52px">啊？我是背景<br>通天的大佬？</div>
+  <div class="a" style="left:292px;top:310px;font-size:30px">甜番茄味土豆泥</div>
+  <div class="a" style="left:292px;top:360px;font-size:28px">在读 17.5 万</div>
+  <div class="a" style="left:292px;top:404px;font-size:28px">男频 · 都市日常</div>
+  <div class="hl soft" style="top:510px"></div>
+  <div class="a l b" style="top:560px;font-size:36px">正在下载</div>
+  <div class="a l" style="top:620px;font-size:28px">服务器正在生成 TXT，可以先去看别的书</div>
+  <div class="pbar" style="left:40px;right:40px;top:690px"><i style="width:40%"></i></div>
+  <div class="a r" style="top:724px;font-size:30px">取消</div>
+  <div class="hl soft" style="top:800px"></div>
+  <div class="a l" style="top:830px;font-size:28px;color:#6b6b6b">下载完成后这里变成：</div>
+  <div class="pill out" style="left:40px;width:290px;top:890px;height:84px">在书架上 ✓</div>
+  <div class="pill blk" style="right:40px;width:290px;top:890px;height:84px">开始阅读</div>
+</div></div>
+<figcaption><b>④ 下载中 / 完成</b>下载在后台跑，离开页面也不中断（和现在的番茄下载一样）。完成后按钮变成“开始阅读”，直接打开这本书；已经在书架上的书进详情页时也是这个样子。</figcaption></figure>
+
+</div>
+
+<div class="notes">
+<ul>
+<li><b>联网</b>：第一次打开某个频道或分类时取 <code>index.json</code>（约 6 KB）和该分类的文件（约 55 KB）；之后从 TF 卡缓存显示，点“刷新”才重新取。详情页只为当前这本下载一张封面。</li>
+<li><b>不做</b>：安卓版的自动轮播横幅、每次随机抽 10 本、列表封面网格。</li>
+<li><b>榜单地址</b>：和番茄服务器同样的规则。编译时可以在 <code>local.properties</code> 里写 <code>STORE_URL=…</code> 作为默认（不写就用 <code>bidabrain.github.io/FanqieRankTracker</code>）；设置 → 书城榜单 里可以改成自定义地址，留空恢复默认。</li>
+</ul>
+</div>
+</body>
+</html>

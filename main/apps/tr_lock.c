@@ -2,9 +2,11 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 锁屏书卡：画最近在读的书和进度。数据在屏幕上电前准备好，上电后只画图，缩短屏幕供电时间。
- * Lock-screen book card: the book being read and its progress. Data is prepared before the panel powers on,
- * so the rails are up only for drawing.
+ * 锁屏书卡：画最近在读的书和进度；设了壁纸就画壁纸，底部留一条书名、进度和电量。
+ * 数据（包括壁纸缓存）在屏幕上电前准备好，上电后只画图，缩短屏幕供电时间。
+ * Lock-screen book card: the book being read and its progress; with a wallpaper set, the wallpaper plus a bottom
+ * strip with the book, progress and battery. Data (including the wallpaper cache) is prepared before the panel
+ * powers on, so the rails are up only for drawing.
  */
 
 #include "tr_lock.h"
@@ -14,8 +16,10 @@
 #include <strings.h>
 #include <sys/stat.h>
 
+#include "book_cover.h"
 #include "book_progress.h"
 #include "esp_heap_caps.h"
+#include "nvs.h"
 #include "read_pico_pmu.h"
 #include "tomato.h"
 #include "tr_ui.h"
@@ -29,17 +33,63 @@ static struct {
     char title[96];
     char author[48];
     char format[8];
+    char path[BOOK_STORE_PATH_MAX];
 } s_card;
+
+// 壁纸的全屏缓冲，画完就释放。/ Wallpaper buffer; freed right after drawing.
+static uint8_t* s_wall;
+
+bool tr_lock_wallpaper_get(char* out, size_t cap) {
+    nvs_handle_t h;
+    if (nvs_open("treader", NVS_READONLY, &h) != ESP_OK) return false;
+    size_t len = cap;
+    bool ok = nvs_get_str(h, "wallpaper", out, &len) == ESP_OK && out[0];
+    nvs_close(h);
+    return ok;
+}
+
+void tr_lock_wallpaper_set(const char* path) {
+    nvs_handle_t h;
+    if (nvs_open("treader", NVS_READWRITE, &h) != ESP_OK) return;
+    esp_err_t err = path && path[0] ? nvs_set_str(h, "wallpaper", path) : nvs_erase_key(h, "wallpaper");
+    if (err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND) nvs_commit(h);
+    nvs_close(h);
+}
+
+static void prepare_battery(void) {
+    if (read_pico_pmu_ready()) {
+        const pmu_snapshot_t* pmu = read_pico_pmu_get();
+        if (pmu) s_card.battery = (pmu->soc_permille + 5) / 10 > 100 ? 100 : (pmu->soc_permille + 5) / 10;
+    }
+}
+
+// 壁纸缓存丢了（比如换了卡）就在这里重建，此时屏幕还没上电。/ Rebuild a missing cache here, before the panel powers on.
+static void prepare_wallpaper(void) {
+    heap_caps_free(s_wall);
+    s_wall = NULL;
+    char path[288];
+    struct stat st;
+    if (!tr_lock_wallpaper_get(path, sizeof(path)) || stat(path, &st) != 0) return;
+    s_wall = book_screen_load(path);
+    if (!s_wall && book_screen_build(path)) s_wall = book_screen_load(path);
+}
 
 void tr_lock_prepare(void) {
     memset(&s_card, 0, sizeof(s_card));
     s_card.battery = -1;
+    prepare_wallpaper();
+    prepare_battery();
     char path[BOOK_STORE_PATH_MAX];
     struct stat st;
     if (!book_progress_last_path(path, sizeof(path)) || stat(path, &st) != 0) return;
     book_progress_t p = {0};
     s_card.has_progress = book_progress_load(path, (uint32_t)st.st_size, &p);
     s_card.pct = p.pct;
+    snprintf(s_card.path, sizeof(s_card.path), "%s", path);
+    // 封面缓存在上电前读进内存；没生成过就用文字封面，锁屏不解码。
+    // Load the cached cover before power-up; if none was built, use the text cover. The lock never decodes.
+    book_cover_load(path);
+    book_cover_drop_pending();
     tr_title_from_path(path, s_card.title, sizeof(s_card.title));
     const char* dot = strrchr(path, '.');
     snprintf(s_card.format, sizeof(s_card.format), "%s", dot && !strcasecmp(dot, ".epub") ? "EPUB" : "TXT");
@@ -58,18 +108,40 @@ void tr_lock_prepare(void) {
         }
     }
     heap_caps_free(t);
-    if (read_pico_pmu_ready()) {
-        const pmu_snapshot_t* pmu = read_pico_pmu_get();
-        if (pmu) s_card.battery = (pmu->soc_permille + 5) / 10 > 100 ? 100 : (pmu->soc_permille + 5) / 10;
-    }
     s_card.ok = true;
 }
 
+// 壁纸铺满，底部白条写在读的书和电量。/ Full wallpaper with a white bottom strip for the book and battery.
+static void draw_wallpaper(uint8_t* fb) {
+    book_screen_draw(fb, s_wall);
+    heap_caps_free(s_wall);
+    s_wall = NULL;
+    const int top = s_card.ok ? 1056 : 1120;
+    epd_fill_rect((EpdRect){0, top, TR_W, TR_H - top}, UI_GRAY_WHITE, fb);
+    tr_hline(fb, top, 0, TR_W, false);
+    char line[160];
+    if (s_card.ok) {
+        snprintf(line, sizeof(line), "%s", s_card.title);
+        tr_fit(line, 32, TR_W - 2 * TR_MARGIN - 150);
+        tr_text(fb, TR_MARGIN, top + 20, 32, line, EPD_DRAW_ALIGN_LEFT, true);
+        if (s_card.has_progress) {
+            if (s_card.pct >= 100) snprintf(line, sizeof(line), "读完");
+            else snprintf(line, sizeof(line), "已读 %u%%", s_card.pct);
+            tr_text(fb, TR_W - TR_MARGIN, top + 22, 28, line, EPD_DRAW_ALIGN_RIGHT, false);
+        }
+    }
+    if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
+    else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
+    tr_text(fb, TR_W / 2, TR_H - 66, 26, line, EPD_DRAW_ALIGN_CENTER, false);
+}
+
 bool tr_lock_draw(uint8_t* fb) {
+    if (s_wall) { draw_wallpaper(fb); return true; }
     if (!s_card.ok) return false;
     ui_clear_page(fb);
     tr_text(fb, TR_MARGIN, 120, 30, "正在读", EPD_DRAW_ALIGN_LEFT, false);
-    tr_cover(fb, (EpdRect){TR_MARGIN, 180, 300, 400}, s_card.title, s_card.author, s_card.format, false);
+    tr_book_cover(fb, (EpdRect){TR_MARGIN, 180, BOOK_COVER_W, BOOK_COVER_H}, s_card.path, s_card.title, s_card.author,
+                  s_card.format, false);
     char line[128];
     snprintf(line, sizeof(line), "%s", s_card.title);
     tr_fit(line, 54, TR_W - 2 * TR_MARGIN);

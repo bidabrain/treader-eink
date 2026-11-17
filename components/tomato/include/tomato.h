@@ -28,6 +28,13 @@ extern "C" {
 #define TOMATO_CONFIG_PATH TOMATO_DIR "/config.json"
 #define TOMATO_SHELF_PATH TOMATO_DIR "/shelf.json"
 #define TOMATO_BOOKS_DIR "/sdcard/books"
+/// 番茄书封面原图：covers/<books 下的文件名>.img。/ Tomato cover image: covers/<file name under books>.img.
+#define TOMATO_COVER_DIR TOMATO_DIR "/covers"
+/// 书城榜单缓存目录。/ Bookstore rank cache.
+#define TOMATO_RANK_DIR TOMATO_DIR "/store"
+#define TOMATO_RANK_CAT_MAX 48
+#define TOMATO_RANK_BOOK_MAX 20
+#define TOMATO_RANK_INTRO_LEN 900
 
 #define TOMATO_ID_LEN 24
 #define TOMATO_TITLE_LEN 96
@@ -35,10 +42,12 @@ extern "C" {
 #define TOMATO_SHELF_MAX 64
 #define TOMATO_SEARCH_MAX 12
 #define TOMATO_ABSTRACT_LEN 320
+#define TOMATO_THUMB_LEN 400
 
 typedef struct {
     char url[128];      ///< 服务器地址，不带末尾斜杠 / Server base URL, no trailing slash
     char password[64];  ///< x-tomato-password / Access password
+    bool builtin;       ///< 用的是编译时内置的默认服务器，界面不得显示地址和密码 / Built-in default; UI must not show it
 } tomato_config_t;
 
 /// 书架上的一本番茄书。/ One Tomato book on the shelf.
@@ -61,7 +70,25 @@ typedef struct {
     uint32_t words;
     bool finished;           ///< 已完结 / Completed
     char abstract[TOMATO_ABSTRACT_LEN]; ///< 简介，按字符边界截断 / Synopsis, cut on a character boundary
+    char thumb[TOMATO_THUMB_LEN];       ///< 封面图地址，太长则为空 / Cover image URL; empty when too long
 } tomato_hit_t;
+
+/// 书城的一个分类。/ One bookstore category.
+typedef struct {
+    char name[32];       ///< 分类名，如“都市日常” / Category name
+    char url[200];       ///< 榜单站内的相对地址（已转义）/ URL relative to the rank site (escaped)
+    bool male;           ///< 男频 / Male channel
+} tomato_rank_cat_t;
+
+/// 榜单上的一本书。/ One book on a rank list.
+typedef struct {
+    char book_id[TOMATO_ID_LEN];
+    char title[TOMATO_TITLE_LEN];
+    char author[TOMATO_AUTHOR_LEN];
+    char reads[16];                      ///< 在读人数，如“25.4万” / Readers, e.g. "25.4万"
+    char intro[TOMATO_RANK_INTRO_LEN];   ///< 简介，按字符边界截断 / Synopsis, cut on a character boundary
+    char cover[TOMATO_THUMB_LEN];        ///< 封面地址，太长则为空 / Cover URL; empty when too long
+} tomato_rank_book_t;
 
 /// WebDAV 同步配置，和番茄配置存在同一个 config.json。/ WebDAV settings, stored in the same config.json.
 typedef struct {
@@ -87,13 +114,34 @@ typedef bool (*tomato_progress_import_t)(const tomato_progress_t* in);
 
 /* ---- 配置与书架（同步，读写 TF 卡）/ Config and shelf (synchronous, TF I/O) ---- */
 
-/// 读 config.json；文件缺失或字段为空返回 ESP_ERR_NOT_FOUND。
-/// Read config.json; ESP_ERR_NOT_FOUND when missing or empty.
+/// 读 config.json；没填服务器时用编译时内置的默认服务器（builtin 置位），都没有返回 ESP_ERR_NOT_FOUND。
+/// Read config.json; without a server there, fall back to the built-in default (builtin set); ESP_ERR_NOT_FOUND if neither.
 esp_err_t tomato_config_load(tomato_config_t* out);
+/// 固件里有没有内置默认服务器。/ Whether the firmware carries a built-in default server.
+bool tomato_config_has_builtin(void);
 esp_err_t tomato_config_save(const tomato_config_t* cfg);
 /// WebDAV 配置读写；保存时保留 config.json 里的其他字段。/ WebDAV config I/O; saving keeps other config.json fields.
 esp_err_t tomato_webdav_config_load(tomato_webdav_config_t* out);
 esp_err_t tomato_webdav_config_save(const tomato_webdav_config_t* cfg);
+
+/// 书城榜单地址：config.json 的 store_url，没填用编译时默认（local.properties 的 STORE_URL）。
+/// Rank site URL: store_url in config.json, else the build default (STORE_URL in local.properties).
+esp_err_t tomato_store_url_load(char* out, size_t cap);
+/// 保存自定义榜单地址；空串表示恢复默认。/ Save a custom rank URL; empty restores the default.
+esp_err_t tomato_store_url_save(const char* url);
+/// 编译时的默认榜单地址。/ The build's default rank URL.
+const char* tomato_store_url_default(void);
+
+/* ---- 书城（读 TF 卡缓存，不联网）/ Bookstore (reads the TF cache, no network) ---- */
+
+/// 读缓存的分类列表；没有缓存返回 -1。date 是榜单日期。/ Read cached categories; -1 without a cache.
+int tomato_rank_load_index(tomato_rank_cat_t* out, int max, char* date, size_t date_cap);
+/// 读缓存的分类榜单；没有缓存返回 -1。/ Read a cached category list; -1 without a cache.
+int tomato_rank_load_books(const tomato_rank_cat_t* cat, tomato_rank_book_t* out, int max);
+/// 这个分类有没有缓存。/ Whether this category is cached.
+bool tomato_rank_cat_cached(const tomato_rank_cat_t* cat);
+/// 详情页封面的本地路径（.jpg 后缀，内容可能是 PNG）。/ Local path of a detail cover (.jpg name; may hold PNG).
+void tomato_rank_cover_path(const char* book_id, char* out, size_t cap);
 
 /// 书架读写。load 失败时 count 置 0。/ Shelf I/O. On load failure count is 0.
 esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count);
@@ -139,6 +187,11 @@ esp_err_t tomato_sync_start_update(void);
 esp_err_t tomato_sync_start_search(const char* query);
 /// 下载一本并加入书架（已在书架则覆盖更新）。/ Download one book and add it to the shelf (refresh if present).
 esp_err_t tomato_sync_start_download(const tomato_hit_t* hit);
+/// 取书城榜单：cat 为 NULL 只取分类列表，否则顺带取这个分类。不需要番茄服务器。
+/// Fetch ranks: NULL fetches the category index only, else also this category. Needs no Tomato server.
+esp_err_t tomato_sync_start_rank(const tomato_rank_cat_t* cat);
+/// 下载一本榜单书的封面到 tomato_rank_cover_path()。/ Fetch one rank book's cover to tomato_rank_cover_path().
+esp_err_t tomato_sync_start_rank_cover(const tomato_rank_book_t* book);
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);
 /// 注册阅读进度的读写回调（进度存储在主程序里）。/ Register progress I/O callbacks (progress lives in the main app).

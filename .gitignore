@@ -30,6 +30,10 @@ tools/fonts/
 /ChillDuanSansVF.ttf
 tools/buzzer_score_wav
 
+# 编译时注入的默认番茄服务器地址和密码（同安卓版 local.properties）。
+# Build-time default Tomato server URL and password (same local.properties as the Android app).
+local.properties
+
 # Per-machine task handoff ledger; protocol lives in docs/HANDOFF.md
 /docs/HANDOFF.local.md
 

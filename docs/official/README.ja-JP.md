@@ -1,10 +1,14 @@
 # Read Pico 公式デモファームウェア
 
+> 这是 MindReset 官方示例固件的原版说明，Treader 保留它作为硬件、引脚和底层组件的参考。Treader 本身的介绍见[仓库首页](../../README.md)。
+>
+> This is the original MindReset demo-firmware README, kept as a hardware, pinout and component reference. For Treader itself see the [repository README](../../README.md).
+
 **言語:** [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja-JP.md)
 
-[貢献ガイド](CONTRIBUTING.md) · [サポート](SUPPORT.md) · [セキュリティ](SECURITY.md) · [行動規範](CODE_OF_CONDUCT.md)
+[貢献ガイド](../../CONTRIBUTING.md) · [サポート](../../SUPPORT.md) · [セキュリティ](../../SECURITY.md) · [行動規範](../../CODE_OF_CONDUCT.md)
 
-[![License](https://img.shields.io/github/license/MindReset/read_pico_firmware?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
+[![License](https://img.shields.io/github/license/MindReset/read_pico_firmware?style=for-the-badge&logo=apache&logoColor=white)](../../LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/MindReset/read_pico_firmware/build.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/MindReset/read_pico_firmware/actions)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.1-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
 ![Target](https://img.shields.io/badge/target-ESP32--S3-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
@@ -21,7 +25,7 @@ Shenzhen MindReset Technology Co., Ltd. が、電子ペーパー向けのオー�
 再利用できます。本ファームウェアはハードウェアのデモであり、完成した電子書籍リーダーではありません。
 
 AI エージェント向けのディレクトリ構成、`app_desc_t` の仕様、用語集、コメント規約は
-[AGENTS.md](AGENTS.md) を参照してください。
+[AGENTS.md](../../AGENTS.md) を参照してください。
 
 ## 公式ドキュメントとその他のデバイス
 
@@ -55,7 +59,7 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 
 `sdkconfig.defaults` の 120 MHz flash / PSRAM タイミングは、ボードに搭載された flash の型番に依存します。
 CI は `sdkconfig.ci` の標準タイミングを使い、コンパイルできることのみを確認します。
-[.github/workflows/build.yml](.github/workflows/build.yml) を参照してください。
+[.github/workflows/build.yml](../../.github/workflows/build.yml) を参照してください。
 
 開発中や書き込み時に、スリープから復帰したデバイスが認識されない場合は、次の順に試してください。
 
@@ -68,7 +72,7 @@ CI は `sdkconfig.ci` の標準タイミングを使い、コンパイルでき�
 
 ## 画面
 
-機能メニューには、[main/app/app_registry.c](main/app/app_registry.c) で定義された順序で画面が並びます。
+機能メニューには、[main/app/app_registry.c](../../main/app/app_registry.c) で定義された順序で画面が並びます。
 
 | 画面 | 内容 |
 | --- | --- |
@@ -130,7 +134,7 @@ tools/              フォントと画像の変換スクリプト
 | ブザー | 2 |
 
 電子ペーパーの電源イネーブル、XOE、MODE、VCOM_EN、タッチリセット、カード検出は
-FCA9555 の Port-0 に接続されています。[main/apps/app_ioe.c](main/apps/app_ioe.c) のピン定義表を参照してください。
+FCA9555 の Port-0 に接続されています。[main/apps/app_ioe.c](../../main/apps/app_ioe.c) のピン定義表を参照してください。
 
 ## 転送と制限事項
 
@@ -144,29 +148,29 @@ AP と既存 WiFi の両モードで転送ページの QR コードを表示し�
 
 スワイプによるページ送りは指を離した時点で確定し、距離は120から64ピクセルに短縮しました。タップ許容範囲の24ピクセルを超え、64未満のドラッグはキャンセルします。画像プレースホルダー上のスワイプは画像を読み込まずページを送ります。
 
-挿絵の上限：ベースラインJPEGはデコード時の縮小を優先し、表示サイズへの拡大を最大2倍まで許容し、元画像16M画素・各辺8192まで。PNGとプログレッシブJPEGは1M画素・デコードヒープ4 MiBまで。出力は648×1000以内のグレースケールで、透過PNGは白背景に合成します。現在の章で最後に閲覧した1枚だけをキャッシュし、同じ画像を開き直す際に再利用します。上限超過・欠落・破損・非対応画像はタップ時に理由を示し、本文の読書は継続できます。同じ正規化リソースパスの繰り返しには「重复图片」と、今回開いてから閲覧した章の最小節番号を表示します（表紙や前書きを含むEPUB順序のため本文の章番号と異なる場合があります）。章頭の画像群に見出しが直続する場合、その画像と同じリソースへの参照は「标题图」と表示し、最初の位置表示を省きます。その他の挿絵は既読の最小節番号を保持します。未読章は走査せず、全書で最初の出現とは断定しません。記録は本を閉じると消去され、別パスの同一内容は照合しません。SVG内のJPEG/PNG参照は対応し、純粋なSVGベクター・CSS背景・外部画像は非対応です。[デコーダーの出典とライセンス](main/book/vendor/README.md)も参照してください。
+挿絵の上限：ベースラインJPEGはデコード時の縮小を優先し、表示サイズへの拡大を最大2倍まで許容し、元画像16M画素・各辺8192まで。PNGとプログレッシブJPEGは1M画素・デコードヒープ4 MiBまで。出力は648×1000以内のグレースケールで、透過PNGは白背景に合成します。現在の章で最後に閲覧した1枚だけをキャッシュし、同じ画像を開き直す際に再利用します。上限超過・欠落・破損・非対応画像はタップ時に理由を示し、本文の読書は継続できます。同じ正規化リソースパスの繰り返しには「重复图片」と、今回開いてから閲覧した章の最小節番号を表示します（表紙や前書きを含むEPUB順序のため本文の章番号と異なる場合があります）。章頭の画像群に見出しが直続する場合、その画像と同じリソースへの参照は「标题图」と表示し、最初の位置表示を省きます。その他の挿絵は既読の最小節番号を保持します。未読章は走査せず、全書で最初の出現とは断定しません。記録は本を閉じると消去され、別パスの同一内容は照合しません。SVG内のJPEG/PNG参照は対応し、純粋なSVGベクター・CSS背景・外部画像は非対応です。[デコーダーの出典とライセンス](../../main/book/vendor/README.md)も参照してください。
 
-内蔵フォントはUIとデモ本文用のサブセットです。外部の中国語書籍には、文字を十分に収録したTTFをTFカードの `fonts/` または `assets/fonts/` に置き、「字体 Font」画面で選択してください。既定のパスは `fonts/ChillDuanSansVF.ttf` です。文字が欠ける場合はファイルの有無とフォントの収録文字を確認してください。[TF 配置用フォントとライセンス](sdcard/README.md)を同梱しています。Web の「上传字体」から `/sdcard/fonts` へアップロードできます。TrueType アウトラインの TTF のみ、1ファイル32 MiBまで（OTF/CFF・TTC・WOFFは非対応）。容量を確認し、同名置換には確認が必要です。中断・検証失敗時は元の字体を保持します。転送停止後に端末で字体を選択してください。転送中は内蔵字体を使用し、保存済みの選択は変更しません。
+内蔵フォントはUIとデモ本文用のサブセットです。外部の中国語書籍には、文字を十分に収録したTTFをTFカードの `fonts/` または `assets/fonts/` に置き、「字体 Font」画面で選択してください。既定のパスは `fonts/ChillDuanSansVF.ttf` です。文字が欠ける場合はファイルの有無とフォントの収録文字を確認してください。[TF 配置用フォントとライセンス](../../sdcard/README.md)を同梱しています。Web の「上传字体」から `/sdcard/fonts` へアップロードできます。TrueType アウトラインの TTF のみ、1ファイル32 MiBまで（OTF/CFF・TTC・WOFFは非対応）。容量を確認し、同名置換には確認が必要です。中断・検証失敗時は元の字体を保持します。転送停止後に端末で字体を選択してください。転送中は内蔵字体を使用し、保存済みの選択は変更しません。
 
-機能の変更は [変更履歴](docs/CHANGELOG.md) を参照してください。拼音データは MIT ライセンスの pypinyin に由来します。[ライセンスと再生成](components/read_pico_search/README.md)を参照してください。
+機能の変更は [変更履歴](../../docs/CHANGELOG.md) を参照してください。拼音データは MIT ライセンスの pypinyin に由来します。[ライセンスと再生成](../../components/read_pico_search/README.md)を参照してください。
 
 ## 謝辞とライセンス
 
-- ファームウェア本体：Apache-2.0。[LICENSE](LICENSE) を参照してください。
+- ファームウェア本体：Apache-2.0。[LICENSE](../../LICENSE) を参照してください。
 - [epdiy](https://github.com/vroland/epdiy)：電子ペーパーのタイミング制御と描画。
   本ボードの LCD 経路に合わせて機能を絞ったフォークです。LGPL-3.0-or-later。
-  変更内容は [components/epdiy/LICENSE](components/epdiy/LICENSE) に記載しています。
+  変更内容は [components/epdiy/LICENSE](../../components/epdiy/LICENSE) に記載しています。
 - [stb_truetype](https://github.com/nothings/stb)：グリフのラスタライズ。パブリックドメイン。
 - [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio)：
   Espressif の LEDC PWM オーディオ。機能を絞ったコピーを Apache-2.0 で使用しています。
-  [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE) を参照してください。
+  [components/pwm_audio/LICENSE](../../components/pwm_audio/LICENSE) を参照してください。
 - パネル波形テーブルはボードに付属し、現状のまま Apache-2.0 で提供されます。
-  [components/e0470_epaper_waveform/LICENSE](components/e0470_epaper_waveform/LICENSE) を参照してください。
+  [components/e0470_epaper_waveform/LICENSE](../../components/e0470_epaper_waveform/LICENSE) を参照してください。
 - 内蔵フォント `main/assets/builtin.ttf` は、Warren2060 氏の可変フォント
   [ChillDuanSans](https://github.com/Warren2060/ChillDuanSans) を
   `tools/gen_builtin_font.py` でサブセット化したものです。未変更の完全版と原ライセンスは
   `sdcard/fonts/` に同梱し、変更版の内蔵サブセットは Read Pico UI と命名しています。
-  両方に SIL OFL-1.1 が適用されます。[配置手順と出典](sdcard/README.md)を参照してください。
+  両方に SIL OFL-1.1 が適用されます。[配置手順と出典](../../sdcard/README.md)を参照してください。
 
 開発者の皆さまのご理解とご支援に感謝します。
 

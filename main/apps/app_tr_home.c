@@ -5,8 +5,9 @@
  * 首页：日期、继续阅读、番茄更新提示、最近翻过的三本。开机默认页。
  * Home: date, continue reading, Tomato update hint and three recent books. The boot page.
  *
- * 冻结：数据只在进页时准备一次；之后只按分钟局部刷新状态栏，不整页重画。
- * Frozen: data is prepared once on entry; afterwards only the status bar refreshes per minute.
+ * 冻结：数据只在进页时准备一次；之后只按分钟局部刷新状态栏。唯一的整页重画是首次生成的封面全部做好时（一次）。
+ * Frozen: data is prepared once on entry; afterwards only the status bar refreshes per minute. The one page
+ * redraw is when freshly built covers are all done (once).
  */
 
 #include <stdio.h>
@@ -16,6 +17,7 @@
 #include <time.h>
 
 #include "app.h"
+#include "book_cover.h"
 #include "book_progress.h"
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
@@ -108,7 +110,7 @@ static void draw_current(uint8_t* fb) {
         return;
     }
     const home_book_t* b = &s_books[0];
-    tr_cover(fb, (EpdRect){TR_MARGIN, COVER_Y, 176, 236}, b->title, b->author, b->format, b->pct >= 100);
+    tr_book_cover(fb, (EpdRect){TR_MARGIN, COVER_Y, 176, 236}, b->path, b->title, b->author, b->format, b->pct >= 100);
     const int x = 248, w = TR_W - TR_MARGIN - x;
     char line[96];
     snprintf(line, sizeof(line), "%s", b->title);
@@ -139,7 +141,7 @@ static void draw_recent(uint8_t* fb) {
     for (int i = 1; i < s_book_count && i <= 3; i++) {
         const home_book_t* b = &s_books[i];
         int x = SMALL_X[i - 1];
-        tr_cover(fb, (EpdRect){x, SMALL_Y, SMALL_W, SMALL_H}, b->title, b->author, b->format, b->pct >= 100);
+        tr_book_cover(fb, (EpdRect){x, SMALL_Y, SMALL_W, SMALL_H}, b->path, b->title, b->author, b->format, b->pct >= 100);
         char line[96];
         snprintf(line, sizeof(line), "%s", b->title);
         tr_fit(line, 28, 150);
@@ -171,6 +173,7 @@ static int current_minute(void) {
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     tr_time_restore();
+    book_cover_drop_pending();
     load_data();
     s_drawn_minute = current_minute();
 }
@@ -209,6 +212,7 @@ static EpdRect area_hint(app_ctx_t* ctx) {
 // 时间变了只重画状态栏一条。/ When the minute changes, redraw only the status strip.
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     tr_time_poll();
+    if (!(ctx->touch && ctx->touch->touched) && book_cover_tick()) return APP_REDRAW_PAGE;
     int minute = current_minute();
     if (minute == s_drawn_minute || !tomato_time_valid()) return APP_REDRAW_NONE;
     s_drawn_minute = minute;

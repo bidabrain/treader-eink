@@ -1,12 +1,16 @@
 # 小纸 Pico 官方演示固件
 
-> **这是 Treader**：在官方固件上加入番茄小说搜索、下载和更新，并精简了演示页。说明见 [docs/TREADER.md](docs/TREADER.md)。下文为官方原文。
+> 这是 MindReset 官方示例固件的原版说明，Treader 保留它作为硬件、引脚和底层组件的参考。Treader 本身的介绍见[仓库首页](../../README.md)。
+>
+> This is the original MindReset demo-firmware README, kept as a hardware, pinout and component reference. For Treader itself see the [repository README](../../README.md).
+
+> **这是 Treader**：在官方固件上加入番茄小说搜索、下载和更新，并精简了演示页。说明见 [docs/TREADER.md](../../docs/TREADER.md)。下文为官方原文。
 
 **语言:** [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja-JP.md)
 
-[贡献指南](CONTRIBUTING.md) · [支持](SUPPORT.md) · [安全政策](SECURITY.md) · [行为准则](CODE_OF_CONDUCT.md)
+[贡献指南](../../CONTRIBUTING.md) · [支持](../../SUPPORT.md) · [安全政策](../../SECURITY.md) · [行为准则](../../CODE_OF_CONDUCT.md)
 
-[![License](https://img.shields.io/github/license/MindReset/read_pico_firmware?style=for-the-badge&logo=apache&logoColor=white)](LICENSE)
+[![License](https://img.shields.io/github/license/MindReset/read_pico_firmware?style=for-the-badge&logo=apache&logoColor=white)](../../LICENSE)
 [![Build](https://img.shields.io/github/actions/workflow/status/MindReset/read_pico_firmware/build.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/MindReset/read_pico_firmware/actions)
 ![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v6.1-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
 ![Target](https://img.shields.io/badge/target-ESP32--S3-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
@@ -19,7 +23,7 @@
 
 板级支持、PMU 协议主机端和芯片驱动均为可独立复用的组件。这是一份硬件演示固件，并非完整的阅读器产品。
 
-面向 AI agent 的目录职责、`app_desc_t` 契约、术语表和注释规范见 [AGENTS.md](AGENTS.md)。
+面向 AI agent 的目录职责、`app_desc_t` 契约、术语表和注释规范见 [AGENTS.md](../../AGENTS.md)。
 
 ## 官方文档与更多设备
 
@@ -53,7 +57,7 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 
 `sdkconfig.defaults` 中的 120 MHz flash / PSRAM 时序依赖板上实际的 flash 型号。
 CI 使用 `sdkconfig.ci` 换回默认时序，仅验证能否编译通过，见
-[.github/workflows/build.yml](.github/workflows/build.yml)。
+[.github/workflows/build.yml](../../.github/workflows/build.yml)。
 
 如果在固件开发或烧录时，设备从睡眠状态唤醒后无法被识别，请依次尝试：
 
@@ -66,7 +70,7 @@ CI 使用 `sdkconfig.ci` 换回默认时序，仅验证能否编译通过，见
 
 ## 页面
 
-功能菜单按 [main/app/app_registry.c](main/app/app_registry.c) 中的顺序列出全部页面。
+功能菜单按 [main/app/app_registry.c](../../main/app/app_registry.c) 中的顺序列出全部页面。
 
 | 页面 | 内容 |
 | --- | --- |
@@ -128,7 +132,7 @@ tools/              字体与图片转换脚本
 | 蜂鸣器 | 2 |
 
 屏电源开关、XOE、MODE、VCOM_EN、触摸复位和卡检测位于 FCA9555 的 Port-0，
-见 [main/apps/app_ioe.c](main/apps/app_ioe.c) 中的引脚表。
+见 [main/apps/app_ioe.c](../../main/apps/app_ioe.c) 中的引脚表。
 
 ## 传书与使用限制
 
@@ -142,27 +146,27 @@ AP 与已有 WiFi 均提供传书网页二维码；热点页可切换连接 WiFi
 
 滑动翻页在抬手时提交，距离阈值由120像素缩短到64像素；超过24像素轻点容差但不足64像素的短拖仍取消。在图片占位上滑动仍翻页，不触发图片加载。
 
-插图范围：基线 JPEG 优先在解码时缩小，允许最多放大两倍到显示尺寸以减少计算，原图最多16M像素、单边8192；PNG及渐进 JPEG 原图最多1M像素，解码堆上限4 MiB。输出不超过648×1000灰度像素，透明 PNG 合成白底；只缓存当前章节最近查看的一幅图片，同图关闭后再次打开可复用；超限、缺失、损坏或不支持的图片在点击后说明原因，不中断正文阅读。同一归一化资源路径再次出现时显示“重复图片”和本次打开图书后已读章节中的最早节号（EPUB目录顺序包含封面、前言，可能不同于正文章号）。章首连续图片后紧接标题时，这些图片及已识别的同资源引用单独显示“标题图”，不重复显示首次位置；标题后的其他插图仍保留已读最早提示；不扫描未读章节，不声称是全书首次位置，关闭图书后记录清空；不同路径下的相同内容不作匹配；支持 SVG 包装中的 JPEG/PNG 引用，不绘制纯 SVG 矢量、CSS背景或外链图片。解码器来源与许可见 [第三方说明](main/book/vendor/README.md)。
+插图范围：基线 JPEG 优先在解码时缩小，允许最多放大两倍到显示尺寸以减少计算，原图最多16M像素、单边8192；PNG及渐进 JPEG 原图最多1M像素，解码堆上限4 MiB。输出不超过648×1000灰度像素，透明 PNG 合成白底；只缓存当前章节最近查看的一幅图片，同图关闭后再次打开可复用；超限、缺失、损坏或不支持的图片在点击后说明原因，不中断正文阅读。同一归一化资源路径再次出现时显示“重复图片”和本次打开图书后已读章节中的最早节号（EPUB目录顺序包含封面、前言，可能不同于正文章号）。章首连续图片后紧接标题时，这些图片及已识别的同资源引用单独显示“标题图”，不重复显示首次位置；标题后的其他插图仍保留已读最早提示；不扫描未读章节，不声称是全书首次位置，关闭图书后记录清空；不同路径下的相同内容不作匹配；支持 SVG 包装中的 JPEG/PNG 引用，不绘制纯 SVG 矢量、CSS背景或外链图片。解码器来源与许可见 [第三方说明](../../main/book/vendor/README.md)。
 
-内置字体仅覆盖界面和演示正文，阅读外部中文书籍请将完整中文 TTF 放到 TF 卡的 `fonts/` 或 `assets/fonts/`，再在“字体”页选用。默认字体路径为 `fonts/ChillDuanSansVF.ttf`；缺字时应检查卡上字体文件和所选字体的字形覆盖。仓库提供 [TF 部署字体与版权说明](sdcard/README.md)。也可通过 WiFi 网页的“上传字体”区上传到 `/sdcard/fonts`：单文件上限 32 MiB，仅支持带 TrueType 轮廓的 TTF（不支持 OTF/CFF、TTC、WOFF）。上传前检查容量，同名替换需确认，校验失败或中断保留旧字体；停止传书后在设备“字体”页选用。传书期间暂用内置字体，防止替换正在读取的字库；不会改变已保存的字体选择。
+内置字体仅覆盖界面和演示正文，阅读外部中文书籍请将完整中文 TTF 放到 TF 卡的 `fonts/` 或 `assets/fonts/`，再在“字体”页选用。默认字体路径为 `fonts/ChillDuanSansVF.ttf`；缺字时应检查卡上字体文件和所选字体的字形覆盖。仓库提供 [TF 部署字体与版权说明](../../sdcard/README.md)。也可通过 WiFi 网页的“上传字体”区上传到 `/sdcard/fonts`：单文件上限 32 MiB，仅支持带 TrueType 轮廓的 TTF（不支持 OTF/CFF、TTC、WOFF）。上传前检查容量，同名替换需确认，校验失败或中断保留旧字体；停止传书后在设备“字体”页选用。传书期间暂用内置字体，防止替换正在读取的字库；不会改变已保存的字体选择。
 
-功能变化见 [版本变更](docs/CHANGELOG.md)。离线拼音字表来自 pypinyin（MIT），见 [组件许可与再生成说明](components/read_pico_search/README.md)。
+功能变化见 [版本变更](../../docs/CHANGELOG.md)。离线拼音字表来自 pypinyin（MIT），见 [组件许可与再生成说明](../../components/read_pico_search/README.md)。
 
 ## 致谢与许可
 
-- 固件本体：Apache-2.0，见 [LICENSE](LICENSE)。
+- 固件本体：Apache-2.0，见 [LICENSE](../../LICENSE)。
 - [epdiy](https://github.com/vroland/epdiy)：墨水屏时序与渲染。本仓库为按本板
   LCD 路径裁剪的 fork，LGPL-3.0-or-later，改动清单见
-  [components/epdiy/LICENSE](components/epdiy/LICENSE)。
+  [components/epdiy/LICENSE](../../components/epdiy/LICENSE)。
 - [stb_truetype](https://github.com/nothings/stb)：字形光栅化，公共领域。
 - [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio)：
   Espressif LEDC PWM 音频。本仓库为裁剪副本，Apache-2.0，见
-  [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE)。
+  [components/pwm_audio/LICENSE](../../components/pwm_audio/LICENSE)。
 - 面板波形表随本板附带，按现状提供，Apache-2.0，见
-  [components/e0470_epaper_waveform/LICENSE](components/e0470_epaper_waveform/LICENSE)。
+  [components/e0470_epaper_waveform/LICENSE](../../components/e0470_epaper_waveform/LICENSE)。
 - 内置字体 `main/assets/builtin.ttf` 由 `tools/gen_builtin_font.py` 从
   [ChillDuanSans](https://github.com/Warren2060/ChillDuanSans)（寒蝉端黑体，
-  Warren2060，SIL OFL-1.1）可变字体子集化生成。完整原版字体和许可证随 `sdcard/fonts/` 提供；内置修改版名为 Read Pico UI。两者均适用 OFL-1.1，详见 [部署说明](sdcard/README.md)。
+  Warren2060，SIL OFL-1.1）可变字体子集化生成。完整原版字体和许可证随 `sdcard/fonts/` 提供；内置修改版名为 Read Pico UI。两者均适用 OFL-1.1，详见 [部署说明](../../sdcard/README.md)。
 
 感谢各位开发者的耐心与支持。
 

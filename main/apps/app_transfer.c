@@ -392,7 +392,7 @@ static void draw_status(uint8_t* fb) {
     if (s_media_lost) state = "存储已移除，传书已停止";
     ui_text(fb, area.x, area.y, UI_PX_BODY, state, EPD_DRAW_ALIGN_LEFT, false);
     char line[160];
-    if (s_media_lost) snprintf(line, sizeof(line), "重新进入传书可使用内置存储");
+    if (s_media_lost) snprintf(line, sizeof(line), "插入 TF 卡后重新进入传书");
     else if (s_mode == READ_PICO_TRANSFER_MODE_AP)
         snprintf(line, sizeof(line), "已连接 %u 台 · 已完成 %u 个文件", s_status.sta_count, s_status.done_count);
     else snprintf(line, sizeof(line), "同网浏览器上传 · 已完成 %u 个文件", s_status.done_count);
@@ -556,6 +556,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         }
         s_status.mode = s_mode;
         if (err != ESP_OK) { s_status.state = READ_PICO_TRANSFER_ERROR; s_status.last_error = err; }
+        // Treader：书只传到 TF 卡，没卡就提示插卡。/ Treader: uploads go to the TF card only; ask for a card.
+        if (err == ESP_ERR_NOT_FOUND || err == ESP_ERR_INVALID_STATE) s_media_lost = true;
         if (err == ESP_OK) prepare_qr();
         else clear_qr();
         ESP_LOGI(TAG, "start root=%s result=%s", s_root.path, esp_err_to_name(err));

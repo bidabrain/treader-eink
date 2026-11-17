@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  * 中文：将常见 EPUB 插图变为适合墨水屏的白底灰度图。
  * English: Convert common EPUB illustrations to white-backed grayscale for the panel.
- * 冻结：只在书源加载阶段串行调用；解码器分配总量有界，不在 render 中解码。
- * Frozen: Serialize calls during source loading; bound total decoder allocation and never decode inside render.
+ * 冻结：调用由内部互斥锁串行（插图预览和封面生成都会解码）；解码器分配总量有界，不在 render 中解码。
+ * Frozen: an internal mutex serializes calls (illustration previews and cover building both decode);
+ * bound total decoder allocation and never decode inside render.
  */
 #include "book_image.h"
 #include "esp_heap_caps.h"
@@ -13,6 +14,7 @@
 #include "vendor/tjpgd.h"
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #endif
 
@@ -226,8 +228,31 @@ done:
     return ok;
 }
 
+static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
+                          uint8_t** pixels, uint16_t* width, uint16_t* height);
+
+// 插图和封面共用全局分配计数，必须一次只解一张；加锁后从哪个任务调用都安全。
+// Illustrations and covers share the global allocation count, so decode one at a time; the lock makes any caller task safe.
 bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
                        uint8_t** pixels, uint16_t* width, uint16_t* height) {
+#ifdef ESP_PLATFORM
+    static StaticSemaphore_t storage;
+    static SemaphoreHandle_t lock;
+    static portMUX_TYPE init_lock = portMUX_INITIALIZER_UNLOCKED;
+    portENTER_CRITICAL(&init_lock);
+    if (!lock) lock = xSemaphoreCreateMutexStatic(&storage);
+    portEXIT_CRITICAL(&init_lock);
+    xSemaphoreTake(lock, portMAX_DELAY);
+    bool ok = decode_locked(data, len, budget, pixels, width, height);
+    xSemaphoreGive(lock);
+    return ok;
+#else
+    return decode_locked(data, len, budget, pixels, width, height);
+#endif
+}
+
+static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
+                          uint8_t** pixels, uint16_t* width, uint16_t* height) {
     if (!pixels || !width || !height) return false;
     *pixels = NULL; *width = *height = 0;
     if (!data || !len || len > 2u * 1024u * 1024u || allocated) return false;

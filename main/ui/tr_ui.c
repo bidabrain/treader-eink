@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "book_cover.h"
 #include "read_pico_pmu.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
@@ -373,6 +374,28 @@ void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px) {
     }
 }
 
+void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int active) {
+    const int radius = r.height / 2, w = r.width / n;
+    ui_draw_round_rect(fb, r, radius, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), radius - 1, UI_GRAY_BLACK);
+    for (int i = 0; i < n; i++) {
+        EpdRect cell = {r.x + i * w, r.y, i == n - 1 ? r.width - i * w : w, r.height};
+        const int ty = r.y + (r.height - 30) / 2 - 2;
+        if (i == active) {
+            ui_fill_round_rect(fb, cell, radius, UI_GRAY_BLACK);
+            tr_text_inv(fb, cell.x + cell.width / 2, ty, 30, labels[i], EPD_DRAW_ALIGN_CENTER, true);
+        } else {
+            tr_text(fb, cell.x + cell.width / 2, ty, 30, labels[i], EPD_DRAW_ALIGN_CENTER, false);
+        }
+    }
+}
+
+int tr_segment_hit(EpdRect r, int n, uint16_t x, uint16_t y) {
+    if (!ui_rect_hit(r, x, y) || n <= 0) return -1;
+    int i = (x - r.x) / (r.width / n);
+    return i < n ? i : n - 1;
+}
+
 void tr_pager(uint8_t* fb, int y, int page, int pages) {
     if (pages <= 1) return;
     char label[32];
@@ -395,4 +418,24 @@ void tr_title_from_path(const char* path, char* out, size_t cap) {
     snprintf(out, cap, "%s", base);
     char* dot = strrchr(out, '.');
     if (dot && dot != out) *dot = 0;
+}
+
+/* ---- 图片封面 / Image covers ---- */
+
+// 读完的书在封面底部压一条黑带写“读完”。/ Finished books get a black band reading "读完" at the bottom.
+static void done_band(uint8_t* fb, EpdRect r, int px) {
+    const int band = px + 12;
+    epd_fill_rect((EpdRect){r.x, r.y + r.height - band, r.width, band}, UI_GRAY_BLACK, fb);
+    tr_text_inv(fb, r.x + r.width / 2, r.y + r.height - band + 4, px, "读完", EPD_DRAW_ALIGN_CENTER, true);
+}
+
+void tr_book_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, const char* author,
+                   const char* format, bool done) {
+    if (!path || !book_cover_draw(fb, r, path)) { tr_cover(fb, r, title, author, format, done); return; }
+    if (done) done_band(fb, r, r.height >= 280 ? 30 : r.height >= 200 ? 26 : 20);
+}
+
+void tr_book_mini_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, bool done) {
+    if (!path || !book_cover_draw(fb, r, path)) { tr_mini_cover(fb, r, title, done); return; }
+    if (done) done_band(fb, r, 16);
 }

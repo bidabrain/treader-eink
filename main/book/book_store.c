@@ -5,8 +5,11 @@
  * 书目录与 FAT 容量查询；调用方负责先显示首次初始化提示。
  * Book directories and FAT capacity queries; callers show initialization feedback first.
  *
- * 冻结：不格式化 SD；内置 storage 分区按需挂载，失败不影响可用 SD。
- * Frozen: never format SD; mount internal storage on demand without blocking usable SD on failure.
+ * 冻结：不格式化 SD。Treader 的书只放 TF 卡，不挂内置 storage 分区：系统 flash 小，留给系统
+ * （产品决策 2026-11-17，原先没卡时会退到内置分区）。
+ * Frozen: never format SD. Treader keeps books on the TF card only and never mounts the internal storage
+ * partition: system flash is small and reserved for the system (decision 2026-11-17; previously books fell
+ * back to flash without a card).
  * 冻结：有卡但挂载失效时不把上传静默切换到内置存储；拔卡不复用旧容量。
  * Frozen: present but invalid media must not silently redirect uploads to flash; never reuse removed-card capacity.
  * 冻结：用户确认后仅删已挂载根内的直接普通书籍；文件与进度部分失败必须返回，不通知 UI 版本。
@@ -53,7 +56,7 @@ static bool sd_ready(void) {
     return info.present && info.mounted;
 }
 
-static esp_err_t flash_root(book_store_root_t* out) {
+__attribute__((unused)) static esp_err_t flash_root(book_store_root_t* out) {
     if (!book_store_flash_ready()) {
         const esp_vfs_fat_mount_config_t config = {
             .format_if_mount_failed = true,
@@ -86,10 +89,8 @@ esp_err_t book_store_roots(book_store_root_t out[2], int* n) {
         read_pico_sd_get_info(&info);
         if (info.present) s_roots_degraded = true;
     }
-    esp_err_t err = flash_root(&out[*n]);
-    if (err == ESP_OK) ++*n;
-    else s_roots_degraded = true;
-    return *n > 0 ? ESP_OK : err;
+    // 不再加内置目录；没卡就是没有书架。/ No flash root any more; without a card there is no shelf.
+    return *n > 0 ? ESP_OK : ESP_ERR_NOT_FOUND;
 }
 
 esp_err_t book_store_upload_root(book_store_root_t* out) {
@@ -101,7 +102,7 @@ esp_err_t book_store_upload_root(book_store_root_t* out) {
         // 有卡但挂载失效时让用户显式重挂，不能悄悄改写内置目录。
         // Present but invalid media requires an explicit remount, not silent flash redirection.
         if (info.present) return ESP_ERR_INVALID_STATE;
-        return flash_root(out);
+        return ESP_ERR_NOT_FOUND;   // 没卡不传书，不写内置 flash / No card, no upload; never write flash
     }
     esp_err_t err = ensure_dir("/sdcard/books");
     if (err == ESP_OK) *out = (book_store_root_t){.path = "/sdcard/books", .is_flash = false};

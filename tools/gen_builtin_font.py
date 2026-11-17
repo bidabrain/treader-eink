@@ -26,6 +26,7 @@ SCAN_DIRS = [
     ROOT / "components/sc7a20h",
     ROOT / "components/read_pico",
     ROOT / "components/read_pico_pmu",
+    ROOT / "components/tomato",   # 番茄同步的状态文字会显示在界面上
 ]
 TEXT_SUFFIXES = {".md", ".txt"}
 # 阅读正文补齐后 VF 子集会超过旧的 400KB；标题还要 wght=700，不能实例化成 Regular。

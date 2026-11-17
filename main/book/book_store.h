@@ -5,8 +5,8 @@
  * 书源根目录、挂载与容量策略，不包含界面。
  * Book roots, mounting and capacity policy without UI.
  *
- * 冻结：SD 优先；内置存储单文件最多 1 MiB，仅首次使用挂载。
- * Frozen: prefer SD; flash files are limited to 1 MiB and mounted lazily.
+ * 冻结：Treader 只用 SD，不挂内置存储（见 book_store.c 文件头）。
+ * Frozen: Treader uses SD only and never mounts internal storage (see the book_store.c banner).
  */
 #pragma once
 

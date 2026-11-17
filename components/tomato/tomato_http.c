@@ -210,6 +210,63 @@ done:
     return err;
 }
 
+// 可能先跳转。取图片时只认 JPEG 和 PNG 文件头（图床会按 Accept 协商出 WEBP，解不了）。
+// May redirect. For images accept only JPEG and PNG magic (image hosts may negotiate WEBP, which we cannot decode).
+esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel) {
+    esp_http_client_config_t hc = {
+        .url = url,
+        .timeout_ms = TIMEOUT_MS,
+        .buffer_size = IO_CHUNK,
+        .buffer_size_tx = TX_BUF,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    if (!c) return ESP_ERR_NO_MEM;
+    if (image) esp_http_client_set_header(c, "Accept", "image/jpeg,image/png;q=0.9");
+    uint8_t* buf = NULL;
+    size_t len = 0;
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+    for (int hop = 0; hop < 4; hop++) {
+        err = esp_http_client_open(c, 0);
+        if (err != ESP_OK) break;
+        esp_http_client_fetch_headers(c);
+        status = esp_http_client_get_status_code(c);
+        if (status < 300 || status >= 400) break;
+        // 跟随跳转。/ Follow the redirect.
+        if (esp_http_client_set_redirection(c) != ESP_OK) { err = ESP_FAIL; break; }
+        esp_http_client_close(c);
+    }
+    if (err == ESP_OK && status != 200) err = ESP_ERR_NOT_FOUND;
+    if (err == ESP_OK && !(buf = heap_caps_malloc(max, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) err = ESP_ERR_NO_MEM;
+    while (err == ESP_OK) {
+        if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }
+        if (len >= max) { err = ESP_ERR_INVALID_SIZE; break; }
+        int n = esp_http_client_read(c, (char*)buf + len, (int)(max - len));
+        if (n < 0) { err = ESP_FAIL; break; }
+        if (n == 0) break;
+        len += (size_t)n;
+    }
+    const bool jpeg = len > 3 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF;
+    const bool png = len > 8 && buf[0] == 0x89 && !memcmp(buf + 1, "PNG", 3);
+    if (err == ESP_OK && image && !jpeg && !png) err = ESP_ERR_NOT_SUPPORTED;
+    if (err == ESP_OK && !len) err = ESP_ERR_INVALID_SIZE;
+    if (err == ESP_OK) {
+        char tmp[200];
+        snprintf(tmp, sizeof(tmp), "%s.part", dest);
+        FILE* f = fopen(tmp, "wb");
+        bool ok = f && fwrite(buf, 1, len, f) == len;
+        if (f) ok = fclose(f) == 0 && ok;
+        remove(dest);
+        if (!ok || rename(tmp, dest) != 0) { remove(tmp); err = ESP_FAIL; }
+    }
+    if (err != ESP_OK) ESP_LOGW(TAG, "fetch: %s http=%d", esp_err_to_name(err), status);
+    heap_caps_free(buf);
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
+    return err;
+}
+
 // 边收边数两个键名出现的次数，取较大者；不缓存整个响应。只数结尾落在新数据里的匹配，跨块不重不漏。
 // Count two key names while streaming and keep the larger; never buffers the reply. Only matches ending in new
 // data count, so chunk boundaries neither double-count nor miss.

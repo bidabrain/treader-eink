@@ -47,6 +47,7 @@
 #include "app_registry.h"
 #include "book_layout.h"
 #include "book_policy.h"
+#include "book_cover.h"
 #include "book_progress.h"
 #include "book_source.h"
 #include "book_store.h"
@@ -718,7 +719,8 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     tr_fit(line, 28, ui_content_width());
     tr_text(fb, UI_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT, false);
 
-    tr_pill(fb, chip_rect(0), s_filter == 0 ? "全部" : s_filter == 1 ? "TF 卡" : "内置", s_filter != 0, 28);
+    // 书都在 TF 卡上，筛选改成按来源。/ All books are on the card, so filter by source instead.
+    tr_pill(fb, chip_rect(0), s_filter == 0 ? "全部" : s_filter == 1 ? "番茄" : "其他书", s_filter != 0, 28);
     tr_pill(fb, chip_rect(1), s_recent_sort ? "按最近" : "按书名", false, 28);
     tr_pill(fb, chip_rect(2), s_view == BULK ? "完成" : "管理", s_view == BULK, 28);
     if (s_query[0]) {
@@ -739,7 +741,7 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         char title[128], mark[32] = "", meta[160];
         shelf_display_title(e, title, sizeof(title));
         bool done = e->has_progress && e->pct >= 100;
-        tr_mini_cover(fb, (EpdRect){r.x + (s_view == BULK ? 8 : 0), r.y + 8, 70, 96}, title, done);
+        tr_book_mini_cover(fb, (EpdRect){r.x + (s_view == BULK ? 8 : 0), r.y + 8, 70, 96}, e->path, title, done);
         if (s_view == BULK) copy_text(mark, sizeof(mark), e->selected ? "已选" : "未选");
         if (e->removed) copy_text(mark, sizeof(mark), "已删·待清理");
         else if (s_view != BULK && e->new_chapters) snprintf(mark, sizeof(mark), "+%u 章", e->new_chapters);
@@ -882,7 +884,6 @@ static void loading_detail(app_ctx_t* ctx, const char* text, const char* detail)
     unlock_draw();
     guard_draw_result(ctx->hl, update_display_area_with(ctx->hl, &E0470_WAVEFORM, MODE_DU, r));
 }
-static void loading(app_ctx_t* ctx, const char* text) { loading_detail(ctx, text, NULL); }
 static app_redraw_t open_image(app_ctx_t* ctx, size_t block_index) {
     if (block_index >= s_block_count || !s_blocks[block_index].image_src) return APP_REDRAW_NONE;
     blk_t* block = &s_blocks[block_index];
@@ -984,6 +985,8 @@ static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool las
     return true;
 }
 static bool open_book(app_ctx_t* ctx, const char* path) {
+    // 封面缩略图约 1 MB PSRAM，读书时让给排版。/ Thumbnails hold ~1 MB of PSRAM; give it to layout while reading.
+    book_cover_release();
     if (!strncmp(path, "/sdcard/", 8)) {
         read_pico_sd_info_t sd = {0};
         read_pico_sd_get_info(&sd);
@@ -1063,7 +1066,7 @@ static app_redraw_t resume_choice(app_ctx_t* ctx, bool confirmed) {
 }
 /* ---- 书架数据 / Shelf data ---- */
 static bool shelf_matches(const shelf_entry_t* item) {
-    return item->search_match && (s_filter == 0 || (s_filter == 1 && !item->is_flash) || (s_filter == 2 && item->is_flash));
+    return item->search_match && (s_filter == 0 || (s_filter == 1 && item->tomato) || (s_filter == 2 && !item->tomato));
 }
 static int compare_books(const void* a, const void* b) {
     const shelf_entry_t* x = a;
@@ -1146,11 +1149,12 @@ static void scan_shelf(app_ctx_t* ctx) {
     s_visible_count = 0;
     s_message[0] = 0;
     s_shelf_warning[0] = 0;
-    if (!book_store_flash_ready()) loading(ctx, "初始化内置存储…");
     book_store_root_t roots[2];
     int n = 0;
     esp_err_t root_err = book_store_roots(roots, &n);
-    bool truncated = false, unreadable = root_err != ESP_OK || book_store_roots_degraded(), skipped = false;
+    // 没插卡不算读取错误。/ A missing card is not a read error.
+    bool truncated = false, skipped = false;
+    bool unreadable = (root_err != ESP_OK && root_err != ESP_ERR_NOT_FOUND) || book_store_roots_degraded();
     s_storage[0] = 0;
     for (int i = 0; i < n; ++i) {
         char capacity[64];
@@ -1201,12 +1205,13 @@ static void scan_shelf(app_ctx_t* ctx) {
     }
     annotate_tomato();
     sort_shelf(ctx);
-    if (!n) copy_text(s_storage, sizeof(s_storage), "存储不可用，请检查 TF 卡");
+    if (!n) copy_text(s_storage, sizeof(s_storage), root_err == ESP_ERR_NOT_FOUND ? "没有 TF 卡" : "存储不可用，请检查 TF 卡");
     if (truncated) snprintf(s_shelf_warning, sizeof(s_shelf_warning), "内存不足，仅列 %d 本；释放后重扫", s_count);
     else if (unreadable) copy_text(s_shelf_warning, sizeof(s_shelf_warning), "部分目录或文件不可读，请检查后重扫");
     else if (skipped) copy_text(s_shelf_warning, sizeof(s_shelf_warning), "部分文件过大或名称过长，未列入");
     else if (s_pending_invalidated) copy_text(s_shelf_warning, sizeof(s_shelf_warning), "图书已更新，旧待保存进度已作废");
-    if (!s_count && !unreadable && !truncated) copy_text(s_message, sizeof(s_message), "暂无图书，请传入 TXT 或 EPUB");
+    if (!s_count && !unreadable && !truncated)
+        copy_text(s_message, sizeof(s_message), n ? "暂无图书，请传入 TXT 或 EPUB" : "书都放在 TF 卡上，请插入 TF 卡");
     ESP_LOGI(TAG, "shelf books=%d roots=%d", s_count, n);
 }
 
@@ -1577,6 +1582,7 @@ static void on_enter(app_ctx_t* ctx) {
     s_full = false;
     s_size_settle_ms = 0;
     s_poll_ms = 0;
+    book_cover_drop_pending();
     copy_text(s_storage, sizeof(s_storage), "正在检测存储…");
     copy_text(s_message, sizeof(s_message), "正在扫描图书…");
     read_pico_sd_start_probe();
@@ -1872,6 +1878,9 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         // 页数完成后随下次交互更新，避免阅读中重复刷屏。
         // Display the final page count on the next interaction, avoiding unsolicited refreshes.
     }
+    // 书架上缺的封面一次生成一张，全部生成完整页重画一次。/ Build missing shelf covers one per tick; redraw once when done.
+    if ((s_view == SHELF || s_view == BULK) && !s_toolbar && !(ctx->touch && ctx->touch->touched) && book_cover_tick())
+        return APP_REDRAW_PAGE;
     if (s_shake_enabled && s_sensor_on && ctx->now_ms - s_sensor_ms >= 40) {
         s_sensor_ms = ctx->now_ms;
         if (!sc7a20h_powered(ctx->acc)) sensor_set(ctx, true);

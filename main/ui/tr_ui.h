@@ -71,11 +71,23 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white);
 void tr_cover(uint8_t* fb, EpdRect r, const char* title, const char* author, const char* format, bool dark);
 /// 列表用小封面：竖排前几个字。/ Small list cover: first characters stacked vertically.
 void tr_mini_cover(uint8_t* fb, EpdRect r, const char* title, bool dark);
+/// 有图片封面就画图（读完的书加“读完”角标），否则画文字封面。只读缓存，不解码。
+/// Draw the image cover when there is one (finished books get a "done" band), else the text cover. Cache only.
+void tr_book_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, const char* author,
+                   const char* format, bool done);
+/// 书架行里的小封面版本。/ Small shelf-row variant.
+void tr_book_mini_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, bool done);
 
 /// 进度：已读部分实心，剩余部分点线。/ Progress: solid read part, dotted remainder.
 void tr_progress(uint8_t* fb, int x, int y, int w, int pct);
 /// 胶囊按钮。filled 为黑底白字。/ Pill button; filled = black with white text.
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px);
+/// 番茄页“书架 / 书城”分段按钮的位置。/ Where the Tomato "shelf / store" segment sits.
+#define TR_SEGMENT_RECT (EpdRect){TR_MARGIN, 160, TR_W - 2 * TR_MARGIN, 64}
+/// 分段按钮，active 那段黑底白字。/ Segmented control; the active segment is filled.
+void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int active);
+/// 命中的段，未命中返回 -1。/ Hit segment, or -1.
+int tr_segment_hit(EpdRect r, int n, uint16_t x, uint16_t y);
 /// 分页指示“‹ 1 / 5 ›”。/ Pager "‹ 1 / 5 ›".
 void tr_pager(uint8_t* fb, int y, int page, int pages);
 /// 分页指示的左右热区。返回 -1 上一页、1 下一页、0 未命中。/ Pager hit: -1 prev, 1 next, 0 none.

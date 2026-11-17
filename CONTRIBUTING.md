@@ -4,7 +4,7 @@ Contributions to Read Pico firmware, board support, drivers, tools, and document
 
 ## Development
 
-Start with [README.md](README.md) for hardware and ESP-IDF v6.1 build instructions, and [AGENTS.md](AGENTS.md) for component boundaries, page callbacks, bilingual comments, and frozen decisions. Reuse existing components and drawing helpers. Add demo pages through the registry rather than changing the shared event loop.
+Start with [README.md](README.md) for the Treader overview and ESP-IDF v6.1 build instructions, [docs/official/README.md](docs/official/README.md) for hardware, and [AGENTS.md](AGENTS.md) for component boundaries, page callbacks, bilingual comments, and frozen decisions. Reuse existing components and drawing helpers. Add demo pages through the registry rather than changing the shared event loop.
 
 Preserve the board-specific timing in `sdkconfig.defaults`; `sdkconfig.ci` checks compilation only. VCOM remains factory-calibrated in the PMU, and the SY7636A power page stays read-only. Explain any proposed change to a frozen decision and update its block before changing the behavior.
 

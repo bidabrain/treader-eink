@@ -2,10 +2,15 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.22)
 
+# Treader 版本号，显示在“关于 Treader”和概览页。/ Treader version shown on About and Overview.
+set(PROJECT_VER "0.1.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 idf_build_set_property(MINIMAL_BUILD ON)
 project(Read_Pico)
+# local.properties（内置番茄服务器）改了要重新配置；组件目录里登记不生效，只能放在根目录。
+# Reconfigure when local.properties (built-in Tomato server) changes; this only works from the root directory.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/local.properties")
 
 # 固件描述时间统一为 UTC，与概览页标识一致；保留已有编译缓存启动器。
 # Compile app-description timestamps in UTC to match Overview; preserve any compiler-cache launcher.

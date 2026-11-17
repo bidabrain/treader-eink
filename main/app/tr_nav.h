@@ -15,6 +15,8 @@
 
 /// 标签对应的页面。/ Page for a tab.
 const app_desc_t* tr_nav_tab_app(int tab);
+/// 记住番茄标签上次停在书架还是书城。/ Remember whether the Tomato tab was last on the shelf or the store.
+void tr_nav_set_tomato_page(const app_desc_t* page);
 /// 处理标签栏点击；点中别的标签就请求切页。返回是否点在标签栏上。
 /// Handle a tab-bar tap; request a switch for another tab. Returns whether the tap hit the bar.
 bool tr_nav_touch(app_ctx_t* ctx, uint16_t x, uint16_t y, tr_tab_t self);
