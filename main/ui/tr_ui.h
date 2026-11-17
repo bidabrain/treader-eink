@@ -37,6 +37,7 @@ typedef enum { TR_TAB_HOME = 0, TR_TAB_LIBRARY, TR_TAB_TOMATO, TR_TAB_SETTINGS }
 typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,
     TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
+    TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH,
 } tr_icon_t;
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.

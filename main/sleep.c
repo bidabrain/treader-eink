@@ -8,6 +8,7 @@
  * for soft sleep / power-off.
  */
 
+#include "tr_lock.h"
 #include "sleep.h"
 
 #include "app.h"
@@ -291,7 +292,8 @@ void enter_lock_and_sleep(
     epd_poweron();
     epd_clear();
     epd_hl_set_all_white(hl);
-    ui_draw_full_image(framebuffer, lock_4bpp_bin_start);
+    // Treader：有在读的书就画书卡，否则用官方锁屏图。/ Treader: draw the book card when reading, else the stock image.
+    if (!tr_lock_draw(framebuffer)) ui_draw_full_image(framebuffer, lock_4bpp_bin_start);
     epd_hl_update_screen_from_white(hl, MODE_GC16, 25);
 
     app_lock_wait_key_idle(800);

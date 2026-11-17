@@ -63,12 +63,37 @@ typedef struct {
     char abstract[TOMATO_ABSTRACT_LEN]; ///< 简介，按字符边界截断 / Synopsis, cut on a character boundary
 } tomato_hit_t;
 
+/// WebDAV 同步配置，和番茄配置存在同一个 config.json。/ WebDAV settings, stored in the same config.json.
+typedef struct {
+    char url[160];        ///< 目录地址，同步文件放在其下 / Directory URL; the sync file lives under it
+    char user[64];
+    char password[64];
+} tomato_webdav_config_t;
+
+/// 一本书的阅读进度，供 WebDAV 同步读写。/ One book's reading progress for WebDAV sync.
+typedef struct {
+    char path[288];
+    uint32_t size;        ///< 记录时的文件大小 / File size when recorded
+    uint32_t off;         ///< 章内字节偏移 / Byte offset within the chapter
+    uint16_t chapter;
+    uint8_t px;
+    uint8_t pct;
+} tomato_progress_t;
+
+/// 列出本机全部阅读进度，返回条数。/ List all local progress records; returns the count.
+typedef int (*tomato_progress_export_t)(tomato_progress_t* out, int max);
+/// 写入一条进度；本机没有这本书或文件对不上时返回 false。/ Store one record; false when the book is missing or does not match.
+typedef bool (*tomato_progress_import_t)(const tomato_progress_t* in);
+
 /* ---- 配置与书架（同步，读写 TF 卡）/ Config and shelf (synchronous, TF I/O) ---- */
 
 /// 读 config.json；文件缺失或字段为空返回 ESP_ERR_NOT_FOUND。
 /// Read config.json; ESP_ERR_NOT_FOUND when missing or empty.
 esp_err_t tomato_config_load(tomato_config_t* out);
 esp_err_t tomato_config_save(const tomato_config_t* cfg);
+/// WebDAV 配置读写；保存时保留 config.json 里的其他字段。/ WebDAV config I/O; saving keeps other config.json fields.
+esp_err_t tomato_webdav_config_load(tomato_webdav_config_t* out);
+esp_err_t tomato_webdav_config_save(const tomato_webdav_config_t* cfg);
 
 /// 书架读写。load 失败时 count 置 0。/ Shelf I/O. On load failure count is 0.
 esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count);
@@ -83,6 +108,7 @@ typedef enum {
     TOMATO_SEARCHING,
     TOMATO_QUEUED,       ///< 服务器排队或生成中 / Server job queued or running
     TOMATO_DOWNLOADING,  ///< 下载 TXT / Fetching TXT
+    TOMATO_WEBDAV,       ///< WebDAV 同步中 / WebDAV sync in progress
     TOMATO_DONE,
     TOMATO_FAILED,
 } tomato_phase_t;
@@ -110,6 +136,10 @@ esp_err_t tomato_sync_start_update(void);
 esp_err_t tomato_sync_start_search(const char* query);
 /// 下载一本并加入书架（已在书架则覆盖更新）。/ Download one book and add it to the shelf (refresh if present).
 esp_err_t tomato_sync_start_download(const tomato_hit_t* hit);
+/// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
+esp_err_t tomato_sync_start_webdav(void);
+/// 注册阅读进度的读写回调（进度存储在主程序里）。/ Register progress I/O callbacks (progress lives in the main app).
+void tomato_sync_set_progress_io(tomato_progress_export_t export_cb, tomato_progress_import_t import_cb);
 /// 下载替换 TXT 后回调（在同步任务里调用），用来迁移阅读进度。old_size 为 0 表示新书。
 /// Called on the sync task after a TXT is replaced, to migrate reading progress. old_size 0 means a new book.
 typedef void (*tomato_file_hook_t)(const char* path, uint32_t old_size, uint32_t new_size);

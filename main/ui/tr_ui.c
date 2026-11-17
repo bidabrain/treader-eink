@@ -184,6 +184,25 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         epd_fill_triangle(cx + 6, cy - 14, cx + 16, cy - 8, cx + 8, cy - 2, c, fb);
         epd_fill_triangle(cx - 6, cy + 14, cx - 16, cy + 8, cx - 8, cy + 2, c, fb);
         break;
+    case TR_ICON_TOC:
+        for (int i = 0; i < 3; i++) {
+            epd_fill_circle(x + 8, y + 10 + i * 10, 2, c, fb);
+            thick_line(fb, x + 15, y + 10 + i * 10, x + 34, y + 10 + i * 10, c);
+        }
+        break;
+    case TR_ICON_MENU:
+        for (int i = 0; i < 4; i++) {
+            int gx = x + 7 + (i % 2) * 15, gy = y + 7 + (i / 2) * 15;
+            epd_draw_rect((EpdRect){gx, gy, 11, 11}, c, fb);
+            epd_draw_rect((EpdRect){gx + 1, gy + 1, 9, 9}, c, fb);
+        }
+        break;
+    case TR_ICON_REFRESH:
+        epd_draw_rect((EpdRect){x + 7, y + 7, 26, 26}, c, fb);
+        epd_draw_rect((EpdRect){x + 8, y + 8, 24, 24}, c, fb);
+        thick_line(fb, x + 14, y + 20, x + 26, y + 20, c);
+        thick_line(fb, x + 20, y + 14, x + 20, y + 26, c);
+        break;
     case TR_ICON_IMPORT:
         thick_line(fb, x + 20, y + 6, x + 20, y + 26, c);
         thick_line(fb, x + 12, y + 18, x + 20, y + 26, c);

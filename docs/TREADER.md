@@ -18,17 +18,18 @@
 | 番茄同步 `components/tomato`：连网对时、搜索、下载、检查更新（检查与下载分开） | 完成 |
 | 界面第一批：底部标签栏、首页、番茄（书架/搜索键盘/结果/详情）、设置（含番茄服务器编辑） | 完成 |
 | 番茄更新后保留阅读进度（`book_progress_resize`） | 完成 |
-| 界面第二批：书库和阅读菜单改成新排版、锁屏书卡 | 待做 |
-| WebDAV 同步 | 待做，见下文 |
+| 界面第二批：书库（带标签栏、文字封面、番茄标注）、阅读工具条、锁屏书卡 | 完成 |
+| WebDAV 同步：阅读进度和番茄书架 | 完成，见下文 |
 
-## 计划：WebDAV 同步
+## WebDAV 同步
 
-Treader 设备和 WebDAV 服务器之间同步（与安卓版无关），只在设置里点击时运行：
+Treader 设备和 WebDAV 服务器之间同步（与安卓版无关），只在“设置 → 立即同步”时运行，用完断网：
 
-- 同步内容：阅读进度（系统阅读器的 NVS 记录，每本几十字节）和番茄书架 `tomato/shelf.json`。书籍文件不传。
-- 服务器上只放一个 JSON 文件，用 GET/PUT 读写；每本书的进度取更新时间较新的一方，书架按最后修改时间决定方向。
-- 联网时用 SNTP 对时，时间戳可信。
-- 配置（地址、用户名、密码）放在 `tomato/config.json`，在设置页编辑。
+- 服务器目录下放一个 `treader-sync.json`，用 GET 读、PUT 写，HTTP Basic 认证。坚果云要用“应用密码”。
+- **阅读进度**：TF 卡 `tomato/webdav_state.json` 记着上次同步时每本书的进度签名。本机进度变了就以本机为准上传；
+  本机没变、服务器那条在上次同步之后更新过，就以服务器为准写回本机。本机文件不能比记录时小（番茄更新只追加章节）。
+- **番茄书架**：按 `book_id` 取并集。只在服务器上的书加进本机书架，标成有新章节，点“下载全部更新”即可拉下来。
+- 书籍文件本身不传；删除不同步。
 
 ## TF 卡目录
 
@@ -45,8 +46,16 @@ Treader 设备和 WebDAV 服务器之间同步（与安卓版无关），只在�
 `config.json`：
 
 ```json
-{ "server": "http://192.168.1.10:8080", "password": "your-password-here" }
+{
+  "server": "http://192.168.1.10:8080",
+  "password": "your-password-here",
+  "webdav_url": "https://dav.jianguoyun.com/dav/treader",
+  "webdav_user": "you@example.com",
+  "webdav_password": "app-password"
+}
 ```
+
+这些都可以直接在设备的“设置”里用键盘填写。
 
 Wi-Fi 沿用系统“传书”页里保存的网络，不需要另外设置。
 
@@ -58,7 +67,8 @@ Wi-Fi 沿用系统“传书”页里保存的网络，不需要另外设置。
 | `components/tomato/tomato_net.c` | 用系统保存的凭据一次性连 Wi-Fi，用完全部释放。 |
 | `components/tomato/tomato_http.c` | 下载服务器的 JSON 请求和流式文件下载。 |
 | `components/tomato/tomato_store.c` | TF 卡上的 `config.json` 和 `shelf.json`。 |
-| `components/tomato/tomato_sync.c` | 后台任务：检查更新、搜索、下载。页面只轮询状态。 |
+| `components/tomato/tomato_sync.c` | 后台任务：检查更新、搜索、下载、WebDAV 同步。页面只轮询状态。 |
+| `components/tomato/tomato_webdav.c` | WebDAV 同步与合并规则。 |
 | `components/read_pico_transfer/` | 官方传书组件；新增 `read_pico_transfer_load_wifi()` 供番茄同步读取凭据。 |
 | `tools/ime/build_pico_ime_dictionary.py` | 重新生成拼音词库。 |
 
@@ -97,7 +107,9 @@ idf.py -p COM3 flash monitor
 | `main/app/tr_nav.c` | 标签页切换，以及从别的页面直接打开一本书。 |
 | `main/apps/app_tr_home.c` | 首页。 |
 | `main/apps/app_tr_tomato.c` | 番茄标签页：书架、检查更新、下载全部更新、搜索、结果、详情。 |
-| `main/apps/app_tr_settings.c` | 设置页，番茄服务器地址和密码在这里编辑。 |
+| `main/apps/app_tr_settings.c` | 设置页：番茄服务器、WebDAV 的编辑和“立即同步”；提供进度导出/导入给 WebDAV。 |
+| `main/apps/app_book.c` | 官方书库与阅读器，书架和工具条改成新排版，逻辑不变。 |
+| `main/apps/tr_lock.c` | 锁屏书卡；没有在读的书时用官方锁屏图。 |
 
 带标签栏的页面在 `app_desc_t` 里设 `.tab_nav = true`，右下角菜单按钮的点击区让给标签栏；中键仍然打开菜单。
 新增界面文字后要重新生成内置字体子集：`python tools/gen_builtin_font.py`（需要 fonttools）。

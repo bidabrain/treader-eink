@@ -32,7 +32,7 @@
 #define JOB_WAIT_POLLS 300   // 生成任务最多等 10 分钟 / Server job waits at most 10 min
 #define BUSY_RETRIES 6
 
-typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD } op_t;
+typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV } op_t;
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static tomato_status_t s_status;
@@ -44,6 +44,13 @@ static op_t s_op;
 static char s_query[96];
 static tomato_hit_t s_target;
 static tomato_file_hook_t s_file_hook;
+static tomato_progress_export_t s_export;
+static tomato_progress_import_t s_import;
+
+void tomato_sync_set_progress_io(tomato_progress_export_t export_cb, tomato_progress_import_t import_cb) {
+    s_export = export_cb;
+    s_import = import_cb;
+}
 
 void tomato_sync_set_file_hook(tomato_file_hook_t hook) { s_file_hook = hook; }
 
@@ -392,7 +399,8 @@ static void sync_task(void* arg) {
     tomato_book_t* shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     int count = 0;
     if (!shelf) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
-    if (tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
+    // WebDAV 同步不需要番茄服务器。/ WebDAV sync does not need the Tomato server.
+    if (s_op != OP_WEBDAV && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
     if ((s_op == OP_CHECK && !count) || (s_op == OP_UPDATE && !count_pending(shelf, count))) {
@@ -407,6 +415,14 @@ static void sync_task(void* arg) {
     case OP_UPDATE: run_update(&cfg, shelf, count); break;
     case OP_SEARCH: run_search(&cfg); break;
     case OP_DOWNLOAD: run_download(&cfg, shelf, count); break;
+    case OP_WEBDAV: {
+        set_phase(TOMATO_WEBDAV, "正在同步");
+        char msg[64];
+        err = tomato_webdav_run(s_export, s_import, msg, sizeof(msg));
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(err, msg);
+        break;
+    }
     }
     tomato_net_down();
 out:
@@ -436,6 +452,7 @@ static esp_err_t start(op_t op) {
 }
 
 esp_err_t tomato_sync_start_check(void) { return start(OP_CHECK); }
+esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }
 
 esp_err_t tomato_sync_start_search(const char* query) {

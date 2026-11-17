@@ -39,6 +39,7 @@ idf_component_register(
         "apps/app_tr_home.c"
         "apps/app_tr_tomato.c"
         "apps/app_tr_settings.c"
+        "apps/tr_lock.c"
         "apps/app_home.c"
         "apps/app_book.c"
         "apps/app_transfer.c"

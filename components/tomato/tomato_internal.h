@@ -33,6 +33,10 @@ esp_err_t tomato_http_json(const tomato_config_t* cfg, const char* method, const
 esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, const char* dest,
                                const volatile bool* cancel, volatile uint32_t* bytes);
 
+/// 运行一次 WebDAV 同步，结果写进 msg。/ Run one WebDAV sync; the outcome goes to msg.
+esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_import_t import_cb,
+                            char* msg, size_t cap);
+
 /// 数字字段可能是数字也可能是字符串。/ Numeric fields may arrive as numbers or strings.
 int tomato_json_int(const cJSON* obj, const char* key);
 /// 复制字符串字段，缺失时写空串。/ Copy a string field, empty when missing.

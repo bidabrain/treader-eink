@@ -64,11 +64,47 @@ esp_err_t tomato_config_load(tomato_config_t* out) {
     return out->url[0] ? ESP_OK : ESP_ERR_NOT_FOUND;
 }
 
+// 改写或新增一个字符串字段。/ Replace or add one string field.
+static void set_str(cJSON* root, const char* key, const char* value) {
+    cJSON_DeleteItemFromObjectCaseSensitive(root, key);
+    cJSON_AddStringToObject(root, key, value);
+}
+
+// 读旧配置再改，保留不认识的字段。/ Edit the existing config so unknown fields survive.
+static cJSON* config_root(void) {
+    cJSON* root = read_json(TOMATO_CONFIG_PATH);
+    return root ? root : cJSON_CreateObject();
+}
+
 esp_err_t tomato_config_save(const tomato_config_t* cfg) {
-    cJSON* root = cJSON_CreateObject();
+    cJSON* root = config_root();
     if (!root) return ESP_ERR_NO_MEM;
-    cJSON_AddStringToObject(root, "server", cfg->url);
-    cJSON_AddStringToObject(root, "password", cfg->password);
+    set_str(root, "server", cfg->url);
+    set_str(root, "password", cfg->password);
+    esp_err_t err = write_json(TOMATO_CONFIG_PATH, root);
+    cJSON_Delete(root);
+    return err;
+}
+
+esp_err_t tomato_webdav_config_load(tomato_webdav_config_t* out) {
+    memset(out, 0, sizeof(*out));
+    cJSON* root = read_json(TOMATO_CONFIG_PATH);
+    if (!root) return ESP_ERR_NOT_FOUND;
+    tomato_json_str(root, "webdav_url", out->url, sizeof(out->url));
+    tomato_json_str(root, "webdav_user", out->user, sizeof(out->user));
+    tomato_json_str(root, "webdav_password", out->password, sizeof(out->password));
+    cJSON_Delete(root);
+    size_t n = strlen(out->url);
+    while (n && out->url[n - 1] == '/') out->url[--n] = 0;
+    return out->url[0] ? ESP_OK : ESP_ERR_NOT_FOUND;
+}
+
+esp_err_t tomato_webdav_config_save(const tomato_webdav_config_t* cfg) {
+    cJSON* root = config_root();
+    if (!root) return ESP_ERR_NO_MEM;
+    set_str(root, "webdav_url", cfg->url);
+    set_str(root, "webdav_user", cfg->user);
+    set_str(root, "webdav_password", cfg->password);
     esp_err_t err = write_json(TOMATO_CONFIG_PATH, root);
     cJSON_Delete(root);
     return err;
