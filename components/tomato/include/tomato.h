@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 番茄小说同步：连接自建 Tomato-Novel-Downloader 服务器，搜索、下载 TXT、检查更新。
+ * 检查和下载是两个独立操作，都只在用户点击时运行，不自动检查。
  * 网络只在一次操作期间打开，做完即断；所有阻塞操作在后台任务里跑，页面只轮询状态。
  *
  * Tomato novel sync: talks to a self-hosted Tomato-Novel-Downloader server to search,
@@ -33,6 +34,7 @@ extern "C" {
 #define TOMATO_AUTHOR_LEN 48
 #define TOMATO_SHELF_MAX 64
 #define TOMATO_SEARCH_MAX 12
+#define TOMATO_ABSTRACT_LEN 320
 
 typedef struct {
     char url[128];      ///< 服务器地址，不带末尾斜杠 / Server base URL, no trailing slash
@@ -58,6 +60,7 @@ typedef struct {
     uint16_t chapters;
     uint32_t words;
     bool finished;           ///< 已完结 / Completed
+    char abstract[TOMATO_ABSTRACT_LEN]; ///< 简介，按字符边界截断 / Synopsis, cut on a character boundary
 } tomato_hit_t;
 
 /* ---- 配置与书架（同步，读写 TF 卡）/ Config and shelf (synchronous, TF I/O) ---- */
@@ -92,11 +95,16 @@ typedef struct {
     int total;                ///< 共几本 / Books in this run
     uint32_t bytes;           ///< 当前文件已收字节 / Bytes received for the current file
     int updated;              ///< 本轮更新了几本 / Books updated this run
+    int pending;              ///< 检查后有新章节的本数 / Books with new chapters after a check
     int hit_count;            ///< 搜索结果数 / Search result count
     uint32_t revision;        ///< 每次变化加一 / Bumped on every change
 } tomato_status_t;
 
-/// 检查书架所有书的更新并下载有新章节的。/ Check every shelf book and download those with new chapters.
+/// 只检查不下载：向服务器取最新章节数，写进书架的 remote 字段。
+/// Check only: fetch the latest chapter counts into each shelf book's remote field; downloads nothing.
+esp_err_t tomato_sync_start_check(void);
+/// 下载书架上 remote 大于 chapters 的书；用上次检查的结果，不重新检查。
+/// Download shelf books whose remote exceeds chapters, using the last check; does not re-check.
 esp_err_t tomato_sync_start_update(void);
 /// 搜索；结果用 tomato_sync_hits() 取。/ Search; read results with tomato_sync_hits().
 esp_err_t tomato_sync_start_search(const char* query);

@@ -31,7 +31,7 @@
 #define JOB_WAIT_POLLS 300   // 生成任务最多等 10 分钟 / Server job waits at most 10 min
 #define BUSY_RETRIES 6
 
-typedef enum { OP_UPDATE, OP_SEARCH, OP_DOWNLOAD } op_t;
+typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD } op_t;
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static tomato_status_t s_status;
@@ -268,13 +268,36 @@ static esp_err_t fetch_remote_totals(const tomato_config_t* cfg, tomato_book_t* 
     return ESP_OK;
 }
 
-static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
-    if (!count) { set_phase(TOMATO_DONE, "书架上还没有番茄小说"); return; }
-    esp_err_t err = fetch_remote_totals(cfg, shelf, count);
-    if (err != ESP_OK) { fail(err, "检查更新失败"); return; }
-    tomato_shelf_save(shelf, count);
+static int count_pending(const tomato_book_t* shelf, int count) {
     int pending = 0;
     for (int i = 0; i < count; i++) pending += shelf[i].remote > shelf[i].chapters;
+    return pending;
+}
+
+static void set_pending(int pending) {
+    portENTER_CRITICAL(&s_lock);
+    s_status.pending = pending;
+    portEXIT_CRITICAL(&s_lock);
+}
+
+// 只检查：更新每本书的 remote 并保存，不下载。/ Check only: refresh each book's remote and save; no downloads.
+static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
+    if (!count) { set_phase(TOMATO_DONE, "书架上还没有番茄小说"); return; }
+    esp_err_t err = fetch_remote_totals(cfg, shelf, count);
+    if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "检查更新失败"); return; }
+    tomato_shelf_save(shelf, count);
+    int pending = count_pending(shelf, count);
+    set_pending(pending);
+    char msg[48];
+    if (pending) snprintf(msg, sizeof(msg), "%d 本有新章节", pending);
+    else snprintf(msg, sizeof(msg), "都是最新的");
+    set_phase(TOMATO_DONE, msg);
+}
+
+// 下载上次检查标出的更新。/ Download the updates marked by the last check.
+static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
+    int pending = count_pending(shelf, count);
+    if (!pending) { set_phase(TOMATO_DONE, "没有待下载的更新"); return; }
     int done = 0, updated = 0;
     for (int i = 0; i < count && !s_cancel; i++) {
         if (shelf[i].remote <= shelf[i].chapters) continue;
@@ -287,10 +310,11 @@ static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int cou
             portEXIT_CRITICAL(&s_lock);
         }
     }
+    set_pending(count_pending(shelf, count));
     char msg[48];
-    if (s_cancel) snprintf(msg, sizeof(msg), "已取消");
-    else if (!pending) snprintf(msg, sizeof(msg), "都是最新的");
-    else snprintf(msg, sizeof(msg), "更新了 %d 本", updated);
+    if (s_cancel) snprintf(msg, sizeof(msg), "已取消，更新了 %d 本", updated);
+    else if (updated == pending) snprintf(msg, sizeof(msg), "更新了 %d 本", updated);
+    else snprintf(msg, sizeof(msg), "更新了 %d 本，%d 本失败", updated, pending - updated);
     set_phase(TOMATO_DONE, msg);
 }
 
@@ -302,7 +326,9 @@ static void run_search(const tomato_config_t* cfg) {
     cJSON* root; int status;
     esp_err_t err = tomato_http_json(cfg, "GET", path, NULL, &root, &status);
     if (err != ESP_OK) { fail(err, "搜索失败"); return; }
-    tomato_hit_t hits[TOMATO_SEARCH_MAX];
+    // 带简介后约 6 KB，放 PSRAM，不占任务栈。/ ~6 KB with synopses; keep it in PSRAM, off the task stack.
+    tomato_hit_t* hits = heap_caps_calloc(TOMATO_SEARCH_MAX, sizeof(tomato_hit_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!hits) { cJSON_Delete(root); fail(ESP_ERR_NO_MEM, "内存不足"); return; }
     int n = 0;
     const cJSON* it;
     cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "items")) {
@@ -320,6 +346,8 @@ static void run_search(const tomato_config_t* cfg) {
         char st[4];
         tomato_json_str(raw, "update_status", st, sizeof(st));
         h->finished = !strcmp(st, "0");
+        const cJSON* ab = cJSON_GetObjectItemCaseSensitive(raw, "abstract");
+        if (cJSON_IsString(ab) && ab->valuestring) copy_utf8(h->abstract, sizeof(h->abstract), ab->valuestring);
         if (h->book_id[0] && h->title[0]) n++;
     }
     cJSON_Delete(root);
@@ -327,6 +355,7 @@ static void run_search(const tomato_config_t* cfg) {
     memcpy(s_hits, hits, sizeof(hits[0]) * (size_t)n);
     s_status.hit_count = n;
     portEXIT_CRITICAL(&s_lock);
+    heap_caps_free(hits);
     set_phase(TOMATO_DONE, n ? NULL : "没有找到");
 }
 
@@ -358,10 +387,16 @@ static void sync_task(void* arg) {
     if (!shelf) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
     if (tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
+    // 没事可做就不连网。/ Skip networking when there is nothing to do.
+    if ((s_op == OP_CHECK && !count) || (s_op == OP_UPDATE && !count_pending(shelf, count))) {
+        set_phase(TOMATO_DONE, count ? "没有待下载的更新" : "书架上还没有番茄小说");
+        goto out;
+    }
     set_phase(TOMATO_CONNECTING, "连接 Wi-Fi");
     esp_err_t err = tomato_net_up(NET_TIMEOUT_MS);
     if (err != ESP_OK) { fail(err, err == ESP_ERR_NOT_FOUND ? "未设置 Wi-Fi" : "Wi-Fi 连接失败"); goto out; }
     switch (s_op) {
+    case OP_CHECK: run_check(&cfg, shelf, count); break;
     case OP_UPDATE: run_update(&cfg, shelf, count); break;
     case OP_SEARCH: run_search(&cfg); break;
     case OP_DOWNLOAD: run_download(&cfg, shelf, count); break;
@@ -393,6 +428,7 @@ static esp_err_t start(op_t op) {
     return ESP_OK;
 }
 
+esp_err_t tomato_sync_start_check(void) { return start(OP_CHECK); }
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }
 
 esp_err_t tomato_sync_start_search(const char* query) {

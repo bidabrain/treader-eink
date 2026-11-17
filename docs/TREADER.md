@@ -15,7 +15,7 @@
 | 拼音输入法引擎 `components/pinyin_ime` | 完成（未上机验证） |
 | 番茄同步 `components/tomato`：连网、搜索、下载、检查更新 | 完成（未上机验证） |
 | 界面：番茄书架、搜索键盘、结果、下载确认、设置 | 设计稿见 [design/ui.html](design/ui.html)（RickyOS 风格），待确认后实现 |
-| WebDAV 同步 | 暂不做 |
+| WebDAV 同步 | 暂缓，待定是否加回 |
 
 ## TF 卡目录
 
@@ -49,7 +49,14 @@ Wi-Fi 沿用系统“传书”页里保存的网络，不需要另外设置。
 | `components/read_pico_transfer/` | 官方传书组件；新增 `read_pico_transfer_load_wifi()` 供番茄同步读取凭据。 |
 | `tools/ime/build_pico_ime_dictionary.py` | 重新生成拼音词库。 |
 
-更新判断沿用安卓版 v1.7.3 的规则：服务器章节数取 `max(remote_total, local_total)`，大于本地章节数才重新下载。
+检查更新和下载是两个独立操作，都只在用户点击时运行，**不自动检查**：
+
+- `tomato_sync_start_check()`：只向服务器取最新章节数，写进 `shelf.json` 的 `remote` 字段。
+- `tomato_sync_start_update()`：下载 `remote` 大于本地 `chapters` 的书，用的是上次检查的结果。没有待下载的书时不连网。
+
+更新判断沿用安卓版 v1.7.3 的规则：服务器章节数取 `max(remote_total, local_total)`，大于本地章节数才算有更新。
+
+搜索结果带简介（服务器 `/api/search` 返回的 `abstract`，截到约 100 个汉字），用于书籍详情页；点“下载到书库”才下载。
 
 ## 编译
 
