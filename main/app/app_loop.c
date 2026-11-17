@@ -14,8 +14,15 @@
  * 冻结：主循环只产出手势、不解释含义；只有 owns_keys 页可接管三键，
  * 且必须提供强刷和 request_menu 入口；把手仍按下即触发。
  * 接管页可选长按键回调，保留按下行为；同键单指500ms仅触发一次，中断取消。
- * Frozen: Produce gestures without interpreting page actions. KEY2 full refresh
- * and KEY3 menu are global unless owns_keys provides its own refresh/menu exits.
+ * 冻结（Treader，2026-11-17 改）：中键印着 home 图标，改为短按回首页、长按 0.5 秒整屏刷新；松手或按满才判定。
+ * 原先短按即整屏刷新，和按键图标不符。首页、holds_pmu 页（升级、自检）短按仍是刷新，不会被中途带走。
+ * owns_keys 页在松手时以 KEY2 收到短按（书库阅读时用来开关工具条），长按刷新由主循环统一处理。
+ * Frozen (Treader, changed 2026-11-17): the middle key carries a home icon, so a short press goes home and a
+ * 500 ms hold does the full refresh, decided on release or at 500 ms. Formerly a press refreshed, which did not
+ * match the icon. On Home and holds_pmu pages (upgrade, self-test) a short press still refreshes. owns_keys
+ * pages get KEY2 on release as the short press; the loop handles the long-press refresh for every page.
+ * Frozen: Produce gestures without interpreting page actions. KEY3 menu is global unless owns_keys provides
+ * its own menu exit.
  * Owners may opt into a single 500ms same-key hold callback after the press action; interruptions cancel it.
  * The menu handle still fires on press.
  * 冻结：返回消费最近切页来源，恢复原页及菜单位置，不跳固定首页。
@@ -296,6 +303,20 @@ static void lock_and_resume(
     else app_present(ctx, current, APP_REDRAW_PAGE);
 }
 
+// 整屏 GC16 重画当前页或菜单（中键长按）。/ Full GC16 redraw of the page or menu (middle-key hold).
+static void full_refresh(app_ctx_t* ctx, const app_desc_t* current, bool menu_open, int menu_leaf,
+                         menu_feedback_t* feedback) {
+    if (menu_open) {
+        feedback->updates = 0;
+        ui_draw_menu_page(ctx->fb, current, menu_leaf);
+        guard_draw_result(ctx->hl, update_display_full(ctx->hl));
+    } else if (current->present != NULL && current->present(ctx, APP_REDRAW_FULL)) {
+    } else if (current->render != NULL) {
+        current->render(ctx, ctx->fb);
+        guard_draw_result(ctx->hl, update_display_full(ctx->hl));
+    }
+}
+
 void app_loop_run(const app_loop_config_t* config) {
     const app_desc_t* current = config->first_app != NULL
         ? config->first_app
@@ -327,6 +348,8 @@ void app_loop_run(const app_loop_config_t* config) {
     bool return_to_menu = false;
     int held_key = -1;
     int64_t held_since_ms = 0;
+    bool key2_pending = false;   // 中键按下，等松手或按满 0.5 秒 / Middle key down, awaiting release or 500 ms
+    int64_t key2_since_ms = 0;
     int64_t last_lock_poll_ms = 0;
     int64_t last_input_ms = esp_timer_get_time() / 1000;
     int64_t last_font_retry_ms = 0;
@@ -372,6 +395,7 @@ void app_loop_run(const app_loop_config_t* config) {
             last_media_poll_ms = ctx.now_ms;
             if (poll_media(&ctx, current, &media_mounted, &media_invalidated)) {
                 held_key = -1;
+                key2_pending = false;
                 cancel_gesture(&ctx, current, &gesture);
                 menu_pressed = UI_MENU_HIT_NONE;
                 ctx.consumed = true;
@@ -388,6 +412,7 @@ void app_loop_run(const app_loop_config_t* config) {
 
         if (err != ESP_OK) {
             held_key = -1;
+            key2_pending = false;
             cancel_gesture(&ctx, current, &gesture);
             ctx.consumed = true;
             if (menu_pressed >= 0) menu_feedback(&ctx, current, menu_leaf, menu_pressed, false, &feedback);
@@ -403,22 +428,16 @@ void app_loop_run(const app_loop_config_t* config) {
                 if (menu_pressed >= 0) menu_feedback(&ctx, current, menu_leaf, menu_pressed, false, &feedback);
                 menu_pressed = UI_MENU_HIT_NONE;
             }
-            if (key >= 0 && current->owns_keys && !menu_open) {
+            if (key == UI_KEY_2) {
+                // 中键先不动作，松手或按满 0.5 秒再定是回首页还是刷新。/ Defer the middle key until release or 500 ms.
+                key2_pending = touch.count == 1;
+                key2_since_ms = ctx.now_ms;
+            } else if (key >= 0 && current->owns_keys && !menu_open) {
                 app_redraw_t redraw = current->on_key ? current->on_key(&ctx, key) : APP_REDRAW_NONE;
                 present_page(&ctx, current, &gesture, redraw);
                 if (current->on_key_long && touch.count == 1) {
                     held_key = key;
                     held_since_ms = ctx.now_ms;
-                }
-            } else if (key == UI_KEY_2) {
-                if (menu_open) {
-                    feedback.updates = 0;
-                    ui_draw_menu_page(ctx.fb, current, menu_leaf);
-                    guard_draw_result(ctx.hl, update_display_full(ctx.hl));
-                } else if (current->present != NULL && current->present(&ctx, APP_REDRAW_FULL)) {
-                } else if (current->render != NULL) {
-                    current->render(&ctx, ctx.fb);
-                    guard_draw_result(ctx.hl, update_display_full(ctx.hl));
                 }
             } else if (key == UI_KEY_3 || handle_hit) {
                 menu_open = !menu_open;
@@ -498,6 +517,7 @@ void app_loop_run(const app_loop_config_t* config) {
                         menu_open, menu_leaf, &media_mounted, &media_invalidated,
                         &last_media_poll_ms
                     );
+                    key2_pending = false;
                     last_input_ms = ctx.now_ms;
                 }
             } else if (tomato_sync_busy()) {
@@ -511,6 +531,7 @@ void app_loop_run(const app_loop_config_t* config) {
                     menu_open, menu_leaf, &media_mounted, &media_invalidated,
                     &last_media_poll_ms
                 );
+                key2_pending = false;
                 last_input_ms = ctx.now_ms;
             }
         }
@@ -522,6 +543,7 @@ void app_loop_run(const app_loop_config_t* config) {
             last_font_retry_ms = ctx.now_ms;
             if (try_load_saved_sd_font(!media_invalidated)) {
                 held_key = -1;
+                key2_pending = false;
                 cancel_gesture(&ctx, current, &gesture);
                 ctx.consumed = true;
                 menu_pressed = UI_MENU_HIT_NONE;
@@ -544,6 +566,30 @@ void app_loop_run(const app_loop_config_t* config) {
                 held_key = -1;
                 ctx.consumed = true;
                 present_page(&ctx, current, &gesture, current->on_key_long(&ctx, key));
+            }
+        }
+        if (key2_pending) {
+            const bool on_key2 = touch.touched && touch.count == 1 && ui_key_hit_test(touch.x, touch.y) == UI_KEY_2;
+            if (ctx.request_app || ctx.request_menu || ctx.request_return || (touch.touched && !on_key2)) {
+                key2_pending = false;   // 滑走、多指或已经要切页 / Slid away, multi-touch, or already switching
+            } else if (on_key2 && ctx.now_ms - key2_since_ms >= UI_LONG_PRESS_MS) {
+                key2_pending = false;
+                ctx.consumed = true;
+                full_refresh(&ctx, current, menu_open, menu_leaf, &feedback);
+            } else if (!touch.touched) {
+                key2_pending = false;
+                ctx.consumed = true;
+                const app_desc_t* home = app_home_page();
+                if (!menu_open && current->owns_keys && current->on_key) {
+                    present_page(&ctx, current, &gesture, current->on_key(&ctx, UI_KEY_2));
+                } else if (menu_open && current == home) {
+                    menu_open = false;
+                    app_present(&ctx, current, APP_REDRAW_PAGE);
+                } else if (current == home || current->holds_pmu) {
+                    full_refresh(&ctx, current, menu_open, menu_leaf, &feedback);
+                } else {
+                    ctx.request_app = home;
+                }
             }
         }
         if (!menu_open && !ctx.request_app && !ctx.request_menu && !ctx.request_return && current->on_tick != NULL) {

@@ -1772,7 +1772,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
         if (key == UI_KEY_1 || key == UI_KEY_3) {
             return resume_choice(ctx, key == UI_KEY_3);
         }
-        if (key == UI_KEY_2) { s_resume_path[0] = 0; ctx->request_menu = true; }
+        if (key == UI_KEY_2) { s_resume_path[0] = 0; ctx->request_app = tr_nav_tab_app(TR_TAB_HOME); }
         return APP_REDRAW_PAGE;
     }
     if (s_scan_pending || s_clear_confirm) return APP_REDRAW_NONE;
@@ -1791,7 +1791,8 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
             s_view = READING;
             s_toolbar = false;
         } else {
-            ctx->request_menu = true;
+            // 中键（home）短按回首页；阅读时它开关工具条。/ The home key goes home; while reading it toggles the toolbar.
+            ctx->request_app = tr_nav_tab_app(TR_TAB_HOME);
             return APP_REDRAW_NONE;
         }
         return APP_REDRAW_PAGE;
@@ -1803,12 +1804,6 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     if (next < 0 || next >= leaves()) return APP_REDRAW_NONE;
     ctx->leaf = next;
     return APP_REDRAW_PAGE;
-}
-static app_redraw_t on_key_long(app_ctx_t* ctx, int key) {
-    if (key != UI_KEY_2) return APP_REDRAW_NONE;
-    save_progress();
-    ctx->request_menu = true;
-    return APP_REDRAW_NONE;
 }
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->consumed) return APP_REDRAW_NONE;
@@ -1902,6 +1897,6 @@ const app_desc_t app_book = {
     .title = "书库", .detail = "TF 卡上的 TXT 与 EPUB", .enter_full = true, .owns_keys = true, .tab_nav = true,
     .render = render, .present = present, .on_enter = on_enter, .on_exit = book_on_exit,
     .on_media_lost = book_on_media_lost,
-    .on_gesture = gesture_event, .on_key = on_key, .on_key_long = on_key_long,
+    .on_gesture = gesture_event, .on_key = on_key,
     .on_tick = on_tick, .area_hint = area_hint,
 };
