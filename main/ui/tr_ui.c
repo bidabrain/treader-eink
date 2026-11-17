@@ -264,8 +264,8 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    static const char* const labels[TR_TAB_COUNT] = {"首页", "书库", "番茄", "设置"};
-    static const tr_icon_t icons[TR_TAB_COUNT] = {TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS};
+    static const char* const labels[TR_TAB_COUNT] = {"书库", "番茄", "设置"};
+    static const tr_icon_t icons[TR_TAB_COUNT] = {TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS};
     epd_fill_rect(tr_tab_area(), UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
     const int cell = TR_W / TR_TAB_COUNT;

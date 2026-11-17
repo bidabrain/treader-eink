@@ -9,16 +9,15 @@
 
 #include "app_registry.h"
 
-extern const app_desc_t app_tr_home;
 extern const app_desc_t app_book;
 extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
 extern const app_desc_t app_selftest;
 
-// 菜单（中键打开）只列四个主页面，和底部标签栏一致；传书、字体、睡眠等从“设置”进入。
-// The menu (KEY3) lists the four main pages, matching the tab bar; transfer, fonts, sleep etc. live under Settings.
+// 菜单只列三个主页面，和底部标签栏一致；传书、字体、睡眠等从“设置”进入。首页已并入书库（2026-11-17）。
+// The menu lists the three main pages, matching the tab bar; transfer, fonts, sleep etc. live under Settings.
+// Home was merged into the library (2026-11-17).
 static const app_desc_t* const s_apps[] = {
-    &app_tr_home,
     &app_book,
     &app_tr_tomato,
     &app_tr_settings,
@@ -42,9 +41,9 @@ int app_index_of(const app_desc_t* app) {
     return -1;
 }
 
-// 开机和回退的默认页是首页。/ Boot and fallback page is Home.
+// 开机、回退和中键（home）的目标是书库。/ Boot, fallback and the home key all lead to the library.
 const app_desc_t* app_home_page(void) {
-    return &app_tr_home;
+    return &app_book;
 }
 
 const app_desc_t* app_selftest_page(void) {

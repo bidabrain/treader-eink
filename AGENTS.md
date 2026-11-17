@@ -109,7 +109,7 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 - `on_touch()` / `on_gesture()` / `on_key()` / `on_tick()`：可有副作用，用返回值要刷屏。/ Side effects OK; return the redraw.
 - `on_key_long()` 可选：仅接管三键的页面在同键单指保持500ms后触发一次，原按下动作先执行；滑出、多点、读错、睡眠、字体重载或切页取消。/ Optional owned-key hold callback fires once at 500ms after the normal press; leaving, multitouch, read errors, sleep, font reload and page switches cancel.
 - `on_gesture()` 可选；提供后不再接收 `on_touch()`。主循环负责识别与全局中断取消，页面解释动作。/ Optional gesture callback replaces `on_touch`; the loop recognizes and cancels, the page interprets.
-- `on_key()` 默认只收 `UI_KEY_1`；`owns_keys` 页面在菜单关闭时接收 KEY1、KEY3（按下时）和 KEY2（短按松手时）。中键（home）短按默认回首页、长按 0.5 秒整屏刷新，都由主循环处理。/ Normally KEY1 only; `owns_keys` pages get KEY1/KEY3 on press and KEY2 on a short-press release outside the menu. The middle (home) key goes home on a short press and refreshes on a 500 ms hold, both handled by the loop.
+- `on_key()` 默认只收 `UI_KEY_1`；`owns_keys` 页面在菜单关闭时接收 KEY1、KEY3（按下时）和 KEY2（短按松手时）。中键（home）短按默认回主页（书库）、长按 0.5 秒整屏刷新，都由主循环处理。/ Normally KEY1 only; `owns_keys` pages get KEY1/KEY3 on press and KEY2 on a short-press release outside the menu. The middle (home) key goes to the home page (the library) on a short press and refreshes on a 500 ms hold, both handled by the loop.
 
 标志：
 

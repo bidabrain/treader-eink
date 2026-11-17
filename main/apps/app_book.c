@@ -14,7 +14,8 @@
  * 用户修订：单本管理为书架弹窗；管理页用于批量操作。分页和排序保留勾选，筛选/应用搜索及重扫清除勾选。
  * 失败进度仅按变更路径失效；删除后的清理重试保留到本次开机结束，不随切页释放。
  * 卡失效时先保存进度并关闭阅读资源，再由主循环回退字体；禁止自动续读失效挂载。
- * 用户修订：进入书架只询问续读，确认前不打开上次图书，避免大书阻塞书架。
+ * Treader 修订（2026-11-17）：首页并入书库，书库是开机页。原来的续读弹窗换成书架顶部常驻的“继续阅读”卡片，点了才打开，
+ * 大书照样不会在进书架时阻塞；番茄有更新时状态行右侧提示，点了去番茄页。中键（home）在书架上回第一页，已在第一页则整屏刷新。
  * 用户修订：图片点击后才加载，预览返回不改变正文分页；只缓存当前章节最近查看的一幅图，已读重复位置不冒充全书首次位置。
  * Frozen: Phase4b uses the shared gesture entry and owns previous/tools/next keys; the toolbar keeps full refresh and the middle-key hold or handle opens the demo menu. Screen turns commit on release without pressed decoration.
  * Shake is experimental, off by default, forward only; exit disables AOI2 and sleeps it. Render only paints.
@@ -25,7 +26,10 @@
  * User revision: single-book actions use a shelf dialog; full management is for batches. Paging/sorting preserve selection; filtering/applied search and rescanning clear it.
  * Invalidate failed progress only for changed paths; retain deletion cleanup retries across page exits for this boot.
  * Lost media saves progress and closes reader resources before global font fallback; never auto-resume an invalid mount.
- * User revision: offer resume on shelf entry; open the previous book only after confirmation to keep the shelf available.
+ * Treader revision (2026-11-17): Home merged into the library, which is now the boot page. The resume dialog is replaced
+ * by a persistent "continue reading" card at the top of the shelf that opens only on a tap, so a large book still never
+ * blocks shelf entry; pending Tomato updates show on the right of the status line and lead to the Tomato page. On the
+ * shelf the home key returns to page one, or does a full refresh when already there.
  * User revision: load images only after a tap and return without repagination; cache one viewed image in the current chapter and distinguish visited-chapter origins from the first occurrence in the whole book.
  * Treader 修订：书架和阅读工具条改成 RickyOS 风格（docs/design/ui.html），书架带底部标签栏；工具条的晃动开关换成“菜单”入口，
  * 去掉阅读页常驻菜单把手。番茄下载的书显示书名、作者和新章节数。功能和交互逻辑不变。
@@ -73,7 +77,7 @@
 #include "ui_gesture.h"
 #include "ui_menu.h"
 
-#define BOOK_ROWS 5
+#define BOOK_ROWS 4   // 给“继续阅读”卡片让出位置 / Leaves room for the continue card
 #define BOOK_TOC_ROWS 10
 #define BOOK_PX_MIN 36
 #define BOOK_PX_MAX 72
@@ -85,6 +89,11 @@
 #define SHELF_ROW_TOP 290
 #define SHELF_ROW_H 140
 #define SHELF_PAGER_Y 1010
+#define CARD_TOP 284
+#define CARD_H 136
+#define CARD_ROWS_TOP 436   // 有卡片时书目从这里开始 / Rows start here when the card shows
+#define CONTROL_CARD 130
+#define CONTROL_TOMATO_HINT 117
 #define TOOL_PANEL_Y 760
 #define BOOK_TOOL_ROWS 2
 
@@ -138,6 +147,8 @@ static int64_t s_save_retry_ms;
 static unsigned s_store_revision;
 static bool s_scan_pending, s_resume_pending, s_toolbar, s_clear_confirm;
 static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
+// 最近读的那本，扫描书架时从进度记录取。/ Most recently read book, taken from progress records at each scan.
+static char s_continue[BOOK_STORE_PATH_MAX];
 // 别的页面要求直接打开的书（首页“接着读”、番茄书架）。/ Book another page asked to open directly (Home, Tomato).
 static char s_open_request[BOOK_STORE_PATH_MAX];
 
@@ -221,9 +232,31 @@ static EpdRect progress_rect(void) {
     EpdRect b = ui_bar_rect(0, 1);
     return (EpdRect){b.x, UI_BAR_TOP, b.width, UI_BAR_H};
 }
+// “继续阅读”卡片对应的书在 s_shelf 里的下标，没有返回 -1。/ Shelf index of the continue-card book, or -1.
+static int continue_index(void) {
+    if (!s_continue[0]) return -1;
+    for (int i = 0; i < s_count; ++i)
+        if (!s_shelf[i].removed && !strcmp(s_shelf[i].path, s_continue)) return i;
+    return -1;
+}
+// 卡片只在普通书架、没在搜索时显示。/ The card shows on the plain shelf only, not while searching.
+static bool card_shown(void) {
+    return s_view == SHELF && !s_query[0] && continue_index() >= 0;
+}
+static EpdRect card_rect(void) { return (EpdRect){UI_MARGIN, CARD_TOP, ui_content_width(), CARD_H}; }
+static EpdRect tomato_hint_rect(void) { return (EpdRect){UI_LOCK_WIDTH / 2, 146, UI_LOCK_WIDTH / 2 - UI_MARGIN, 52}; }
+// 番茄书架上有新章节的本数。/ Tomato books with new chapters.
+static int tomato_pending(void) {
+    int n = 0;
+    for (int i = 0; i < s_count; ++i) n += s_shelf[i].new_chapters > 0;
+    return n;
+}
+// 状态行右侧的番茄更新提示只在没有别的提示时出现。/ The Tomato hint shows only when the status line has nothing else to say.
+static bool tomato_hint_shown(void);
 static EpdRect row_rect(int row, bool toc) {
     if (toc) return (EpdRect){UI_MARGIN, 210 + row * 88, ui_content_width(), 84};
-    return (EpdRect){UI_MARGIN, SHELF_ROW_TOP + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - 12};
+    const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
+    return (EpdRect){UI_MARGIN, top + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - 12};
 }
 // 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 清残影、5 书架、6 顶部返回。
 // Toolbar: 0 TOC, 1 size-, 2 size+, 3 menu, 4 full refresh, 5 shelf, 6 top back.
@@ -702,6 +735,10 @@ static void shelf_display_title(const shelf_entry_t* e, char* out, size_t cap) {
     char* dot = strrchr(out, '.');
     if (dot && dot != out) *dot = 0;
 }
+static bool tomato_hint_shown(void) {
+    const char* note = s_message[0] ? s_message : s_shelf_warning;
+    return s_view == SHELF && !s_save_failed && !note[0] && tomato_pending() > 0;
+}
 static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     ui_clear_page(fb);
     tr_status_bar(fb);
@@ -716,7 +753,14 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     else if (note[0]) copy_text(line, sizeof(line), note);
     else if (s_view == BULK) snprintf(line, sizeof(line), "已选 %u 本 · 筛选或重扫会清除勾选", (unsigned)selected_count());
     else snprintf(line, sizeof(line), "%d 本 · %s", s_visible_count, s_recent_sort ? "按最近阅读" : "按书名");
-    tr_fit(line, 28, ui_content_width());
+    int line_w = ui_content_width();
+    if (tomato_hint_shown()) {
+        char hint[48];
+        snprintf(hint, sizeof(hint), "番茄 %d 本有更新 ›", tomato_pending());
+        tr_text(fb, UI_LOCK_WIDTH - UI_MARGIN, 156, 28, hint, EPD_DRAW_ALIGN_RIGHT, true);
+        line_w -= ttf_text_width_px(28, hint) + 24;
+    }
+    tr_fit(line, 28, line_w);
     tr_text(fb, UI_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT, false);
 
     // 书都在 TF 卡上，筛选改成按来源。/ All books are on the card, so filter by source instead.
@@ -730,7 +774,26 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         tr_pill(fb, chip_rect(3), chip, true, 26);
     }
 
-    if (s_count && !s_visible_count) tr_text(fb, UI_MARGIN, SHELF_ROW_TOP + 20, 30, "当前筛选没有图书", EPD_DRAW_ALIGN_LEFT, false);
+    if (card_shown()) {
+        // 继续阅读卡片：小封面、书名、进度。/ Continue card: small cover, title, progress.
+        const shelf_entry_t* e = &s_shelf[continue_index()];
+        const EpdRect c = card_rect();
+        if (s_pressed_control == CONTROL_CARD) ui_draw_selected_round_rect(fb, c, UI_BTN_RADIUS);
+        else ui_draw_round_rect(fb, c, UI_BTN_RADIUS, UI_GRAY_BLACK);
+        char title[128], pct[16];
+        shelf_display_title(e, title, sizeof(title));
+        const bool done = e->has_progress && e->pct >= 100;
+        tr_book_mini_cover(fb, (EpdRect){c.x + 16, c.y + 20, 70, 96}, e->path, title, done);
+        const int tx = c.x + 108, right = c.x + c.width - 20, tw = right - tx;
+        tr_text(fb, tx, c.y + 14, 24, "继续阅读", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text(fb, right, c.y + 14, 24, "接着读 →", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_fit(title, 32, tw);
+        tr_text(fb, tx, c.y + 46, 32, title, EPD_DRAW_ALIGN_LEFT, true);
+        snprintf(pct, sizeof(pct), "%u%%", e->has_progress ? e->pct : 0);
+        tr_progress(fb, tx, c.y + 108, tw - 80, e->has_progress ? e->pct : 0);
+        tr_text(fb, right, c.y + 94, 26, pct, EPD_DRAW_ALIGN_RIGHT, false);
+    }
+    if (s_count && !s_visible_count) tr_text(fb, UI_MARGIN, row_rect(0, false).y + 20, 30, "当前筛选没有图书", EPD_DRAW_ALIGN_LEFT, false);
     for (int row = 0; row < BOOK_ROWS; ++row) {
         int i = ctx->leaf * BOOK_ROWS + row;
         if (i >= s_visible_count) break;
@@ -1145,6 +1208,9 @@ static void annotate_tomato(void) {
     heap_caps_free(t);
 }
 static void scan_shelf(app_ctx_t* ctx) {
+    book_progress_recent_t last;
+    s_continue[0] = 0;
+    if (book_progress_recent(&last, 1) == 1) copy_text(s_continue, sizeof(s_continue), last.path);
     s_count = 0;
     s_visible_count = 0;
     s_message[0] = 0;
@@ -1528,6 +1594,14 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             retry_progress();
             return APP_REDRAW_PAGE;
         }
+        if (tomato_hint_shown() && ui_rect_hit(tomato_hint_rect(), x, y)) {
+            ctx->request_app = tr_nav_tab_app(TR_TAB_TOMATO);
+            return APP_REDRAW_NONE;
+        }
+        if (card_shown() && ui_rect_hit(card_rect(), x, y)) {
+            open_book(ctx, s_shelf[continue_index()].path);
+            return APP_REDRAW_PAGE;
+        }
         if (s_view == SHELF && tr_nav_touch(ctx, x, y, TR_TAB_LIBRARY)) return APP_REDRAW_NONE;
     }
     int nav = nav_hit(x, y);
@@ -1570,11 +1644,8 @@ static void on_enter(app_ctx_t* ctx) {
     s_count = 0;
     s_px = app_settings_book_px();
     s_scan_pending = true;
-    // 书库是标签页，切过来很频繁：续读弹窗只在开机后第一次进入时问。
-    // The library is a tab visited often: offer resume only on the first entry after boot.
-    static bool resume_offered;
-    s_resume_pending = !resume_offered;
-    resume_offered = true;
+    // 续读弹窗不再出现：书架顶部的“继续阅读”卡片代替它。/ No resume dialog: the continue card replaces it.
+    s_resume_pending = false;
     // 传书页已停止并 join HTTP，安全注销且只丢弃对应路径的旧进度。
     // Transfer has stopped and joined HTTP; safely unregister only invalidated paths.
     pending_drop_invalidated();
@@ -1692,6 +1763,10 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         if (ui_rect_hit(*rect, x, y)) return 115;
         *rect = save_retry_rect();
         if (s_view == SHELF && s_save_failed && ui_rect_hit(*rect, x, y)) return 116;
+        *rect = tomato_hint_rect();
+        if (tomato_hint_shown() && ui_rect_hit(*rect, x, y)) return CONTROL_TOMATO_HINT;
+        *rect = card_rect();
+        if (card_shown() && ui_rect_hit(*rect, x, y)) return CONTROL_CARD;
         if (s_view == SHELF) {
             int tab = tr_tab_hit(x, y);
             if (tab >= 0) { *rect = tr_tab_area(); return 120 + tab; }
@@ -1772,7 +1847,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
         if (key == UI_KEY_1 || key == UI_KEY_3) {
             return resume_choice(ctx, key == UI_KEY_3);
         }
-        if (key == UI_KEY_2) { s_resume_path[0] = 0; ctx->request_app = tr_nav_tab_app(TR_TAB_HOME); }
+        if (key == UI_KEY_2) s_resume_path[0] = 0;
         return APP_REDRAW_PAGE;
     }
     if (s_scan_pending || s_clear_confirm) return APP_REDRAW_NONE;
@@ -1791,9 +1866,10 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
             s_view = READING;
             s_toolbar = false;
         } else {
-            // 中键（home）短按回首页；阅读时它开关工具条。/ The home key goes home; while reading it toggles the toolbar.
-            ctx->request_app = tr_nav_tab_app(TR_TAB_HOME);
-            return APP_REDRAW_NONE;
+            // 书库就是主页：中键（home）回书架第一页，已在第一页就整屏刷新。阅读时它开关工具条。
+            // The library is home: the home key returns to page one, or refreshes fully when already there.
+            if (ctx->leaf != 0) { ctx->leaf = 0; return APP_REDRAW_PAGE; }
+            return APP_REDRAW_FULL;
         }
         return APP_REDRAW_PAGE;
     }

@@ -29,10 +29,10 @@ extern "C" {
 #define TR_STATUS_Y 22
 #define TR_TITLE_Y 88
 #define TR_TABS_Y 1094
-#define TR_TAB_COUNT 4
+#define TR_TAB_COUNT 3
 #define TR_GRAY_LINE 0xC0
 
-typedef enum { TR_TAB_HOME = 0, TR_TAB_LIBRARY, TR_TAB_TOMATO, TR_TAB_SETTINGS } tr_tab_t;
+typedef enum { TR_TAB_LIBRARY = 0, TR_TAB_TOMATO, TR_TAB_SETTINGS } tr_tab_t;
 
 typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,

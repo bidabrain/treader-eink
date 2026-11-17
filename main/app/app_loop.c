@@ -15,7 +15,7 @@
  * 且必须提供强刷和 request_menu 入口；把手仍按下即触发。
  * 接管页可选长按键回调，保留按下行为；同键单指500ms仅触发一次，中断取消。
  * 冻结（Treader，2026-11-17 改）：中键印着 home 图标，改为短按回首页、长按 0.5 秒整屏刷新；松手或按满才判定。
- * 原先短按即整屏刷新，和按键图标不符。首页、holds_pmu 页（升级、自检）短按仍是刷新，不会被中途带走。
+ * 原先短按即整屏刷新，和按键图标不符。首页（2026-11-17 起是书库）、holds_pmu 页（升级、自检）短按仍是刷新，不会被中途带走。
  * owns_keys 页在松手时以 KEY2 收到短按（书库阅读时用来开关工具条），长按刷新由主循环统一处理。
  * Frozen (Treader, changed 2026-11-17): the middle key carries a home icon, so a short press goes home and a
  * 500 ms hold does the full refresh, decided on release or at 500 ms. Formerly a press refreshed, which did not
