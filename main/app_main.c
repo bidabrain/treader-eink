@@ -9,6 +9,7 @@
  * is unset, the factory page blocks first. Then control goes to app_loop.
  */
 
+#include "esp_ota_ops.h"
 #include <stdint.h>
 
 #include "app_loop.h"
@@ -96,6 +97,11 @@ void app_main(void) {
     if (hw.pmu_ready && !vcom_ok) {
         vcom_setup_run(&hl, framebuffer, hw.touch);
     }
+
+    // Treader：屏幕、触摸都起来了才算这版固件可用；TF 卡升级后没走到这里就会在下次复位时退回旧版本。
+    // Treader: the app counts as good only once display and touch are up; a TF-upgraded app that never gets
+    // here is rolled back on the next reset.
+    esp_ota_mark_app_valid_cancel_rollback();
 
     app_loop_run(&(app_loop_config_t){
         .hl = &hl,

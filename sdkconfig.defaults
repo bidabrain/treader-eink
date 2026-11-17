@@ -51,3 +51,5 @@ CONFIG_HTTPD_MAX_URI_LEN=1024
 # Treader：允许把大的静态数组放进 PSRAM（EXT_RAM_BSS_ATTR），给 Wi-Fi 和 TLS 留出内部 RAM。
 # Treader: allow large static arrays in PSRAM (EXT_RAM_BSS_ATTR) to keep internal RAM for Wi-Fi and TLS.
 CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+# Treader：TF 卡升级后新固件起不来就退回旧版本。/ Roll back to the previous app if a TF-upgraded one fails to boot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

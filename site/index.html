@@ -71,9 +71,9 @@
     <h2><span class="step">2</span>选择方式</h2>
     <div class="modes">
       <label class="mode" id="modeUpgrade"><input type="radio" name="mode" value="upgrade" checked>
-        <span><b>升级</b>（推荐）<small>只写主程序，最快。Wi-Fi、阅读进度、壁纸等设置都保留。</small></span></label>
+        <span><b>升级</b>（推荐）<small>只写主程序，最快。Wi-Fi、阅读进度、壁纸等设置都保留。设备用的是旧分区表（2026-11-17 以前的版本）时请选“完整安装”。</small></span></label>
       <label class="mode" id="modeFull"><input type="radio" name="mode" value="full">
-        <span><b>完整安装</b><small>写入引导程序、分区表和主程序，跳过设置区，设置仍保留。第一次刷 Treader 时用这个。</small></span></label>
+        <span><b>完整安装</b><small>写入引导程序、分区表和主程序，跳过设置区，设置仍保留。第一次刷 Treader、或者分区表有变化时用这个。</small></span></label>
     </div>
     <label class="erase"><input type="checkbox" id="erase">
       <span><b>擦除设备</b>：先清空整片 Flash 再完整写入。会删除 Wi-Fi、阅读进度等所有设置（TF 卡不受影响）。只在从其他第三方固件换过来、或系统出问题时勾选。</span></label>
@@ -94,7 +94,8 @@
     <ul>
       <li>用 USB-C 数据线连接小纸 Pico，点“连接设备并开始”，在弹窗里选设备的串口（通常叫 USB JTAG/serial debug unit）。</li>
       <li>写入约 1～2 分钟，<b>完成前不要拔线</b>。完成后设备会自动重启。</li>
-      <li>连接不上：按住 BOOT 键再插 USB 线，进入下载模式后重试；或者换一根能传数据的线。</li>
+      <li>小纸 Pico <b>没有 BOOT 键</b>，不用按任何键，网页会通过 USB 自动让设备进入下载模式。设备要先开机（锁屏选“关机”时 USB 不工作）。</li>
+      <li>连接不上：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。</li>
       <li>固件文件来自你自己编译的 <code>build/treader-full.bin</code>（或 <code>build/Read_Pico.bin</code>）。页面会核对文件头，确认是给 ESP32-S3 的 Treader 固件才允许写入。</li>
       <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库），详见 <a href="https://github.com/bidabrain/treader-eink#快速开始">项目说明</a>。</li>
     </ul>
@@ -112,6 +113,10 @@ import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.
 const NVS_OFFSET = 0x9000;
 const APP_OFFSET = 0x10000;
 const PT_OFFSET = 0x8000;
+// 启动选择区：写完程序把它擦成全 FF，设备才会从刚写的第一个程序槽启动。
+// otadata: blank it after writing so the device boots the slot just written.
+const OTADATA_OFFSET = 0xe10000;
+const OTADATA_SIZE = 0x2000;
 
 const $ = (id) => document.getElementById(id);
 let image = null;   // { bytes, kind: "merged" | "app", app }
@@ -176,7 +181,8 @@ function analyse(bytes) {
   if (bytes.length - APP_OFFSET > app.size) throw new Error("主程序比分区还大。");
   const desc = readApp(bytes, APP_OFFSET);
   if (!desc) throw new Error("0x10000 处不是有效的主程序。");
-  return { kind: "merged", app: desc, parts };
+  const ota = parts.find((p) => p.type === 1 && p.subtype === 0);
+  return { kind: "merged", app: desc, parts, otadata: ota ? { offset: ota.offset, size: ota.size } : null };
 }
 
 function showInfo(file, res) {
@@ -252,8 +258,17 @@ function plan() {
   return { erase: false, files: [{ data: b.slice(APP_OFFSET), address: APP_OFFSET }], label: "升级主程序" };
 }
 
+// 不擦整片时补一段全 FF 的启动选择区。旧分区表没有它，那片地址也没被使用，写 FF 无害。
+// Without a full erase, blank otadata too. Old layouts have none there and the area is unused, so FF is harmless.
+function withOtadata(p) {
+  if (p.erase) return p;
+  const ota = (image.kind === "merged" && image.otadata) || { offset: OTADATA_OFFSET, size: OTADATA_SIZE };
+  p.files.push({ data: new Uint8Array(ota.size).fill(0xff), address: ota.offset });
+  return p;
+}
+
 $("go").addEventListener("click", async () => {
-  const p = plan();
+  const p = withOtadata(plan());
   if (p.erase && !confirm("会清空设备上的所有设置（Wi-Fi、阅读进度等），确定继续？")) return;
   $("go").disabled = true;
   $("log").textContent = "";
@@ -292,7 +307,7 @@ $("go").addEventListener("click", async () => {
     const msg = e && e.message ? e.message : String(e);
     log("错误：" + msg);
     if (/No port selected|requestPort/i.test(msg)) setStatus("没有选择设备", "warn");
-    else setStatus("失败：" + msg + "。可以按住 BOOT 键重新插线后再试。", "bad");
+    else setStatus("失败：" + msg + "。换根数据线、关掉其他占用串口的程序，或拔插 USB 后再试。", "bad");
   } finally {
     try { if (transport) await transport.disconnect(); } catch (_) {}
     refreshModes();

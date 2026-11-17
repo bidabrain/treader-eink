@@ -31,6 +31,7 @@
 | 设置 → TF 卡：状态、重新挂载、格式化（两步确认）并建好文件夹 | 完成 |
 | 拔卡不崩、重新插卡自动挂载；书和图片只存 TF 卡 | 完成，见下文 |
 | 书城：FanqieRankTracker 榜单，频道/分类/榜单/详情，直接下载到书库 | 完成，见下文 |
+| 分区表改成两个 7 MB 程序槽；TF 卡升级，起不来自动退回 | 完成，见下文 |
 
 ## 其他行为说明
 
@@ -48,7 +49,7 @@
   原图先被解码器限制在 648×1000 以内再放大，所以大图会略软。锁屏时壁纸铺满，底部白条写在读的书、进度和电量；
   缓存丢了（比如换卡）会在屏幕上电前重建。路径存在 NVS，图片被删就退回书卡。
 - **书和图片只放 TF 卡**：系统 flash 只放固件、设置和阅读进度（NVS）。官方固件没卡时会把书放进内置 5 MB 的 storage
-  分区，Treader 不再挂这个分区：没卡时书库提示插卡，传书页不开始传。书库的筛选改成 全部 / 番茄 / 其他书。
+  分区，Treader 去掉了这个分区（空间给了两个程序槽）：没卡时书库提示插卡，传书页不开始传。书库的筛选改成 全部 / 番茄 / 其他书。
 - **TF 卡管理**：设置 → TF 卡。格式化要先点“清空并格式化”，再点一次“再点一次确认”；同步进行中不允许。
   格式化前切回内置字体、释放封面缓存和词库，格式化后建好 `books fonts ime wallpapers tomato` 并写一份 `README.txt`，
   清掉壁纸设置。字体和词库要从电脑重新复制。
@@ -59,6 +60,19 @@
     卡上的字体由定期重试恢复。坏卡或没格式化的卡挂载失败后不会反复重试，拔出再插或到设置 → TF 卡处理。
   - 这些都只做了代码检查，**还没在真机上拔插测试**。
 - **键盘**：语言键在 全拼 → 九键 → 英文 之间循环，“123”切数字符号。书库搜索默认英文（匹配拼音首字母），番茄搜索默认全拼。
+
+## 系统升级（TF 卡）
+
+- 分区表（`partitions_16M.csv`）：nvs 0x9000、phy_init 0xE000 不变；ota_0 0x10000 和 ota_1 0x710000 各 7 MB；otadata 0xE10000。
+  没有 factory 分区。`sdkconfig.defaults` 打开了 `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`。
+- 入口：设置 → 关于 Treader → “版本”那一行。页面扫描 TF 卡 `update/` 和根目录的 `.bin`（最多 8 个），检查文件头：
+  ESP32-S3（chip id 9）、工程名 Read_Pico、大小不超过程序槽。`Read_Pico.bin` 和合并镜像都能用，合并镜像只取 0x10000 之后的主程序。
+- 写入在 `on_tick` 里分块做（每次 32 KB，边擦边写），每 5% 局部刷新进度条；`esp_ota_end` 校验通过后切换启动分区并重启。
+  本页设了 `holds_pmu` 和 `blocks_idle_sleep`，升级时电源键不锁屏、不自动睡眠。电量低于 30% 且没充电、或后台同步在跑时拒绝开始。
+  拔卡会取消升级，当前版本不受影响。
+- 回退：`app_main` 在屏幕和触摸都起来、进入主循环前调用 `esp_ota_mark_app_valid_cancel_rollback()`。新固件没走到这一步就复位的话，
+  引导程序下次启动会退回旧槽。
+- 网页刷机写完程序会把 otadata 擦成全 FF，保证从刚写入的 ota_0 启动（设备之前可能在 ota_1 上跑）。
 
 ## 书城
 
@@ -147,6 +161,7 @@ Wi-Fi 沿用系统“传书”页里保存的网络，不需要另外设置。
 | `components/tomato/tomato_webdav.c` | WebDAV 同步与合并规则。 |
 | `components/tomato/tomato_rank.c` | 书城榜单地址、TF 卡缓存和解析；联网在 `tomato_sync.c` 的 OP_RANK / OP_RANK_COVER。 |
 | `main/apps/app_tr_store.c` | 书城页：频道和分类、分类榜单、书籍详情。 |
+| `main/apps/app_tr_update.c` | 系统升级：扫描 TF 卡固件、分块写入另一个程序槽、校验后重启。 |
 | `main/book/book_cover.c` | 封面提取、缩略图缓存（TF 卡）和绘制，只在主任务调用。 |
 | `components/read_pico_transfer/` | 官方传书组件；新增 `read_pico_transfer_load_wifi()` 供番茄同步读取凭据。 |
 | `tools/ime/build_pico_ime_dictionary.py` | 重新生成拼音词库。 |
@@ -204,7 +219,7 @@ idf.py -B build-analyze -DTREADER_ANALYZE=1 build
 - WebDAV 没用 ETag，两台设备同时同步可能丢掉其中一方的这次更新（下次同步会补上）。
 - 番茄页进入时会对每本书做一次 `stat` 和 NVS 读取（64 本以内，约百毫秒级）。
 - 浅睡锁屏期间换卡，驱动看不到拔出，解锁后仍当成原来那张卡。默认锁屏是关机，不受影响；用浅睡时换卡请先解锁再换。
-- 分区表里官方的 5 MB `storage` 分区还在但不再使用（改分区要整片擦除，留到第一次刷机前决定是否改成 OTA 双分区）。
+- 用 esptool 把合并镜像整个写到 0x0 不会重置 otadata；设备上次从 ota_1 启动的话，新写的 ota_0 不会生效。命令行请用 `idf.py flash`。
 
 ## 界面代码
 

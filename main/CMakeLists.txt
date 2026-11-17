@@ -19,6 +19,7 @@ set(main_requires
     esp_driver_gpio
     esp_driver_usb_serial_jtag
     esp_app_format
+    app_update
 )
 idf_component_register(
     SRCS
@@ -43,6 +44,7 @@ idf_component_register(
         "apps/app_tr_wall.c"
         "apps/app_tr_card.c"
         "apps/app_tr_store.c"
+        "apps/app_tr_update.c"
         "apps/tr_lock.c"
         "apps/app_home.c"
         "apps/app_book.c"

@@ -32,6 +32,7 @@
 - WebDAV：同步阅读进度和番茄书架（坚果云、Nextcloud 等），只在点“立即同步”时运行
 - TF 卡管理：状态、重新挂载、两步确认的格式化（格式化后自动建好文件夹）
 - 拔卡不崩，重新插卡自动挂载；**书、图片和缓存只存 TF 卡**，系统 flash 只放固件和设置
+- TF 卡升级：把新固件放进 `update/`，在“关于 Treader”里升级；两个 7 MB 程序槽，新固件起不来自动退回旧版本
 - 联网时用 SNTP 对时并写进电源管理芯片的 RTC，断电后时间仍在
 
 界面设计稿：[系统与阅读](docs/design/ui.html)、[书城](docs/design/store.html)（下载后用浏览器打开）。
@@ -95,8 +96,26 @@ idf.py -p COM5 flash monitor
 ```
 
 - 从官方出厂固件升级不用擦除，Wi-Fi 等设置会保留。从其他第三方固件换过来，先整片擦除：`idf.py -p COM5 erase-flash flash monitor`。
-- **不要把合并镜像（`merge-bin` 生成的单文件）从 0x0 整个写进去**：中间的空隙会覆盖设置分区（NVS），清掉 Wi-Fi 和阅读进度。用 `idf.py flash`，或分别写 `bootloader.bin`（0x0）、`partition-table.bin`（0x8000）、`Read_Pico.bin`（0x10000）。
-- 连不上时按住 BOOT 键再插 USB，进入下载模式。
+- **不要用 esptool 把合并镜像（`merge-bin` 生成的单文件）从 0x0 整个写进去**：中间的空隙会覆盖设置分区（NVS），清掉 Wi-Fi 和阅读进度，而且不会重置启动选择区。命令行请用 `idf.py flash`（它会同时写 `ota_data_initial.bin`）；合并镜像交给网页刷机，网页会分段写入。
+- 小纸 Pico **没有 BOOT 键**，也不用按任何键：刷机工具通过 USB 自动让设备进入下载模式。设备要先开机（锁屏选“关机”时 USB 不工作）。
+- 连不上时依次试：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。Windows 上端口写 `COM5`，不要写成 `\\.\COM5`。
+
+合并镜像这样生成（网页刷机用）：
+
+```bash
+cd build
+python -m esptool --chip esp32s3 merge-bin -o treader-full.bin --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0x10000 Read_Pico.bin
+```
+
+### 以后升级：TF 卡
+
+有了 Treader 之后，不用再连电脑：
+
+1. 改 `CMakeLists.txt` 里的 `PROJECT_VER`（方便在设备上分辨新旧），编译。
+2. 把 `build/Read_Pico.bin`（或 `treader-full.bin`）复制到 TF 卡的 `update/` 文件夹。
+3. 设备上 设置 → 关于 Treader → 点“版本”那一行 → 选文件 → 开始升级。
+
+写入约 1 分钟，完成后自动重启；设置、进度和书都保留。电量低于 30% 且没在充电时不让升级。新固件写在另一个程序槽里，起不来会自动退回当前版本。
 
 ### 4. 第一次开机
 
@@ -224,6 +243,19 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 ## WebDAV 同步
 
 只在 设置 → 立即同步 时运行，同步**阅读进度**和**番茄书架**，书籍文件本身不传。它是 Treader 设备之间的同步，和安卓版的 WebDAV 数据互不相通。坚果云要用“应用密码”，不是登录密码。合并规则见 [docs/TREADER.md](docs/TREADER.md#webdav-同步)。
+
+## Flash 分区
+
+| 分区 | 地址 | 大小 | 用途 |
+| --- | --- | --- | --- |
+| nvs | 0x9000 | 20 KB | 设置、Wi-Fi、阅读进度 |
+| phy_init | 0xE000 | 4 KB | 射频校准 |
+| ota_0 | 0x10000 | 7 MB | 程序槽 1（目前固件约 3 MB） |
+| ota_1 | 0x710000 | 7 MB | 程序槽 2，TF 卡升级时写这里，两个槽轮流用 |
+| otadata | 0xE10000 | 8 KB | 记录从哪个槽启动 |
+| 未分配 | 0xE12000 | 约 1.9 MB | 预留 |
+
+和官方固件相比，NVS 的位置没变，所以从官方固件或旧版 Treader 换成这个分区表时设置可以保留，但要用“完整安装”（写入新分区表），不能只“升级”。书和图片不放内置 flash。
 
 ## 文档
 

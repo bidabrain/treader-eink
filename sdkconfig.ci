@@ -33,3 +33,5 @@ CONFIG_ESP_WIFI_IRAM_OPT=n
 CONFIG_ESP_WIFI_RX_IRAM_OPT=n
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=1024
+# Treader：TF 卡升级后新固件起不来就退回旧版本。/ Roll back to the previous app if a TF-upgraded one fails to boot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

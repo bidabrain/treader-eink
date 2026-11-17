@@ -41,6 +41,7 @@ extern const app_desc_t app_home;
 extern const app_desc_t app_selftest;
 extern const app_desc_t app_tr_wall;
 extern const app_desc_t app_tr_card;
+extern const app_desc_t app_tr_update;
 
 typedef enum {
     R_FONT, R_SLEEP, R_WALL, R_WIFI, R_SERVER, R_STORE, R_DAV, R_DAV_SYNC, R_CARD, R_ABOUT, R_COUNT
@@ -268,7 +269,8 @@ static void draw_about(uint8_t* fb) {
     tr_text(fb, 96, 100, 36, "关于 Treader", EPD_DRAW_ALIGN_LEFT, true);
     tr_text(fb, TR_MARGIN, 184, 60, "Treader", EPD_DRAW_ALIGN_LEFT, true);
     tr_text(fb, TR_MARGIN, 262, 28, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", EPD_DRAW_ALIGN_LEFT, false);
-    about_row(fb, 336, "版本", app->version);
+    snprintf(line, sizeof(line), "%.20s · TF 卡升级 ›", app->version);
+    about_row(fb, 336, "版本", line);
     tr_hline(fb, 390, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     snprintf(line, sizeof(line), "%s %s UTC", app->date, app->time);
     about_row(fb, 410, "构建时间", line);
@@ -434,6 +436,7 @@ static EpdRect area_hint(app_ctx_t* ctx) {
 static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     if (s_about) {
         if (touch->y < 160 && touch->x < 120) { s_about = false; return APP_REDRAW_PAGE; }
+        if (touch->y >= 320 && touch->y < 392) { ctx->request_app = &app_tr_update; return APP_REDRAW_NONE; }
         if (touch->y >= ABOUT_DEVICE_Y - 20 && touch->y < ABOUT_TEST_Y) ctx->request_app = &app_home;
         else if (touch->y >= ABOUT_TEST_Y && touch->y < ABOUT_TEST_Y + 80) ctx->request_app = &app_selftest;
         return APP_REDRAW_NONE;
