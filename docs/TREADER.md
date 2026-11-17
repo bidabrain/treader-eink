@@ -188,6 +188,7 @@ idf.py -p COM3 flash monitor
 ## 致谢与许可
 
 - 官方固件：MindReset，Apache-2.0；`components/epdiy` 为 LGPL-3.0；内置字体为 SIL OFL-1.1。
+- 界面风格参考 [RickyOS](https://dot.mindreset.tech/docs/read_0/start/rickyos)（Ricky AI Studio）；锁屏壁纸、图片封面、网页刷机、TF 卡升级的思路参考 [Take Easy](https://take-easy.pages.dev/)。只借鉴设计与思路，未使用其代码。
 - 拼音引擎算法与 PICOIME1 词库格式改编自 [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico)（XH Lab，Apache-2.0），见 `components/pinyin_ime/NOTICE`。
 - 词库数据来自 jieba 0.42.1 与 pypinyin 0.55.0（MIT），见 `sdcard/ime/licenses/`。
 - 番茄服务器接口与更新规则来自 Tomato-Novel 安卓版。

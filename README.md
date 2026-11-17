@@ -271,6 +271,8 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 | 项目 | 用途 |
 | --- | --- |
 | [MindReset/read_pico_firmware](https://github.com/MindReset/read_pico_firmware) | 官方示例固件，Treader 的底层（Apache-2.0） |
+| [RickyOS](https://dot.mindreset.tech/docs/read_0/start/rickyos)（Ricky AI Studio，[GitHub](https://github.com/chinoryunqin/RickyOS)） | 系统界面风格的参考：状态栏、底部标签页、细线与留白的排版 |
+| [Take Easy](https://take-easy.pages.dev/)（[GitHub](https://github.com/takeeasy-cui/take-easy-firmware)） | 功能思路的参考：锁屏壁纸、图片封面、网页刷机、TF 卡升级 |
 | [vroland/epdiy](https://github.com/vroland/epdiy) | 墨水屏驱动（LGPL-3.0） |
 | [zhongbai2333/Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) | 番茄小说下载服务器 |
 | [bidabrain/Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) | 安卓版番茄阅读器，接口与更新规则的来源 |
@@ -279,6 +281,8 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 | jieba、pypinyin | 拼音词库数据（MIT） |
 | 寒蝉端黑体 ChillDuanSans | 中文字体（SIL OFL-1.1） |
 | stb_truetype、stb_image、TJpgDec、cJSON | 字体渲染、图片解码、JSON 解析 |
+
+RickyOS 和 Take Easy 都是小纸 Pico 社区的优秀系统，Treader 只参考了它们的设计和功能思路，没有使用它们的代码。
 
 ## 许可
 
