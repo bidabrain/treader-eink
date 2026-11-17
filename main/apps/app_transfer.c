@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "comic_store.h"
 #include "book_store.h"
 #include "book_progress.h"
 #include "display.h"
@@ -371,13 +372,24 @@ static app_redraw_t provisioning_gesture(app_ctx_t* ctx, const ui_gesture_event_
 }
 
 static EpdRect status_rect(void) { return (EpdRect){UI_MARGIN, 610, ui_content_width(), 430}; }
-static uint64_t free_bytes(void* arg) { return book_store_free_bytes(arg); }
+// 上传按“剩余减预留”算，网页显示和接收检查用的是同一个数。/ Uploads see free space minus the reserve; the page and the
+// receive check use the same number.
+static uint64_t free_bytes(void* arg) { return book_store_upload_free_bytes(arg); }
+static uint64_t s_reserve;
+// 剩余和预留一起查好，绘制时不碰 FAT。/ Query free space and the reserve together so drawing never touches FAT.
+static void refresh_capacity(void) {
+    s_free = book_store_upload_free_bytes(&s_root);
+    s_reserve = book_store_upload_reserve(&s_root);
+}
+static uint64_t reserve_bytes(void* arg) { return book_store_upload_reserve(arg); }
 
 static void draw_capacity(uint8_t* fb) {
     char capacity[96];
     ui_clear_rect_fast(fb, (EpdRect){UI_MARGIN, 518, ui_content_width(), 42});
     if (s_media_lost) snprintf(capacity, sizeof(capacity), "TF 卡已移除，原存储已停用");
-    else snprintf(capacity, sizeof(capacity), "%s · 剩余 %.1f MB%s", s_root.is_flash ? "内置" : "TF 卡", s_free / 1048576.0, s_root.is_flash ? " · 单文件 ≤ 1 MB" : "");
+    else if (s_root.is_flash) snprintf(capacity, sizeof(capacity), "内置 · 剩余 %.1f MB · 单文件 ≤ 1 MB", s_free / 1048576.0);
+    else snprintf(capacity, sizeof(capacity), "TF 卡 · 可上传 %.1f MB（预留 %.0f MB）", s_free / 1048576.0,
+                  s_reserve / 1048576.0);
     ui_text(fb, UI_MARGIN, 528, UI_PX_CAPTION, capacity, EPD_DRAW_ALIGN_LEFT, false);
 }
 
@@ -545,14 +557,15 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         esp_err_t err = s_font_error == ESP_OK ? book_store_upload_root(&s_root) : s_font_error;
         if (err == ESP_OK) {
             s_media_lost = false;
-            s_free = book_store_free_bytes(&s_root);
+            refresh_capacity();
             read_pico_transfer_cfg_t cfg = {.mode = s_mode, .root_dir = s_root.path, .is_flash = s_root.is_flash,
-                .font_dir = s_root.is_flash ? NULL : "/sdcard/fonts",
+                .font_dir = s_root.is_flash ? NULL : "/sdcard/fonts", .comic_dir = s_root.is_flash ? NULL : COMIC_ROOT,
+                .reserve_bytes_cb = reserve_bytes,
                 .file_limit = book_store_file_limit(&s_root), .free_bytes_cb = free_bytes, .free_bytes_ctx = &s_root, .file_changed_cb = book_progress_forget};
             err = read_pico_transfer_start(&cfg);
             s_session_started = err == ESP_OK;
             read_pico_transfer_get_status(&s_status);
-            if (err == ESP_OK) s_free = book_store_free_bytes(&s_root);
+            if (err == ESP_OK) refresh_capacity();
         }
         s_status.mode = s_mode;
         if (err != ESP_OK) { s_status.state = READ_PICO_TRANSFER_ERROR; s_status.last_error = err; }
@@ -581,8 +594,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         (s_status.state == READ_PICO_TRANSFER_UPLOADING && next.state != READ_PICO_TRANSFER_UPLOADING);
     s_status = next;
     if (network_changed) prepare_qr();
-    if (s_settle) { s_free = book_store_free_bytes(&s_root); return APP_REDRAW_FULL; }
-    if (network_changed) { s_free = book_store_free_bytes(&s_root); return APP_REDRAW_PAGE; }
+    if (s_settle) { refresh_capacity(); return APP_REDRAW_FULL; }
+    if (network_changed) { refresh_capacity(); return APP_REDRAW_PAGE; }
     draw_status(ctx->fb);
     s_area = status_rect();
     return APP_REDRAW_AREA;

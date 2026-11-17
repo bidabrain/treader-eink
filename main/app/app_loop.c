@@ -49,6 +49,7 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
+#include "auto_turn.h"
 #include "ui_gesture.h"
 #include "pinyin_ime.h"
 #include "book_cover.h"
@@ -520,8 +521,9 @@ void app_loop_run(const app_loop_config_t* config) {
                     key2_pending = false;
                     last_input_ms = ctx.now_ms;
                 }
-            } else if (tomato_sync_busy()) {
-                // Treader：后台同步在跑就不自动锁屏。/ Treader: no idle lock while background sync runs.
+            } else if (tomato_sync_busy() || auto_turn_active()) {
+                // Treader：后台同步在跑、或正在定时自动翻页时不自动锁屏。/ Treader: no idle lock while background sync
+                // runs or pages are turning automatically.
                 last_input_ms = ctx.now_ms;
             } else if (ctx.now_ms >= s_lock_ignore_until_ms
                        && ctx.now_ms - last_input_ms >= APP_AUTO_SLEEP_MS) {

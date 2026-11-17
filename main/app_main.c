@@ -24,6 +24,7 @@
 #include "read_pico_pmu.h"
 #include "settings.h"
 #include "sleep.h"
+#include "tr_ui.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "vcom_setup.h"
@@ -70,6 +71,7 @@ void app_main(void) {
     read_pico_handle_t hw;
     if (read_pico_init(&hw) != ESP_OK) return;
     app_settings_init();
+    tr_tabs_set_hupu_hidden(app_settings_hide_hupu());
     const bool vcom_ok = resolve_vcom_at_boot();
     pmu_selftest_bind(hw.sensor);
     app_sleep_bind(hw.touch, hw.sensor);

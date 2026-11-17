@@ -56,5 +56,14 @@ typedef struct {
 /// 读写阅读排版，存 NVS（一个字节）。/ Get or set the reading layout, stored in NVS as one byte.
 app_book_style_t app_settings_book_style(void);
 void app_settings_set_book_style(const app_book_style_t* style);
+
+/// 隐藏虎扑：底部标签和菜单都不再列出虎扑。/ Hide Hupu: neither the tab bar nor the menu lists it.
+bool app_settings_hide_hupu(void);
+void app_settings_set_hide_hupu(bool on);
+
+/// 自动翻页档位（0 关，1～10 对应 3～30 秒），阅读和漫画各存一份。/ Auto-turn level (0 off, 1-10 = 3-30 s), kept
+/// separately for the reader and comics.
+uint8_t app_settings_auto_turn(bool comic);
+void app_settings_set_auto_turn(bool comic, uint8_t level);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);

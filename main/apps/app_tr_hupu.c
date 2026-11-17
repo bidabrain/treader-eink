@@ -58,7 +58,7 @@
 // 专区 / Zones
 #define ZONES_MAX 320
 #define CATS_MAX 20
-#define FOLLOWS_MAX 30
+#define FOLLOWS_MAX 12   // 和关注流一次取的专区数一致 / Matches the zones the follow feed reads
 #define CELL_W 192
 #define CELL_H 88
 #define CELL_STEP_X 206
@@ -314,8 +314,9 @@ static bool write_json(const char* path, cJSON* root) {
     bool ok = f && fwrite(text, 1, len, f) == len;
     if (f) ok = fclose(f) == 0 && ok;
     cJSON_free(text);
+    if (!ok) { remove(tmp); return false; }   // 写失败就保留旧文件 / Keep the old file when the write failed
     remove(path);
-    if (!ok || rename(tmp, path) != 0) { remove(tmp); return false; }
+    if (rename(tmp, path) != 0) { remove(tmp); return false; }
     return true;
 }
 
@@ -1600,9 +1601,11 @@ static app_redraw_t job_done(bool ok) {
         load_zone_list();
         return APP_REDRAW_PAGE;
     case TOMATO_HUPU_SCHEDULE:
-        if (strcmp(r->id, LEAGUES[s_league].id)) return APP_REDRAW_NONE;
+        // 只在比分页才重读：评分页正用着赛程里的那场比赛。/ Reload only on the score view; the rating view still uses a
+        // match from the current schedule.
+        if (strcmp(r->id, LEAGUES[s_league].id) || !(s_view == V_HOME && s_seg == SEG_SCORE)) return APP_REDRAW_NONE;
         load_schedule();
-        return s_view == V_HOME && s_seg == SEG_SCORE ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
+        return APP_REDRAW_PAGE;
     case TOMATO_HUPU_RATING:
         if (s_view != V_RATE) return APP_REDRAW_NONE;
         load_rating();
@@ -1618,8 +1621,9 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_poll_ms = ctx->now_ms;
     tr_time_poll();
     if (!s_job_active) return APP_REDRAW_NONE;
-    tomato_sync_get_status(&s_status);
+    // 先看是否还在忙，再取状态，免得拿到失败前的旧状态。/ Read busy first, then the status, so a failure is never missed.
     const bool busy = tomato_sync_busy();
+    tomato_sync_get_status(&s_status);
     // 推荐和帖子分两步：第 1 步（文字）写好就先显示。/ Feed and posts have two steps: show step 1 (text) as soon as ready.
     if (busy && !s_step_loaded && s_status.current >= 1 && s_status.phase != TOMATO_FAILED &&
         (s_job.job == TOMATO_HUPU_HOME || s_job.job == TOMATO_HUPU_POST)) {

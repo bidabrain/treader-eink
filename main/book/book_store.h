@@ -37,6 +37,15 @@ esp_err_t book_store_upload_root(book_store_root_t* out);
 size_t book_store_file_limit(const book_store_root_t* root);
 /// 查询实时剩余容量，错误返回 0。/ Query current free capacity, returning zero on error.
 uint64_t book_store_free_bytes(const book_store_root_t* root);
+/// TF 卡上传时至少留下的空间：100 MB 与卡容量 5% 取大者，给进度、缓存和番茄下载用。
+/// Space uploads must leave on the TF card: the larger of 100 MB and 5% of the card, kept for progress, caches and
+/// Tomato downloads.
+#define BOOK_STORE_RESERVE_MIN (100ULL * 1024ULL * 1024ULL)
+#define BOOK_STORE_RESERVE_PCT 5
+/// 这张卡的预留字节数；内置存储为 0。/ Reserved bytes for this card; zero for internal storage.
+uint64_t book_store_upload_reserve(const book_store_root_t* root);
+/// 上传可用的字节：剩余减去预留，不够时为 0。/ Bytes uploads may use: free minus the reserve, zero when short.
+uint64_t book_store_upload_free_bytes(const book_store_root_t* root);
 /// 仅查询内置分区是否已挂载，不触发挂载。/ Inspect flash mount state without mounting.
 bool book_store_flash_ready(void);
 /// 仅删除已挂载书根内的直接 TXT/EPUB 普通文件，然后清对应进度及 last。

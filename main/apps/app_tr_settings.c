@@ -21,6 +21,7 @@
 #include "esp_heap_caps.h"
 #include "read_pico_sd.h"
 #include "read_pico_transfer.h"
+#include "settings.h"
 #include "tomato.h"
 #include "tr_kbd.h"
 #include "tr_lock.h"
@@ -31,7 +32,7 @@
 #include "ui_kit.h"
 #include "ui_menu.h"
 
-#define ROW_H 70
+#define ROW_H 66
 #define POLL_MS 500
 
 extern const app_desc_t app_font_pick;
@@ -44,7 +45,7 @@ extern const app_desc_t app_tr_card;
 extern const app_desc_t app_tr_update;
 
 typedef enum {
-    R_FONT, R_SLEEP, R_WALL, R_WIFI, R_SERVER, R_STORE, R_DAV, R_DAV_SYNC, R_CARD, R_ABOUT, R_COUNT
+    R_FONT, R_HUPU, R_SLEEP, R_WALL, R_WIFI, R_SERVER, R_STORE, R_DAV, R_DAV_SYNC, R_CARD, R_ABOUT, R_COUNT
 } row_id_t;
 
 typedef struct {
@@ -54,16 +55,17 @@ typedef struct {
 } row_t;
 
 static const row_t ROWS[R_COUNT] = {
-    [R_FONT] = {"阅读", "字体", 190},
-    [R_SLEEP] = {"电源", "睡眠与锁屏", 304},
-    [R_WALL] = {NULL, "锁屏壁纸", 374},
-    [R_WIFI] = {"连接", "Wi-Fi 与传书", 488},
-    [R_SERVER] = {NULL, "番茄服务器", 558},
-    [R_STORE] = {NULL, "书城榜单", 628},
-    [R_DAV] = {"同步", "WebDAV", 742},
-    [R_DAV_SYNC] = {NULL, "立即同步", 812},
-    [R_CARD] = {"设备", "TF 卡", 926},
-    [R_ABOUT] = {NULL, "关于 Treader", 996},
+    [R_FONT] = {"阅读与显示", "字体", 190},
+    [R_HUPU] = {NULL, "隐藏虎扑", 256},
+    [R_SLEEP] = {"电源", "睡眠与锁屏", 362},
+    [R_WALL] = {NULL, "锁屏壁纸", 428},
+    [R_WIFI] = {"连接", "Wi-Fi 与传书", 534},
+    [R_SERVER] = {NULL, "番茄服务器", 600},
+    [R_STORE] = {NULL, "书城榜单", 666},
+    [R_DAV] = {"同步", "WebDAV", 772},
+    [R_DAV_SYNC] = {NULL, "立即同步", 838},
+    [R_CARD] = {"设备", "TF 卡", 944},
+    [R_ABOUT] = {NULL, "关于 Treader", 1010},
 };
 
 // 编辑步骤：番茄（地址→密码）、WebDAV（地址→用户名→密码）。
@@ -156,6 +158,7 @@ static void row_value(row_id_t id, char* out, size_t cap) {
     switch (id) {
     case R_FONT: snprintf(out, cap, "%s ›", ttf_font_is_builtin() ? "内置字体" : ttf_font_display_name()); break;
     case R_SLEEP: snprintf(out, cap, "›"); break;
+    case R_HUPU: snprintf(out, cap, app_settings_hide_hupu() ? "已开启（四个标签）" : "关闭"); break;
     case R_WIFI: snprintf(out, cap, "%s ›", s_wifi[0] ? s_wifi : "未设置"); break;
     case R_SERVER: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
@@ -400,6 +403,14 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             if (tomato_sync_start_webdav() == ESP_OK) s_syncing = true;
             return APP_REDRAW_PAGE;
         case R_ABOUT: s_about = true; return APP_REDRAW_PAGE;
+        case R_HUPU: {
+            // 标签栏整条变了，整屏刷新。/ The whole tab bar changes, so refresh the full screen.
+            const bool hide = !app_settings_hide_hupu();
+            app_settings_set_hide_hupu(hide);
+            tr_tabs_set_hupu_hidden(hide);
+            snprintf(s_message, sizeof(s_message), hide ? "虎扑已隐藏" : "虎扑已显示");
+            return APP_REDRAW_FULL;
+        }
         case R_WALL: ctx->request_app = &app_tr_wall; break;
         case R_CARD: ctx->request_app = &app_tr_card; break;
         default: break;

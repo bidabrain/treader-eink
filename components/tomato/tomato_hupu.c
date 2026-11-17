@@ -26,6 +26,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "tomato_internal.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #define TAG "tomato_hupu"
 #define PAGE_MAX (1024 * 1024)       // 移动版页面约 100–200 KB / Mobile pages are ~100-200 KB
@@ -43,6 +45,32 @@ static const char HOME_URL[] = "https://m.hupu.com/";
 
 /* ---- 路径 / Paths ---- */
 
+// 虎扑缓存锁：后台清理删文件时，界面任务不能正开着同一批文件（FatFs 没开文件锁）。
+// Hupu cache lock: the worker must not delete files the UI task has open (FatFs file locking is off).
+static SemaphoreHandle_t s_cache_lock;
+static StaticSemaphore_t s_cache_lock_buf;
+static portMUX_TYPE s_cache_lock_init = portMUX_INITIALIZER_UNLOCKED;
+
+void tomato_hupu_cache_lock(void) {
+    portENTER_CRITICAL(&s_cache_lock_init);
+    if (!s_cache_lock) s_cache_lock = xSemaphoreCreateMutexStatic(&s_cache_lock_buf);
+    portEXIT_CRITICAL(&s_cache_lock_init);
+    xSemaphoreTake(s_cache_lock, portMAX_DELAY);
+}
+
+void tomato_hupu_cache_unlock(void) {
+    if (s_cache_lock) xSemaphoreGive(s_cache_lock);
+}
+
+// 服务器给的编号只留字母、数字、- 和 _，免得拼进路径时出现 ../。/ Keep only letters, digits, - and _ from server
+// ids so they can never add ../ to a path.
+static void safe_id(const char* in, char* out, size_t cap) {
+    size_t n = 0;
+    for (; in && *in && n + 1 < cap; in++)
+        if (isalnum((unsigned char)*in) || *in == '-' || *in == '_') out[n++] = *in;
+    out[n] = 0;
+}
+
 static uint32_t fnv(const char* s) {
     uint32_t h = 2166136261u;
     while (*s) { h ^= (uint8_t)*s++; h *= 16777619u; }
@@ -50,7 +78,9 @@ static uint32_t fnv(const char* s) {
 }
 
 void tomato_hupu_post_path(const char* tid, char* out, size_t cap) {
-    snprintf(out, cap, TOMATO_HUPU_DIR "/post/%.20s.json", tid);
+    char id[24];
+    safe_id(tid, id, sizeof(id));
+    snprintf(out, cap, TOMATO_HUPU_DIR "/post/%.20s.json", id);
 }
 
 void tomato_hupu_img_path(const char* url, char* out, size_t cap) {
@@ -125,8 +155,9 @@ static esp_err_t write_json(const char* dest, cJSON* root) {
     bool ok = f && fwrite(text, 1, len, f) == len;
     if (f) ok = fclose(f) == 0 && ok;
     cJSON_free(text);
+    if (!ok) { remove(tmp); return ESP_FAIL; }
     remove(dest);
-    if (!ok || rename(tmp, dest) != 0) { remove(tmp); return ESP_FAIL; }
+    if (rename(tmp, dest) != 0) { remove(tmp); return ESP_FAIL; }
     return ESP_OK;
 }
 
@@ -284,7 +315,7 @@ static void html_to_text(html_out_t* o, const char* html) {
             image(o, url);
         } else if (nl == 6 && !strncasecmp(name, "center", 6)) {
             // 虎扑图片节点：src 是静态 JPG，动图取它也只要第一帧。/ Hupu image node: src is a static JPEG, fine for GIFs too.
-            if (strstr(tag, "hupu-img") && (attr(tag, tag_len, "src", url, sizeof(url)) ||
+            if (memmem(tag, tag_len, "hupu-img", 8) && (attr(tag, tag_len, "src", url, sizeof(url)) ||
                                             attr(tag, tag_len, "data_url", url, sizeof(url))))
                 image(o, url);
         } else if (nl == 5 && !strncasecmp(name, "video", 5)) {
@@ -311,23 +342,26 @@ static esp_err_t fetch_page(const char* url, const volatile bool* cancel, cJSON*
 
 // 下载缺的图；返回成功张数。/ Fetch missing images; returns how many succeeded.
 static int fetch_images(const cJSON* urls, const volatile bool* cancel, tomato_hupu_progress_t progress, int done) {
-    int ok = 0, total = done + cJSON_GetArraySize(urls);
+    int ok = 0, total = done + cJSON_GetArraySize(urls), misses = 0;
     const cJSON* u;
     cJSON_ArrayForEach(u, urls) {
         if (cancel && *cancel) break;
+        // 网断了就别一张张等超时。/ When the network is gone, stop instead of timing out on every image.
+        if (misses >= 3) break;
         progress(++done, total);
         if (!cJSON_IsString(u)) continue;
         char dest[96];
         struct stat st;
         tomato_hupu_img_path(u->valuestring, dest, sizeof(dest));
         if (stat(dest, &st) == 0 && st.st_size > 0) { ok++; continue; }
-        if (tomato_http_fetch(u->valuestring, dest, IMG_MAX, true, cancel) == ESP_OK) ok++;
+        if (tomato_http_fetch(u->valuestring, dest, IMG_MAX, true, cancel) == ESP_OK) { ok++; misses = 0; }
+        else misses++;
     }
     return ok;
 }
 
 // 图片目录太大时，只留 keep 里用到的图（和它们的缩略图缓存）。/ Past the cap, keep only images in use and their caches.
-static void prune_images(const cJSON* keep) {
+static void prune_images_locked(const cJSON* keep) {
     DIR* d = opendir(TOMATO_HUPU_DIR "/img");
     if (!d) return;
     int files = 0;
@@ -352,6 +386,12 @@ static void prune_images(const cJSON* keep) {
         remove(path_buf);
     }
     closedir(d);
+}
+
+static void prune_images(const cJSON* keep) {
+    tomato_hupu_cache_lock();
+    prune_images_locked(keep);
+    tomato_hupu_cache_unlock();
 }
 
 static void make_dirs(void) {
@@ -465,7 +505,7 @@ static void add_replies(cJSON* out, const char* key, const cJSON* list, html_out
 }
 
 // 帖子缓存超过 POST_KEEP 个就全删，只留这一帖。/ Past POST_KEEP posts, delete all but this one.
-static void prune_posts(const char* keep) {
+static void prune_posts_locked(const char* keep) {
     DIR* d = opendir(TOMATO_HUPU_DIR "/post");
     if (!d) return;
     int files = 0;
@@ -481,6 +521,12 @@ static void prune_posts(const char* keep) {
         remove(path_buf);
     }
     closedir(d);
+}
+
+static void prune_posts(const char* keep) {
+    tomato_hupu_cache_lock();
+    prune_posts_locked(keep);
+    tomato_hupu_cache_unlock();
 }
 
 esp_err_t tomato_hupu_post(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
@@ -578,15 +624,22 @@ esp_err_t tomato_hupu_post(const char* tid, const volatile bool* cancel, tomato_
 #define JSON_GET_MAX (512 * 1024)
 
 void tomato_hupu_zone_path(const char* zone, int sort, char* out, size_t cap) {
-    snprintf(out, cap, TOMATO_HUPU_DIR "/zone/%.12s_%d.json", zone, sort ? 1 : 0);
+    char id[16];
+    safe_id(zone, id, sizeof(id));
+    snprintf(out, cap, TOMATO_HUPU_DIR "/zone/%.12s_%d.json", id, sort ? 1 : 0);
 }
 
 void tomato_hupu_schedule_path(const char* league, char* out, size_t cap) {
-    snprintf(out, cap, TOMATO_HUPU_DIR "/sched_%.12s.json", league);
+    char id[16];
+    safe_id(league, id, sizeof(id));
+    snprintf(out, cap, TOMATO_HUPU_DIR "/sched_%.12s.json", id);
 }
 
 void tomato_hupu_rating_path(const char* type, const char* no, char* out, size_t cap) {
-    snprintf(out, cap, TOMATO_HUPU_DIR "/rate/%.24s_%.16s.json", type, no);
+    char a[28], b[20];
+    safe_id(type, a, sizeof(a));
+    safe_id(no, b, sizeof(b));
+    snprintf(out, cap, TOMATO_HUPU_DIR "/rate/%.24s_%.16s.json", a, b);
 }
 
 static void make_more_dirs(void) {
@@ -627,7 +680,7 @@ static esp_err_t fetch_json(const char* url, size_t max, const volatile bool* ca
 }
 
 // 目录里文件超过 max 个就全删，只留 keep。/ Past max files, delete everything in dir except keep.
-static void prune_dir(const char* dir, int max, const char* keep) {
+static void prune_dir_locked(const char* dir, int max, const char* keep) {
     DIR* d = opendir(dir);
     if (!d) return;
     int files = 0;
@@ -643,6 +696,12 @@ static void prune_dir(const char* dir, int max, const char* keep) {
         remove(path_buf);
     }
     closedir(d);
+}
+
+static void prune_dir(const char* dir, int max, const char* keep) {
+    tomato_hupu_cache_lock();
+    prune_dir_locked(dir, max, keep);
+    tomato_hupu_cache_unlock();
 }
 
 static void fail_msg(esp_err_t err, char* msg, size_t cap) {
@@ -723,7 +782,11 @@ static esp_err_t threads_by_reply(const char* zone, int page, const char* cursor
                                   cJSON* items, char* next, size_t next_cap, int* added) {
     char url[200];
     if (page <= 1) snprintf(url, sizeof(url), "https://m.hupu.com/api/v2/bbs/topicThreads?topicId=%.12s&page=1", zone);
-    else snprintf(url, sizeof(url), "https://m.hupu.com/api/v2/bbs/topicThreads?topicId=%.12s&page=%d&cursor=%.40s", zone, page, cursor);
+    else {
+        char esc[128];
+        tomato_url_escape(cursor, esc, sizeof(esc), false);
+        snprintf(url, sizeof(url), "https://m.hupu.com/api/v2/bbs/topicThreads?topicId=%.12s&page=%d&cursor=%.60s", zone, page, esc);
+    }
     cJSON* root = NULL;
     *added = 0;
     esp_err_t err = fetch_json(url, JSON_GET_MAX, cancel, &root);

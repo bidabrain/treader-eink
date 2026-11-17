@@ -6,6 +6,9 @@
  * AP/STA networking, HTTP reception and file commit; page injects capacity policy.
  * 冻结：图书 TXT/EPUB；为完整字库部署增加独立 TF 字体目录的 TTF 上传。
  * Frozen: TXT/EPUB books; deploy complete fonts through TTF uploads to a separate TF font directory.
+ * 冻结：漫画只收 CBZ，放进独立 TF 漫画目录下可选的一层系列文件夹（2026-11-18 加漫画标签；书库和漫画分开管理）。
+ * Frozen: comics accept CBZ only, into an optional single series folder under a separate TF comics directory
+ * (2026-11-18, comics tab added; books and comics are managed separately).
  * 冻结：UTF-8 名字不转写；先验限额，字体提交前校验，失败清理临时文件。
  * Frozen: Preserve UTF-8 names; check limits first, validate fonts before commit and remove failed parts.
  * 冻结：热点网页或停服设备触屏可配置网络，不自动切模式；凭据只存单个NVS blob，状态不含密码。
@@ -31,25 +34,8 @@ static int hex_value(unsigned char c) {
     return -1;
 }
 
-static bool decode_name_type(const char *encoded, char *out, size_t cap, bool font) {
-    if (!cap) return false;
-    size_t n = 0;
-    while (*encoded) {
-        unsigned char c = (unsigned char)*encoded++;
-        if (c == '%') {
-            if (!encoded[0] || !encoded[1]) return false;
-            int a = hex_value(encoded[0]), b = hex_value(encoded[1]);
-            if (a < 0 || b < 0) return false;
-            c = (unsigned char)((a << 4) | b); encoded += 2;
-        }
-        if (n + 1 >= cap || c < 32 || c == 127 || strchr("/\\:*?\"<>|", c)) return false;
-        out[n++] = (char)c;
-    }
-    out[n] = 0;
-    if (!n || out[0] == '.' || out[0] == ' ' || out[n - 1] == ' ' || strstr(out, "..")) return false;
-    const char *ext = strrchr(out, '.');
-    if (!ext || (font ? strcasecmp(ext, ".ttf") : (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub")))) return false;
-    // 拒绝非规范 UTF-8、代理项与越界码点。/ Reject noncanonical UTF-8, surrogates and out-of-range code points.
+// 拒绝非规范 UTF-8、代理项与越界码点。/ Reject noncanonical UTF-8, surrogates and out-of-range code points.
+static bool utf8_valid(const char *out, size_t n) {
     for (size_t i = 0; i < n;) {
         uint32_t cp; unsigned more; unsigned char c = (unsigned char)out[i++];
         if (c < 128) continue;
@@ -68,9 +54,35 @@ static bool decode_name_type(const char *encoded, char *out, size_t cap, bool fo
     return true;
 }
 
-static bool decode_name_limit(const char *encoded, char *out, size_t cap) { return decode_name_type(encoded, out, cap, false); }
+// kind：0 图书，1 字体，2 漫画。/ kind: 0 book, 1 font, 2 comic.
+static bool decode_name_type(const char *encoded, char *out, size_t cap, int kind) {
+    if (!cap) return false;
+    size_t n = 0;
+    while (*encoded) {
+        unsigned char c = (unsigned char)*encoded++;
+        if (c == '%') {
+            if (!encoded[0] || !encoded[1]) return false;
+            int a = hex_value(encoded[0]), b = hex_value(encoded[1]);
+            if (a < 0 || b < 0) return false;
+            c = (unsigned char)((a << 4) | b); encoded += 2;
+        }
+        if (n + 1 >= cap || c < 32 || c == 127 || strchr("/\\:*?\"<>|", c)) return false;
+        out[n++] = (char)c;
+    }
+    out[n] = 0;
+    if (!n || out[0] == '.' || out[0] == ' ' || out[n - 1] == ' ' || strstr(out, "..")) return false;
+    const char *ext = strrchr(out, '.');
+    if (!ext) return false;
+    if (kind == 1 ? strcasecmp(ext, ".ttf") : kind == 2 ? strcasecmp(ext, ".cbz") :
+        (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub"))) return false;
+    return utf8_valid(out, n);
+}
+
+static bool decode_name_limit(const char *encoded, char *out, size_t cap) { return decode_name_type(encoded, out, cap, 0); }
 static bool decode_name(const char *encoded, char out[121]) { return decode_name_limit(encoded, out, 121); }
-static bool decode_font_name(const char *encoded, char out[121]) { return decode_name_type(encoded, out, 121, true); }
+static bool decode_font_name(const char *encoded, char out[121]) { return decode_name_type(encoded, out, 121, 1); }
+static bool decode_comic_name(const char *encoded, char out[121]) { return decode_name_type(encoded, out, 121, 2); }
+
 
 static bool raw_book_name(const char *entry, char *name, size_t cap) {
     size_t len = strlen(entry);
@@ -156,7 +168,7 @@ static bool temporary_basename(const char *entry, const char *suffix, char name[
         encoded[i * 3] = '%'; encoded[i * 3 + 1] = digits[c >> 4]; encoded[i * 3 + 2] = digits[c & 15];
     }
     encoded[(len - tail) * 3] = 0;
-    return decode_name(encoded, name) || decode_font_name(encoded, name);
+    return decode_name(encoded, name) || decode_font_name(encoded, name) || decode_comic_name(encoded, name);
 }
 
 static int cleanup_interrupted(const char *root, unsigned *removed, unsigned *restored) {
@@ -355,6 +367,7 @@ static read_pico_transfer_status_t s_status;
 static read_pico_transfer_cfg_t s_cfg;
 static char s_root[160];
 static char s_font_root[160];
+static char s_comic_root[160];
 static httpd_handle_t s_http;
 static esp_netif_t *s_netif;
 static esp_event_handler_instance_t s_events, s_ip_events;
@@ -597,11 +610,11 @@ static esp_err_t respond_error(httpd_req_t *req, int code) {
                          code == 404 ? "404 Not Found" : code == 500 ? "500 Internal Server Error" : "400 Bad Request";
     const char *body = code == 422 ? "{\"error\":\"字体校验失败，需要完整的 TrueType TTF（不支持 OTF/CFF、TTC 或 WOFF）\"}" :
                        code == 413 ? "{\"error\":\"文件超过单文件上限\"}" :
-                       code == 507 ? "{\"error\":\"存储空间不足或写入失败\"}" :
+                       code == 507 ? "{\"error\":\"空间不足（TF 卡要给系统留出预留空间）或写入失败\"}" :
                        code == 408 ? "{\"error\":\"连接中断或接收超时，请重试\"}" :
                        code == 409 ? "{\"error\":\"同名文件已存在，请明确选择替换或跳过\",\"conflict\":true}" :
                        code == 404 ? "{\"error\":\"文件不存在\"}" :
-                       code == 500 ? "{\"error\":\"操作失败，请重试\"}" : "{\"error\":\"文件名或请求无效：图书仅 TXT/EPUB，字体仅 TTF\"}";
+                       code == 500 ? "{\"error\":\"操作失败，请重试\"}" : "{\"error\":\"文件名或请求无效：图书仅 TXT/EPUB，字体仅 TTF，漫画仅 CBZ\"}";
     set_error(code == 408 ? ESP_ERR_TIMEOUT : code == 507 ? ESP_FAIL : ESP_ERR_INVALID_ARG);
     httpd_resp_set_status(req, status);
     httpd_resp_set_type(req, "application/json; charset=utf-8");
@@ -631,6 +644,8 @@ static esp_err_t info_handler(httpd_req_t *req) {
     cJSON_AddBoolToObject(json, "fonts_enabled", s_font_root[0] != 0);
     cJSON_AddStringToObject(json, "font_root", s_font_root);
     cJSON_AddNumberToObject(json, "font_limit", TRANSFER_FONT_MAX);
+    cJSON_AddBoolToObject(json, "comics_enabled", s_comic_root[0] != 0);
+    cJSON_AddNumberToObject(json, "reserve_bytes", s_cfg.reserve_bytes_cb ? (double)s_cfg.reserve_bytes_cb(s_cfg.free_bytes_ctx) : 0);
     char *body = cJSON_PrintUnformatted(json);
     cJSON_Delete(json);
     if (!body) return ESP_ERR_NO_MEM;
@@ -847,33 +862,100 @@ static esp_err_t books_handler(httpd_req_t *req) {
     return file_response(req, result, true, path);
 }
 
+// 系列文件夹名：同文件名的字符规则，不要求扩展名，最多 64 字节。/ Series folder: file-name character rules, no
+// extension required, at most 64 bytes.
+static bool decode_series(const char *encoded, char out[65]) {
+    size_t n = 0;
+    while (*encoded) {
+        unsigned char c = (unsigned char)*encoded++;
+        if (c == '%') {
+            if (!encoded[0] || !encoded[1]) return false;
+            int a = hex_value(encoded[0]), b = hex_value(encoded[1]);
+            if (a < 0 || b < 0) return false;
+            c = (unsigned char)((a << 4) | b); encoded += 2;
+        }
+        if (n >= 64 || c < 32 || c == 127 || strchr("/\\:*?\"<>|", c)) return false;
+        out[n++] = (char)c;
+    }
+    out[n] = 0;
+    return !n || (out[0] != '.' && out[0] != ' ' && out[n - 1] != ' ' && out[n - 1] != '.' && !strstr(out, "..") &&
+                  utf8_valid(out, n));
+}
+
+// 清理漫画根目录和第一层系列文件夹里中断上传留下的临时文件。/ Clean interrupted-upload leftovers in the comics root and
+// its first-level series folders.
+static int cleanup_comics(unsigned *removed, unsigned *restored) {
+    if (cleanup_interrupted(s_comic_root, removed, restored)) return -1;
+    DIR *dir = opendir(s_comic_root);
+    if (!dir) return -1;
+    struct dirent *entry;
+    char sub[sizeof(s_comic_root) + 260];
+    int result = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        if (snprintf(sub, sizeof(sub), "%s/%s", s_comic_root, entry->d_name) >= (int)sizeof(sub)) continue;
+        struct stat st;
+        if (stat(sub, &st) || !S_ISDIR(st.st_mode)) continue;
+        unsigned r = 0, t = 0;
+        if (cleanup_interrupted(sub, &r, &t)) result = -1;
+        *removed += r; *restored += t;
+    }
+    closedir(dir);
+    return result;
+}
+
 static esp_err_t upload_handler(httpd_req_t *req) {
     if (!management_request(req)) return wifi_response(req, "403 Forbidden", "{\"error\":\"请从设备显示的地址打开管理页面\"}");
-    char query[512], encoded[361], name[121], path[288], part[296], replace[8];
-    bool font = req->user_ctx != NULL;
+    char query[512], encoded[361], name[121], path[288], part[296], replace[8], series[65] = "", dir[240];
+    const int kind = (int)(intptr_t)req->user_ctx;
+    const bool font = kind == 1, comic = kind == 2;
     if (font && !s_font_root[0]) return wifi_response(req, "409 Conflict", "{\"error\":\"字体需要 TF 卡，请挂载后重新进入传书\"}");
+    if (comic && !s_comic_root[0]) return wifi_response(req, "409 Conflict", "{\"error\":\"漫画需要 TF 卡，请挂载后重新进入传书\"}");
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
         httpd_query_key_value(query, "name", encoded, sizeof(encoded)) != ESP_OK ||
-        !(font ? decode_font_name(encoded, name) : decode_name(encoded, name)))
+        !(font ? decode_font_name(encoded, name) : comic ? decode_comic_name(encoded, name) : decode_name(encoded, name)))
         return respond_error(req, 400);
-    int resolved = resolve_mutation_path(font ? s_font_root : s_root, name, path, sizeof(path));
-    if (resolved) return respond_error(req, resolved);
+    snprintf(dir, sizeof(dir), "%s", font ? s_font_root : comic ? s_comic_root : s_root);
+    if (comic && httpd_query_key_value(query, "series", encoded, sizeof(encoded)) == ESP_OK) {
+        if (!decode_series(encoded, series)) return respond_error(req, 400);
+        // 系列文件夹按需建立。/ Create the series folder on demand.
+        if (series[0]) {
+            snprintf(dir, sizeof(dir), "%s/%s", s_comic_root, series);
+            struct stat st;
+            if (mkdir(dir, 0755) && errno != EEXIST) return respond_error(req, 400);
+            if (stat(dir, &st) || !S_ISDIR(st.st_mode)) return respond_error(req, 400);
+        }
+    }
+    int resolved = resolve_mutation_path(dir, name, path, sizeof(path));
+    // 没传成就把刚建的空系列文件夹删掉（不空时 rmdir 不会删）。/ On failure drop a just-created empty series folder
+    // (rmdir leaves non-empty ones alone).
+    if (resolved) { if (series[0]) rmdir(dir); return respond_error(req, resolved); }
     snprintf(part, sizeof(part), "%s.part", path);
     bool overwrite = httpd_query_key_value(query, "overwrite", replace, sizeof(replace)) == ESP_OK && !strcmp(replace, "1");
     portENTER_CRITICAL(&s_lock);
     if (!admission_begin(s_stopping, &s_upload_active)) {
         portEXIT_CRITICAL(&s_lock);
+        if (series[0]) rmdir(dir);
         return wifi_response(req, "503 Service Unavailable", "{\"error\":\"网络正在切换，请连接后重试\"}");
     }
     s_status.state = READ_PICO_TRANSFER_UPLOADING; s_status.last_error = ESP_OK;
-    memcpy(s_status.cur_name, name, strlen(name) + 1);
+    // 漫画显示“系列 / 文件名”，放不下就只显示文件名。/ Comics show "series / name", or the name alone when too long.
+    const size_t sn = strlen(series), nn = strlen(name);
+    if (sn && sn + 3 + nn < sizeof(s_status.cur_name)) {
+        memcpy(s_status.cur_name, series, sn);
+        memcpy(s_status.cur_name + sn, " / ", 3);
+        memcpy(s_status.cur_name + sn + 3, name, nn + 1);
+    } else {
+        memcpy(s_status.cur_name, name, nn + 1);
+    }
     s_status.cur_bytes = 0; s_status.cur_total = req->content_len;
     portEXIT_CRITICAL(&s_lock);
     int64_t started = esp_timer_get_time();
     ESP_LOGI("transfer", "receive name=%s bytes=%u", name, (unsigned)req->content_len);
-    file_result_t result = upload_managed(path, part, req->content_len, font ? TRANSFER_FONT_MAX : s_cfg.file_limit,
+    file_result_t result = upload_managed(path, part, req->content_len, font ? TRANSFER_FONT_MAX : comic ? 0 : s_cfg.file_limit,
         s_cfg.free_bytes_cb(s_cfg.free_bytes_ctx), overwrite, s_buffer, 16384, receive_http, req, upload_progress,
-        font ? NULL : s_cfg.file_changed_cb);
+        font || comic ? NULL : s_cfg.file_changed_cb);
+    if (!result.changed && series[0]) rmdir(dir);
     portENTER_CRITICAL(&s_lock);
     s_upload_active = false;
     if (result.changed) { s_status.done_count++; s_status.changed_count++; }
@@ -932,11 +1014,14 @@ void read_pico_transfer_stop(void) {
 esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     if (!cfg || !cfg->root_dir || !cfg->free_bytes_cb || strlen(cfg->root_dir) >= sizeof(s_root) ||
         (cfg->font_dir && (cfg->is_flash || !cfg->font_dir[0] || strlen(cfg->font_dir) >= sizeof(s_font_root))) ||
+        (cfg->comic_dir && (cfg->is_flash || !cfg->comic_dir[0] || strlen(cfg->comic_dir) >= sizeof(s_comic_root))) ||
         (cfg->mode != READ_PICO_TRANSFER_MODE_AP && cfg->mode != READ_PICO_TRANSFER_MODE_STA)) return ESP_ERR_INVALID_ARG;
     if (s_wifi || s_netif || s_http) return ESP_ERR_INVALID_STATE;
     s_cfg = *cfg; strcpy(s_root, cfg->root_dir); s_cfg.root_dir = s_root;
     snprintf(s_font_root, sizeof(s_font_root), "%s", cfg->font_dir ? cfg->font_dir : "");
     s_cfg.font_dir = s_font_root[0] ? s_font_root : NULL;
+    snprintf(s_comic_root, sizeof(s_comic_root), "%s", cfg->comic_dir ? cfg->comic_dir : "");
+    s_cfg.comic_dir = s_comic_root[0] ? s_comic_root : NULL;
     portENTER_CRITICAL(&s_lock);
     memset(&s_status, 0, sizeof(s_status)); s_status.state = READ_PICO_TRANSFER_STARTING;
     s_stopping = s_upload_active = false;
@@ -958,6 +1043,10 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     if (s_font_root[0]) {
         if ((mkdir(s_font_root, 0755) && errno != EEXIST) || stat(s_font_root, &st) || !S_ISDIR(st.st_mode) ||
             cleanup_interrupted(s_font_root, &removed, &restored)) { err = ESP_FAIL; goto fail; }
+    }
+    if (s_comic_root[0] && ((mkdir(s_comic_root, 0755) && errno != EEXIST) || stat(s_comic_root, &st) || !S_ISDIR(st.st_mode) ||
+                            cleanup_comics(&removed, &restored))) {
+        err = ESP_FAIL; goto fail;
     }
     if (removed || restored) ESP_LOGI("transfer", "cleanup removed=%u restored=%u", removed, restored);
     err = esp_netif_init();
@@ -1003,7 +1092,7 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     err = esp_wifi_start(); if (err != ESP_OK) goto fail;
     s_started = true;
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
-    http.stack_size = 12288; http.max_uri_handlers = 10; http.recv_wait_timeout = 5;
+    http.stack_size = 12288; http.max_uri_handlers = 12; http.recv_wait_timeout = 5;
     http.lru_purge_enable = true;
     err = httpd_start(&s_http, &http); if (err != ESP_OK) goto fail;
     const httpd_uri_t routes[] = {
@@ -1011,6 +1100,7 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
         { .uri = "/info", .method = HTTP_GET, .handler = info_handler },
         { .uri = "/upload", .method = HTTP_PUT, .handler = upload_handler },
         { .uri = "/fonts", .method = HTTP_PUT, .handler = upload_handler, .user_ctx = (void *)1 },
+        { .uri = "/comics", .method = HTTP_PUT, .handler = upload_handler, .user_ctx = (void *)2 },
         { .uri = "/fonts", .method = HTTP_GET, .handler = font_info_handler },
         { .uri = "/books", .method = HTTP_GET, .handler = books_handler },
         { .uri = "/books", .method = HTTP_DELETE, .handler = books_handler },

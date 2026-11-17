@@ -6,6 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 Dual-mode upload and AP provisioning form; the server validates capacity and credentials.
 冻结：逐个发送原始文件，不使用 multipart；仅热点显示配网且不自动断网。
 Frozen: send raw files sequentially without multipart; AP-only provisioning never disconnects automatically.
+冻结：漫画例外，CBZ 一律先在浏览器里转成灰度 JPEG（不超过 648×1000、太长的页切成几屏），再打成不压缩的 ZIP 逐个上传；
+设备只解 JPEG（2026-11-18 加漫画标签）。
+Frozen: comics are the exception: every CBZ is converted in the browser to grayscale JPEG (at most 648x1000, very tall
+pages split into screens) and re-packed as a stored ZIP before a sequential upload; the device decodes JPEG only.
 -->
 <html lang="zh-CN">
 <meta charset="utf-8">
@@ -15,7 +19,7 @@ Frozen: send raw files sequentially without multipart; AP-only provisioning neve
 body{font:17px/1.6 system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 24px;color:#222;background:#faf9f5}h1{font-size:28px}button,input{font:inherit;max-width:100%}button{padding:8px 16px;margin:8px 8px 0 0}li{overflow-wrap:anywhere;margin:16px 0}.hint{color:#555}progress{width:100%}small{display:block}button:disabled{opacity:.5}
 </style>
 <h1>小纸 Pico · WiFi 传书</h1>
-<p class="hint">Read Pico · 保持手机与设备在同一网络。支持 TXT / EPUB；同名图书须明确选择替换或跳过。</p>
+<p class="hint">Read Pico · 保持手机与设备在同一网络。图书支持 TXT / EPUB，漫画支持 CBZ；同名文件须明确选择替换或跳过。</p>
 <p id="info" role="status">正在查询存储空间…</p>
 <input id="files" aria-label="选择图书" type="file" accept=".txt,.epub" multiple>
 <br><button id="send" disabled>开始上传</button><button id="cancel" disabled>取消当前及剩余队列</button>
@@ -24,6 +28,13 @@ body{font:17px/1.6 system-ui,sans-serif;max-width:680px;margin:40px auto;padding
 <input id="fontFiles" aria-label="选择 TTF 字体" type="file" accept=".ttf" multiple disabled>
 <br><button id="sendFonts" disabled>上传字体</button>
 <p class="hint">请选择有权使用的完整中文 TrueType TTF 字体。上传成功后停止传书，在设备“字体”页选用。字体替换需确认，传书期间设备使用内置字体。</p></section>
+<section><h2>上传漫画</h2>
+<p id="comicInfo" class="hint">正在查询漫画上传条件…</p>
+<label>选择 CBZ 文件<br><input id="comicFiles" type="file" accept=".cbz,.zip" multiple disabled></label><br>
+<label>或者选择一个文件夹（一部漫画的多话）<br><input id="comicDir" type="file" webkitdirectory multiple disabled></label><br>
+<label>放进系列（单本留空；选文件夹时默认用文件夹名）<br><input id="series" maxlength="60" disabled></label>
+<p class="hint">上传前会在这台手机上把每页转成灰度 JPEG、缩到设备屏幕大小，太长的条漫按屏切开，体积约为原来的 1/5，设备翻页更快。转换期间请保持网页打开、屏幕常亮。</p>
+<button id="sendComics" disabled>开始转换并上传</button></section>
 <p class="hint">在设备上停止或离开传书页会中断当前上传；未完成或校验失败的文件不会替换原文件。</p>
 <p id="progressText" role="status"></p><progress id="progress" value="0" max="1"></progress>
 <ul id="results" aria-live="polite"></ul>
@@ -49,12 +60,13 @@ const $=id=>document.getElementById(id);let policy,busy=false,cancelled=false,ac
 const size=n=>n>=1048576?(n/1048576).toFixed(2)+' MB':Math.ceil(n/1024)+' KB';
 async function info(){
   const r=await fetch('/info',{cache:'no-store'});if(!r.ok)throw Error('无法查询存储空间');policy=await r.json();
-  $('info').textContent=(policy.mode==='sta'?'已有 WiFi':'设备热点')+' · 图书上传到'+(policy.is_flash?'内置存储':'TF 卡')+' · 剩余 '+size(policy.free_bytes)+' · 图书单文件'+(policy.file_limit?'上限 '+size(policy.file_limit):'不限大小');
+  $('info').textContent=(policy.mode==='sta'?'已有 WiFi':'设备热点')+' · 图书上传到'+(policy.is_flash?'内置存储':'TF 卡')+' · 可上传 '+size(policy.free_bytes)+(policy.reserve_bytes?'（已给系统预留 '+size(policy.reserve_bytes)+'）':'')+' · 图书单文件'+(policy.file_limit?'上限 '+size(policy.file_limit):'不限大小');
+  $('comicInfo').textContent=policy.comics_enabled?'漫画保存到 TF 卡 comics 文件夹；一部漫画的多话放进同一个系列文件夹。':'漫画需要 TF 卡；请挂载后重新进入传书。';
   $('fontInfo').textContent=policy.fonts_enabled?'字体保存到 TF 卡 '+policy.font_root+' · 单文件上限 '+size(policy.font_limit):'字体需要 TF 卡；请挂载后重新进入传书。';
   $('fontFiles').disabled=$('sendFonts').disabled=busy||!policy.fonts_enabled;
   $('network').hidden=policy.mode!=='ap';$('saved').textContent=policy.wifi_configured?'已保存：'+policy.wifi_ssid:'尚未保存网络';
 }
-function lock(value){busy=value;$('send').disabled=$('files').disabled=$('searchButton').disabled=$('previous').disabled=$('next').disabled=value;$('fontFiles').disabled=$('sendFonts').disabled=value||!policy?.fonts_enabled;$('cancel').disabled=!value;document.querySelectorAll('[data-mutate]').forEach(b=>b.disabled=value);if(!value){$('previous').disabled=page<=0;$('next').disabled=page+1>=pages;}}
+function lock(value){busy=value;$('send').disabled=$('files').disabled=$('searchButton').disabled=$('previous').disabled=$('next').disabled=value;$('fontFiles').disabled=$('sendFonts').disabled=value||!policy?.fonts_enabled;$('comicFiles').disabled=$('comicDir').disabled=$('series').disabled=$('sendComics').disabled=value||!policy?.comics_enabled;$('cancel').disabled=!value;document.querySelectorAll('[data-mutate]').forEach(b=>b.disabled=value);if(!value){$('previous').disabled=page<=0;$('next').disabled=page+1>=pages;}}
 function button(parent,label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.mutate='1';b.disabled=busy;b.onclick=action;parent.append(b);return b;}
 async function request(url,options){const response=await fetch(url,options);let body;try{body=await response.json();}catch(e){throw Error('设备响应无法解析，请检查连接后重试');}return {status:response.status,body};}
 function cleanupButton(row,name){button(row,'重试清理阅读进度',async()=>{if(busy)return;lock(true);try{const r=await request('/books?name='+encodeURIComponent(name)+'&action=retry_progress',{method:'POST'});if(r.status!==200)throw Error(r.body.error||'清理失败');row.textContent=name+'：阅读进度已清理';}catch(e){const note=document.createElement('small');note.textContent=e.message;row.append(note);}finally{lock(false);}});}
@@ -75,7 +87,7 @@ async function run(items){
       if(!file.size)throw Error('文件为空');
       const limit=font?policy.font_limit:policy.file_limit;
       if(limit&&file.size>limit)throw Error('超过单文件上限');
-      if(file.size>policy.free_bytes)throw Error('剩余空间不足（替换也须暂存完整新文件）');
+      if(file.size>policy.free_bytes)throw Error('空间不足（TF 卡要给系统预留 '+size(policy.reserve_bytes||0)+'；替换也须暂存完整新文件）');
       const existing=await request((font?'/fonts':'/books')+'?name='+encodeURIComponent(file.name));
       let overwrite=false;
       if(existing.status===200){
@@ -108,5 +120,148 @@ info().then(()=>{lock(false);return loadBooks();}).catch(e=>$('info').textConten
 async function configure(method,body){$('saveWifi').disabled=$('forgetWifi').disabled=true;$('wifiResult').textContent='正在保存…';try{const r=await fetch('/wifi',{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const result=await r.json();if(!r.ok)throw Error(result.error||'配置失败');$('password').value='';$('wifiResult').textContent=method==='DELETE'?'已遗忘网络。':'已保存。请在设备上选择“已有 WiFi”；热点暂时保持连接。';await info();}catch(e){$('wifiResult').textContent=e.message;}finally{$('saveWifi').disabled=$('forgetWifi').disabled=false;}}
 $('wifiForm').onsubmit=e=>{e.preventDefault();const ssid=$('ssid').value,password=$('password').value;if(new TextEncoder().encode(ssid).length>32){$('wifiResult').textContent='SSID 超过32字节，请缩短名称。';return;}configure('POST',{ssid,password});};
 $('forgetWifi').onclick=()=>configure('DELETE');
+// ---- 漫画：浏览器里解 CBZ、转灰度 JPEG、打成不压缩的 ZIP 再上传 / Comics: unpack, convert, re-pack and upload ----
+const IMG_RE=/\.(jpe?g|png|webp|gif|bmp|avif)$/i;
+const natural=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'});
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC[(c^u8[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+// 只按需读文件片段，不把整个 CBZ 读进内存。/ Read slices on demand instead of loading the whole CBZ.
+async function readZip(file){
+  const tailLen=Math.min(file.size,65558),tail=await file.slice(file.size-tailLen).arrayBuffer();
+  const tv=new DataView(tail);let e=-1;
+  for(let i=tail.byteLength-22;i>=0;i--)if(tv.getUint32(i,true)===0x06054b50){e=i;break;}
+  if(e<0)throw Error('不是有效的 CBZ / ZIP');
+  const count=tv.getUint16(e+10,true),size=tv.getUint32(e+12,true),start=tv.getUint32(e+16,true);
+  if(start===0xFFFFFFFF||count===0xFFFF)throw Error('不支持 ZIP64 格式的超大文件');
+  if(start+size>file.size)throw Error('ZIP 目录损坏');
+  const cd=await file.slice(start,start+size).arrayBuffer(),v=new DataView(cd),u=new Uint8Array(cd);
+  const utf=new TextDecoder('utf-8',{fatal:true});let gbk;try{gbk=new TextDecoder('gbk');}catch(_){gbk=new TextDecoder('utf-8');}
+  const out=[];let p=0;
+  for(let k=0;k<count;k++){
+    if(p+46>u.length||v.getUint32(p,true)!==0x02014b50)throw Error('ZIP 目录损坏');
+    const method=v.getUint16(p+10,true),csize=v.getUint32(p+20,true),nlen=v.getUint16(p+28,true),xlen=v.getUint16(p+30,true),clen=v.getUint16(p+32,true),off=v.getUint32(p+42,true);
+    const raw=u.subarray(p+46,p+46+nlen);let name;try{name=utf.decode(raw);}catch(_){name=gbk.decode(raw);}
+    out.push({name,method,csize,off});p+=46+nlen+xlen+clen;
+  }
+  return out;
+}
+async function entryData(file,ent){
+  const h=new DataView(await file.slice(ent.off,ent.off+30).arrayBuffer());
+  if(h.byteLength<30||h.getUint32(0,true)!==0x04034b50)throw Error('ZIP 内容损坏');
+  const start=ent.off+30+h.getUint16(26,true)+h.getUint16(28,true),blob=file.slice(start,start+ent.csize);
+  if(ent.method===0)return new Uint8Array(await blob.arrayBuffer());
+  if(ent.method!==8)throw Error('不支持的压缩方式');
+  return new Uint8Array(await new Response(blob.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+}
+// 一张图转成一张或几张（太长就按屏切）灰度 JPEG，每张不超过 648×1000。/ One image to one or more grayscale JPEGs.
+async function toJpegs(data){
+  let bmp;try{bmp=await createImageBitmap(new Blob([data]));}catch(_){return null;}
+  const W=bmp.width,H=bmp.height,R=1160/684,slices=[];
+  if(H/W>R*1.5){const sh=Math.round(W*R);for(let y=0;y<H;y+=sh)slices.push([y,Math.min(sh,H-y)]);
+    // 最后一小截并进上一屏，免得多出一页几乎空白。/ Merge a tiny last strip into the previous screen.
+    if(slices.length>1&&slices[slices.length-1][1]<sh*0.2)slices[slices.length-2][1]+=slices.pop()[1];}else slices.push([0,H]);
+  const out=[];
+  for(const [sy,sh] of slices){
+    const s=Math.min(1,648/W,1000/sh),w=Math.max(1,Math.round(W*s)),h=Math.max(1,Math.round(sh*s));
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,w,h);g.imageSmoothingQuality='high';
+    g.drawImage(bmp,0,sy,W,sh,0,0,w,h);
+    const img=g.getImageData(0,0,w,h),d=img.data;
+    for(let i=0;i<d.length;i+=4){const y=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;d[i]=d[i+1]=d[i+2]=y;}
+    g.putImageData(img,0,0);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));if(blob)out.push(blob);
+  }
+  if(bmp.close)bmp.close();
+  return out.length?out:null;
+}
+function buildZip(items){
+  const enc=new TextEncoder(),parts=[],central=[];let off=0;
+  for(const it of items){
+    const n=enc.encode(it.name),crc=crc32(it.data),len=it.data.length;
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x800,true);
+    h.setUint32(14,crc,true);h.setUint32(18,len,true);h.setUint32(22,len,true);h.setUint16(26,n.length,true);parts.push(h.buffer,n,it.data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x800,true);
+    c.setUint32(16,crc,true);c.setUint32(20,len,true);c.setUint32(24,len,true);c.setUint16(28,n.length,true);c.setUint32(42,off,true);central.push(c.buffer,n);
+    off+=30+n.length+len;
+  }
+  let csize=0;for(const p of central)csize+=p.byteLength;
+  const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,items.length,true);e.setUint16(10,items.length,true);e.setUint32(12,csize,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...central,e.buffer],{type:'application/zip'});
+}
+async function convertCbz(file,onPage,stopped){
+  const entries=(await readZip(file)).filter(e=>!e.name.endsWith('/')&&!/(^|\/)(__MACOSX|\.)/.test(e.name));
+  const imgs=entries.filter(e=>IMG_RE.test(e.name)).sort((a,b)=>natural(a.name,b.name));
+  if(!imgs.length)throw Error('包里没有图片');
+  if(imgs.length>4000)throw Error('图片太多（超过 4000 张），请分开打包');
+  const info=entries.find(e=>/(^|\/)comicinfo\.xml$/i.test(e.name)),items=[];let skipped=0,n=0;
+  for(let i=0;i<imgs.length;i++){
+    if(stopped())throw Error('已取消');
+    onPage(i+1,imgs.length);
+    let jpgs=null;try{jpgs=await toJpegs(await entryData(file,imgs[i]));}catch(_){}
+    if(!jpgs){skipped++;continue;}
+    for(const b of jpgs)items.push({name:String(++n).padStart(4,'0')+'.jpg',data:new Uint8Array(await b.arrayBuffer())});
+    if(items.length>60000)throw Error('切出来的页太多，请分开打包');
+  }
+  if(!items.length)throw Error('图片都无法解码');
+  if(info)try{items.push({name:'ComicInfo.xml',data:await entryData(file,info)});}catch(_){}
+  return {blob:buildZip(items),pages:n,skipped};
+}
+// 设备只收合法文件名：去掉 / \ : * ? " < > | 和控制字符，按 UTF-8 字节截短。/ Make a name the device accepts.
+function cleanName(text,maxBytes){
+  const tidy=t=>t.replace(/[\/\:*?"<>|\u0000-\u001f\u007f]/g,'_').replace(/\.{2,}/g,'.').trim().replace(/^[. ]+|[. ]+$/g,'');
+  // 按整字截短，截完再整理一次，结尾不会留下点或空格。/ Cut whole characters, then tidy again so no dot or space ends it.
+  const chars=Array.from(tidy(text)),enc=new TextEncoder();
+  while(chars.length&&enc.encode(chars.join('')).length>maxBytes)chars.pop();
+  return tidy(chars.join(''));
+}
+const safeName=name=>(cleanName(name.replace(/\.(cbz|zip)$/i,''),110)||'漫画')+'.cbz';
+function sendComic(blob,name,series,overwrite){return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();activeXHR=xhr;let last=0;
+  xhr.open('PUT','/comics?name='+encodeURIComponent(name)+(series?'&series='+encodeURIComponent(series):'')+(overwrite?'&overwrite=1':''));
+  xhr.upload.onprogress=e=>{const now=Date.now();if(now-last<250&&e.loaded!==e.total)return;last=now;$('progress').max=e.total||blob.size;$('progress').value=e.loaded;};
+  xhr.onload=()=>{activeXHR=null;try{resolve({status:xhr.status,body:JSON.parse(xhr.responseText)});}catch(e){reject(Error('设备响应无法解析，请检查是否已保存'));}};
+  xhr.onerror=()=>{activeXHR=null;reject(Error('网络中断，请检查连接后重试'));};
+  xhr.onabort=()=>{activeXHR=null;reject(Error('已取消'));};
+  xhr.send(blob);});}
+$('comicDir').onchange=()=>{const f=$('comicDir').files[0];if(f&&!$('series').value.trim()){const top=(f.webkitRelativePath||'').split('/')[0];$('series').value=cleanName(top,60);}};
+async function runComics(){
+  if(busy)return;
+  const files=[...$('comicFiles').files,...[...$('comicDir').files].filter(f=>/\.(cbz|zip)$/i.test(f.name))];
+  if(!files.length){$('progressText').textContent='先选择 CBZ 文件或文件夹';return;}
+  if(typeof DecompressionStream==='undefined'||typeof createImageBitmap==='undefined'){$('progressText').textContent='这个浏览器太旧，无法转换漫画；请换新版 Chrome、Edge 或 Safari';return;}
+  files.sort((a,b)=>natural(a.webkitRelativePath||a.name,b.webkitRelativePath||b.name));
+  const series=cleanName($('series').value,60);
+  cancelled=false;lock(true);
+  const rows=files.map(f=>{const li=document.createElement('li');li.textContent=f.name+'：等待';$('results').append(li);return li;});
+  const label=series?'上传漫画 · '+series:'上传漫画';let done=0;
+  $('progressText').textContent=label+' · 总进度 0 / '+files.length;
+  // 一边转下一话一边传上一话，同时只转一话。/ Convert the next episode while uploading the previous; one conversion at a time.
+  const convert=i=>convertCbz(files[i],(p,t)=>{rows[i].textContent=files[i].name+'：转换中 '+p+' / '+t+' 页';},()=>cancelled).then(r=>({ok:true,...r}),e=>({ok:false,error:e.message}));
+  let next=convert(0);
+  for(let i=0;i<files.length;i++){
+    const conv=await next;next=i+1<files.length&&!cancelled?convert(i+1):null;
+    const f=files[i],row=rows[i],name=safeName(f.name);
+    if(cancelled){row.textContent=f.name+'：未上传（已取消）';continue;}
+    if(!conv.ok){row.textContent=f.name+'：'+conv.error;continue;}
+    try{
+      await info();
+      if(conv.blob.size>policy.free_bytes)throw Error('空间不足（TF 卡要给系统预留 '+size(policy.reserve_bytes||0)+'）');
+      row.textContent=name+'：上传中';
+      let r=await sendComic(conv.blob,name,series,false);
+      if(r.status===409&&!cancelled){
+        if(confirm('同名漫画已存在：'+(series?series+' / ':'')+name+'\n\n确定：替换\n取消：跳过'))r=await sendComic(conv.blob,name,series,true);
+        else{row.textContent=name+'：已跳过';continue;}
+      }
+      if(r.status!==200)throw Error(r.body.error||'上传失败');
+      done++;row.textContent='✓ '+name+' · '+conv.pages+' 页 · '+size(conv.blob.size)+'（原 '+size(f.size)+'）'+(conv.skipped?' · 跳过 '+conv.skipped+' 张解不了的图':'');
+    }catch(e){row.textContent=f.name+'：'+e.message;}
+    $('progressText').textContent=label+' · 总进度 '+(i+1)+' / '+files.length;
+  }
+  if(next)await next;
+  $('progressText').textContent=cancelled?'已取消；传完的漫画离开传书页后在设备的漫画页查看。':'漫画上传结束：成功 '+done+' / '+files.length+'。离开传书页后在设备的漫画页查看。';
+  $('comicFiles').value='';$('comicDir').value='';
+  try{await info();}catch(_){}lock(false);
+}
+$('sendComics').onclick=runComics;
 </script>
 </html>

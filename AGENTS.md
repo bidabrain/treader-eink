@@ -78,6 +78,7 @@ One file, one `app_desc_t`. Order matches `app_registry.c`.
 | `app_font_pick.c` | 卡上 TTF 列表与字重。/ Font picker. | `ttf_font` |
 | `app_ioe.c` | FCA9555 Port-0。/ Expander pins. | `fca9555` |
 | `app_selftest.c` | 设备功能自检入口。/ Device self-test UI. | `pmu_selftest` |
+| `app_comic.c` | CBZ 漫画书架、系列话列表、一屏一页阅读与工具条；和书库分开，只读 TF 卡 `comics/`。/ CBZ comics shelf, series list, one-page reader and toolbar; separate from the library, reads `comics/` only. | `comic_store`, `zip_reader`, `book_image`, `hupu_img` |
 | `app_book.c` | TXT / EPUB 书架、目录、字号与逐书进度；晃动翻页实验默认关。/ TXT / EPUB shelf, TOC, size and per-book progress; experimental shake defaults off. | `book_*`, `ttf_font` |
 | `app_transfer.c` | 设备热点/已有 WiFi 传 TXT/EPUB 与 TF 卡 TTF 字体，触屏/网页配网与热点二维码，离页停止；停留期间不计空闲自动休眠；停止按钮返回进入前的位置。/ AP/STA book and TF font upload with touchscreen/web provisioning and hotspot QR; stops on exit; idle auto-sleep does not run while the page is current; the stop button returns to the entry origin. | `read_pico_transfer`, `book_store` |
 

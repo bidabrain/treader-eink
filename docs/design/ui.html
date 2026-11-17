@@ -111,6 +111,30 @@
   .quoteb { position: absolute; left: 40px; right: 40px; border-left: 6px solid #9a9a9a; padding-left: 16px; font-size: 24px; line-height: 34px; color: #555; }
   .score { position: absolute; font-size: 40px; font-weight: 700; }
 </style>
+<style>
+  .phone { width: 342px; height: 608px; overflow: hidden; border-radius: 22px; background: #faf9f5; box-shadow: 0 0 0 8px #1d1d1d, 0 0 0 9px #555, 0 8px 22px rgba(0,0,0,.3); position: relative; }
+  .phone .web { width: 390px; transform: scale(.877); transform-origin: 0 0; font: 17px/1.6 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; color: #222; }
+  .phone .bar { height: 44px; background: #eceae4; border-bottom: 1px solid #d6d3ca; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #444; }
+  .phone .bar span { background: #fff; border-radius: 10px; padding: 3px 18px; }
+  .phone .pg { padding: 4px 20px 0; }
+  .phone h1 { font-size: 24px; margin: 10px 0 2px; }
+  .phone h2 { font-size: 20px; margin: 16px 0 4px; color: #222; }
+  .phone p { margin: 6px 0; }
+  .phone .hint { color: #555; font-size: 15px; line-height: 1.5; }
+  .phone .btn { display: inline-block; border: 1px solid #8f8f8f; border-radius: 6px; background: #efefef; padding: 6px 14px; margin: 6px 8px 0 0; }
+  .phone .btn.pri { background: #222; color: #fff; border-color: #222; }
+  .phone .btn.dis { opacity: .5; }
+  .phone .box { border: 1px solid #cfccc2; border-radius: 8px; background: #fff; padding: 8px 12px; margin: 8px 0; }
+  .phone .prog { height: 8px; border-radius: 4px; background: #dedbd2; overflow: hidden; margin: 6px 0; }
+  .phone .prog b { display: block; height: 100%; background: #222; }
+  .phone ul { list-style: none; padding: 0; margin: 6px 0; }
+  .phone li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #e3e0d7; font-size: 15px; }
+  .phone li span:last-child { color: #555; white-space: nowrap; }
+  .phone li.ok span:last-child { color: #222; font-weight: 600; }
+  .phone li.now { font-weight: 600; }
+  .phone li.now span:last-child { color: #222; }
+  .phone .fold { color: #777; font-size: 15px; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 12px; }
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
@@ -127,12 +151,13 @@
     <symbol id="i-mark" viewBox="0 0 40 40"><path d="M11 6h18v28l-9-7-9 7z"/></symbol>
     <symbol id="i-import" viewBox="0 0 40 40"><path d="M20 6v20M12 18l8 8 8-8"/><path d="M7 28v5h26v-5"/></symbol>
       <symbol id="i-ball" viewBox="0 0 40 40"><circle cx="20" cy="20" r="13"/><path d="M7 20h26M20 7v26"/><path d="M11 10c5 5 5 15 0 20M29 10c-5 5-5 15 0 20"/></symbol>
+    <symbol id="i-comic" viewBox="0 0 40 40"><rect x="7" y="5" width="26" height="30" rx="2"/><path d="M7 18h26"/><path d="M22 18l-4 17"/><path d="M14.5 7.8h9a2.2 2.2 0 0 1 0 4.4h-6l-2.5 2.3v-2.3a2.2 2.2 0 0 1-.5-4.4z" stroke-width="2"/></symbol>
   </defs>
 </svg>
 
-<h1>Treader 界面与功能（0.3.0）</h1>
-<p class="lead">这是 Treader 当前版本（0.3.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
-底部四个标签页：书库、番茄、虎扑、设置。没有画出来的页面和全局规则写在最后。</p>
+<h1>Treader 界面与功能（0.4.0）</h1>
+<p class="lead">这是 Treader 当前版本（0.4.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
+底部五个标签页：书库、漫画、番茄、虎扑、设置。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
 
 <h2>书库、阅读与锁屏</h2>
 <div class="grid">
@@ -177,6 +202,7 @@
   <div class="a" style="left:0;right:0;top:1010px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
   <div class="tabs">
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
@@ -198,21 +224,26 @@
   <div class="a" style="left:0;right:0;top:0;height:120px;background:#fff;border-bottom:2px solid #000"></div>
   <div class="a l" style="top:40px;font-size:32px">‹ 书库</div>
   <div class="a b" style="left:0;right:0;top:38px;text-align:center;font-size:34px">宿命之环</div>
-  <div class="a" style="left:0;right:0;top:760px;bottom:0;background:#fff;border-top:2px solid #000"></div>
-  <div class="a l" style="top:794px;font-size:28px">第三章 黑夜</div>
-  <div class="a r" style="top:794px;font-size:28px">全书 41%</div>
-  <div class="pbar" style="left:40px;right:40px;top:848px"><i style="width:41%"></i></div>
-  <div class="a" style="left:40px;right:40px;top:910px;display:flex;justify-content:space-between">
+  <div class="a" style="left:0;right:0;top:680px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l" style="top:704px;font-size:28px">第三章 黑夜</div>
+  <div class="a r" style="top:704px;font-size:28px">字号 48</div>
+  <div class="a" style="left:40px;right:40px;top:770px;display:flex;justify-content:space-between">
     <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-toc"/></svg><br>目录</div>
     <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-set"/></svg><br>菜单</div>
     <div style="width:130px;text-align:center;font-size:28px"><div style="height:48px;font-size:36px;font-weight:700;line-height:48px">Aa</div>排版</div>
     <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-books"/></svg><br>书库</div>
   </div>
-  <div class="hl soft" style="top:1050px"></div>
-  <div class="pill out" style="left:40px;top:1080px;width:290px;height:76px">A−</div>
-  <div class="pill out" style="left:354px;top:1080px;width:290px;height:76px">A+</div>
+  <div class="pill out" style="left:40px;top:906px;width:200px;height:84px">A−</div>
+  <div class="a b" style="left:0;right:0;top:926px;text-align:center;font-size:40px">48</div>
+  <div class="pill out" style="left:444px;top:906px;width:200px;height:84px">A+</div>
+  <div class="a l" style="top:1020px;font-size:28px">自动翻页</div>
+  <div class="pill out" style="left:300px;top:1006px;width:90px;height:60px;font-size:34px">−</div>
+  <div class="a b" style="left:390px;width:164px;top:1016px;text-align:center;font-size:34px">15 秒</div>
+  <div class="pill out" style="left:554px;top:1006px;width:90px;height:60px;font-size:34px">+</div>
+  <div class="pbar" style="left:40px;right:180px;top:1130px"><i style="width:41%"></i></div>
+  <div class="a r" style="top:1116px;font-size:28px">全书 41%</div>
 </div></div>
-<figcaption><b>③ 阅读工具条</b>顶部返回书库；底部章节名、全书进度、目录、菜单、排版、回书库，以及字号 A− / A+（36～72 px，每档 4 px）。整屏刷新用长按中键。EPUB 插图显示为占位，点开单独预览。</figcaption></figure>
+<figcaption><b>③ 阅读工具条</b>顶部返回书库；底部章节名、目录、菜单、排版、回书库、字号 A− / A+（36～72 px，每档 4 px），以及“自动翻页”：关或 3～30 秒（每档 3 秒），开着时收起工具条就按这个间隔翻下一页，碰屏幕或按键会重新计时，翻到书尾停下；自动翻页期间不会空闲锁屏。页脚是全书进度条，可以点着跳。整屏刷新用长按中键。EPUB 插图显示为占位，点开单独预览。</figcaption></figure>
 
 <!-- ④ 排版面板 -->
 <figure><div class="frame"><div class="s">
@@ -268,10 +299,318 @@
 
 </div>
 
+<h2>漫画</h2>
+<div class="grid">
+
+<!-- ⑦ 漫画 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">漫画</div>
+  <svg class="icon a" style="left:592px;top:96px"><use href="#i-import"/></svg>
+  <div class="a l" style="top:156px;font-size:28px">6 部 · 按最近</div>
+  <div class="pill out" style="left:40px;top:212px;width:150px;height:54px;font-size:28px">按最近</div>
+  <div style="position:absolute;left:40px;top:284px;width:604px;height:136px;border:2px solid #000;border-radius:16px"></div>
+  <div class="img g1" style="left:56px;top:304px;width:70px;height:96px"></div>
+  <div class="a" style="left:148px;top:298px;font-size:24px">继续看</div>
+  <div class="a" style="right:60px;top:298px;font-size:24px">接着看 →</div>
+  <div class="a b" style="left:148px;top:330px;font-size:32px">海边的少年 · 第 8 话</div>
+  <div class="pbar" style="left:148px;right:170px;top:392px"><i style="width:60%"></i></div><div class="a" style="right:60px;top:378px;font-size:26px">12 / 20</div>
+  <div style="position:absolute;left:50px;top:444px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:45px;top:449px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:40px;top:454px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#2e2e2e,#9a9a9a);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">海边的<br>少年</div>
+  <div class="a b" style="left:40px;top:662px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">海边的少年</div>
+  <div class="a" style="left:40px;top:700px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">12 话 · 看完 7</div>
+  <div style="position:absolute;left:277px;top:444px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:272px;top:449px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:267px;top:454px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#555,#d6d6d6);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">星港<br>快递</div>
+  <div class="a b" style="left:267px;top:662px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">星港快递</div>
+  <div class="a" style="left:267px;top:700px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">24 话 · 未看</div>
+  <div style="position:absolute;left:494px;top:454px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#1f1f1f,#7a7a7a);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">雨夜<br>来信</div>
+  <div class="a b" style="left:494px;top:662px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">雨夜来信</div>
+  <div class="a" style="left:494px;top:700px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">单本 · 45%</div>
+  <div style="position:absolute;left:50px;top:738px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:45px;top:743px;width:150px;height:200px;border:2px solid #000;background:#fff"></div><div style="position:absolute;left:40px;top:748px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#6a6a6a,#e4e4e4);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">山居<br>日记</div>
+  <div class="a b" style="left:40px;top:956px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">山居日记</div>
+  <div class="a b" style="left:40px;top:994px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">8 话 · 看完</div>
+  <div style="position:absolute;left:267px;top:748px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#3a3a3a,#b0b0b0);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">机械<br>之心</div>
+  <div class="a b" style="left:267px;top:956px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">机械之心</div>
+  <div class="a" style="left:267px;top:994px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">单本 · 未看</div>
+  <div style="position:absolute;left:494px;top:748px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#4a4a4a,#c8c8c8);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">猫与<br>灯塔</div>
+  <div class="a b" style="left:494px;top:956px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">猫与灯塔</div>
+  <div class="a b" style="left:494px;top:994px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">单本 · 看完</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 1　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑦ 漫画</b>和书库分开管理，只显示 TF 卡 <code>comics/</code> 里的 CBZ。顶部“继续看”是最近看的那一话，点一下接着看。下面是封面网格，每页 6 部，封面取第一张图，后台一次生成一张，看得见的都生成完整页刷新一次（缓存在 <code>comics/.treader/covers</code>）。一个文件夹里的多话算一个系列，封面后面叠两道边；单个 CBZ 算单本。第二行写话数和看完几话、或单本的百分比；全看完的加粗。点“按最近”切成按名字排。右上角进传书。长按一部进详情：清进度、删除（再点一次确认）。没有漫画时写明怎么放进来。</figcaption></figure>
+
+<!-- ⑧ 漫画系列 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">海边的少年</div>
+  <div class="a r" style="top:104px;font-size:28px">12 话</div>
+  <div class="hl" style="top:170px"></div>
+  <div class="img g1" style="left:40px;top:196px;width:150px;height:200px"></div>
+  <div class="a" style="left:222px;top:204px;font-size:30px">共 12 话 · 看完 7 话</div>
+  <div class="a" style="left:222px;top:256px;font-size:28px">接着看：第 008 话 第 12 页</div>
+  <div class="a" style="left:222px;top:304px;font-size:28px">翻页：从右往左</div>
+  <div class="pill blk" style="left:222px;right:40px;top:400px;height:76px;font-size:30px">继续看 第 008 话</div>
+  <div class="hl soft" style="top:520px"></div>
+  <div class="row b" style="top:536px;height:66px"><span>第 008 话</span><span class="b">在看 12 / 20</span></div>
+  <div class="row" style="top:602px;height:66px"><span>第 009 话</span><span class="v">未看</span></div>
+  <div class="row" style="top:668px;height:66px"><span>第 010 话</span><span class="v">未看</span></div>
+  <div class="row" style="top:734px;height:66px"><span>第 011 话</span><span class="v">未看</span></div>
+  <div class="row" style="top:800px;height:66px"><span>第 012 话</span><span class="v">未看</span></div>
+  <div class="a" style="left:0;right:0;top:1030px;text-align:center;font-size:30px">‹　　2 / 2　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑧ 漫画系列</b>点系列封面进来。上面是封面、看完几话、接着看哪一话（最近看的那话；它已看完就是下一话）、这部漫画的翻页方向；黑色按钮从那里接着看。下面是话数列表，按文件名排序，每页 7 话，默认翻到“在看”那一页（示意图是第 2 页：008～012）。点一话打开（看过的回到上次那页，看完的从头开始）；长按一话进详情，清进度或删除这一话。单本 CBZ 不进这页，直接打开阅读。</figcaption></figure>
+
+<!-- ⑨ 漫画阅读 -->
+<figure><div class="frame"><div class="s">
+  <div style="position:absolute;left:0;top:92px;width:684px;height:977px;background:#fff">
+    <div style="position:absolute;left:14px;top:14px;width:656px;height:300px;border:4px solid #000;background:linear-gradient(170deg,#e8e8e8,#9a9a9a 60%,#4a4a4a)"></div>
+    <div style="position:absolute;left:430px;top:40px;width:200px;height:110px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:32px;text-align:center">船来了！</div>
+    <div style="position:absolute;left:14px;top:328px;width:316px;height:300px;border:4px solid #000;background:radial-gradient(circle at 40% 40%,#f2f2f2,#a0a0a0 55%,#3a3a3a)"></div>
+    <div style="position:absolute;left:344px;top:328px;width:326px;height:300px;border:4px solid #000;background:linear-gradient(200deg,#333,#bbb 55%,#eee)"></div>
+    <div style="position:absolute;left:44px;top:350px;width:170px;height:100px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:30px;text-align:center">真的？</div>
+    <div style="position:absolute;left:14px;top:642px;width:656px;height:321px;border:4px solid #000;background:linear-gradient(160deg,#1e1e1e,#7a7a7a 45%,#d8d8d8 75%,#5a5a5a)"></div>
+    <div style="position:absolute;left:60px;top:670px;width:260px;height:120px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:32px;text-align:center">一起去港口<br>看看吧</div>
+  </div>
+  <div class="a l mid" style="top:1170px;font-size:24px">第 8 话</div>
+  <div class="a r mid" style="top:1170px;font-size:24px">12 / 20</div>
+</div></div>
+<figcaption><b>⑨ 漫画阅读</b>一屏一页，按整页缩放居中，保持比例，上下或左右留白，抖动成 16 级灰度；页脚是这一话的名字和页码。点屏幕左右三分之一、左右滑或按左右键翻页；默认从左往右，CBZ 里的 ComicInfo.xml 写了从右往左就按它，从右往左时左边是下一页。一话看完自动接下一话，第一页再往前回到上一话。停在一页时后台预解码下一页，翻页直接显示；每 8 页整屏刷新一次压残影。点中间或短按中键呼出工具条。进度每翻 10 页和离开时写卡；锁屏回来接着这一页。</figcaption></figure>
+
+<!-- ⑩ 漫画工具条 -->
+<figure><div class="frame"><div class="s">
+  <div style="position:absolute;inset:0;opacity:.45"><div style="position:absolute;left:0;top:92px;width:684px;height:977px;background:#fff">
+    <div style="position:absolute;left:14px;top:14px;width:656px;height:300px;border:4px solid #000;background:linear-gradient(170deg,#e8e8e8,#9a9a9a 60%,#4a4a4a)"></div>
+    <div style="position:absolute;left:430px;top:40px;width:200px;height:110px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:32px;text-align:center">船来了！</div>
+    <div style="position:absolute;left:14px;top:328px;width:316px;height:300px;border:4px solid #000;background:radial-gradient(circle at 40% 40%,#f2f2f2,#a0a0a0 55%,#3a3a3a)"></div>
+    <div style="position:absolute;left:344px;top:328px;width:326px;height:300px;border:4px solid #000;background:linear-gradient(200deg,#333,#bbb 55%,#eee)"></div>
+    <div style="position:absolute;left:44px;top:350px;width:170px;height:100px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:30px;text-align:center">真的？</div>
+    <div style="position:absolute;left:14px;top:642px;width:656px;height:321px;border:4px solid #000;background:linear-gradient(160deg,#1e1e1e,#7a7a7a 45%,#d8d8d8 75%,#5a5a5a)"></div>
+    <div style="position:absolute;left:60px;top:670px;width:260px;height:120px;border:3px solid #000;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:32px;text-align:center">一起去港口<br>看看吧</div>
+  </div></div>
+  <div class="a" style="left:0;right:0;top:0;height:120px;background:#fff;border-bottom:2px solid #000"></div>
+  <div class="a l" style="top:40px;font-size:32px">‹ 漫画</div>
+  <div class="a b" style="left:0;right:0;top:38px;text-align:center;font-size:34px">海边的少年 · 第 8 话</div>
+  <div class="a" style="left:0;right:0;top:700px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l" style="top:732px;font-size:28px">第 12 / 20 页</div>
+  <div class="a r" style="top:732px;font-size:28px">第 8 / 12 话</div>
+  <div class="pbar" style="left:40px;right:40px;top:786px"><i style="width:60%"></i></div>
+  <div class="a" style="left:40px;right:40px;top:840px;display:flex;justify-content:space-between">
+    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-toc"/></svg><br>话列表</div>
+    <div style="width:130px;text-align:center;font-size:28px"><div style="height:48px;font-size:34px;font-weight:700;line-height:48px">⇠</div>右→左</div>
+    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-comic"/></svg><br>漫画</div>
+  </div>
+  <div class="a l" style="top:976px;font-size:28px">自动翻页</div>
+  <div class="pill out" style="left:300px;top:962px;width:90px;height:60px;font-size:34px">−</div>
+  <div class="a" style="left:390px;width:164px;top:972px;text-align:center;font-size:34px">关</div>
+  <div class="pill out" style="left:554px;top:962px;width:90px;height:60px;font-size:34px">+</div>
+  <div class="hl soft" style="top:1040px"></div>
+  <div class="pill out" style="left:40px;top:1076px;width:290px;height:76px">‹ 上一话</div>
+  <div class="pill out" style="left:354px;top:1076px;width:290px;height:76px">下一话 ›</div>
+</div></div>
+<figcaption><b>⑩ 漫画工具条</b>顶部“‹ 漫画”退出阅读。底部是本话页码和第几话，进度条点一下跳到那一页。“话列表”回系列页（单本是“详情”）；“右→左 / 左→右”切翻页方向，按系列或单本记住；“漫画”回书架。“自动翻页”和阅读一样是关或 3～30 秒（每档 3 秒），漫画单独记一份档位；看完一话自动接下一话，最后一话的最后一页停下。下面两个按钮跳上一话、下一话（单本没有）。工具条开着时按右键打开菜单，按左键或点上面的画面收起。太长的条漫在上传时已经按屏切开，所以不需要“适应宽度”。</figcaption></figure>
+
+
+
+</div>
+
+<h2>Wi-Fi 与传书</h2>
+<div class="grid">
+
+<!-- ⑪ 传书 -->
+<figure><div class="frame"><div class="s">
+  <div class="a l" style="top:32px;font-size:60px;line-height:72px;font-weight:700">传书</div>
+  <div class="a l" style="top:104px;font-size:30px">浏览器上传图书或 TTF 字体</div>
+  <div class="hl" style="top:152px"></div>
+  <div style="position:absolute;left:40px;top:176px;width:296px;height:84px;background:#000;color:#fff;font-weight:700;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">设备热点</div>
+  <div style="position:absolute;left:348px;top:176px;width:296px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">已有 WiFi</div>
+  <div class="a l" style="top:274px;font-size:28px">ReadPico-3A7F</div>
+  <div class="a l" style="top:326px;font-size:28px">口令：readpico</div>
+  <div class="a l" style="top:370px;font-size:28px">http://192.168.4.1</div>
+  <div class="a l" style="top:412px;font-size:24px">扫码打开网页</div>
+  <div style="position:absolute;left:40px;top:454px;width:350px;height:60px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:30px;box-sizing:border-box">切换为 WiFi 码</div>
+  <svg class="a" style="left:404px;top:274px;width:240px;height:240px" viewBox="-2 -2 29 29" shape-rendering="crispEdges"><rect x="-2" y="-2" width="29" height="29" fill="#fff"/><g fill="#000"><rect x="0" y="0" width="1" height="1"/><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="9" y="0" width="1" height="1"/><rect x="10" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/><rect x="14" y="0" width="1" height="1"/><rect x="15" y="0" width="1" height="1"/><rect x="18" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="20" y="0" width="1" height="1"/><rect x="21" y="0" width="1" height="1"/><rect x="22" y="0" width="1" height="1"/><rect x="23" y="0" width="1" height="1"/><rect x="24" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="8" y="1" width="1" height="1"/><rect x="9" y="1" width="1" height="1"/><rect x="10" y="1" width="1" height="1"/><rect x="12" y="1" width="1" height="1"/><rect x="13" y="1" width="1" height="1"/><rect x="15" y="1" width="1" height="1"/><rect x="16" y="1" width="1" height="1"/><rect x="18" y="1" width="1" height="1"/><rect x="24" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="11" y="2" width="1" height="1"/><rect x="15" y="2" width="1" height="1"/><rect x="18" y="2" width="1" height="1"/><rect x="20" y="2" width="1" height="1"/><rect x="21" y="2" width="1" height="1"/><rect x="22" y="2" width="1" height="1"/><rect x="24" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="10" y="3" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/><rect x="14" y="3" width="1" height="1"/><rect x="18" y="3" width="1" height="1"/><rect x="20" y="3" width="1" height="1"/><rect x="21" y="3" width="1" height="1"/><rect x="22" y="3" width="1" height="1"/><rect x="24" y="3" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="15" y="4" width="1" height="1"/><rect x="18" y="4" width="1" height="1"/><rect x="20" y="4" width="1" height="1"/><rect x="21" y="4" width="1" height="1"/><rect x="22" y="4" width="1" height="1"/><rect x="24" y="4" width="1" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="8" y="5" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="5" width="1" height="1"/><rect x="14" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/><rect x="16" y="5" width="1" height="1"/><rect x="18" y="5" width="1" height="1"/><rect x="24" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="3" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="5" y="6" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="12" y="6" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/><rect x="19" y="6" width="1" height="1"/><rect x="20" y="6" width="1" height="1"/><rect x="21" y="6" width="1" height="1"/><rect x="22" y="6" width="1" height="1"/><rect x="23" y="6" width="1" height="1"/><rect x="24" y="6" width="1" height="1"/><rect x="10" y="7" width="1" height="1"/><rect x="14" y="7" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="16" y="7" width="1" height="1"/><rect x="0" y="8" width="1" height="1"/><rect x="5" y="8" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="15" y="8" width="1" height="1"/><rect x="16" y="8" width="1" height="1"/><rect x="17" y="8" width="1" height="1"/><rect x="20" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/><rect x="1" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="7" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="12" y="9" width="1" height="1"/><rect x="13" y="9" width="1" height="1"/><rect x="15" y="9" width="1" height="1"/><rect x="16" y="9" width="1" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="19" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="3" y="10" width="1" height="1"/><rect x="4" y="10" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="16" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="19" y="10" width="1" height="1"/><rect x="0" y="11" width="1" height="1"/><rect x="5" y="11" width="1" height="1"/><rect x="7" y="11" width="1" height="1"/><rect x="12" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="18" y="11" width="1" height="1"/><rect x="19" y="11" width="1" height="1"/><rect x="20" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="0" y="12" width="1" height="1"/><rect x="3" y="12" width="1" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="13" y="12" width="1" height="1"/><rect x="15" y="12" width="1" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="17" y="12" width="1" height="1"/><rect x="19" y="12" width="1" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="22" y="12" width="1" height="1"/><rect x="23" y="12" width="1" height="1"/><rect x="1" y="13" width="1" height="1"/><rect x="5" y="13" width="1" height="1"/><rect x="6" y="13" width="1" height="1"/><rect x="7" y="13" width="1" height="1"/><rect x="9" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/><rect x="14" y="13" width="1" height="1"/><rect x="15" y="13" width="1" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="20" y="13" width="1" height="1"/><rect x="22" y="13" width="1" height="1"/><rect x="23" y="13" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="6" y="14" width="1" height="1"/><rect x="7" y="14" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="13" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="15" y="14" width="1" height="1"/><rect x="16" y="14" width="1" height="1"/><rect x="17" y="14" width="1" height="1"/><rect x="18" y="14" width="1" height="1"/><rect x="19" y="14" width="1" height="1"/><rect x="21" y="14" width="1" height="1"/><rect x="23" y="14" width="1" height="1"/><rect x="24" y="14" width="1" height="1"/><rect x="0" y="15" width="1" height="1"/><rect x="1" y="15" width="1" height="1"/><rect x="2" y="15" width="1" height="1"/><rect x="5" y="15" width="1" height="1"/><rect x="6" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="10" y="15" width="1" height="1"/><rect x="11" y="15" width="1" height="1"/><rect x="13" y="15" width="1" height="1"/><rect x="17" y="15" width="1" height="1"/><rect x="21" y="15" width="1" height="1"/><rect x="22" y="15" width="1" height="1"/><rect x="23" y="15" width="1" height="1"/><rect x="24" y="15" width="1" height="1"/><rect x="0" y="16" width="1" height="1"/><rect x="2" y="16" width="1" height="1"/><rect x="3" y="16" width="1" height="1"/><rect x="4" y="16" width="1" height="1"/><rect x="8" y="16" width="1" height="1"/><rect x="9" y="16" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/><rect x="11" y="16" width="1" height="1"/><rect x="12" y="16" width="1" height="1"/><rect x="13" y="16" width="1" height="1"/><rect x="14" y="16" width="1" height="1"/><rect x="18" y="16" width="1" height="1"/><rect x="20" y="16" width="1" height="1"/><rect x="21" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="23" y="16" width="1" height="1"/><rect x="24" y="16" width="1" height="1"/><rect x="8" y="17" width="1" height="1"/><rect x="9" y="17" width="1" height="1"/><rect x="10" y="17" width="1" height="1"/><rect x="17" y="17" width="1" height="1"/><rect x="18" y="17" width="1" height="1"/><rect x="20" y="17" width="1" height="1"/><rect x="23" y="17" width="1" height="1"/><rect x="0" y="18" width="1" height="1"/><rect x="1" y="18" width="1" height="1"/><rect x="2" y="18" width="1" height="1"/><rect x="3" y="18" width="1" height="1"/><rect x="4" y="18" width="1" height="1"/><rect x="5" y="18" width="1" height="1"/><rect x="6" y="18" width="1" height="1"/><rect x="14" y="18" width="1" height="1"/><rect x="15" y="18" width="1" height="1"/><rect x="16" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="18" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/><rect x="0" y="19" width="1" height="1"/><rect x="6" y="19" width="1" height="1"/><rect x="8" y="19" width="1" height="1"/><rect x="9" y="19" width="1" height="1"/><rect x="10" y="19" width="1" height="1"/><rect x="12" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="17" y="19" width="1" height="1"/><rect x="22" y="19" width="1" height="1"/><rect x="23" y="19" width="1" height="1"/><rect x="24" y="19" width="1" height="1"/><rect x="0" y="20" width="1" height="1"/><rect x="2" y="20" width="1" height="1"/><rect x="3" y="20" width="1" height="1"/><rect x="4" y="20" width="1" height="1"/><rect x="6" y="20" width="1" height="1"/><rect x="9" y="20" width="1" height="1"/><rect x="11" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="13" y="20" width="1" height="1"/><rect x="15" y="20" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="19" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/><rect x="23" y="20" width="1" height="1"/><rect x="24" y="20" width="1" height="1"/><rect x="0" y="21" width="1" height="1"/><rect x="2" y="21" width="1" height="1"/><rect x="3" y="21" width="1" height="1"/><rect x="4" y="21" width="1" height="1"/><rect x="6" y="21" width="1" height="1"/><rect x="11" y="21" width="1" height="1"/><rect x="13" y="21" width="1" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="15" y="21" width="1" height="1"/><rect x="16" y="21" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="18" y="21" width="1" height="1"/><rect x="19" y="21" width="1" height="1"/><rect x="20" y="21" width="1" height="1"/><rect x="21" y="21" width="1" height="1"/><rect x="23" y="21" width="1" height="1"/><rect x="0" y="22" width="1" height="1"/><rect x="2" y="22" width="1" height="1"/><rect x="3" y="22" width="1" height="1"/><rect x="4" y="22" width="1" height="1"/><rect x="6" y="22" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="11" y="22" width="1" height="1"/><rect x="12" y="22" width="1" height="1"/><rect x="13" y="22" width="1" height="1"/><rect x="14" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="18" y="22" width="1" height="1"/><rect x="19" y="22" width="1" height="1"/><rect x="21" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="0" y="23" width="1" height="1"/><rect x="6" y="23" width="1" height="1"/><rect x="8" y="23" width="1" height="1"/><rect x="11" y="23" width="1" height="1"/><rect x="12" y="23" width="1" height="1"/><rect x="14" y="23" width="1" height="1"/><rect x="15" y="23" width="1" height="1"/><rect x="16" y="23" width="1" height="1"/><rect x="17" y="23" width="1" height="1"/><rect x="20" y="23" width="1" height="1"/><rect x="22" y="23" width="1" height="1"/><rect x="24" y="23" width="1" height="1"/><rect x="0" y="24" width="1" height="1"/><rect x="1" y="24" width="1" height="1"/><rect x="2" y="24" width="1" height="1"/><rect x="3" y="24" width="1" height="1"/><rect x="4" y="24" width="1" height="1"/><rect x="5" y="24" width="1" height="1"/><rect x="6" y="24" width="1" height="1"/><rect x="8" y="24" width="1" height="1"/><rect x="9" y="24" width="1" height="1"/><rect x="10" y="24" width="1" height="1"/><rect x="11" y="24" width="1" height="1"/><rect x="12" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="15" y="24" width="1" height="1"/><rect x="19" y="24" width="1" height="1"/><rect x="20" y="24" width="1" height="1"/><rect x="22" y="24" width="1" height="1"/><rect x="23" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/></g></svg>
+  <div class="a l" style="top:528px;font-size:28px">TF 卡 · 可上传 10943.2 MB（预留 1600 MB）</div>
+  <div class="hl" style="top:578px"></div>
+  <div class="a l" style="top:610px;font-size:38px">正在接收</div>
+  <div class="a l" style="top:674px;font-size:28px">已连接 1 台 · 已完成 2 个文件</div>
+  <div class="a l" style="top:726px;font-size:28px">三体全集.epub</div>
+  <div class="a l" style="top:774px;font-size:38px">1.2 / 3.4 MB</div>
+  <div style="position:absolute;left:40px;top:834px;width:604px;height:12px;background:#c8c8c8"><i style="display:block;width:35%;height:100%;background:#000"></i></div>
+  <div class="a l" style="top:938px;font-size:28px">上传完成后可切换接入方式</div>
+  <div class="a l" style="top:980px;font-size:28px">同名文件上传后将覆盖</div>
+  <div style="position:absolute;left:40px;top:1096px;width:512px;height:96px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">停止并返回</div>
+  <div style="position:absolute;left:564px;top:1096px;width:96px;height:96px;border:2px solid #000;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px"><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i></div>
+</div></div>
+<figcaption><b>⑪ 传书</b>（设备屏幕，对应的手机网页是 ⑬⑭）设置 → Wi-Fi 与传书，或书库右上角的传书图标进入。上面选接入方式：“设备热点”是设备自己开热点（名称 ReadPico-xxxx，口令 readpico），手机连上后扫码打开网页；“已有 WiFi”连保存过的路由器，手机在同一网络下打开屏幕上的地址。热点模式的二维码可以在“WiFi 码”（扫了直接连热点）和“网页码”之间切换。中间是还能上传多少：TF 卡剩余空间减去给系统的预留（100 MB 和卡容量 5% 取大的），预留的部分留给阅读进度、缓存和番茄下载，传书不会把卡写满；下面是正在接收的文件、进度和已完成个数，只局部刷新。停留在这页时不自动睡眠；“停止并返回”或离开页面就关网络，回到进来之前的页面。做漫画时副标题会加上“漫画”。</figcaption></figure>
+
+<!-- ⑫ 选择 WiFi -->
+<figure><div class="frame"><div class="s">
+  <div class="a l" style="top:32px;font-size:60px;line-height:72px;font-weight:700">选择 WiFi</div>
+  <div class="a l" style="top:104px;font-size:30px">选择 2.4 GHz 网络，连接后同网传书</div>
+  <div class="hl" style="top:152px"></div>
+  <div style="position:absolute;left:40px;top:176px;width:296px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">连接已保存</div>
+  <div style="position:absolute;left:348px;top:176px;width:296px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">遗忘网络</div>
+  <div class="a l" style="top:270px;font-size:28px">已保存网络：MyHome-2.4G</div>
+  <div class="a l" style="top:310px;font-size:28px">8 个网络 · 第 1/2 页</div>
+  <div style="position:absolute;left:40px;top:350px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:358px;font-size:34px;line-height:38px">MyHome-2.4G</div>
+  <div class="a" style="left:60px;top:400px;font-size:28px;line-height:32px">-42 dBm · 需要密码</div>
+  <div style="position:absolute;left:40px;top:450px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:458px;font-size:34px;line-height:38px">TP-LINK_5A3C</div>
+  <div class="a" style="left:60px;top:500px;font-size:28px;line-height:32px">-55 dBm · 需要密码</div>
+  <div style="position:absolute;left:40px;top:550px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:558px;font-size:34px;line-height:38px">ChinaNet-xY7k</div>
+  <div class="a" style="left:60px;top:600px;font-size:28px;line-height:32px">-61 dBm · 需要密码</div>
+  <div style="position:absolute;left:40px;top:650px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:658px;font-size:34px;line-height:38px">Office_Guest</div>
+  <div class="a" style="left:60px;top:700px;font-size:28px;line-height:32px">-67 dBm · 开放网络</div>
+  <div style="position:absolute;left:40px;top:750px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:758px;font-size:34px;line-height:38px">Xiaomi_88F2</div>
+  <div class="a" style="left:60px;top:800px;font-size:28px;line-height:32px">-72 dBm · 需要密码</div>
+  <div style="position:absolute;left:40px;top:850px;width:604px;height:88px;border:2px solid #000;border-radius:14px;box-sizing:border-box"></div>
+  <div class="a" style="left:60px;top:858px;font-size:34px;line-height:38px">CMCC-Ent</div>
+  <div class="a" style="left:60px;top:900px;font-size:28px;line-height:32px">-80 dBm · 暂不支持</div>
+  <div style="position:absolute;left:40px;top:968px;width:193px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">上一页</div>
+  <div style="position:absolute;left:245px;top:968px;width:193px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">重新扫描</div>
+  <div style="position:absolute;left:450px;top:968px;width:194px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">下一页</div>
+  <div style="position:absolute;left:40px;top:1096px;width:512px;height:96px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">返回传书</div>
+  <div style="position:absolute;left:564px;top:1096px;width:96px;height:96px;border:2px solid #000;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px"><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i></div>
+</div></div>
+<figcaption><b>⑫ 选择 WiFi</b>传书页点“已有 WiFi”、还没连上时进来。扫描附近的 2.4 GHz 网络，每页 6 个，写信号强度和要不要密码；企业认证这类不支持的标“暂不支持”。点一个网络进密码键盘（字母 / 数字 / 符号，可显示密码），连上后保存，回到传书页。保存过的网络可以直接“连接已保存”，或“遗忘网络”（再确认一次）。设备热点模式下，也可以在网页（⑭）里填网络名和密码。</figcaption></figure>
+
+<!-- ⑬ 传书网页 · 上传图书 -->
+<figure><div class="phone"><div class="web">
+  <div class="bar"><span>192.168.4.1</span></div>
+  <div class="pg">
+  <h1>小纸 Pico · WiFi 传书</h1>
+  <p class="hint">Read Pico · 保持手机与设备在同一网络。支持 TXT / EPUB；同名图书须明确选择替换或跳过。</p>
+  <p style="font-size:15px">设备热点 · 图书上传到TF 卡 · 可上传 10.69 GB（已给系统预留 1.56 GB） · 图书单文件不限大小</p>
+  <span class="btn">选择文件</span><span style="font-size:15px">已选 3 个文件</span><br>
+  <span class="btn dis">开始上传</span><span class="btn">取消当前及剩余队列</span>
+  <h2>上传字体</h2>
+  <p class="hint">字体保存到 TF 卡 /sdcard/fonts · 单文件上限 40.00 MB</p>
+  <span class="btn">选择文件</span><span style="font-size:15px">未选择文件</span><br>
+  <span class="btn dis">上传字体</span>
+  <p class="hint" style="margin-top:12px">在设备上停止或离开传书页会中断当前上传；未完成或校验失败的文件不会替换原文件。</p>
+  <p style="font-size:15px;margin-bottom:2px">三体全集.epub · 1.20 MB / 3.40 MB</p>
+  <div class="prog"><b style="width:35%"></b></div>
+  <ul>
+    <li class="ok"><span>夜航船.txt</span><span>已保存</span></li>
+    <li class="ok"><span>宿命之环.epub</span><span>已保存</span></li>
+    <li class="now"><span>三体全集.epub</span><span>上传中（3 / 3）</span></li>
+  </ul>
+  </div>
+</div></div>
+<figcaption><b>⑬ 传书网页 · 上传图书</b>（手机浏览器，对应设备上的 ⑪）设备自己提供的网页，手机或电脑浏览器打开就能用，不用装软件，热点模式下不联外网也行。顶部写接入方式、存到哪、还能上传多少（已经扣掉给系统的预留）。可以一次选多个 TXT / EPUB，按顺序一个个传；同名的书先问替换还是跳过，传一半出错的不会覆盖原文件；放不下（扣掉预留后）就不传，提示空间不足。下面一节上传 TTF 字体（要 TF 卡），传完在设备“字体”页选用。进度条是当前文件，下面逐个列出结果，失败的写原因并能单独重试。</figcaption></figure>
+
+<!-- ⑭ 传书网页 · 书单与配网 -->
+<figure><div class="phone"><div class="web">
+  <div class="bar"><span>192.168.4.1</span></div>
+  <div class="pg">
+  <h2 style="margin-top:12px">当前存储的图书</h2>
+  <p class="hint">仅管理当前上传目标：TF 卡（/sdcard/books）。</p>
+  <div style="display:flex;gap:8px;align-items:center"><div class="box" style="flex:1;margin:4px 0;color:#888">书名 / 拼音 / 首字母</div><span class="btn" style="margin:0">搜索</span></div>
+  <p class="hint">支持完整拼音和首字母，英文不区分大小写；ü 可输入 v。</p>
+  <p style="font-size:15px">共 23 本 · 第 1 / 3 页</p>
+  <div style="border-bottom:1px solid #e3e0d7;padding:4px 0 8px"><b>三体全集.epub</b><br><span style="font-size:13px;color:#555">3.40 MB · 3565158 字节 · TF 卡</span><br><span class="btn" style="margin-top:4px">删除</span></div>
+  <div style="border-bottom:1px solid #e3e0d7;padding:4px 0 8px"><b>宿命之环.epub</b><br><span style="font-size:13px;color:#555">2.86 MB · 2998112 字节 · TF 卡</span><br><span class="btn" style="margin-top:4px">删除</span></div>
+  <span class="btn dis">上一页</span><span class="btn">下一页</span>
+  <h2 style="border-top:1px solid #ccc;padding-top:10px">配置已有 WiFi</h2>
+  <p class="hint">使用 2.4 GHz WiFi。保存后热点继续工作；请在设备上选择“已有 WiFi”，再把手机连接到同一网络。</p>
+  <p style="font-size:15px">已保存：MyHome-2.4G</p>
+  <p style="margin:2px 0;font-size:15px">网络名称（SSID）</p><div class="box" style="margin:2px 0 6px">&nbsp;</div>
+  </div>
+</div></div>
+<figcaption><b>⑭ 传书网页 · 书单与配网</b>同一个网页往下翻。“当前存储的图书”列出设备上的书，每页 10 本，能按书名、全拼或首字母搜；“删除”会先弹窗确认（同时删阅读进度）。最下面“配置已有 WiFi”只在设备热点模式下出现：填网络名和密码保存，热点不会断，之后在设备上点“已有 WiFi”切过去。</figcaption></figure>
+
+<!-- ⑮ 传书 · 接收漫画 -->
+<figure><div class="frame"><div class="s">
+  <div class="a l" style="top:32px;font-size:60px;line-height:72px;font-weight:700">传书</div>
+  <div class="a l" style="top:104px;font-size:30px">浏览器上传图书、漫画或 TTF 字体</div>
+  <div class="hl" style="top:152px"></div>
+  <div style="position:absolute;left:40px;top:176px;width:296px;height:84px;background:#000;color:#fff;font-weight:700;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">设备热点</div>
+  <div style="position:absolute;left:348px;top:176px;width:296px;height:84px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">已有 WiFi</div>
+  <div class="a l" style="top:274px;font-size:28px">ReadPico-3A7F</div>
+  <div class="a l" style="top:326px;font-size:28px">口令：readpico</div>
+  <div class="a l" style="top:370px;font-size:28px">http://192.168.4.1</div>
+  <div class="a l" style="top:412px;font-size:24px">扫码打开网页</div>
+  <div style="position:absolute;left:40px;top:454px;width:350px;height:60px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:30px;box-sizing:border-box">切换为 WiFi 码</div>
+  <svg class="a" style="left:404px;top:274px;width:240px;height:240px" viewBox="-2 -2 29 29" shape-rendering="crispEdges"><rect x="-2" y="-2" width="29" height="29" fill="#fff"/><g fill="#000"><rect x="0" y="0" width="1" height="1"/><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="5" y="0" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="9" y="0" width="1" height="1"/><rect x="10" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/><rect x="14" y="0" width="1" height="1"/><rect x="15" y="0" width="1" height="1"/><rect x="18" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="20" y="0" width="1" height="1"/><rect x="21" y="0" width="1" height="1"/><rect x="22" y="0" width="1" height="1"/><rect x="23" y="0" width="1" height="1"/><rect x="24" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="8" y="1" width="1" height="1"/><rect x="9" y="1" width="1" height="1"/><rect x="10" y="1" width="1" height="1"/><rect x="12" y="1" width="1" height="1"/><rect x="13" y="1" width="1" height="1"/><rect x="15" y="1" width="1" height="1"/><rect x="16" y="1" width="1" height="1"/><rect x="18" y="1" width="1" height="1"/><rect x="24" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="2" y="2" width="1" height="1"/><rect x="3" y="2" width="1" height="1"/><rect x="4" y="2" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="11" y="2" width="1" height="1"/><rect x="15" y="2" width="1" height="1"/><rect x="18" y="2" width="1" height="1"/><rect x="20" y="2" width="1" height="1"/><rect x="21" y="2" width="1" height="1"/><rect x="22" y="2" width="1" height="1"/><rect x="24" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="2" y="3" width="1" height="1"/><rect x="3" y="3" width="1" height="1"/><rect x="4" y="3" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="9" y="3" width="1" height="1"/><rect x="10" y="3" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="13" y="3" width="1" height="1"/><rect x="14" y="3" width="1" height="1"/><rect x="18" y="3" width="1" height="1"/><rect x="20" y="3" width="1" height="1"/><rect x="21" y="3" width="1" height="1"/><rect x="22" y="3" width="1" height="1"/><rect x="24" y="3" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="8" y="4" width="1" height="1"/><rect x="15" y="4" width="1" height="1"/><rect x="18" y="4" width="1" height="1"/><rect x="20" y="4" width="1" height="1"/><rect x="21" y="4" width="1" height="1"/><rect x="22" y="4" width="1" height="1"/><rect x="24" y="4" width="1" height="1"/><rect x="0" y="5" width="1" height="1"/><rect x="6" y="5" width="1" height="1"/><rect x="8" y="5" width="1" height="1"/><rect x="9" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="13" y="5" width="1" height="1"/><rect x="14" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/><rect x="16" y="5" width="1" height="1"/><rect x="18" y="5" width="1" height="1"/><rect x="24" y="5" width="1" height="1"/><rect x="0" y="6" width="1" height="1"/><rect x="1" y="6" width="1" height="1"/><rect x="2" y="6" width="1" height="1"/><rect x="3" y="6" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/><rect x="5" y="6" width="1" height="1"/><rect x="6" y="6" width="1" height="1"/><rect x="12" y="6" width="1" height="1"/><rect x="13" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/><rect x="19" y="6" width="1" height="1"/><rect x="20" y="6" width="1" height="1"/><rect x="21" y="6" width="1" height="1"/><rect x="22" y="6" width="1" height="1"/><rect x="23" y="6" width="1" height="1"/><rect x="24" y="6" width="1" height="1"/><rect x="10" y="7" width="1" height="1"/><rect x="14" y="7" width="1" height="1"/><rect x="15" y="7" width="1" height="1"/><rect x="16" y="7" width="1" height="1"/><rect x="0" y="8" width="1" height="1"/><rect x="5" y="8" width="1" height="1"/><rect x="6" y="8" width="1" height="1"/><rect x="8" y="8" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="12" y="8" width="1" height="1"/><rect x="15" y="8" width="1" height="1"/><rect x="16" y="8" width="1" height="1"/><rect x="17" y="8" width="1" height="1"/><rect x="20" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/><rect x="1" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="7" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="11" y="9" width="1" height="1"/><rect x="12" y="9" width="1" height="1"/><rect x="13" y="9" width="1" height="1"/><rect x="15" y="9" width="1" height="1"/><rect x="16" y="9" width="1" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="19" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="3" y="10" width="1" height="1"/><rect x="4" y="10" width="1" height="1"/><rect x="5" y="10" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="8" y="10" width="1" height="1"/><rect x="9" y="10" width="1" height="1"/><rect x="12" y="10" width="1" height="1"/><rect x="16" y="10" width="1" height="1"/><rect x="18" y="10" width="1" height="1"/><rect x="19" y="10" width="1" height="1"/><rect x="0" y="11" width="1" height="1"/><rect x="5" y="11" width="1" height="1"/><rect x="7" y="11" width="1" height="1"/><rect x="12" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="18" y="11" width="1" height="1"/><rect x="19" y="11" width="1" height="1"/><rect x="20" y="11" width="1" height="1"/><rect x="21" y="11" width="1" height="1"/><rect x="0" y="12" width="1" height="1"/><rect x="3" y="12" width="1" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="8" y="12" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="13" y="12" width="1" height="1"/><rect x="15" y="12" width="1" height="1"/><rect x="16" y="12" width="1" height="1"/><rect x="17" y="12" width="1" height="1"/><rect x="19" y="12" width="1" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="22" y="12" width="1" height="1"/><rect x="23" y="12" width="1" height="1"/><rect x="1" y="13" width="1" height="1"/><rect x="5" y="13" width="1" height="1"/><rect x="6" y="13" width="1" height="1"/><rect x="7" y="13" width="1" height="1"/><rect x="9" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/><rect x="14" y="13" width="1" height="1"/><rect x="15" y="13" width="1" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="20" y="13" width="1" height="1"/><rect x="22" y="13" width="1" height="1"/><rect x="23" y="13" width="1" height="1"/><rect x="2" y="14" width="1" height="1"/><rect x="4" y="14" width="1" height="1"/><rect x="6" y="14" width="1" height="1"/><rect x="7" y="14" width="1" height="1"/><rect x="10" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="13" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="15" y="14" width="1" height="1"/><rect x="16" y="14" width="1" height="1"/><rect x="17" y="14" width="1" height="1"/><rect x="18" y="14" width="1" height="1"/><rect x="19" y="14" width="1" height="1"/><rect x="21" y="14" width="1" height="1"/><rect x="23" y="14" width="1" height="1"/><rect x="24" y="14" width="1" height="1"/><rect x="0" y="15" width="1" height="1"/><rect x="1" y="15" width="1" height="1"/><rect x="2" y="15" width="1" height="1"/><rect x="5" y="15" width="1" height="1"/><rect x="6" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="10" y="15" width="1" height="1"/><rect x="11" y="15" width="1" height="1"/><rect x="13" y="15" width="1" height="1"/><rect x="17" y="15" width="1" height="1"/><rect x="21" y="15" width="1" height="1"/><rect x="22" y="15" width="1" height="1"/><rect x="23" y="15" width="1" height="1"/><rect x="24" y="15" width="1" height="1"/><rect x="0" y="16" width="1" height="1"/><rect x="2" y="16" width="1" height="1"/><rect x="3" y="16" width="1" height="1"/><rect x="4" y="16" width="1" height="1"/><rect x="8" y="16" width="1" height="1"/><rect x="9" y="16" width="1" height="1"/><rect x="10" y="16" width="1" height="1"/><rect x="11" y="16" width="1" height="1"/><rect x="12" y="16" width="1" height="1"/><rect x="13" y="16" width="1" height="1"/><rect x="14" y="16" width="1" height="1"/><rect x="18" y="16" width="1" height="1"/><rect x="20" y="16" width="1" height="1"/><rect x="21" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="23" y="16" width="1" height="1"/><rect x="24" y="16" width="1" height="1"/><rect x="8" y="17" width="1" height="1"/><rect x="9" y="17" width="1" height="1"/><rect x="10" y="17" width="1" height="1"/><rect x="17" y="17" width="1" height="1"/><rect x="18" y="17" width="1" height="1"/><rect x="20" y="17" width="1" height="1"/><rect x="23" y="17" width="1" height="1"/><rect x="0" y="18" width="1" height="1"/><rect x="1" y="18" width="1" height="1"/><rect x="2" y="18" width="1" height="1"/><rect x="3" y="18" width="1" height="1"/><rect x="4" y="18" width="1" height="1"/><rect x="5" y="18" width="1" height="1"/><rect x="6" y="18" width="1" height="1"/><rect x="14" y="18" width="1" height="1"/><rect x="15" y="18" width="1" height="1"/><rect x="16" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="18" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/><rect x="0" y="19" width="1" height="1"/><rect x="6" y="19" width="1" height="1"/><rect x="8" y="19" width="1" height="1"/><rect x="9" y="19" width="1" height="1"/><rect x="10" y="19" width="1" height="1"/><rect x="12" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="17" y="19" width="1" height="1"/><rect x="22" y="19" width="1" height="1"/><rect x="23" y="19" width="1" height="1"/><rect x="24" y="19" width="1" height="1"/><rect x="0" y="20" width="1" height="1"/><rect x="2" y="20" width="1" height="1"/><rect x="3" y="20" width="1" height="1"/><rect x="4" y="20" width="1" height="1"/><rect x="6" y="20" width="1" height="1"/><rect x="9" y="20" width="1" height="1"/><rect x="11" y="20" width="1" height="1"/><rect x="12" y="20" width="1" height="1"/><rect x="13" y="20" width="1" height="1"/><rect x="15" y="20" width="1" height="1"/><rect x="18" y="20" width="1" height="1"/><rect x="19" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/><rect x="23" y="20" width="1" height="1"/><rect x="24" y="20" width="1" height="1"/><rect x="0" y="21" width="1" height="1"/><rect x="2" y="21" width="1" height="1"/><rect x="3" y="21" width="1" height="1"/><rect x="4" y="21" width="1" height="1"/><rect x="6" y="21" width="1" height="1"/><rect x="11" y="21" width="1" height="1"/><rect x="13" y="21" width="1" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="15" y="21" width="1" height="1"/><rect x="16" y="21" width="1" height="1"/><rect x="17" y="21" width="1" height="1"/><rect x="18" y="21" width="1" height="1"/><rect x="19" y="21" width="1" height="1"/><rect x="20" y="21" width="1" height="1"/><rect x="21" y="21" width="1" height="1"/><rect x="23" y="21" width="1" height="1"/><rect x="0" y="22" width="1" height="1"/><rect x="2" y="22" width="1" height="1"/><rect x="3" y="22" width="1" height="1"/><rect x="4" y="22" width="1" height="1"/><rect x="6" y="22" width="1" height="1"/><rect x="10" y="22" width="1" height="1"/><rect x="11" y="22" width="1" height="1"/><rect x="12" y="22" width="1" height="1"/><rect x="13" y="22" width="1" height="1"/><rect x="14" y="22" width="1" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="18" y="22" width="1" height="1"/><rect x="19" y="22" width="1" height="1"/><rect x="21" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="0" y="23" width="1" height="1"/><rect x="6" y="23" width="1" height="1"/><rect x="8" y="23" width="1" height="1"/><rect x="11" y="23" width="1" height="1"/><rect x="12" y="23" width="1" height="1"/><rect x="14" y="23" width="1" height="1"/><rect x="15" y="23" width="1" height="1"/><rect x="16" y="23" width="1" height="1"/><rect x="17" y="23" width="1" height="1"/><rect x="20" y="23" width="1" height="1"/><rect x="22" y="23" width="1" height="1"/><rect x="24" y="23" width="1" height="1"/><rect x="0" y="24" width="1" height="1"/><rect x="1" y="24" width="1" height="1"/><rect x="2" y="24" width="1" height="1"/><rect x="3" y="24" width="1" height="1"/><rect x="4" y="24" width="1" height="1"/><rect x="5" y="24" width="1" height="1"/><rect x="6" y="24" width="1" height="1"/><rect x="8" y="24" width="1" height="1"/><rect x="9" y="24" width="1" height="1"/><rect x="10" y="24" width="1" height="1"/><rect x="11" y="24" width="1" height="1"/><rect x="12" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="15" y="24" width="1" height="1"/><rect x="19" y="24" width="1" height="1"/><rect x="20" y="24" width="1" height="1"/><rect x="22" y="24" width="1" height="1"/><rect x="23" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/></g></svg>
+  <div class="a l" style="top:528px;font-size:28px">TF 卡 · 可上传 10943.2 MB（预留 1600 MB）</div>
+  <div class="hl" style="top:578px"></div>
+  <div class="a l" style="top:610px;font-size:38px">正在接收漫画</div>
+  <div class="a l" style="top:674px;font-size:28px">已连接 1 台 · 已完成 2 个文件</div>
+  <div class="a l" style="top:726px;font-size:28px">海边的少年 / 第 003 话.cbz</div>
+  <div class="a l" style="top:774px;font-size:38px">1.9 / 3.1 MB</div>
+  <div style="position:absolute;left:40px;top:834px;width:604px;height:12px;background:#c8c8c8"><i style="display:block;width:62%;height:100%;background:#000"></i></div>
+  <div class="a l" style="top:938px;font-size:28px">上传完成后可切换接入方式</div>
+  <div class="a l" style="top:980px;font-size:28px">同名文件上传后将覆盖</div>
+  <div style="position:absolute;left:40px;top:1096px;width:512px;height:96px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">停止并返回</div>
+  <div style="position:absolute;left:564px;top:1096px;width:96px;height:96px;border:2px solid #000;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px"><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i></div>
+</div></div>
+<figcaption><b>⑮ 传书 · 接收漫画</b>和 ⑯⑰ 是同一次上传的两头：这是设备屏幕，⑯⑰ 是手机浏览器。设备只负责收文件，图片转换都在手机上做，所以这里显示的是转好的 CBZ：当前文件写成“系列 / 文件名”。收到的 CBZ 先写临时文件，收完校验通过才放进 <code>comics/系列名/</code>，中途断开不会留下坏文件。其余和传书页（⑪）一样：停留时不睡眠，离开就关网络；离开传书页回到漫画页时刷新列表。</figcaption></figure>
+
+<!-- ⑯ 传书网页 · 上传漫画 -->
+<figure><div class="phone"><div class="web">
+  <div class="bar"><span>192.168.4.1</span></div>
+  <div class="pg">
+  <h1>小纸 Pico · WiFi 传书</h1>
+  <p class="hint">保持手机与设备在同一网络。可用空间 12.3 GB。</p>
+  <div class="fold">↑ 上面是上传图书、上传字体（⑬）</div>
+  <h2>上传漫画</h2>
+  <p class="hint">支持 CBZ / ZIP。一部漫画分了很多话，可以直接选整个文件夹。</p>
+  <span class="btn">选择 CBZ 文件</span><span class="btn">选择文件夹</span>
+  <div class="box">已选：海边的少年（12 个文件，共 216 MB）</div>
+  <p style="margin:10px 0 2px">放进系列</p>
+  <div class="box" style="margin-top:2px">海边的少年</div>
+  <p class="hint" style="margin:10px 0">上传前会在这台手机上把每页转成灰度 JPEG、缩到设备屏幕宽度，体积约为原来的 1/5，设备翻页更快。</p>
+  <span class="btn pri">开始转换并上传</span>
+  </div>
+</div></div>
+<figcaption><b>⑯ 传书网页 · 上传漫画</b>（手机浏览器，对应设备上的 ⑮）设备在“Wi-Fi 与传书”页时，手机或电脑扫屏幕上的二维码打开的网页（设备自己提供，不用另装软件，热点模式下也能离线用）。上传漫画是在现有传书网页（⑬⑭）的“上传字体”下面新加的一节（示意图省略了上面两节）：选几个 CBZ，或选一个文件夹（一部漫画的多话）；“放进系列”默认用文件夹名，单个文件留空就是单本。所有 CBZ 一律先转换再上传，没有开关：图片在手机浏览器里解码、转灰度、缩到 684 宽，再存成 JPEG，WebP、PNG、JPEG 都一样处理。这样设备只需要解一种格式，翻页速度也一致。</figcaption></figure>
+
+<!-- ⑰ 传书网页 · 转换上传中 -->
+<figure><div class="phone"><div class="web">
+  <div class="bar"><span>192.168.4.1</span></div>
+  <div class="pg">
+  <h1>小纸 Pico · WiFi 传书</h1>
+  <h2>上传漫画 · 海边的少年</h2>
+  <p style="margin:8px 0 0">总进度 2 / 12 话</p>
+  <div class="prog"><b style="width:21%"></b></div>
+  <ul>
+    <li class="ok"><span>第 001 话.cbz</span><span>✓ 22 页 · 3.4 MB（原 18.1 MB）</span></li>
+    <li class="ok"><span>第 002 话.cbz</span><span>✓ 20 页 · 3.1 MB（原 17.6 MB）</span></li>
+    <li class="now"><span>第 003 话.cbz</span><span>上传中 62%</span></li>
+    <li class="now"><span>第 004 话.cbz</span><span>转换中 14 / 22 页</span></li>
+    <li><span>第 005 话.cbz</span><span>等待</span></li>
+    <li><span>第 006 话.cbz</span><span>等待</span></li>
+    <li><span>……共 12 个</span><span></span></li>
+  </ul>
+  <p class="hint">转换在这台手机上进行，请保持网页打开、屏幕常亮。设备离开传书页会中断上传，没传完的文件不会出现在漫画页。</p>
+  <span class="btn">取消当前及剩余队列</span>
+  </div>
+</div></div>
+<figcaption><b>⑰ 传书网页 · 转换上传中</b>一边转下一话，一边传上一话，同一时间只转一话，手机内存不会被大包撑爆。每行显示转换后和原来的大小，同名文件先问替换还是跳过（和传书一样）。传完的立刻出现在设备的漫画页（离开传书页后刷新）；失败的写原因，比如“包里没有图片”“空间不足”，重新选上再传。解不了的单张图会跳过并注明张数。转好的包是不压缩的 ZIP，设备直接按位置读出每页，不用解压。</figcaption></figure>
+
+</div>
+
 <h2>番茄小说与书城</h2>
 <div class="grid">
 
-<!-- ⑦ 番茄 · 书架 -->
+<!-- ⑱ 番茄 · 书架 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
@@ -292,14 +631,15 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑦ 番茄 · 书架</b>“检查更新”只查不下，有新章节才出现黑色的“下载全部更新”。有更新的排前面。顶部切到书城。</figcaption></figure>
+<figcaption><b>⑱ 番茄 · 书架</b>“检查更新”只查不下，有新章节才出现黑色的“下载全部更新”。有更新的排前面。顶部切到书城。</figcaption></figure>
 
-<!-- ⑧ 番茄 · 搜索 -->
+<!-- ⑲ 番茄 · 搜索 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:32</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:94px;font-size:44px">‹</div>
@@ -314,9 +654,9 @@
   <div class="hl soft" style="top:730px"></div>
   <div class="kb"></div>
 </div></div>
-<figcaption><b>⑧ 番茄 · 搜索</b>离线拼音输入法：全拼 / 九键 / 英文循环切换，“123”切符号。候选按词频排序，打字只局部刷新键盘区。</figcaption></figure>
+<figcaption><b>⑲ 番茄 · 搜索</b>离线拼音输入法：全拼 / 九键 / 英文循环切换，“123”切符号。候选按词频排序，打字只局部刷新键盘区。</figcaption></figure>
 
-<!-- ⑨ 搜索结果 -->
+<!-- ⑳ 搜索结果 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:32</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:94px;font-size:44px">‹</div>
@@ -340,14 +680,15 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑨ 搜索结果</b>一页 5 条：书名、作者和分类、连载状态和规模。已下载的标“已在书库”。点一本先看详情。</figcaption></figure>
+<figcaption><b>⑳ 搜索结果</b>一页 5 条：书名、作者和分类、连载状态和规模。已下载的标“已在书库”。点一本先看详情。</figcaption></figure>
 
-<!-- ⑩ 搜索详情 -->
+<!-- ㉑ 搜索详情 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:33</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:90px;font-size:30px">‹ 搜索结果</div>
@@ -363,9 +704,9 @@
   <div class="a" style="left:40px;right:40px;top:772px;font-size:28px;line-height:44px">　　一座没有出口的回廊，每扇门后都是另一个人的命运。他必须在第七次轮回前找到写下这一切的人……</div>
   <div class="pill blk" style="left:40px;right:40px;top:960px;height:88px">下载到书库</div>
 </div></div>
-<figcaption><b>⑩ 搜索详情</b>简介来自搜索结果，不额外联网。下载时按钮换成进度和“取消”；完成后变成“开始阅读”，封面一起保存。</figcaption></figure>
+<figcaption><b>㉑ 搜索详情</b>简介来自搜索结果，不额外联网。下载时按钮换成进度和“取消”；完成后变成“开始阅读”，封面一起保存。</figcaption></figure>
 
-<!-- ⑪ 书城 -->
+<!-- ㉒ 书城 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
@@ -385,14 +726,15 @@
   </div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑪ 书城</b>FanqieRankTracker 榜单，男频 / 女频共 37 个分类。只在点“刷新”或打开没缓存的分类时联网，记住上次的频道和分类。直连 GitHub Pages 超时会自动改用 jsDelivr 镜像。</figcaption></figure>
+<figcaption><b>㉒ 书城</b>FanqieRankTracker 榜单，男频 / 女频共 37 个分类。只在点“刷新”或打开没缓存的分类时联网，记住上次的频道和分类。直连 GitHub Pages 超时会自动改用 jsDelivr 镜像。</figcaption></figure>
 
-<!-- ⑫ 分类榜单 -->
+<!-- ㉓ 分类榜单 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:44px">‹</div>
@@ -429,14 +771,15 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑫ 分类榜单</b>3×3 封面网格，20 本分 3 页，点按钮或滑一下翻整页。打开分类时后台一次取完封面，缩略图生成完整页刷新一次。书名前是名次，已在书架的书第二行加粗标出；封面上不叠字。（示意图用灰色块代替真实封面）</figcaption></figure>
+<figcaption><b>㉓ 分类榜单</b>3×3 封面网格，20 本分 3 页，点按钮或滑一下翻整页。打开分类时后台一次取完封面，缩略图生成完整页刷新一次。书名前是名次，已在书架的书第二行加粗标出；封面上不叠字。（示意图用灰色块代替真实封面）</figcaption></figure>
 
-<!-- ⑬ 书城详情 -->
+<!-- ㉔ 书城详情 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:44px">‹</div>
@@ -451,13 +794,13 @@
   <div class="pill blk" style="left:40px;right:40px;top:1000px;height:84px">下载到书库</div>
   <div class="a" style="left:0;right:0;top:1110px;text-align:center;font-size:26px">经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到</div>
 </div></div>
-<figcaption><b>⑬ 书城详情</b>封面多半在榜单页已经取好；还缺才单取这一本。“下载到书库”直接用榜单里的 book_id，和搜索下载走同一条路；已在书架的书按钮变成“开始阅读”。</figcaption></figure>
+<figcaption><b>㉔ 书城详情</b>封面多半在榜单页已经取好；还缺才单取这一本。“下载到书库”直接用榜单里的 book_id，和搜索下载走同一条路；已在书架的书按钮变成“开始阅读”。</figcaption></figure>
 
 </div>
 
 <h2>虎扑（只读）</h2>
 <div class="grid">
-<!-- ⑭ 虎扑 · 推荐 -->
+<!-- ㉕ 虎扑 · 推荐 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
@@ -486,13 +829,14 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑭ 虎扑 · 推荐</b>虎扑首页推荐，每页 5 条。顶部分段切 推荐 / 关注 / 比分。标题最多两行，下面是专区和回复数；帖子带图的，右边显示第一张缩略图。点“刷新”才联网。列表先出文字，缩略图在后台一次取完，全部到齐后整页刷新一次（和书城封面网格一样）。翻页点“‹ ›”或滑一下。</figcaption></figure>
-<!-- ⑮ 帖子 · 正文 -->
+<figcaption><b>㉕ 虎扑 · 推荐</b>虎扑首页推荐，每页 5 条。顶部分段切 推荐 / 关注 / 比分。标题最多两行，下面是专区和回复数；帖子带图的，右边显示第一张缩略图。点“刷新”才联网。列表先出文字，缩略图在后台一次取完，全部到齐后整页刷新一次（和书城封面网格一样）。翻页点“‹ ›”或滑一下。</figcaption></figure>
+<!-- ㉖ 帖子 · 正文 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
@@ -507,8 +851,8 @@
   <div class="a" style="left:0;right:0;top:1124px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
 
 </div></div>
-<figcaption><b>⑮ 帖子 · 正文</b>正文转成文字分页显示，点左右两侧、滑一下或点底部“‹ ›”翻页。图片按屏幕宽度缩成 JPG 嵌在正文里：文字先出来，图片后台取完后这一页刷新一次；点图全屏看（⑰）。视频和动图只显示静态封面。顶部切“亮了”“回复”。</figcaption></figure>
-<!-- ⑯ 帖子 · 亮了 -->
+<figcaption><b>㉖ 帖子 · 正文</b>正文转成文字分页显示，点左右两侧、滑一下或点底部“‹ ›”翻页。图片按屏幕宽度缩成 JPG 嵌在正文里：文字先出来，图片后台取完后这一页刷新一次；点图全屏看（㉘）。视频和动图只显示静态封面。顶部切“亮了”“回复”。</figcaption></figure>
+<!-- ㉗ 帖子 · 亮了 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
@@ -533,8 +877,8 @@
   <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 13　　›</div>
 
 </div></div>
-<figcaption><b>⑯ 帖子 · 亮了</b>“亮了”的热门回复，每页放得下几条就放几条，长回复最多三行，点开看全文。引用的楼层用灰色竖线标出。“回复”分段是全部回复，按时间排序，同样分页。不登录只能看，不能回复和点亮。</figcaption></figure>
-<!-- ⑰ 看大图 -->
+<figcaption><b>㉗ 帖子 · 亮了</b>“亮了”的热门回复，每页放得下几条就放几条，长回复最多三行，点开看全文。引用的楼层用灰色竖线标出。“回复”分段是全部回复，按时间排序，同样分页。不登录只能看，不能回复和点亮。</figcaption></figure>
+<!-- ㉘ 看大图 -->
 <figure><div class="frame"><div class="s">
 
   <div class="img g2" style="left:0;top:0;width:684px;height:1216px;border:0"></div>
@@ -543,8 +887,8 @@
   <div class="a r" style="top:1146px;font-size:28px">左右翻图 · 点中间返回</div>
 
 </div></div>
-<figcaption><b>⑰ 看大图</b>点正文里的图全屏查看，抖动成 16 级灰度。左右切换这帖子里的图，点中间返回正文。</figcaption></figure>
-<!-- ⑱ 虎扑 · 关注 -->
+<figcaption><b>㉘ 看大图</b>点正文里的图全屏查看，抖动成 16 级灰度。左右切换这帖子里的图，点中间返回正文。</figcaption></figure>
+<!-- ㉙ 虎扑 · 关注 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
@@ -570,13 +914,14 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 4　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑱ 虎扑 · 关注</b>关注的专区只存在设备上（TF 卡），不用登录。这里把各专区第一页的帖子轮流混排（每个专区取 10 条，最多 12 个专区）。没关注时显示“去选专区”按钮。“管理”进全部专区网格（⑲）加减关注。</figcaption></figure>
-<!-- ⑲ 全部专区 -->
+<figcaption><b>㉙ 虎扑 · 关注</b>关注的专区只存在设备上（TF 卡），不用登录。这里把各专区第一页的帖子轮流混排（每个专区取 10 条，最多 12 个专区）。没关注时显示“去选专区”按钮。“管理”进全部专区网格（㉚）加减关注。</figcaption></figure>
+<!-- ㉚ 全部专区 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:44px">‹</div>
@@ -616,13 +961,14 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑲ 全部专区</b>约 240 个专区按分类分页，翻页不滚动。黑底带 ✓ 的是已关注；点专区名进它的帖子列表，在列表顶部关注或取消关注。专区列表缓存在 TF 卡，平时不用联网。</figcaption></figure>
-<!-- ⑳ 专区帖子 -->
+<figcaption><b>㉚ 全部专区</b>约 240 个专区按分类分页，翻页不滚动。黑底带 ✓ 的是已关注；点专区名进它的帖子列表，在列表顶部关注或取消关注。专区列表缓存在 TF 卡，平时不用联网。</figcaption></figure>
+<!-- ㉛ 专区帖子 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:44px">‹</div>
@@ -649,13 +995,14 @@
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 20　　›</div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑳ 专区帖子</b>专区的帖子，每页 5 条，可按最新回复或最新发布排序；翻到还没取的一页时自动取下一批（最多缓存 200 条），右边“刷新”重新取第一页。右上角关注或取消关注（只记在设备上）。</figcaption></figure>
-<!-- ㉑ 虎扑 · 比分 -->
+<figcaption><b>㉛ 专区帖子</b>专区的帖子，每页 5 条，可按最新回复或最新发布排序；翻到还没取的一页时自动取下一批（最多缓存 200 条），右边“刷新”重新取第一页。右上角关注或取消关注（只记在设备上）。</figcaption></figure>
+<!-- ㉜ 虎扑 · 比分 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
@@ -695,13 +1042,14 @@
   <div class="hl soft" style="top:1012px"></div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>㉑ 虎扑 · 比分</b>赛程按天看，进来自动定位到今天，点“‹ ›”换日期。联赛可选 NBA、CBA、英超、LOL、网球等。比分只在点“刷新”或换日期时更新，不自动刷新（省电，也避免墨水屏频繁闪）。已结束的比赛点进去看评分。</figcaption></figure>
-<!-- ㉒ 比赛评分 -->
+<figcaption><b>㉜ 虎扑 · 比分</b>赛程按天看，进来自动定位到今天，点“‹ ›”换日期。联赛可选 NBA、CBA、英超、LOL、网球等。比分只在点“刷新”或换日期时更新，不自动刷新（省电，也避免墨水屏频繁闪）。已结束的比赛点进去看评分。</figcaption></figure>
+<!-- ㉝ 比赛评分 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:92px;font-size:30px">‹ 比分</div>
@@ -748,48 +1096,79 @@
   <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
 
 </div></div>
-<figcaption><b>㉒ 比赛评分</b>全场球员评分榜：虎扑用户的平均分、评分人数和技术统计，按评分排序。只读，不能打分（打分要登录）。</figcaption></figure>
+<figcaption><b>㉝ 比赛评分</b>全场球员评分榜：虎扑用户的平均分、评分人数和技术统计，按评分排序。只读，不能打分（打分要登录）。</figcaption></figure>
 </div>
 
 <h2>设置</h2>
 <div class="grid">
 
-<!-- ㉓ 设置 -->
+<!-- ㉞ 设置 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">设置</div>
-  <div class="sec" style="top:154px;font-size:26px">阅读</div>
-  <div class="row" style="top:190px;height:70px;border:0"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
-  <div class="sec" style="top:268px;font-size:26px">电源</div>
-  <div class="row" style="top:304px;height:70px"><span>睡眠与锁屏</span><span class="v">›</span></div>
-  <div class="row" style="top:374px;height:70px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
-  <div class="sec" style="top:452px;font-size:26px">连接</div>
-  <div class="row" style="top:488px;height:70px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
-  <div class="row" style="top:558px;height:70px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
-  <div class="row" style="top:628px;height:70px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
-  <div class="sec" style="top:706px;font-size:26px">同步</div>
-  <div class="row" style="top:742px;height:70px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
-  <div class="row" style="top:812px;height:70px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
-  <div class="sec" style="top:890px;font-size:26px">设备</div>
-  <div class="row" style="top:926px;height:70px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
-  <div class="row" style="top:996px;height:70px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
+  <div class="sec" style="top:154px;font-size:26px">阅读与显示</div>
+  <div class="row" style="top:190px;height:66px"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
+  <div class="row" style="top:256px;height:66px;border:0"><span>隐藏虎扑</span><span class="v">关闭</span></div>
+  <div class="sec" style="top:326px;font-size:26px">电源</div>
+  <div class="row" style="top:362px;height:66px"><span>睡眠与锁屏</span><span class="v">›</span></div>
+  <div class="row" style="top:428px;height:66px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
+  <div class="sec" style="top:498px;font-size:26px">连接</div>
+  <div class="row" style="top:534px;height:66px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
+  <div class="row" style="top:600px;height:66px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
+  <div class="row" style="top:666px;height:66px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
+  <div class="sec" style="top:736px;font-size:26px">同步</div>
+  <div class="row" style="top:772px;height:66px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
+  <div class="row" style="top:838px;height:66px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
+  <div class="sec" style="top:908px;font-size:26px">设备</div>
+  <div class="row" style="top:944px;height:66px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
+  <div class="row" style="top:1010px;height:66px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
   <div class="tabs">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>㉓ 设置</b>五组十项。内置服务器只显示“内置服务器”，不露地址和密码。服务器、WebDAV、榜单地址在本页用键盘编辑。</figcaption></figure>
+<figcaption><b>㉞ 设置</b>五组十一项。“隐藏虎扑”点一下就切换，整屏刷新，底部变成四个标签、菜单里也不再有虎扑（㉟）；再点一次恢复。内置服务器只显示“内置服务器”，不露地址和密码。服务器、WebDAV、榜单地址在本页用键盘编辑。</figcaption></figure>
 
-<!-- ㉔ 关于 Treader -->
+<!-- ㉟ 设置 · 隐藏虎扑后 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">设置</div>
+  <div class="sec" style="top:154px;font-size:26px">阅读与显示</div>
+  <div class="row" style="top:190px;height:66px"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
+  <div class="row" style="top:256px;height:66px;border:0"><span>隐藏虎扑</span><span class="v">已开启（四个标签）</span></div>
+  <div class="sec" style="top:326px;font-size:26px">电源</div>
+  <div class="row" style="top:362px;height:66px"><span>睡眠与锁屏</span><span class="v">›</span></div>
+  <div class="row" style="top:428px;height:66px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
+  <div class="sec" style="top:498px;font-size:26px">连接</div>
+  <div class="row" style="top:534px;height:66px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
+  <div class="row" style="top:600px;height:66px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
+  <div class="row" style="top:666px;height:66px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
+  <div class="sec" style="top:736px;font-size:26px">同步</div>
+  <div class="row" style="top:772px;height:66px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
+  <div class="row" style="top:838px;height:66px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
+  <div class="sec" style="top:908px;font-size:26px">设备</div>
+  <div class="row" style="top:944px;height:66px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
+  <div class="row" style="top:1010px;height:66px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㉟ 设置 · 隐藏虎扑后</b>“隐藏虎扑”打开后底部只剩书库、漫画、番茄、设置四个标签，平分宽度；虎扑的缓存和关注都还在，关掉开关就回来。设置存在设备里，重启后保持。</figcaption></figure>
+
+<!-- ㊱ 关于 Treader -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
   <div class="a b" style="left:96px;top:100px;font-size:36px">关于 Treader</div>
   <div class="a l b" style="top:184px;font-size:60px">Treader</div>
   <div class="a" style="left:40px;right:40px;top:256px;font-size:28px;line-height:34px">小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步</div>
-  <div class="row" style="top:322px;height:68px"><span style="font-size:30px">版本</span><span class="v">0.3.0 · TF 卡升级 ›</span></div>
+  <div class="row" style="top:322px;height:68px"><span style="font-size:30px">版本</span><span class="v">0.4.0 · TF 卡升级 ›</span></div>
   <div class="row" style="top:396px;height:68px"><span style="font-size:30px">构建时间</span><span class="v">Nov 17 2026 09:00:58 UTC</span></div>
   <div class="row" style="top:470px;height:68px;border:0"><span style="font-size:30px">项目主页</span><span class="v">github.com/bidabrain/treader-eink</span></div>
   <div class="sec" style="top:584px;font-size:26px">开源致谢</div>
@@ -805,9 +1184,9 @@
   <div class="row" style="top:1030px;height:76px"><span>设备信息</span><span class="v">电量、存储、芯片 ›</span></div>
   <div class="row" style="top:1106px;height:76px;border:0"><span>设备自检</span><span class="v">屏幕、触摸、电源 ›</span></div>
 </div></div>
-<figcaption><b>㉔ 关于 Treader</b>版本、构建时间、项目主页和开源致谢。点“版本”进系统升级；底部进设备信息（官方概览页）和设备自检。</figcaption></figure>
+<figcaption><b>㊱ 关于 Treader</b>版本、构建时间、项目主页和开源致谢。点“版本”进系统升级；底部进设备信息（官方概览页）和设备自检。</figcaption></figure>
 
-<!-- ㉕ TF 卡 -->
+<!-- ㊲ TF 卡 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
@@ -825,9 +1204,9 @@
   <div class="pill out" style="left:40px;top:900px;width:290px;height:84px">重新挂载</div>
   <div class="pill blk" style="right:40px;top:900px;width:290px;height:84px">格式化 TF 卡</div>
 </div></div>
-<figcaption><b>㉕ TF 卡</b>状态、容量和用到的文件夹。拔卡后重新插卡会自动挂载，这里的“重新挂载”是手动兜底。</figcaption></figure>
+<figcaption><b>㊲ TF 卡</b>状态、容量和用到的文件夹。拔卡后重新插卡会自动挂载，这里的“重新挂载”是手动兜底。</figcaption></figure>
 
-<!-- ㉖ 格式化确认 -->
+<!-- ㊳ 格式化确认 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
@@ -839,9 +1218,9 @@
   <div class="pill out" style="right:40px;top:900px;width:290px;height:84px;font-size:30px">再点一次确认</div>
   <div class="a b" style="left:0;right:0;top:1014px;text-align:center;font-size:28px">这一步不能撤销</div>
 </div></div>
-<figcaption><b>㉖ 格式化确认</b>两步确认：先点“清空并格式化”，按钮变成“再点一次确认”。黑色的是“取消”。同步进行中不允许格式化。</figcaption></figure>
+<figcaption><b>㊳ 格式化确认</b>两步确认：先点“清空并格式化”，按钮变成“再点一次确认”。黑色的是“取消”。同步进行中不允许格式化。</figcaption></figure>
 
-<!-- ㉗ 锁屏壁纸 -->
+<!-- ㊴ 锁屏壁纸 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
@@ -862,23 +1241,23 @@
   <div class="a" style="left:150px;top:698px;font-size:32px">street.png</div><div class="a" style="left:150px;top:748px;font-size:26px">1.9 MB</div>
   <div class="hl soft" style="top:806px;left:150px"></div>
 </div></div>
-<figcaption><b>㉗ 锁屏壁纸</b>只列 TF 卡 wallpapers 文件夹里的 JPG/PNG，带缩略图。“不用壁纸”改回书卡样式。</figcaption></figure>
+<figcaption><b>㊴ 锁屏壁纸</b>只列 TF 卡 wallpapers 文件夹里的 JPG/PNG，带缩略图。“不用壁纸”改回书卡样式。</figcaption></figure>
 
-<!-- ㉘ 壁纸预览 -->
+<!-- ㊵ 壁纸预览 -->
 <figure><div class="frame"><div class="s">
   <div class="wall"></div>
   <div class="a" style="left:0;right:0;top:1064px;bottom:0;background:#fff;border-top:2px solid #000"></div>
   <div class="pill blk" style="left:40px;top:1104px;width:290px;height:80px">设为壁纸</div>
   <div class="pill out" style="right:40px;top:1104px;width:290px;height:80px">返回</div>
 </div></div>
-<figcaption><b>㉘ 壁纸预览</b>点一张图先做全屏缓存（16 级灰度抖动）再全屏预览，满意再设为壁纸。离开时只保留当前壁纸的缓存。</figcaption></figure>
+<figcaption><b>㊵ 壁纸预览</b>点一张图先做全屏缓存（16 级灰度抖动）再全屏预览，满意再设为壁纸。离开时只保留当前壁纸的缓存。</figcaption></figure>
 
-<!-- ㉙ 系统升级 -->
+<!-- ㊶ 系统升级 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
   <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
-  <div class="row" style="top:176px;height:68px"><span style="font-size:30px">当前版本</span><span class="v">0.3.0（Nov 18 2026 09:00:58）</span></div>
+  <div class="row" style="top:176px;height:68px"><span style="font-size:30px">当前版本</span><span class="v">0.4.0（Nov 18 2026 21:00:00）</span></div>
   <div class="row" style="top:252px;height:68px"><span style="font-size:30px">运行位置</span><span class="v">ota_0</span></div>
   <div class="row" style="top:328px;height:68px"><span style="font-size:30px">电量</span><span class="v">82%</span></div>
   <div class="a b" style="left:40px;top:482px;font-size:32px">Read_Pico.bin</div>
@@ -888,9 +1267,9 @@
   <div class="a" style="left:40px;top:650px;font-size:26px">不是 Treader 固件</div>
   <div class="hl soft" style="top:706px"></div>
 </div></div>
-<figcaption><b>㉙ 系统升级</b>扫描 TF 卡 update 文件夹和根目录的 .bin，核对芯片、工程名和大小，不合格的写明原因。电量低于 30% 且没充电时不让升级。</figcaption></figure>
+<figcaption><b>㊶ 系统升级</b>扫描 TF 卡 update 文件夹和根目录的 .bin，核对芯片、工程名和大小，不合格的写明原因。电量低于 30% 且没充电时不让升级。</figcaption></figure>
 
-<!-- ㉚ 升级中 -->
+<!-- ㊷ 升级中 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
   <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
@@ -899,7 +1278,7 @@
   <div class="a l" style="top:560px;font-size:30px">45% · 1.3 / 3.0 MB</div>
   <div class="a l" style="top:640px;font-size:30px">不要拔 TF 卡，也不要关机。</div>
 </div></div>
-<figcaption><b>㉚ 升级中</b>写进另一个程序槽，进度每 5% 局部刷新；期间电源键不锁屏。校验通过后自动重启，新固件起不来会自动退回旧版本。</figcaption></figure>
+<figcaption><b>㊷ 升级中</b>写进另一个程序槽，进度每 5% 局部刷新；期间电源键不锁屏。校验通过后自动重启，新固件起不来会自动退回旧版本。</figcaption></figure>
 
 </div>
 
@@ -911,10 +1290,11 @@
 <li><b>图书详情</b>：书库里长按一本书。显示完整书名、格式、大小和进度，可以分别“清进度”和“删除文件”（各要再确认一次）；番茄书删除时一起删掉封面缓存和番茄书架记录。</li>
 <li><b>书库搜索</b>：书库右上角放大镜。默认英文键盘，按拼音首字母、全拼或英文匹配书名；结果在书库里显示，筛选条出现“关键词 ×”，点掉恢复。</li>
 <li><b>管理书库</b>：书库筛选条点“管理”。多选后批量删除或清进度，还有本页全选、清除勾选、重新扫描。</li>
-<li><b>菜单</b>：一般页面按右键（或点右下角把手）打开，列出书库、番茄、虎扑、设置四个主页面，再按一次关闭。</li>
+<li><b>菜单</b>：一般页面按右键（或点右下角把手）打开，列出书库、漫画、番茄、虎扑、设置五个主页面（隐藏虎扑后是四个），再按一次关闭。</li>
+<li><b>漫画详情</b>：漫画书架长按一部、或系列里长按一话进来。显示话数或文件大小和进度，可以清进度，或删除（再点一次确认；删系列会删掉文件夹里的全部 CBZ）。</li>
+<li><b>WiFi 密码键盘 / 遗忘确认</b>：选择 WiFi（⑫）里点一个需要密码的网络进密码键盘，最多 64 个字符，可切换显示；“遗忘网络”先进确认页。</li>
 <li><b>字体</b>：设置 → 字体。列出 TF 卡 <code>fonts/</code> 里的 TTF，选字体和字重，没有字体时用内置小字库。</li>
 <li><b>睡眠与锁屏</b>：设置 → 睡眠与锁屏。电源键短按时用浅睡、深睡还是关机；浅睡可选“拿起唤醒”。</li>
-<li><b>Wi-Fi 与传书</b>：设置 → Wi-Fi 与传书（书库右上角也能进）。设备开热点或连已有 Wi-Fi，屏幕上显示二维码和地址，手机或电脑打开网页上传 TXT / EPUB 和 TTF 字体、删书、配置 Wi-Fi。停留期间不自动睡眠，离开页面就停止。</li>
 <li><b>番茄服务器 / 书城榜单 / WebDAV</b>：设置里对应的行，用屏幕键盘填地址、密码。番茄服务器留空就用编译进固件的内置服务器（只显示“内置服务器”，不露地址和密码）；书城榜单留空用默认地址。</li>
 <li><b>立即同步</b>：设置 → 立即同步。用 WebDAV 同步阅读进度和番茄书架，书本身不传；结果写在设置标题右边。</li>
 <li><b>设备信息 / 设备自检</b>：关于 Treader 页底部。设备信息是官方的概览页（I²C 设备、识别码、电池、构建时间）；设备自检逐项检查电源管理芯片和各个外设（探测是真测，其余看芯片应答）。</li>
@@ -929,7 +1309,8 @@
 <li><b>失败提示带原因</b>：联网失败时提示后面括号写具体原因，如“未设置 Wi-Fi”“密码不对或信号太弱”“传书还在占用 Wi-Fi”“域名解析失败”“HTTPS 握手失败”“连接服务器超时”“HTTP 404”。一行放不下就换两行显示。</li>
 <li><b>国内网络</b>：Wi-Fi 按中国信道（1～13）。路由器 DNS 解析失败时自动改用阿里 223.5.5.5 / 腾讯 119.29.29.29 再试；书城直连 GitHub Pages 超时会自动改用 jsDelivr 镜像。</li>
 <li><b>锁屏</b>：电源键短按锁屏，空闲 2 分钟自动锁屏；同步、升级、传书期间不自动锁屏。</li>
-<li><b>TF 卡</b>：书、封面、缓存都只放 TF 卡。拔卡不会死机，重新插卡自动挂载。</li>
+<li><b>存储预留</b>：传书和上传漫画时，TF 卡至少留下 100 MB 和卡容量 5% 中较大的那块，网页和设备上显示的“可上传”已经扣掉它。</li>
+<li><b>TF 卡</b>：书、漫画、封面、缓存都只放 TF 卡；书在 <code>books/</code>，漫画在 <code>comics/</code>，两边进度分开存。拔卡不会死机，重新插卡自动挂载。</li>
 </ul>
 </div>
 <div class="notes keys">

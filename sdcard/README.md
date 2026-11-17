@@ -7,6 +7,7 @@ Copy **everything inside this folder** (not the `sdcard` folder itself) to the r
 ```
 TF 卡根目录/
 ├── books/          放 TXT、EPUB；番茄下载的书也存这里
+├── comics/         放 CBZ 漫画；一部漫画的多话放进同一个子文件夹
 ├── fonts/          中文字体 ChillDuanSansVF.ttf（必需，否则缺字）
 ├── ime/            拼音词库 pinyin-v1.bin（输入中文必需）
 ├── wallpapers/     锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图
@@ -17,7 +18,7 @@ TF 卡根目录/
 
 - 设备运行时会自己生成 `tomato/shelf.json`、`tomato/store/`、`tomato/covers/` 和 `.treader/`（封面、壁纸缓存，可以整个删掉）。
 - 各文件夹里的 `.gitkeep` 只是为了让 git 保留空文件夹，设备会忽略它，复制过去也没关系。
-- 放进本文件夹 `books/`、`wallpapers/`、`update/` 的文件不会被 git 提交；`update/` 里的固件可能带着你的内置服务器，不要公开。
+- 放进本文件夹 `books/`、`comics/`、`wallpapers/`、`update/` 的文件不会被 git 提交；`update/` 里的固件可能带着你的内置服务器，不要公开。
 - 已经刷好 Treader 的话，也可以在 设置 → TF 卡 里格式化，设备会建好同样的文件夹，然后再从这里复制 `fonts/` 和 `ime/`。
 
 ## 字体部署 / Font deployment

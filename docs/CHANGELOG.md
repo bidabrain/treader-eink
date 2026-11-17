@@ -3,6 +3,23 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-18 · Treader 0.4.0
+
+- 阅读和漫画新增定时自动翻页：工具条里调“自动翻页”，关或 3～30 秒（每档 3 秒），阅读和漫画各记一份；碰屏幕或按键重新计时，工具条开着暂停，翻到最后一页停下；自动翻页期间不空闲锁屏。
+  Timed auto page turn for the reader and comics: set "auto turn" in the toolbar to off or 3-30 s in 3 s steps, kept separately for each; a touch or key restarts the countdown, the open toolbar pauses it, the last page stops it, and the device does not idle-lock meanwhile.
+- 新增漫画标签：读 TF 卡 `comics/` 里的 CBZ，和书库分开管理；一个子文件夹是一部系列，多话按文件名自然排序；封面网格、继续看、话列表；一屏一页翻页，一话看完接下一话，可切从右往左；长按清进度或删除。
+  New comics tab for CBZ files in `comics/`, managed apart from the library: a subfolder is a series with episodes in natural order; cover grid, continue card and episode list; one page per screen, automatic next episode, optional right-to-left; long-press to clear progress or delete.
+- 传书网页新增“上传漫画”：在手机浏览器里把每页转成灰度 JPEG、缩到屏幕大小（WebP、PNG 都能转，长条漫画按屏切开），再上传，体积约为原来的 1/5。
+  The transfer page can upload comics: the phone's browser converts every page to a screen-sized grayscale JPEG (WebP and PNG included, tall strips split into screens) before uploading, about a fifth of the original size.
+- 传书给 TF 卡留出预留空间（100 MB 和卡容量 5% 取大的），网页和设备都显示扣掉预留后还能传多少，不会把卡写满。
+  Transfers keep a reserve on the TF card (the larger of 100 MB and 5% of the card); the page and the device show the space left after it, so uploads never fill the card.
+- 设置新增“隐藏虎扑”：打开后底部只剩四个标签，菜单也不再有虎扑。
+  Settings can hide Hupu: the tab bar drops to four tabs and the menu skips it.
+- 修复虎扑：后台清理图片缓存时可能删到界面正在读写的文件（加了缓存锁）；连接中途断开的页面不再当成功；写缓存失败时保留旧文件，不会丢掉关注列表；刷新赛程时不再打乱正在看的评分页；专区编号只允许字母数字；网断时图片连续失败 3 张就停；关注上限改成和关注流一致的 12 个。
+  Hupu fixes: cache pruning could delete files the UI had open (now locked); truncated pages no longer count as success; a failed cache write keeps the old file so follows are never lost; a schedule refresh no longer scrambles the open rating view; zone ids are restricted to letters and digits; image fetching stops after three failures in a row; the follow limit now matches the follow feed (12).
+- 阅读：工具条空白处点一下不再翻页。
+  Reader: tapping empty parts of the toolbar no longer turns the page.
+
 ## 2026-11-18 · Treader 0.3.0
 
 - 书城：榜单地址是 `xxx.github.io/仓库` 时，直连超时或失败会自动改从 jsDelivr 镜像（fastly、gcore、cdn）取同一仓库 main 分支的数据，用通的那个记到重启；国内直连 GitHub Pages 常超时。

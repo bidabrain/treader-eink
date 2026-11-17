@@ -291,6 +291,8 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
         if (n == 0) break;
         len += (size_t)n;
     }
+    // 连接提前断开时内容不完整，不能当成功。/ A connection that closed early leaves a partial body; that is a failure.
+    if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
     const bool jpeg = len > 3 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF;
     const bool png = len > 8 && buf[0] == 0x89 && !memcmp(buf + 1, "PNG", 3);
     if (err == ESP_OK && image && !jpeg && !png) err = ESP_ERR_NOT_SUPPORTED;

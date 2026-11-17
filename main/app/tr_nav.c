@@ -6,6 +6,7 @@
 #include "tr_nav.h"
 
 extern const app_desc_t app_book;
+extern const app_desc_t app_comic;
 extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
 extern const app_desc_t app_tr_hupu;
@@ -20,6 +21,7 @@ void tr_nav_set_tomato_page(const app_desc_t* page) {
 const app_desc_t* tr_nav_tab_app(int tab) {
     switch (tab) {
     case TR_TAB_LIBRARY: return &app_book;
+    case TR_TAB_COMIC: return &app_comic;
     case TR_TAB_TOMATO: return s_tomato_page;
     case TR_TAB_HUPU: return &app_tr_hupu;
     case TR_TAB_SETTINGS: return &app_tr_settings;

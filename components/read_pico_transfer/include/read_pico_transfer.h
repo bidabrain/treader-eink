@@ -36,10 +36,12 @@ typedef struct {
     read_pico_transfer_mode_t mode; ///< 网络模式，默认热点 / Network mode, default AP
     const char *root_dir; ///< 已挂载根目录，start 内复制 / Mounted root, copied by start
     const char *font_dir; ///< 可选 TF 字体目录；调用方须暂停 SD 字体读取至 stop 返回 / Optional TF font directory; caller must suspend SD font reads until stop returns
+    const char *comic_dir; ///< 可选 TF 漫画目录，收 CBZ / Optional TF comics directory for CBZ uploads
     bool is_flash; ///< 内置存储标志 / Internal storage flag
     size_t file_limit; ///< 单文件上限，零表示不限 / Per-file limit, zero means unlimited
     uint64_t (*free_bytes_cb)(void *ctx); ///< 查询可用字节 / Query available bytes
     void *free_bytes_ctx; ///< 回调上下文，stop 前有效 / Callback context valid until stop
+    uint64_t (*reserve_bytes_cb)(void *ctx); ///< 可选：给系统预留的字节数，只用于网页显示 / Optional reserved bytes, shown on the page only
     esp_err_t (*file_changed_cb)(const char *path); ///< 文件提交或删除后清除进度；失败不回滚文件 / Clear progress after commit or deletion; failure never rolls back the file
 } read_pico_transfer_cfg_t;
 

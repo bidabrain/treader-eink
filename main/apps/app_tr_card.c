@@ -47,7 +47,7 @@ static esp_err_t s_info_err;
 
 // Treader 在卡上用到的文件夹。/ Folders Treader uses on the card.
 static const char* const DIRS[] = {
-    "/sdcard/books", "/sdcard/fonts", "/sdcard/ime", "/sdcard/wallpapers", "/sdcard/tomato",
+    "/sdcard/books", "/sdcard/comics", "/sdcard/fonts", "/sdcard/ime", "/sdcard/wallpapers", "/sdcard/tomato",
 };
 
 static void refresh(void) {
@@ -87,14 +87,15 @@ static void draw_info(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, 460, 26, "Treader 用到的文件夹", EPD_DRAW_ALIGN_LEFT, false);
     static const char* const LINES[] = {
         "books　书籍（TXT、EPUB，番茄下载也放这里）",
+        "comics　漫画（CBZ，一部多话放一个子文件夹）",
         "fonts　中文字体（TTF）",
         "ime　拼音词库",
         "wallpapers　锁屏壁纸（JPG、PNG）",
         "tomato　番茄书架、封面和设置",
     };
-    for (int i = 0; i < 5; i++) tr_text(fb, TR_MARGIN, 506 + i * 44, 28, LINES[i], EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_MARGIN, 740, 26, "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT, false);
-    if (s_msg[0]) tr_wrap(fb, TR_MARGIN, 800, TR_W - 2 * TR_MARGIN, 28, 40, s_msg, 2);
+    for (int i = 0; i < 6; i++) tr_text(fb, TR_MARGIN, 506 + i * 40, 28, LINES[i], EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, 760, 26, "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT, false);
+    if (s_msg[0]) tr_wrap(fb, TR_MARGIN, 806, TR_W - 2 * TR_MARGIN, 28, 40, s_msg, 2);
     if (s_info.present) {
         tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "重新挂载", false, 30);
         tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BTN_Y, 290, BTN_H}, "格式化 TF 卡", true, 30);
@@ -135,6 +136,7 @@ static bool make_dirs(void) {
     if (f) {
         fputs("Treader TF card\n\n"
               "books/       TXT and EPUB books; Tomato downloads go here too\n"
+              "comics/      CBZ comics; one subfolder per series\n"
               "fonts/       Chinese TTF font (copy sdcard/fonts from the repo)\n"
               "ime/         pinyin lexicon (copy sdcard/ime from the repo)\n"
               "wallpapers/  lock-screen wallpapers, JPG or PNG\n"

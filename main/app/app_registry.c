@@ -8,37 +8,52 @@
  */
 
 #include "app_registry.h"
+#include "settings.h"
 
 extern const app_desc_t app_book;
+extern const app_desc_t app_comic;
 extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
 extern const app_desc_t app_tr_hupu;
 extern const app_desc_t app_selftest;
 
-// 菜单只列四个主页面（书库、番茄、虎扑、设置），和底部标签栏一致；传书、字体、睡眠等从“设置”进入。首页已并入书库（2026-11-17）。
-// The menu lists the four main pages (library, Tomato, Hupu, settings), matching the tab bar; transfer, fonts, sleep etc. live under Settings.
-// Home was merged into the library (2026-11-17).
+// 菜单只列主页面（书库、漫画、番茄、虎扑、设置），和底部标签栏一致；传书、字体、睡眠等从“设置”进入。首页已并入书库
+// （2026-11-17）。设置里打开“隐藏虎扑”后菜单跳过虎扑（2026-11-18）。
+// The menu lists the main pages (library, comics, Tomato, Hupu, settings), matching the tab bar; transfer, fonts, sleep
+// etc. live under Settings. Home was merged into the library (2026-11-17). "Hide Hupu" skips Hupu (2026-11-18).
 static const app_desc_t* const s_apps[] = {
     &app_book,
+    &app_comic,
     &app_tr_tomato,
     &app_tr_hupu,
     &app_tr_settings,
 };
 
-#define APP_COUNT ((int)(sizeof(s_apps) / sizeof(s_apps[0])))
+#define APP_TOTAL ((int)(sizeof(s_apps) / sizeof(s_apps[0])))
+
+static bool listed(const app_desc_t* app) {
+    return app != &app_tr_hupu || !app_settings_hide_hupu();
+}
 
 int app_count(void) {
-    return APP_COUNT;
+    int n = 0;
+    for (int i = 0; i < APP_TOTAL; i++) n += listed(s_apps[i]);
+    return n;
 }
 
 const app_desc_t* app_at(int index) {
-    if (index < 0 || index >= APP_COUNT) return NULL;
-    return s_apps[index];
+    for (int i = 0; i < APP_TOTAL; i++) {
+        if (!listed(s_apps[i])) continue;
+        if (index-- == 0) return s_apps[i];
+    }
+    return NULL;
 }
 
 int app_index_of(const app_desc_t* app) {
-    for (int i = 0; i < APP_COUNT; i++) {
-        if (s_apps[i] == app) return i;
+    for (int i = 0, k = 0; i < APP_TOTAL; i++) {
+        if (!listed(s_apps[i])) continue;
+        if (s_apps[i] == app) return k;
+        k++;
     }
     return -1;
 }

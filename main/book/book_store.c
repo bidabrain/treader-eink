@@ -126,6 +126,19 @@ uint64_t book_store_free_bytes(const book_store_root_t* root) {
     return free_bytes;
 }
 
+uint64_t book_store_upload_reserve(const book_store_root_t* root) {
+    if (root == NULL || root->is_flash || !sd_ready()) return 0;
+    uint64_t total = 0, free_bytes = 0;
+    if (esp_vfs_fat_info("/sdcard", &total, &free_bytes) != ESP_OK) return BOOK_STORE_RESERVE_MIN;
+    const uint64_t share = total * BOOK_STORE_RESERVE_PCT / 100;
+    return share > BOOK_STORE_RESERVE_MIN ? share : BOOK_STORE_RESERVE_MIN;
+}
+
+uint64_t book_store_upload_free_bytes(const book_store_root_t* root) {
+    const uint64_t free_bytes = book_store_free_bytes(root), reserve = book_store_upload_reserve(root);
+    return free_bytes > reserve ? free_bytes - reserve : 0;
+}
+
 bool book_store_flash_ready(void) {
     return s_wl != WL_INVALID_HANDLE;
 }

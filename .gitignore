@@ -52,6 +52,8 @@ local.properties
 !sdcard/ime/pinyin-v1.bin
 sdcard/books/*
 !sdcard/books/.gitkeep
+sdcard/comics/*
+!sdcard/comics/.gitkeep
 sdcard/wallpapers/*
 !sdcard/wallpapers/.gitkeep
 sdcard/update/*

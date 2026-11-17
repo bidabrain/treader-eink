@@ -26,6 +26,9 @@
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_BOOK_STYLE "bk_style"
+#define NVS_KEY_HIDE_HUPU "hide_hupu"
+#define NVS_KEY_BOOK_AUTO "bk_auto"
+#define NVS_KEY_COMIC_AUTO "cm_auto"
 #define FONT_PATH_MAX 160
 
 static app_sleep_mode_t s_sleep = APP_SLEEP_OFF;
@@ -38,6 +41,8 @@ static bool s_book_shake;
 // 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
 // Defaults: standard line spacing, small paragraph gap, medium margins, indent as written, no rules (the old layout).
 static uint8_t s_book_style = 0x15;
+static bool s_hide_hupu;
+static uint8_t s_book_auto, s_comic_auto;
 
 static app_book_style_t unpack_style(uint8_t v) {
     app_book_style_t s = {.line = v & 3, .para = (v >> 2) & 3, .margin = (v >> 4) & 3,
@@ -89,6 +94,11 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
     uint8_t book_style = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_STYLE, &book_style) == ESP_OK) s_book_style = book_style;
+    uint8_t hide_hupu = 0;
+    if (nvs_get_u8(h, NVS_KEY_HIDE_HUPU, &hide_hupu) == ESP_OK) s_hide_hupu = hide_hupu != 0;
+    uint8_t book_auto = 0, comic_auto = 0;
+    if (nvs_get_u8(h, NVS_KEY_BOOK_AUTO, &book_auto) == ESP_OK) s_book_auto = book_auto;
+    if (nvs_get_u8(h, NVS_KEY_COMIC_AUTO, &comic_auto) == ESP_OK) s_comic_auto = comic_auto;
     nvs_close(h);
     ESP_LOGI(
         TAG, "sleep mode %s, font %s",
@@ -197,6 +207,28 @@ void app_settings_set_book_style(const app_book_style_t* style) {
     if (v == s_book_style) return;
     s_book_style = v;
     nvs_put_u8(NVS_KEY_BOOK_STYLE, v);
+}
+
+bool app_settings_hide_hupu(void) {
+    return s_hide_hupu;
+}
+
+void app_settings_set_hide_hupu(bool on) {
+    if (s_hide_hupu == on) return;
+    s_hide_hupu = on;
+    nvs_put_u8(NVS_KEY_HIDE_HUPU, on ? 1 : 0);
+}
+
+uint8_t app_settings_auto_turn(bool comic) {
+    const uint8_t v = comic ? s_comic_auto : s_book_auto;
+    return v > 10 ? 10 : v;   // 坏值按最长一档 / Clamp a corrupt value to the longest level
+}
+
+void app_settings_set_auto_turn(bool comic, uint8_t level) {
+    uint8_t* v = comic ? &s_comic_auto : &s_book_auto;
+    if (*v == level) return;
+    *v = level;
+    nvs_put_u8(comic ? NVS_KEY_COMIC_AUTO : NVS_KEY_BOOK_AUTO, level);
 }
 
 void app_settings_set_book_shake(bool on) {

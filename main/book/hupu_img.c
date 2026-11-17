@@ -23,6 +23,7 @@
 #include "epdiy.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "tomato.h"
 
 #define TAG "hupu_img"
 #define SLOT_MAX 16
@@ -112,6 +113,7 @@ const uint8_t* hupu_img_get(const char* jpg, int w, int h) {
     if (failed(key)) return NULL;
     char path[PATH_LEN + 24];
     cache_path(jpg, w, h, path, sizeof(path));
+    tomato_hupu_cache_lock();
     FILE* f = fopen(path, "rb");
     if (f) {
         char magic[4];
@@ -120,11 +122,13 @@ const uint8_t* hupu_img_get(const char* jpg, int w, int h) {
         bool ok = px && fread(magic, 1, 4, f) == 4 && !memcmp(magic, "HPG1", 4) && fread(dims, sizeof(dims), 1, f) == 1 &&
                   dims[0] == w && dims[1] == h && fread(px, 1, (size_t)w * h, f) == (size_t)w * h;
         fclose(f);
-        if (ok) { insert(key, w, h, px); return px; }
+        if (ok) { tomato_hupu_cache_unlock(); insert(key, w, h, px); return px; }
         heap_caps_free(px);
     }
     struct stat st;
-    if (stat(jpg, &st) != 0 || st.st_size <= 0) return NULL;   // 还没下载 / Not downloaded yet
+    const bool have = stat(jpg, &st) == 0 && st.st_size > 0;
+    tomato_hupu_cache_unlock();
+    if (!have) return NULL;   // 还没下载 / Not downloaded yet
     for (int i = 0; i < s_queue_count; i++)
         if (s_queue[i].w == w && s_queue[i].h == h && !strcmp(s_queue[i].jpg, jpg)) return NULL;
     if (s_queue_count < QUEUE_MAX && strlen(jpg) < PATH_LEN) {
@@ -170,6 +174,7 @@ bool hupu_img_tick(void) {
     memmove(&s_queue[0], &s_queue[1], sizeof(s_queue[0]) * (size_t)(--s_queue_count));
     const uint32_t key = key_of(job.jpg, job.w, job.h);
     size_t len = 0;
+    tomato_hupu_cache_lock();
     uint8_t* data = read_file(job.jpg, &len);
     uint8_t* gray = NULL;
     uint16_t gw = 0, gh = 0;
@@ -186,6 +191,7 @@ bool hupu_img_tick(void) {
         s_failed[s_failed_count++] = key;
         ESP_LOGW(TAG, "decode failed: %s", job.jpg);
     }
+    tomato_hupu_cache_unlock();
     free(gray);
     if (s_queue_count || !s_built) return false;
     s_built = false;
@@ -202,6 +208,9 @@ void hupu_img_drop_pending(void) {
 void hupu_img_release(void) {
     for (int i = 0; i < SLOT_MAX; i++) free_slot(&s_slots[i]);
     hupu_img_drop_pending();
+    // 失败记录只在这次停留期间有效，下次进来再试（可能是临时缺内存）。/ Failures last for this visit only; retry next
+    // time in case it was a transient shortage.
+    s_failed_count = 0;
 }
 
 void hupu_img_draw(uint8_t* fb, int x, int y, int w, int h, const uint8_t* px, bool border) {

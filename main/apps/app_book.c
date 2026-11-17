@@ -75,6 +75,7 @@
 #include "tomato.h"
 #include "tr_kbd.h"
 #include "tr_nav.h"
+#include "auto_turn.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
@@ -89,7 +90,7 @@
 #define BOOK_SHAKE_THS_MG 192
 #define BOOK_SHAKE_DUR 2
 #define BOOK_SIZE_SETTLE_MS 400
-#define BOOK_TOOL_COUNT 7
+#define BOOK_TOOL_COUNT 9
 #define SHELF_ROW_TOP 290
 #define SHELF_ROW_H 140
 #define SHELF_PAGER_Y 1010
@@ -98,7 +99,8 @@
 #define CARD_ROWS_TOP 436   // 有卡片时书目从这里开始 / Rows start here when the card shows
 #define CONTROL_CARD 130
 #define CONTROL_TOMATO_HINT 117
-#define TOOL_PANEL_Y 760
+#define TOOL_PANEL_Y 680   // 下面多了一行自动翻页 / One more row below for auto turn
+#define AUTO_ROW_Y (TOOL_PANEL_Y + 326)
 #define BOOK_TOOL_ROWS 2
 
 typedef enum { SHELF, READING, TOC, MANAGE, BULK, SEARCH } book_view_t;
@@ -162,6 +164,12 @@ static void apply_style(void) {
 static int64_t s_save_retry_ms;
 static unsigned s_store_revision;
 static bool s_scan_pending, s_resume_pending, s_toolbar, s_clear_confirm;
+// 自动翻页：档位、上次计时起点、到书尾停下。/ Auto turn: level, countdown start, stopped at the end.
+static int s_auto_level;
+static int64_t s_auto_ms;
+static bool s_auto_done;
+static bool s_auto_was_on;
+static int64_t s_auto_tick;
 static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
 // 最近读的那本，扫描书架时从进度记录取。/ Most recently read book, taken from progress records at each scan.
 static char s_continue[BOOK_STORE_PATH_MAX];
@@ -301,14 +309,16 @@ static EpdRect row_rect(int row, bool toc) {
     const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
     return (EpdRect){UI_MARGIN, top + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - 12};
 }
-// 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 清残影、5 书架、6 顶部返回。
-// Toolbar: 0 TOC, 1 size-, 2 size+, 3 menu, 4 full refresh, 5 shelf, 6 top back.
+// 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 排版、5 书架、6 顶部返回、7 自动翻页−、8 自动翻页+。
+// Toolbar: 0 TOC, 1 size-, 2 size+, 3 menu, 4 layout, 5 shelf, 6 top back, 7 auto turn -, 8 auto turn +.
 static EpdRect tool_rect(int i) {
-    static const int slot[BOOK_TOOL_COUNT] = {0, -1, -2, 1, 2, 3, -3};
+    static const int slot[BOOK_TOOL_COUNT] = {0, -1, -2, 1, 2, 3, -3, -4, -5};
     int s = slot[i];
     if (s >= 0) return (EpdRect){UI_MARGIN + s * 151, TOOL_PANEL_Y + 80, 151, 120};
     if (s == -1) return (EpdRect){UI_MARGIN, TOOL_PANEL_Y + 226, 200, 84};
     if (s == -2) return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 200, TOOL_PANEL_Y + 226, 200, 84};
+    if (s == -4) return (EpdRect){290, AUTO_ROW_Y - 8, 110, AUTO_TURN_ROW_H + 16};
+    if (s == -5) return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 100, AUTO_ROW_Y - 8, 110, AUTO_TURN_ROW_H + 16};
     return (EpdRect){0, 0, 320, 110};
 }
 // 书架筛选条：0 来源、1 排序、2 管理/完成、3 清除搜索。/ Shelf chips: 0 source, 1 sort, 2 manage/done, 3 clear search.
@@ -713,6 +723,7 @@ static void draw_reader(uint8_t* fb, size_t page) {
         tr_pill(fb, tool_rect(2), "A+", s_pressed_control == 202, 34);
         snprintf(size_hint, sizeof(size_hint), "%d", s_px);
         tr_text(fb, UI_LOCK_WIDTH / 2, tool_rect(1).y + 20, 40, size_hint, EPD_DRAW_ALIGN_CENTER, true);
+        auto_turn_draw_row(fb, AUTO_ROW_Y, s_auto_level);
         if (s_typeset) draw_typeset(fb);
     }
 }
@@ -1440,6 +1451,7 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     if (!changed) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? s_chapter / BOOK_TOC_ROWS : 0; return APP_REDRAW_PAGE; }
     s_toolbar = false;
     s_last_turn_ms = ctx->now_ms;
+    s_auto_ms = ctx->now_ms;   // 不管怎么翻的，自动翻页都从这页重新计时 / Any turn restarts the auto countdown
 #if APP_GC16_EVERY > 0
     s_full = (++s_turns % APP_GC16_EVERY) == 0;
 #else
@@ -1623,6 +1635,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
                 else if (i == 1 || i == 2) return resize_text(ctx, i == 1 ? -1 : 1);
                 else if (i == 3) { save_progress(); s_toolbar = false; ctx->request_menu = true; return APP_REDRAW_NONE; }
                 else if (i == 4) { s_typeset = true; return APP_REDRAW_PAGE; }
+                else if (i == 7 || i == 8) {
+                    s_auto_level = auto_turn_step(s_auto_level, i == 7 ? -1 : 1);
+                    app_settings_set_auto_turn(false, (uint8_t)s_auto_level);
+                    return APP_REDRAW_PAGE;
+                }
                 else { save_progress(); free_book(); s_view = SHELF; scan_shelf(ctx); }
                 return APP_REDRAW_PAGE;
             }
@@ -1640,6 +1657,8 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
                 }
                 return APP_REDRAW_PAGE;
             }
+            // 点在工具条面板的空白处什么也不做，不要翻页。/ Taps on empty parts of the toolbar panel do nothing.
+            if (y >= TOOL_PANEL_Y && y < UI_BAR_TOP) return APP_REDRAW_NONE;
         }
         if (!s_toolbar) {
             lock_draw();
@@ -1736,6 +1755,9 @@ static void on_enter(app_ctx_t* ctx) {
     ctx->leaf = 0;
     s_count = 0;
     s_px = app_settings_book_px();
+    s_auto_level = app_settings_auto_turn(false);
+    s_auto_ms = ctx->now_ms;
+    s_auto_done = false;
     // 排版样式每次进书库读一次，排版前生效。/ Load the layout style on entry so it applies before any pagination.
     s_style = app_settings_book_style();
     s_typeset = false;
@@ -1761,6 +1783,7 @@ static void on_enter(app_ctx_t* ctx) {
     if (s_shake_enabled) sensor_set(ctx, true);
 }
 static void book_on_exit(app_ctx_t* ctx) {
+    auto_turn_set_active(false);
     s_resume_path[0] = 0;
     if (s_view == SEARCH) { memset(&s_search_kbd, 0, sizeof(s_search_kbd)); s_view = SHELF; }
     s_pressed_control = -1;
@@ -1895,6 +1918,9 @@ static app_redraw_t paint_control(app_ctx_t* ctx, EpdRect rect) {
     return APP_REDRAW_AREA;
 }
 static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
+    // 碰屏幕就重新计时。/ Any touch restarts the auto-turn countdown.
+    s_auto_ms = ctx->now_ms;
+    s_auto_done = false;
     if (s_image_open) {
         s_pressed_control = -1;
         return ev->type == UI_GESTURE_TAP ? close_image() : APP_REDRAW_NONE;
@@ -1948,6 +1974,8 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) 
     return decorated ? paint_control(ctx, start_rect) : APP_REDRAW_NONE;
 }
 static app_redraw_t on_key(app_ctx_t* ctx, int key) {
+    s_auto_ms = ctx->now_ms;
+    s_auto_done = false;
     s_pressed_control = -1;
     if (s_image_open && (key == UI_KEY_1 || key == UI_KEY_2 || key == UI_KEY_3)) return close_image();
     if (s_resume_path[0]) {
@@ -1991,6 +2019,22 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 }
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->consumed) return APP_REDRAW_NONE;
+    // 定时自动翻页：工具条、插图、确认框开着时暂停，翻到书尾就停，碰一下屏幕再继续。
+    // Timed auto turn: paused by the toolbar, images and dialogs; stops at the end until the next touch.
+    const bool auto_on = s_view == READING && s_text && !s_toolbar && !s_image_open && !s_clear_confirm &&
+                         s_auto_level > 0 && !s_auto_done;
+    // 刚开始、或隔了很久才又跑到这里（锁屏、菜单）：从现在重新计时，不立刻翻。
+    // Just started, or a long gap since the last tick (lock screen, menu): restart the countdown instead of turning.
+    if (auto_on && (!s_auto_was_on || ctx->now_ms - s_auto_tick > 1500)) s_auto_ms = ctx->now_ms;
+    s_auto_was_on = auto_on;
+    s_auto_tick = ctx->now_ms;
+    auto_turn_set_active(auto_on);
+    if (auto_on && !(ctx->touch && ctx->touch->touched) && ctx->now_ms - s_auto_ms >= auto_turn_ms(s_auto_level)) {
+        s_auto_ms = ctx->now_ms;
+        const app_redraw_t r = turn_page(ctx, 1);
+        if (r == APP_REDRAW_NONE) { s_auto_done = true; auto_turn_set_active(false); }
+        return r;
+    }
     if (s_save_failed && ctx->now_ms - s_save_retry_ms >= 15000) {
         s_save_retry_ms = ctx->now_ms;
         bool failed = s_save_failed;

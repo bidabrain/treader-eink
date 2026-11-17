@@ -223,6 +223,9 @@ typedef struct {
 /// 在后台任务里跑一件虎扑的事；只读，不需要番茄服务器。/ Run one Hupu job on the sync task; read only, no Tomato server.
 esp_err_t tomato_sync_start_hupu(const tomato_hupu_req_t* req);
 /// 帖子缓存文件。/ Cached post file.
+/// 虎扑缓存文件锁：界面读写缓存和后台清理缓存互斥。/ Hupu cache file lock shared by UI cache I/O and worker pruning.
+void tomato_hupu_cache_lock(void);
+void tomato_hupu_cache_unlock(void);
 void tomato_hupu_post_path(const char* tid, char* out, size_t cap);
 /// 图片地址对应的本地 JPG（缩略图缓存同名加尺寸）。/ Local JPEG for an image URL (thumbnail caches share the name).
 void tomato_hupu_img_path(const char* url, char* out, size_t cap);

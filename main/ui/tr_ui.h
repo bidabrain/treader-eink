@@ -29,15 +29,15 @@ extern "C" {
 #define TR_STATUS_Y 22
 #define TR_TITLE_Y 88
 #define TR_TABS_Y 1094
-#define TR_TAB_COUNT 4
 #define TR_GRAY_LINE 0xC0
 
-typedef enum { TR_TAB_LIBRARY = 0, TR_TAB_TOMATO, TR_TAB_HUPU, TR_TAB_SETTINGS } tr_tab_t;
+/// 标签的身份（不是位置）；隐藏虎扑时其余标签平分宽度。/ Tab identity, not position; with Hupu hidden the rest share the width.
+typedef enum { TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_HUPU, TR_TAB_SETTINGS, TR_TAB_MAX } tr_tab_t;
 
 typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,
     TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
-    TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BALL,
+    TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BALL, TR_ICON_COMIC,
 } tr_icon_t;
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.
@@ -67,9 +67,13 @@ void tr_status_bar(uint8_t* fb);
 /// 页标题（大号粗体）。/ Page title (large bold).
 void tr_title(uint8_t* fb, const char* title);
 
+/// 是否隐藏虎扑标签（开机和改设置时由调用方告知；本文件不读设置）。/ Whether the Hupu tab is hidden (callers set it
+/// at boot and on change; this file never reads settings).
+void tr_tabs_set_hupu_hidden(bool hidden);
+bool tr_tabs_hupu_hidden(void);
 /// 底部标签栏。/ Bottom tab bar.
 void tr_tab_bar(uint8_t* fb, tr_tab_t active);
-/// 命中的标签，未命中返回 -1。/ Hit tab or -1.
+/// 命中的标签（tr_tab_t），未命中返回 -1。/ Hit tab as a tr_tab_t, or -1.
 int tr_tab_hit(uint16_t x, uint16_t y);
 /// 标签栏区域。/ Tab bar area.
 EpdRect tr_tab_area(void);

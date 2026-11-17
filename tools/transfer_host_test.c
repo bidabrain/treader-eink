@@ -78,6 +78,10 @@ static void test_font_uploads(void) {
     assert(!decode_font_name("bad%00.ttf", name));
     assert(temporary_basename("Font.TTF.part", ".part", name));
     assert(temporary_basename("Font.TTF.rename-backup", ".rename-backup", name));
+    // 漫画只收 CBZ，临时文件也认得出来。/ Comics take CBZ only, and their temporary files are recognised.
+    assert(decode_comic_name("%E7%AC%AC1%E8%AF%9D.cbz", name) && !decode_comic_name("a.zip", name));
+    assert(!decode_comic_name("a.txt", name) && !decode_name("a.cbz", name));
+    assert(temporary_basename("Ep 1.cbz.part", ".part", name) && !strcmp(name, "Ep 1.cbz"));
 
     char root[] = "/tmp/transfer-font-XXXXXX", path[288], part[296], backup[320];
     assert(mkdtemp(root));

@@ -297,6 +297,17 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 14, y + 20, x + 26, y + 20, c);
         thick_line(fb, x + 20, y + 14, x + 20, y + 26, c);
         break;
+    case TR_ICON_COMIC:
+        // 一页分格漫画：外框、横分格、斜分格，上格一个对白气泡。/ A manga page: frame, a horizontal and a slanted
+        // gutter, and a speech bubble in the top panel.
+        for (int d = 0; d < 3; d++) epd_draw_rect((EpdRect){x + 7 + d, y + 5 + d, 26 - 2 * d, 30 - 2 * d}, c, fb);
+        thick_line(fb, x + 7, y + 18, x + 33, y + 18, c);
+        thick_line(fb, x + 22, y + 18, x + 18, y + 34, c);
+        epd_draw_rect((EpdRect){x + 13, y + 8, 13, 5}, c, fb);
+        epd_draw_rect((EpdRect){x + 14, y + 9, 11, 3}, c, fb);
+        epd_draw_line(x + 16, y + 13, x + 14, y + 15, c, fb);
+        epd_draw_line(x + 17, y + 13, x + 15, y + 15, c, fb);
+        break;
     case TR_ICON_IMPORT:
         thick_line(fb, x + 20, y + 6, x + 20, y + 26, c);
         thick_line(fb, x + 12, y + 18, x + 20, y + 26, c);
@@ -312,24 +323,41 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
 
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
+static bool s_hide_hupu;
+
+void tr_tabs_set_hupu_hidden(bool hidden) { s_hide_hupu = hidden; }
+bool tr_tabs_hupu_hidden(void) { return s_hide_hupu; }
+
+// 当前显示的标签，按从左到右的顺序。/ Visible tabs, left to right.
+static int visible_tabs(tr_tab_t out[TR_TAB_MAX]) {
+    int n = 0;
+    for (int t = 0; t < TR_TAB_MAX; t++)
+        if (t != TR_TAB_HUPU || !s_hide_hupu) out[n++] = (tr_tab_t)t;
+    return n;
+}
+
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    static const char* const labels[TR_TAB_COUNT] = {"书库", "番茄", "虎扑", "设置"};
-    static const tr_icon_t icons[TR_TAB_COUNT] = {TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_BALL, TR_ICON_SETTINGS};
+    static const char* const labels[TR_TAB_MAX] = {"书库", "漫画", "番茄", "虎扑", "设置"};
+    static const tr_icon_t icons[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_BALL,
+                                                TR_ICON_SETTINGS};
     epd_fill_rect(tr_tab_area(), UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
-    const int cell = TR_W / TR_TAB_COUNT;
-    for (int i = 0; i < TR_TAB_COUNT; i++) {
-        int cx = i * cell + cell / 2;
-        bool on = i == (int)active;
+    tr_tab_t tabs[TR_TAB_MAX];
+    const int n = visible_tabs(tabs);
+    for (int i = 0; i < n; i++) {
+        int cx = (2 * i + 1) * TR_W / (2 * n);
+        bool on = tabs[i] == active;
         if (on) ui_fill_round_rect(fb, (EpdRect){cx - 46, TAB_ICON_Y - 26, 92, 52}, 26, UI_GRAY_BLACK);
-        tr_icon(fb, icons[i], cx, TAB_ICON_Y, on);
-        tr_text(fb, cx, TAB_LABEL_Y, 28, labels[i], EPD_DRAW_ALIGN_CENTER, on);
+        tr_icon(fb, icons[tabs[i]], cx, TAB_ICON_Y, on);
+        tr_text(fb, cx, TAB_LABEL_Y, 28, labels[tabs[i]], EPD_DRAW_ALIGN_CENTER, on);
     }
 }
 
 int tr_tab_hit(uint16_t x, uint16_t y) {
     if (y < TR_TABS_Y || y >= TR_H || x >= TR_W) return -1;
-    return x / (TR_W / TR_TAB_COUNT);
+    tr_tab_t tabs[TR_TAB_MAX];
+    const int n = visible_tabs(tabs);
+    return tabs[x * n / TR_W];
 }
 
 /* ---- 封面 / Covers ---- */
