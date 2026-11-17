@@ -289,6 +289,7 @@ void enter_lock_and_sleep(
     // The score's 32 kHz sample ISR and coil current disturb the lock-face full refresh; stop it before the rails come up.
     if (read_pico_buzzer_score_busy()) (void)read_pico_buzzer_score_stop();
     uint8_t* framebuffer = epd_hl_get_framebuffer(hl);
+    tr_lock_prepare();
     epd_poweron();
     epd_clear();
     epd_hl_set_all_white(hl);

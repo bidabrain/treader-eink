@@ -298,3 +298,38 @@ int book_progress_recent(book_progress_recent_t* out, int max) {
     qsort(out, (size_t)count, sizeof(out[0]), recent_cmp);
     return count;
 }
+
+esp_err_t book_progress_import(const char* path, const book_progress_t* progress) {
+    if (!path_valid(path) || progress == NULL || progress->px < 36 || progress->px > 72 ||
+        (progress->px - 36) % 4 != 0 || progress->pct > 100) return ESP_ERR_INVALID_ARG;
+    char key[11];
+    make_key(path, key);
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return warn_error(err);
+    err = check_owner(h, key, path);
+    // 沿用已有记录的序号；没有记录就记 0，排在最近阅读的最后。
+    // Keep the existing sequence; with no record use 0 so it sorts last in "recent".
+    uint32_t sequence = 0;
+    if (err == ESP_OK) {
+        uint8_t old[RECORD_CAP];
+        size_t len = sizeof(old);
+        if (nvs_get_blob(h, key, old, &len) == ESP_OK && record_valid(old, len) && old[3] == 2) sequence = get32(old + 16);
+    }
+    uint8_t data[RECORD_CAP] = {'R', 'P', 'B', 2};
+    put32(data + 4, progress->file_size);
+    data[8] = (uint8_t)progress->chapter;
+    data[9] = (uint8_t)(progress->chapter >> 8);
+    put32(data + 10, progress->byte_off);
+    data[14] = progress->px;
+    data[15] = progress->pct;
+    put32(data + 16, sequence);
+    size_t path_len = strlen(path) + 1;
+    data[22] = (uint8_t)path_len;
+    data[23] = (uint8_t)(path_len >> 8);
+    memcpy(data + HEADER_SIZE, path, path_len);
+    if (err == ESP_OK) err = nvs_set_blob(h, key, data, HEADER_SIZE + path_len);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return warn_error(err);
+}

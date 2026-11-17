@@ -15,6 +15,7 @@
 
 #include "app.h"
 #include "book_progress.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "read_pico_transfer.h"
 #include "tomato.h"
@@ -76,7 +77,7 @@ static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
 static bool s_has_cfg, s_has_dav;
 static char s_message[64];
-static tr_kbd_t s_kbd;
+EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 static char s_step1[160], s_step2[64];
 static bool s_syncing;
 static int64_t s_poll_ms;
@@ -115,7 +116,8 @@ static bool import_progress(const tomato_progress_t* in) {
         .px = in->px >= 36 && in->px <= 72 && (in->px - 36) % 4 == 0 ? in->px : 40,
         .pct = in->pct > 100 ? 100 : in->pct,
     };
-    return book_progress_save(in->path, &p) == ESP_OK;
+    // 导入不改最近阅读顺序。/ Importing must not reorder "recently read".
+    return book_progress_import(in->path, &p) == ESP_OK;
 }
 
 /* ---- 数据 / Data ---- */
@@ -195,8 +197,7 @@ static void draw_edit(uint8_t* fb) {
     } else {
         snprintf(shown, sizeof(shown), "%s", s_kbd.text);
     }
-    const char* tail = shown;
-    while (*tail && ttf_text_width_px(32, tail) > f.width - 48) tail++;
+    const char* tail = tr_tail_fit(shown, 32, f.width - 48);
     tr_text(fb, f.x + 20, f.y + 22, 32, tail, EPD_DRAW_ALIGN_LEFT, false);
     epd_fill_rect((EpdRect){f.x + 22 + ttf_text_width_px(32, tail), f.y + 18, 3, 46}, UI_GRAY_BLACK, fb);
     tr_text(fb, TR_MARGIN, 286, 26, EDIT[s_edit].hint, EPD_DRAW_ALIGN_LEFT, false);

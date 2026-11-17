@@ -43,6 +43,7 @@
 #include "ui_kit.h"
 #include "ui_menu.h"
 #include "ui_gesture.h"
+#include "tomato.h"
 
 #define TAG "app_loop"
 
@@ -247,6 +248,8 @@ static void lock_and_resume(
     // 要断主机电时先让页面收尾（停网络、关传感器、存进度）；只有下电失败才会回到这里重新进页。
     // Before the host loses power let the page wind down (network, sensors, progress); re-enter only if power-down failed.
     const bool powers_down = app_lock_powers_down();
+    // Treader：要断电就先停掉后台同步，免得写到一半。/ Treader: stop background sync before cutting power mid-write.
+    if (powers_down && !tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at power-down");
     if (powers_down && current->on_exit != NULL) current->on_exit(ctx);
     enter_lock_and_sleep(ctx->hl, &s_lock_ignore_until_ms, ctx->acc);
     if (powers_down && current->on_enter != NULL) current->on_enter(ctx);
@@ -464,6 +467,9 @@ void app_loop_run(const app_loop_config_t* config) {
                     );
                     last_input_ms = ctx.now_ms;
                 }
+            } else if (tomato_sync_busy()) {
+                // Treader：后台同步在跑就不自动锁屏。/ Treader: no idle lock while background sync runs.
+                last_input_ms = ctx.now_ms;
             } else if (ctx.now_ms >= s_lock_ignore_until_ms
                        && ctx.now_ms - last_input_ms >= APP_AUTO_SLEEP_MS) {
                 ESP_LOGI(TAG, "idle lock");

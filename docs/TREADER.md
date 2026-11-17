@@ -111,6 +111,33 @@ idf.py -p COM3 flash monitor
 - 词库数据来自 jieba 0.42.1 与 pypinyin 0.55.0（MIT），见 `sdcard/ime/licenses/`。
 - 番茄服务器接口与更新规则来自 Tomato-Novel 安卓版。
 
+## 静态检查与已知限制
+
+静态分析构建（GCC `-fanalyzer` 加 `-fstack-usage`，只作用于 Treader 相关代码）：
+
+```bash
+idf.py -B build-analyze -DTREADER_ANALYZE=1 build
+```
+
+每个函数的栈占用写在 `build-analyze/**/*.su`。目前 Treader 代码没有 analyzer 警告；
+后台同步任务栈 14 KB，大缓冲都在 PSRAM 工作区里。大的静态数组用 `EXT_RAM_BSS_ATTR` 放 PSRAM
+（`sdkconfig.defaults` 打开了 `CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY`）。
+
+为了不出错而定的规则：
+
+- **正在阅读的书不更新**：阅读器还开着旧文件，替换会读到乱码；“下载全部更新”会跳过它并提示。
+- **同步期间不自动锁屏**；按电源键锁屏且会断电时，先取消同步并等它停下（最多 8 秒）。
+- **书库删书**时若同步正在进行，删除记录排队，等同步结束再处理，免得被写回。
+- 删掉的番茄书记在 `tomato/removed.json`，WebDAV 两边合并时不会再加回来。
+- **WebDAV**：没对上时不同步；服务器文件读得到但解析失败时不覆盖；某本书在本机从没同步过而服务器有，以服务器为准。
+- 文件写入都是“写 .tmp 再改名”，改名失败或掉电时下次读取用 .tmp 恢复。
+
+已知限制（没做）：
+
+- 查询服务器任务状态时每次轮询都重新建立 TLS 连接，没有复用。
+- WebDAV 没用 ETag，两台设备同时同步可能丢掉其中一方的这次更新（下次同步会补上）。
+- 番茄页进入时会对每本书做一次 `stat` 和 NVS 读取（64 本以内，约百毫秒级）。
+
 ## 界面代码
 
 | 路径 | 职责 |

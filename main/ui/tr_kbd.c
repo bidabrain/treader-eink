@@ -90,8 +90,11 @@ static const char* key_label(const tr_kbd_t* kbd, int id, char buf[4]) {
     case K_MODE:
         if (kbd->mode != TR_KBD_SYMBOL) return "123";
         return kbd->letters == TR_KBD_ENGLISH ? "abc" : "拼音";
-    case K_LANG:
-        return kbd->mode == TR_KBD_PINYIN ? "全拼" : kbd->mode == TR_KBD_T9 ? "九键" : "英文";
+    case K_LANG: {
+        // 数字符号下显示切回后的语言。/ In symbol mode, show the language it returns to.
+        tr_kbd_mode_t m = kbd->mode == TR_KBD_SYMBOL ? kbd->letters : kbd->mode;
+        return m == TR_KBD_PINYIN ? "全拼" : m == TR_KBD_T9 ? "九键" : "英文";
+    }
     case K_SPACE: return "空格";
     case K_GO: return kbd->go_label ? kbd->go_label : "确定";
     default:
@@ -120,6 +123,7 @@ static int cand_visible(const tr_kbd_t* kbd, int xs[], int ws[], bool* more) {
     for (int i = kbd->cand_first; i < kbd->cand_count; i++) {
         int w = ttf_text_width_px(CAND_PX, kbd->cands[i].text) + 48;
         if (x + w > limit && n) break;
+        if (x + w > limit) w = limit - x;   // 一个就太宽：截到可用宽度 / A single over-wide one is clipped
         xs[n] = x;
         ws[n] = w;
         x += w;
@@ -129,14 +133,17 @@ static int cand_visible(const tr_kbd_t* kbd, int xs[], int ws[], bool* more) {
     return n;
 }
 
-static void append_text(tr_kbd_t* kbd, const char* s) {
+static bool append_text(tr_kbd_t* kbd, const char* s) {
     size_t have = strlen(kbd->text), add = strlen(s);
-    if (have + add < sizeof(kbd->text)) memcpy(kbd->text + have, s, add + 1);
+    if (have + add >= sizeof(kbd->text)) return false;
+    memcpy(kbd->text + have, s, add + 1);
+    return true;
 }
 
+// 输入框满了就不消耗编码串，免得字丢掉。/ When the field is full, keep the composition so nothing is lost.
 static void pick(tr_kbd_t* kbd, int index) {
     if (index < 0 || index >= kbd->cand_count) return;
-    append_text(kbd, kbd->cands[index].text);
+    if (!append_text(kbd, kbd->cands[index].text)) return;
     size_t len = strlen(kbd->comp), used = kbd->cands[index].consumed;
     if (used > len) used = len;
     memmove(kbd->comp, kbd->comp + used, len - used + 1);
@@ -146,8 +153,13 @@ static void pick(tr_kbd_t* kbd, int index) {
 // 有编码串时按空格或确认：选第一个候选；全拼没有候选就把字母原样上屏，九键直接丢弃数字。
 // Space or Go with a composition: take the first candidate; with none, full pinyin commits the letters and T9 drops its digits.
 static void commit_comp(tr_kbd_t* kbd) {
+    // 一个候选可能只吃掉一部分编码，连续选到用完。/ One candidate may consume only part; keep picking until done.
+    for (int guard = 0; kbd->comp[0] && kbd->cand_count && guard < PINYIN_IME_MAX_INPUT; guard++) {
+        size_t before = strlen(kbd->comp);
+        pick(kbd, 0);
+        if (strlen(kbd->comp) == before) break;   // 输入框满了 / Field is full
+    }
     if (!kbd->comp[0]) return;
-    if (kbd->cand_count) { pick(kbd, 0); return; }
     if (kbd->mode == TR_KBD_PINYIN) {
         for (char* p = kbd->comp; *p; p++) if (*p != '\'') { char c[2] = {*p, 0}; append_text(kbd, c); }
     }
@@ -184,7 +196,10 @@ void tr_kbd_draw(uint8_t* fb, const tr_kbd_t* kbd) {
         for (int i = 0; i < n; i++) {
             const pinyin_ime_cand_t* c = &kbd->cands[kbd->cand_first + i];
             if (i) epd_fill_rect((EpdRect){xs[i], CAND_Y + 16, 2, CAND_H - 32}, TR_GRAY_LINE, fb);
-            tr_text(fb, xs[i] + ws[i] / 2, CAND_Y + (CAND_H - CAND_PX) / 2 - 2, CAND_PX, c->text,
+            char shown[PINYIN_IME_CAND_TEXT];
+            memcpy(shown, c->text, sizeof(shown));
+            tr_fit(shown, CAND_PX, ws[i] - 24);
+            tr_text(fb, xs[i] + ws[i] / 2, CAND_Y + (CAND_H - CAND_PX) / 2 - 2, CAND_PX, shown,
                     EPD_DRAW_ALIGN_CENTER, i == 0 && kbd->cand_first == 0);
         }
         if (more) tr_text(fb, TR_W - TR_MARGIN, CAND_Y + 14, CAND_PX, "›", EPD_DRAW_ALIGN_RIGHT, false);
@@ -223,6 +238,12 @@ void tr_kbd_draw(uint8_t* fb, const tr_kbd_t* kbd) {
 
 static void next_language(tr_kbd_t* kbd) {
     commit_comp(kbd);
+    kbd->comp[0] = 0;
+    // 用到拼音才加载词库（书库搜索默认英文）。/ Load the lexicon only when pinyin is needed (library search starts in English).
+    if (!kbd->ime_ok && kbd->mode == TR_KBD_ENGLISH) {
+        kbd->want_ime = true;
+        kbd->ime_ok = pinyin_ime_load(NULL);
+    }
     if (kbd->mode == TR_KBD_PINYIN) kbd->mode = TR_KBD_T9;
     else if (kbd->mode == TR_KBD_T9) kbd->mode = TR_KBD_ENGLISH;
     else kbd->mode = kbd->ime_ok ? TR_KBD_PINYIN : TR_KBD_ENGLISH;
@@ -284,6 +305,7 @@ tr_kbd_result_t tr_kbd_touch(tr_kbd_t* kbd, uint16_t x, uint16_t y) {
         break;
     case K_MODE:
         commit_comp(kbd);
+        kbd->comp[0] = 0;
         kbd->mode = kbd->mode == TR_KBD_SYMBOL ? kbd->letters : TR_KBD_SYMBOL;
         refresh_cands(kbd);
         break;
@@ -300,8 +322,10 @@ tr_kbd_result_t tr_kbd_touch(tr_kbd_t* kbd, uint16_t x, uint16_t y) {
         return TR_KBD_SUBMIT;
     default:
         if (composing_mode(kbd)) {
-            size_t len = strlen(kbd->comp);
-            if (len < PINYIN_IME_MAX_INPUT) { kbd->comp[len] = (char)id; kbd->comp[len + 1] = 0; }
+            // 只数字母，分词符不占名额。/ Count letters only; separators don't use up the limit.
+            size_t len = strlen(kbd->comp), letters = 0;
+            for (size_t i = 0; i < len; i++) letters += kbd->comp[i] != '\'';
+            if (letters < PINYIN_IME_MAX_INPUT && len + 1 < sizeof(kbd->comp)) { kbd->comp[len] = (char)id; kbd->comp[len + 1] = 0; }
             refresh_cands(kbd);
         } else {
             char c[2] = {(char)id, 0};

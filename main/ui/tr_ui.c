@@ -45,20 +45,69 @@ static size_t u8_len(const char* s) {
     return n;
 }
 
-void tr_fit(char* text, int px, int max_w) {
-    if (ttf_text_width_px(px, text) <= max_w) return;
+// 一个字符的宽度。字形宽度逐字相加，没有字距调整，所以逐字累加和整段测量结果一样，但只要 O(n)。
+// Width of one character. Advances add up per glyph with no kerning, so a running sum equals measuring the
+// whole prefix, in O(n) instead of O(n^2).
+static int char_width(int px, const char* s, size_t n) {
+    char ch[5];
+    memcpy(ch, s, n);
+    ch[n] = 0;
+    return ttf_text_width_px(px, ch);
+}
+
+// 截断到 max_w 并加省略号。省略号只写进原字符串已占的字节里，绝不越过原来的结尾。
+// Fit into max_w with an ellipsis. The ellipsis only overwrites bytes the string already occupies, never past its end.
+static void fit_impl(char* text, int px, int max_w, bool force) {
+    if (!force && ttf_text_width_px(px, text) <= max_w) return;
     static const char dots[] = "…";
-    int dots_w = ttf_text_width_px(px, dots);
+    const size_t len = strlen(text);
+    const int dots_w = ttf_text_width_px(px, dots);
     size_t end = 0, keep = 0;
-    char probe[256];
-    while (text[end] && end < sizeof(probe) - 4) {
-        end += u8_len(text + end);
-        memcpy(probe, text, end);
-        probe[end] = 0;
-        if (ttf_text_width_px(px, probe) + dots_w > max_w) break;
+    int width = 0;
+    while (text[end]) {
+        size_t n = u8_len(text + end);
+        width += char_width(px, text + end, n);
+        if (width + dots_w > max_w) break;
+        end += n;
         keep = end;
     }
-    memcpy(text + keep, dots, sizeof(dots));
+    // 省略号 3 字节：保证写完不超出原字符串。/ The ellipsis is 3 bytes; make sure it stays within the original string.
+    while (keep && keep + sizeof(dots) > len + 1) {
+        keep--;
+        while (keep && ((unsigned char)text[keep] & 0xC0) == 0x80) keep--;
+    }
+    if (keep + sizeof(dots) <= len + 1) memcpy(text + keep, dots, sizeof(dots));
+    else text[keep] = 0;
+}
+
+void tr_fit(char* text, int px, int max_w) { fit_impl(text, px, max_w, false); }
+
+// 能放下多少字节。/ How many bytes fit within w.
+static size_t fit_bytes(const char* p, int px, int w, bool stop_at_newline) {
+    size_t len = 0;
+    int width = 0;
+    while (p[len] && !(stop_at_newline && p[len] == '\n')) {
+        size_t n = u8_len(p + len);
+        width += char_width(px, p + len, n);
+        if (width > w) break;
+        len += n;
+    }
+    return len;
+}
+
+const char* tr_tail_fit(const char* text, int px, int w) {
+    // 从末尾往前累加，找到能放下的最长尾巴。/ Walk back from the end to find the longest tail that fits.
+    size_t len = strlen(text);
+    size_t start = len;
+    int width = 0;
+    while (start) {
+        size_t prev = start - 1;
+        while (prev && ((unsigned char)text[prev] & 0xC0) == 0x80) prev--;
+        width += char_width(px, text + prev, start - prev);
+        if (width > w) break;
+        start = prev;
+    }
+    return text + start;
 }
 
 int tr_wrap(uint8_t* fb, int x, int y_top, int w, int px, int line_h, const char* text, int max_lines) {
@@ -66,24 +115,19 @@ int tr_wrap(uint8_t* fb, int x, int y_top, int w, int px, int line_h, const char
     int lines = 0;
     const char* p = text;
     while (*p && lines < max_lines) {
-        size_t len = 0, last_fit = 0;
-        while (p[len] && p[len] != '\n' && len < sizeof(line) - 8) {
-            size_t step = u8_len(p + len);
-            memcpy(line, p, len + step);
-            line[len + step] = 0;
-            if (ttf_text_width_px(px, line) > w) break;
-            len += step;
-            last_fit = len;
-        }
-        if (!last_fit && p[0] && p[0] != '\n') last_fit = u8_len(p);
-        memcpy(line, p, last_fit);
-        line[last_fit] = 0;
-        p += last_fit;
+        size_t take = fit_bytes(p, px, w, true);
+        if (!take && *p != '\n') take = u8_len(p);
+        if (take >= sizeof(line) - 4) take = sizeof(line) - 4;
+        while (take && ((unsigned char)p[take] & 0xC0) == 0x80) take--;
+        memcpy(line, p, take);
+        line[take] = 0;
+        p += take;
         if (*p == '\n') p++;
         if (lines == max_lines - 1 && *p) {
-            // 最后一行还没放完：截断加省略号。/ Last line overflows: truncate with an ellipsis.
-            strncat(line, "……", sizeof(line) - strlen(line) - 1);
-            tr_fit(line, px, w);
+            // 最后一行还没放完：截断并强制加省略号。/ Last line overflows: truncate and force an ellipsis.
+            size_t n = strlen(line);
+            if (n + 4 <= sizeof(line)) { memcpy(line + n, "  ", 3); }
+            fit_impl(line, px, w, true);
         }
         tr_text(fb, x, y_top + lines * line_h, px, line, EPD_DRAW_ALIGN_LEFT, false);
         lines++;
@@ -240,27 +284,26 @@ int tr_tab_hit(uint16_t x, uint16_t y) {
 
 /* ---- 封面 / Covers ---- */
 
-// 书名分成最多 3 行，每行不超过 w 像素。/ Split a title into at most 3 lines of width w.
+// 书名分成最多 3 行，每行不超过 w 像素；放不下时第 3 行末尾加省略号。
+// Split a title into at most 3 lines of width w; if it does not fit, end line 3 with an ellipsis.
 static int split_title(const char* title, int px, int w, char lines[3][64]) {
     int n = 0;
     const char* p = title;
     while (*p && n < 3) {
-        size_t len = 0;
-        char probe[64];
-        while (p[len]) {
-            size_t step = u8_len(p + len);
-            if (len + step >= sizeof(probe)) break;
-            memcpy(probe, p, len + step);
-            probe[len + step] = 0;
-            if (ttf_text_width_px(px, probe) > w && len) break;
-            len += step;
-        }
+        size_t len = fit_bytes(p, px, w, false);
+        if (!len) len = u8_len(p);
+        if (len > 60) len = 60;
+        while (len && ((unsigned char)p[len] & 0xC0) == 0x80) len--;
         memcpy(lines[n], p, len);
         lines[n][len] = 0;
         p += len;
         n++;
     }
-    if (*p && n == 3) tr_fit(lines[2], px, w - 4);
+    if (*p && n == 3) {
+        size_t m = strlen(lines[2]);
+        if (m + 4 <= 64) memcpy(lines[2] + m, "  ", 3);   // 留出空间再截断 / Make room, then truncate
+        fit_impl(lines[2], px, w - 4, true);
+    }
     return n;
 }
 

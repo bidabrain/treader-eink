@@ -2,16 +2,18 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 后台同步任务：检查更新、搜索、下载。同一时间只跑一个操作。
- * Background sync task: update check, search, download. One operation at a time.
+ * 后台同步任务：检查更新、搜索、下载、WebDAV。同一时间只跑一个操作。
+ * Background sync task: update check, search, download, WebDAV. One operation at a time.
  *
  * 更新判断沿用安卓版 v1.7.3 的规则：服务器章节数取 max(remote_total, local_total)，
  * 大于本地 TXT 的章节数才重新下载；不用服务器的 has_update 标志。
  * Update rule follows the Android v1.7.3 fix: server chapters = max(remote_total, local_total);
  * re-download only when that exceeds the local TXT; never trust the server has_update flag.
  *
- * 冻结：不在主循环任务里做网络；状态用临界区保护，页面只读快照。
+ * 冻结：不在主循环任务里做网络；状态用临界区保护，页面只读快照。正在阅读的书不替换文件（阅读器还开着它）。
+ * 大缓冲放 PSRAM 的工作区，不占任务栈。
  * Frozen: no networking on the main loop task; status is guarded by a critical section and pages read snapshots.
+ * The book open in the reader is never replaced. Large buffers live in a PSRAM workspace, off the task stack.
  */
 
 #include <stdio.h>
@@ -21,32 +23,50 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "tomato_internal.h"
 
 #define TAG "tomato_sync"
-// HTTPS 握手和 cJSON 都吃栈，留足余量。/ TLS handshakes and cJSON need stack; leave headroom.
-#define TASK_STACK 12288
+// HTTPS 握手吃栈；大缓冲已移到工作区。/ TLS handshakes need stack; big buffers moved to the workspace.
+#define TASK_STACK 14336
 #define NET_TIMEOUT_MS 20000
 #define POLL_MS 2000
 #define SCAN_WAIT_POLLS 30   // 更新扫描最多等 60 秒 / Update scan waits at most 60 s
 #define JOB_WAIT_POLLS 300   // 生成任务最多等 10 分钟 / Server job waits at most 10 min
 #define BUSY_RETRIES 6
+#define DEFER_MAX 8
 
 typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV } op_t;
 
+// 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
+typedef struct {
+    char esc[3 * TOMATO_TITLE_LEN + 4];
+    char path[1200];
+    char dir[256];
+    char dir_esc[3 * 256 + 4];
+    char rel[256];
+    char rel_esc[3 * 256 + 4];
+    char url[3 * 256 + 32];
+} work_t;
+
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static tomato_status_t s_status;
-static tomato_hit_t s_hits[TOMATO_SEARCH_MAX];
+static tomato_hit_t* s_hits;           // PSRAM，首次搜索时分配 / PSRAM, allocated on first search
+static SemaphoreHandle_t s_hits_mutex;
 static volatile bool s_cancel;
 static volatile bool s_busy;
 static volatile uint32_t s_bytes;
 static op_t s_op;
 static char s_query[96];
 static tomato_hit_t s_target;
+static work_t* s_work;
 static tomato_file_hook_t s_file_hook;
+static tomato_open_check_t s_open_check;
 static tomato_progress_export_t s_export;
 static tomato_progress_import_t s_import;
+static char s_deferred[DEFER_MAX][TOMATO_TITLE_LEN + 8];
+static int s_deferred_count;
 
 void tomato_sync_set_progress_io(tomato_progress_export_t export_cb, tomato_progress_import_t import_cb) {
     s_export = export_cb;
@@ -54,24 +74,14 @@ void tomato_sync_set_progress_io(tomato_progress_export_t export_cb, tomato_prog
 }
 
 void tomato_sync_set_file_hook(tomato_file_hook_t hook) { s_file_hook = hook; }
+void tomato_sync_set_open_check(tomato_open_check_t check) { s_open_check = check; }
 
 /* ---- 状态 / Status ---- */
-
-// 按 UTF-8 字符边界截断复制。/ Copy with truncation on a UTF-8 character boundary.
-static void copy_utf8(char* out, size_t cap, const char* in) {
-    size_t n = strlen(in);
-    if (n >= cap) {
-        n = cap - 1;
-        while (n && ((unsigned char)in[n] & 0xC0) == 0x80) n--;
-    }
-    memcpy(out, in, n);
-    out[n] = 0;
-}
 
 static void set_phase(tomato_phase_t phase, const char* message) {
     portENTER_CRITICAL(&s_lock);
     s_status.phase = phase;
-    if (message) copy_utf8(s_status.message, sizeof(s_status.message), message);
+    if (message) tomato_copy_utf8(s_status.message, sizeof(s_status.message), message);
     s_status.revision++;
     portEXIT_CRITICAL(&s_lock);
 }
@@ -99,15 +109,34 @@ void tomato_sync_get_status(tomato_status_t* out) {
 }
 
 int tomato_sync_hits(tomato_hit_t* out, int max) {
-    portENTER_CRITICAL(&s_lock);
+    if (!s_hits_mutex || !s_hits) return 0;
+    xSemaphoreTake(s_hits_mutex, portMAX_DELAY);
     int n = s_status.hit_count < max ? s_status.hit_count : max;
     memcpy(out, s_hits, sizeof(out[0]) * (size_t)n);
-    portEXIT_CRITICAL(&s_lock);
+    xSemaphoreGive(s_hits_mutex);
     return n;
 }
 
 bool tomato_sync_busy(void) { return s_busy; }
 void tomato_sync_cancel(void) { s_cancel = true; }
+
+bool tomato_sync_stop(int timeout_ms) {
+    if (!s_busy) return true;
+    s_cancel = true;
+    for (int waited = 0; s_busy && waited < timeout_ms; waited += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    return !s_busy;
+}
+
+bool tomato_sync_defer_remove(const char* file) {
+    bool queued = false;
+    portENTER_CRITICAL(&s_lock);
+    if (s_busy && s_deferred_count < DEFER_MAX) {
+        tomato_copy_utf8(s_deferred[s_deferred_count++], sizeof(s_deferred[0]), file);
+        queued = true;
+    }
+    portEXIT_CRITICAL(&s_lock);
+    return queued;
+}
 
 static bool wait_poll(void) {
     for (int i = 0; i < POLL_MS / 100; i++) {
@@ -117,18 +146,43 @@ static bool wait_poll(void) {
     return !s_cancel;
 }
 
-/* ---- 服务器操作 / Server operations ---- */
+/* ---- 文件名 / File names ---- */
+
+bool tomato_file_name_safe(const char* file) {
+    if (!file[0] || strstr(file, "..")) return false;
+    for (const char* p = file; *p; p++) if (strchr("/\\:*?\"<>|", *p) || (unsigned char)*p < 32) return false;
+    return true;
+}
 
 // FAT 文件名里不能出现的字符换成下划线。/ Replace characters FAT filenames cannot hold.
-static void safe_name(const char* title, char* out, size_t cap) {
+static void safe_name(const char* title, const char* suffix, char* out, size_t cap) {
     size_t o = 0;
-    for (const char* p = title; *p && o + 5 < cap; p++) {
-        out[o++] = strchr("/\\:*?\"<>|", *p) ? '_' : *p;
+    const size_t room = cap - strlen(suffix) - 5;
+    for (const char* p = title; *p && o < room; p++) {
+        unsigned char c = (unsigned char)*p;
+        out[o++] = strchr("/\\:*?\"<>|", c) || c < 32 ? '_' : (char)c;
     }
+    // 停在字符中间就退回字符开头，不留半个汉字。/ If stopped mid-character, back up to its start.
+    while (o && ((unsigned char)title[o] & 0xC0) == 0x80) o--;
     out[o] = 0;
     if (!o) snprintf(out, cap, "book");
+    strncat(out, suffix, cap - strlen(out) - 1);
     strncat(out, ".txt", cap - strlen(out) - 1);
 }
+
+static bool path_exists(const char* path) {
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+static bool book_open_in_reader(const tomato_book_t* book) {
+    if (!s_open_check || !book->file[0]) return false;
+    char path[TOMATO_TITLE_LEN + 32];
+    snprintf(path, sizeof(path), TOMATO_BOOKS_DIR "/%s", book->file);
+    return s_open_check(path);
+}
+
+/* ---- 服务器操作 / Server operations ---- */
 
 // 字段存在且不是 null。/ Field present and not null.
 static bool has_value(const cJSON* obj, const char* key) {
@@ -136,43 +190,47 @@ static bool has_value(const cJSON* obj, const char* key) {
     return v && !cJSON_IsNull(v);
 }
 
-// 在 library 里找书名对应的 TXT 相对路径。/ Find the TXT relative path for a title in the library.
-static esp_err_t find_library_file(const tomato_config_t* cfg, const char* title, char* rel, size_t cap) {
-    char esc[3 * TOMATO_TITLE_LEN + 1], path[1152];
-    tomato_url_escape(title, esc, sizeof(esc), false);
+static bool hard_http_error(int status) { return status == 401 || status == 403 || (status >= 400 && status != 429 && status < 500); }
+
+// 在 library 里找书名对应的 TXT 相对路径，写进 s_work->rel。/ Find the TXT path for a title into s_work->rel.
+static esp_err_t find_library_file(const tomato_config_t* cfg, const char* title) {
+    work_t* w = s_work;
+    tomato_url_escape(title, w->esc, sizeof(w->esc), false);
     for (int attempt = 0; attempt < SCAN_WAIT_POLLS; attempt++) {
         if (attempt && !wait_poll()) return ESP_ERR_INVALID_STATE;
-        snprintf(path, sizeof(path), "/api/library?name=%s&start=%s", esc, attempt ? "false" : "true");
+        snprintf(w->path, sizeof(w->path), "/api/library?name=%s&start=%s", w->esc, attempt ? "false" : "true");
         cJSON* root; int status;
-        if (tomato_http_json(cfg, "GET", path, NULL, &root, &status) != ESP_OK) continue;
+        if (tomato_http_json(cfg, "GET", w->path, NULL, &root, &status) != ESP_OK) {
+            if (hard_http_error(status)) return ESP_FAIL;
+            continue;
+        }
         bool running = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "running"));
         if (running) { cJSON_Delete(root); continue; }
         const cJSON* it;
-        char dir[256] = "";
+        w->dir[0] = 0;
         cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "items")) {
             char kind[8], ext[8];
             tomato_json_str(it, "kind", kind, sizeof(kind));
             tomato_json_str(it, "ext", ext, sizeof(ext));
             if (!strcmp(kind, "file") && !strcmp(ext, "txt")) {
-                tomato_json_str(it, "rel_path", rel, cap);
+                tomato_json_str(it, "rel_path", w->rel, sizeof(w->rel));
                 cJSON_Delete(root);
                 return ESP_OK;
             }
-            if (!strcmp(kind, "dir") && !dir[0]) tomato_json_str(it, "rel_path", dir, sizeof(dir));
+            if (!strcmp(kind, "dir") && !w->dir[0]) tomato_json_str(it, "rel_path", w->dir, sizeof(w->dir));
         }
         cJSON_Delete(root);
-        if (!dir[0]) return ESP_ERR_NOT_FOUND;
+        if (!w->dir[0]) return ESP_ERR_NOT_FOUND;
         // 书名子目录：再进去找一次。/ Title subdirectory: look inside once.
-        char dir_esc[3 * sizeof(dir)];
-        tomato_url_escape(dir, dir_esc, sizeof(dir_esc), false);
-        snprintf(path, sizeof(path), "/api/library?path=%s&name=%s", dir_esc, esc);
-        if (tomato_http_json(cfg, "GET", path, NULL, &root, &status) != ESP_OK) return ESP_FAIL;
+        tomato_url_escape(w->dir, w->dir_esc, sizeof(w->dir_esc), false);
+        snprintf(w->path, sizeof(w->path), "/api/library?path=%s&name=%s", w->dir_esc, w->esc);
+        if (tomato_http_json(cfg, "GET", w->path, NULL, &root, &status) != ESP_OK) return ESP_FAIL;
         cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "items")) {
             char kind[8], ext[8];
             tomato_json_str(it, "kind", kind, sizeof(kind));
             tomato_json_str(it, "ext", ext, sizeof(ext));
             if (!strcmp(kind, "file") && !strcmp(ext, "txt")) {
-                tomato_json_str(it, "rel_path", rel, cap);
+                tomato_json_str(it, "rel_path", w->rel, sizeof(w->rel));
                 cJSON_Delete(root);
                 return ESP_OK;
             }
@@ -186,15 +244,22 @@ static esp_err_t find_library_file(const tomato_config_t* cfg, const char* title
 // 让服务器生成 TXT 并下载到书库；book 的 title/file/chapters 在成功后更新。
 // Have the server build the TXT and fetch it into the library; updates title/file/chapters on success.
 static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
-    char body[64], path[128];
+    work_t* w = s_work;
+    char body[64];
     cJSON* root; int status = 0;
     int job = -1;
     snprintf(body, sizeof(body), "{\"book_id\":\"%s\"}", book->book_id);
     set_phase(TOMATO_QUEUED, "服务器准备中");
-    for (int i = 0; i < BUSY_RETRIES && job < 0; i++) {
+    for (int i = 0; i < BUSY_RETRIES; i++) {
         esp_err_t err = tomato_http_json(cfg, "POST", "/api/jobs", body, &root, &status);
-        if (err == ESP_OK && root) { job = tomato_json_int(root, "id"); cJSON_Delete(root); break; }
-        if (status != 429 || !wait_poll() || !wait_poll()) return status == 429 ? ESP_ERR_INVALID_STATE : ESP_FAIL;
+        if (err == ESP_OK) {
+            const cJSON* id = cJSON_GetObjectItemCaseSensitive(root, "id");
+            job = cJSON_IsNumber(id) ? id->valueint : -1;
+            cJSON_Delete(root);
+            break;
+        }
+        if (status != 429) return ESP_FAIL;
+        if (!wait_poll() || !wait_poll()) return ESP_ERR_INVALID_STATE;
     }
     if (job < 0) return ESP_ERR_TIMEOUT;
 
@@ -203,8 +268,11 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
     bool done = false;
     for (int poll = 0; poll < JOB_WAIT_POLLS && !done; poll++) {
         if (!wait_poll()) return ESP_ERR_INVALID_STATE;
-        snprintf(path, sizeof(path), "/api/jobs?id=%d", job);
-        if (tomato_http_json(cfg, "GET", path, NULL, &root, &status) != ESP_OK) continue;
+        snprintf(w->path, sizeof(w->path), "/api/jobs?id=%d", job);
+        if (tomato_http_json(cfg, "GET", w->path, NULL, &root, &status) != ESP_OK) {
+            if (hard_http_error(status)) return ESP_FAIL;   // 任务不存在或没权限，别空等 10 分钟 / Job gone or forbidden; don't wait 10 min
+            continue;
+        }
         const cJSON* item = cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root, "items"), 0);
         char state[12] = "";
         tomato_json_str(item, "state", state, sizeof(state));
@@ -216,38 +284,47 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
         if (!strcmp(state, "failed")) return ESP_FAIL;
         done = !strcmp(state, "done");
         if (need_format) {
-            snprintf(path, sizeof(path), "/api/jobs/%d/format", job);
-            if (tomato_http_json(cfg, "POST", path, "{\"value\":\"txt\"}", &root, &status) == ESP_OK) cJSON_Delete(root);
+            snprintf(w->path, sizeof(w->path), "/api/jobs/%d/format", job);
+            if (tomato_http_json(cfg, "POST", w->path, "{\"value\":\"txt\"}", &root, &status) == ESP_OK) cJSON_Delete(root);
         }
         if (need_name) {
-            snprintf(path, sizeof(path), "/api/jobs/%d/book_name", job);
-            if (tomato_http_json(cfg, "POST", path, "{\"value\":null}", &root, &status) == ESP_OK) cJSON_Delete(root);
+            snprintf(w->path, sizeof(w->path), "/api/jobs/%d/book_name", job);
+            if (tomato_http_json(cfg, "POST", w->path, "{\"value\":null}", &root, &status) == ESP_OK) cJSON_Delete(root);
         }
     }
     if (!done) return ESP_ERR_TIMEOUT;
-    if (!title[0]) snprintf(title, sizeof(title), "%s", book->title);
+    if (!title[0]) tomato_copy_utf8(title, sizeof(title), book->title);
 
-    char rel[256];
-    esp_err_t err = find_library_file(cfg, title, rel, sizeof(rel));
+    esp_err_t err = find_library_file(cfg, title);
     if (err != ESP_OK) return err;
 
-    char file[sizeof(book->file)], dest[192], url_path[3 * sizeof(rel) + 16];
-    // 更新时沿用原文件名，阅读进度跟着文件走。/ Updates keep the old file name so reading progress follows it.
-    if (book->file[0]) snprintf(file, sizeof(file), "%s", book->file);
-    else safe_name(title, file, sizeof(file));
+    char file[sizeof(book->file)], dest[TOMATO_TITLE_LEN + 32];
+    if (book->file[0] && tomato_file_name_safe(book->file)) {
+        // 更新时沿用原文件名，阅读进度跟着文件走。/ Updates keep the old file name so reading progress follows it.
+        tomato_copy_utf8(file, sizeof(file), book->file);
+    } else {
+        // 新书：同名文件已存在就加上 book_id 尾号，不覆盖别的书。/ New book: add a book_id suffix rather than overwrite another file.
+        safe_name(title, "", file, sizeof(file));
+        snprintf(dest, sizeof(dest), TOMATO_BOOKS_DIR "/%s", file);
+        if (path_exists(dest)) {
+            char suffix[12];
+            size_t idl = strlen(book->book_id);
+            snprintf(suffix, sizeof(suffix), "_%s", book->book_id + (idl > 6 ? idl - 6 : 0));
+            safe_name(title, suffix, file, sizeof(file));
+        }
+    }
     snprintf(dest, sizeof(dest), TOMATO_BOOKS_DIR "/%s", file);
-    char esc[3 * sizeof(rel)];
-    tomato_url_escape(rel, esc, sizeof(esc), true);
-    snprintf(url_path, sizeof(url_path), "/download/%s", esc);
+    tomato_url_escape(w->rel, w->rel_esc, sizeof(w->rel_esc), true);
+    snprintf(w->url, sizeof(w->url), "/download/%s", w->rel_esc);
     set_phase(TOMATO_DOWNLOADING, title);
     struct stat st;
     uint32_t old_size = stat(dest, &st) == 0 ? (uint32_t)st.st_size : 0;
-    err = tomato_http_download(cfg, url_path, dest, &s_cancel, &s_bytes);
+    err = tomato_http_download(cfg, w->url, dest, &s_cancel, &s_bytes);
     if (err != ESP_OK) return err;
     if (s_file_hook && stat(dest, &st) == 0) s_file_hook(dest, old_size, (uint32_t)st.st_size);
 
-    snprintf(book->title, sizeof(book->title), "%s", title);
-    snprintf(book->file, sizeof(book->file), "%s", file);
+    tomato_copy_utf8(book->title, sizeof(book->title), title);
+    tomato_copy_utf8(book->file, sizeof(book->file), file);
     if (chapter_total > book->chapters) book->chapters = (uint16_t)chapter_total;
     if (book->remote > book->chapters) book->chapters = book->remote;
     return ESP_OK;
@@ -258,13 +335,16 @@ static esp_err_t fetch_remote_totals(const tomato_config_t* cfg, tomato_book_t* 
     set_phase(TOMATO_CHECKING, "检查更新");
     cJSON* root = NULL; int status;
     esp_err_t err = tomato_http_json(cfg, "GET", "/api/updates?start=true", NULL, &root, &status);
-    for (int i = 0; err == ESP_OK && i < SCAN_WAIT_POLLS; i++) {
-        if (!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "running"))) break;
+    bool running = err == ESP_OK && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "running"));
+    for (int i = 0; running && i < SCAN_WAIT_POLLS; i++) {
         cJSON_Delete(root); root = NULL;
         if (!wait_poll()) return ESP_ERR_INVALID_STATE;
         err = tomato_http_json(cfg, "GET", "/api/updates?start=false", NULL, &root, &status);
+        running = err == ESP_OK && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "running"));
     }
     if (err != ESP_OK) return err;
+    // 等满 60 秒还没扫完：别拿半截结果判断。/ Still scanning after 60 s: don't decide from partial results.
+    if (running) { cJSON_Delete(root); return ESP_ERR_TIMEOUT; }
     static const char* const lists[] = { "updates", "no_updates" };
     for (int l = 0; l < 2; l++) {
         const cJSON* row;
@@ -295,23 +375,33 @@ static void set_pending(int pending) {
     portEXIT_CRITICAL(&s_lock);
 }
 
+static const char* server_error_text(int status, const char* fallback) {
+    if (status == 401 || status == 403) return "服务器密码不对";
+    if (status == 429) return "服务器忙，稍后再试";
+    return fallback;
+}
+
 // 只检查：更新每本书的 remote 并保存，不下载。/ Check only: refresh each book's remote and save; no downloads.
 static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
     if (!count) { set_phase(TOMATO_DONE, "书架上还没有番茄小说"); return; }
     uint8_t found[TOMATO_SHELF_MAX] = {0};
     esp_err_t err = fetch_remote_totals(cfg, shelf, count, found);
-    if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "检查更新失败"); return; }
+    if (err != ESP_OK) {
+        fail(err, s_cancel ? "已取消" : err == ESP_ERR_TIMEOUT ? "服务器扫描超时，稍后再试" : "检查更新失败");
+        return;
+    }
     // 服务器扫描里没有的书（缓存被清或新加），直接查番茄目录接口数章节。
     // Books missing from the server scan (cleared cache or new): count chapters from the Tomato directory API.
     for (int i = 0; i < count && !s_cancel; i++) {
         if (found[i]) continue;
-        char url[160];
-        snprintf(url, sizeof(url), "https://fanqienovel.com/api/reader/directory/detail?bookId=%s", shelf[i].book_id);
+        snprintf(s_work->url, sizeof(s_work->url),
+                 "https://fanqienovel.com/api/reader/directory/detail?bookId=%s", shelf[i].book_id);
         int chapters = 0;
         set_progress(i + 1, count);
-        if (tomato_http_count_keys(url, "\"itemId\"", "\"item_id\"", &chapters) == ESP_OK && chapters > 0)
+        if (tomato_http_count_keys(s_work->url, "\"itemId\"", "\"item_id\"", &s_cancel, &chapters) == ESP_OK && chapters > 0)
             shelf[i].remote = (uint16_t)chapters;
     }
+    if (s_cancel) { fail(ESP_ERR_INVALID_STATE, "已取消"); return; }
     tomato_shelf_save(shelf, count);
     int pending = count_pending(shelf, count);
     set_pending(pending);
@@ -321,14 +411,15 @@ static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int coun
     set_phase(TOMATO_DONE, msg);
 }
 
-// 下载上次检查标出的更新。/ Download the updates marked by the last check.
+// 下载上次检查标出的更新；正在阅读的那本跳过。/ Download updates marked by the last check; skip the book being read.
 static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
     int pending = count_pending(shelf, count);
     if (!pending) { set_phase(TOMATO_DONE, "没有待下载的更新"); return; }
-    int done = 0, updated = 0;
+    int done = 0, updated = 0, skipped = 0;
     for (int i = 0; i < count && !s_cancel; i++) {
         if (shelf[i].remote <= shelf[i].chapters) continue;
         set_progress(++done, pending);
+        if (book_open_in_reader(&shelf[i])) { skipped++; continue; }
         if (fetch_book(cfg, &shelf[i]) == ESP_OK) {
             updated++;
             tomato_shelf_save(shelf, count);
@@ -338,22 +429,22 @@ static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int cou
         }
     }
     set_pending(count_pending(shelf, count));
-    char msg[48];
+    char msg[64];
+    int failed = pending - updated - skipped;
     if (s_cancel) snprintf(msg, sizeof(msg), "已取消，更新了 %d 本", updated);
-    else if (updated == pending) snprintf(msg, sizeof(msg), "更新了 %d 本", updated);
-    else snprintf(msg, sizeof(msg), "更新了 %d 本，%d 本失败", updated, pending - updated);
+    else if (skipped && !failed) snprintf(msg, sizeof(msg), "更新了 %d 本，正在读的那本稍后再更新", updated);
+    else if (!failed) snprintf(msg, sizeof(msg), "更新了 %d 本", updated);
+    else snprintf(msg, sizeof(msg), "更新了 %d 本，%d 本失败", updated, failed);
     set_phase(TOMATO_DONE, msg);
 }
 
 static void run_search(const tomato_config_t* cfg) {
     set_phase(TOMATO_SEARCHING, s_query);
-    char esc[3 * sizeof(s_query)], path[sizeof(esc) + 16];
-    tomato_url_escape(s_query, esc, sizeof(esc), false);
-    snprintf(path, sizeof(path), "/api/search?q=%s", esc);
+    tomato_url_escape(s_query, s_work->esc, sizeof(s_work->esc), false);
+    snprintf(s_work->path, sizeof(s_work->path), "/api/search?q=%s", s_work->esc);
     cJSON* root; int status;
-    esp_err_t err = tomato_http_json(cfg, "GET", path, NULL, &root, &status);
-    if (err != ESP_OK) { fail(err, "搜索失败"); return; }
-    // 带简介后约 6 KB，放 PSRAM，不占任务栈。/ ~6 KB with synopses; keep it in PSRAM, off the task stack.
+    esp_err_t err = tomato_http_json(cfg, "GET", s_work->path, NULL, &root, &status);
+    if (err != ESP_OK) { fail(err, server_error_text(status, "搜索失败")); return; }
     tomato_hit_t* hits = heap_caps_calloc(TOMATO_SEARCH_MAX, sizeof(tomato_hit_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!hits) { cJSON_Delete(root); fail(ESP_ERR_NO_MEM, "内存不足"); return; }
     int n = 0;
@@ -373,15 +464,16 @@ static void run_search(const tomato_config_t* cfg) {
         char st[4];
         tomato_json_str(raw, "update_status", st, sizeof(st));
         h->finished = !strcmp(st, "0");
-        const cJSON* ab = cJSON_GetObjectItemCaseSensitive(raw, "abstract");
-        if (cJSON_IsString(ab) && ab->valuestring) copy_utf8(h->abstract, sizeof(h->abstract), ab->valuestring);
+        tomato_json_str(raw, "abstract", h->abstract, sizeof(h->abstract));
         if (h->book_id[0] && h->title[0]) n++;
     }
     cJSON_Delete(root);
-    portENTER_CRITICAL(&s_lock);
+    xSemaphoreTake(s_hits_mutex, portMAX_DELAY);
     memcpy(s_hits, hits, sizeof(hits[0]) * (size_t)n);
+    portENTER_CRITICAL(&s_lock);
     s_status.hit_count = n;
     portEXIT_CRITICAL(&s_lock);
+    xSemaphoreGive(s_hits_mutex);
     heap_caps_free(hits);
     set_phase(TOMATO_DONE, n ? NULL : "没有找到");
 }
@@ -394,24 +486,45 @@ static void run_download(const tomato_config_t* cfg, tomato_book_t* shelf, int c
         at = count++;
         tomato_book_t* b = &shelf[at];
         memset(b, 0, sizeof(*b));
-        snprintf(b->book_id, sizeof(b->book_id), "%s", s_target.book_id);
-        snprintf(b->title, sizeof(b->title), "%s", s_target.title);
-        snprintf(b->author, sizeof(b->author), "%s", s_target.author);
+        tomato_copy_utf8(b->book_id, sizeof(b->book_id), s_target.book_id);
+        tomato_copy_utf8(b->title, sizeof(b->title), s_target.title);
+        tomato_copy_utf8(b->author, sizeof(b->author), s_target.author);
         b->remote = s_target.chapters;
     }
+    if (book_open_in_reader(&shelf[at])) { fail(ESP_ERR_INVALID_STATE, "这本书正在阅读，先退出再更新"); return; }
     set_progress(1, 1);
     esp_err_t err = fetch_book(cfg, &shelf[at]);
     if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "下载失败"); return; }
     tomato_shelf_save(shelf, count);
+    // 重新下载的书不再算“已删除”。/ A re-downloaded book is no longer "removed".
+    tomato_removed_mark(shelf[at].book_id, false);
     set_phase(TOMATO_DONE, "已加入书架");
+}
+
+// 结束前处理同步期间书库删掉的书，并在同一把锁里清掉忙标志，保证不漏。
+// Before ending, apply removals queued during the sync and clear busy under the same lock so none slip through.
+static void finish_and_drain(void) {
+    for (;;) {
+        char file[TOMATO_TITLE_LEN + 8];
+        portENTER_CRITICAL(&s_lock);
+        if (!s_deferred_count) {
+            s_busy = false;
+            portEXIT_CRITICAL(&s_lock);
+            return;
+        }
+        memcpy(file, s_deferred[--s_deferred_count], sizeof(file));
+        portEXIT_CRITICAL(&s_lock);
+        tomato_shelf_remove_now(file);
+    }
 }
 
 static void sync_task(void* arg) {
     (void)arg;
-    tomato_config_t cfg;
+    tomato_config_t cfg = {0};
     tomato_book_t* shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    s_work = heap_caps_calloc(1, sizeof(work_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     int count = 0;
-    if (!shelf) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
+    if (!shelf || !s_work) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
     // WebDAV 同步不需要番茄服务器。/ WebDAV sync does not need the Tomato server.
     if (s_op != OP_WEBDAV && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
@@ -421,8 +534,11 @@ static void sync_task(void* arg) {
         goto out;
     }
     set_phase(TOMATO_CONNECTING, "连接 Wi-Fi");
-    esp_err_t err = tomato_net_up(NET_TIMEOUT_MS);
-    if (err != ESP_OK) { fail(err, err == ESP_ERR_NOT_FOUND ? "未设置 Wi-Fi" : "Wi-Fi 连接失败"); goto out; }
+    esp_err_t err = tomato_net_up(NET_TIMEOUT_MS, &s_cancel);
+    if (err != ESP_OK) {
+        fail(err, s_cancel ? "已取消" : err == ESP_ERR_NOT_FOUND ? "未设置 Wi-Fi" : "Wi-Fi 连接失败");
+        goto out;
+    }
     switch (s_op) {
     case OP_CHECK: run_check(&cfg, shelf, count); break;
     case OP_UPDATE: run_update(&cfg, shelf, count); break;
@@ -440,22 +556,28 @@ static void sync_task(void* arg) {
     tomato_net_down();
 out:
     heap_caps_free(shelf);
+    heap_caps_free(s_work);
+    s_work = NULL;
     memset(&cfg, 0, sizeof(cfg));
-    s_busy = false;
+    finish_and_drain();
     vTaskDelete(NULL);
 }
 
 static esp_err_t start(op_t op) {
-    if (s_busy) return ESP_ERR_INVALID_STATE;
+    tomato_json_use_psram();
+    if (!s_hits_mutex) s_hits_mutex = xSemaphoreCreateMutex();
+    if (!s_hits) s_hits = heap_caps_calloc(TOMATO_SEARCH_MAX, sizeof(tomato_hit_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_hits_mutex || !s_hits) return ESP_ERR_NO_MEM;
+    portENTER_CRITICAL(&s_lock);
+    if (s_busy) { portEXIT_CRITICAL(&s_lock); return ESP_ERR_INVALID_STATE; }
     s_busy = true;
     s_cancel = false;
     s_bytes = 0;
     s_op = op;
-    portENTER_CRITICAL(&s_lock);
     int hits = s_status.hit_count;
     memset(&s_status, 0, sizeof(s_status));
-    // 下载时保留搜索结果，返回结果页还能看到。/ Keep search hits across a download so the result page survives.
-    if (op == OP_DOWNLOAD) s_status.hit_count = hits;
+    // 只有新的搜索才清结果，其他操作保留，返回结果页还能看到。/ Only a new search clears hits; other ops keep them.
+    if (op != OP_SEARCH) s_status.hit_count = hits;
     portEXIT_CRITICAL(&s_lock);
     if (xTaskCreate(sync_task, "tomato_sync", TASK_STACK, NULL, 4, NULL) != pdPASS) {
         s_busy = false;
@@ -469,13 +591,15 @@ esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }
 
 esp_err_t tomato_sync_start_search(const char* query) {
-    if (!query || !query[0] || s_busy) return ESP_ERR_INVALID_ARG;
-    snprintf(s_query, sizeof(s_query), "%s", query);
+    if (!query || !query[0]) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    tomato_copy_utf8(s_query, sizeof(s_query), query);
     return start(OP_SEARCH);
 }
 
 esp_err_t tomato_sync_start_download(const tomato_hit_t* hit) {
-    if (!hit || !hit->book_id[0] || s_busy) return ESP_ERR_INVALID_ARG;
+    if (!hit || !hit->book_id[0]) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
     s_target = *hit;
     return start(OP_DOWNLOAD);
 }

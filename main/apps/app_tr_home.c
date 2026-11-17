@@ -17,6 +17,7 @@
 
 #include "app.h"
 #include "book_progress.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "tomato.h"
 #include "tr_nav.h"
@@ -39,7 +40,7 @@ typedef struct {
     uint8_t pct;
 } home_book_t;
 
-static home_book_t s_books[RECENT_MAX];
+EXT_RAM_BSS_ATTR static home_book_t s_books[RECENT_MAX];
 static int s_book_count;
 static int s_pending;          // 番茄待更新本数，-1 表示没有番茄书 / Tomato books with updates, -1 if none
 static int s_drawn_minute = -1;

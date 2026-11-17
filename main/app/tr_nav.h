@@ -23,3 +23,5 @@ void tr_nav_open_book(app_ctx_t* ctx, const char* path);
 
 /// 由书库页实现。/ Implemented by the library page.
 void app_book_request_open(const char* path);
+/// 这个路径是不是阅读器正开着的书（可跨任务调用）。/ Whether this path is the book open in the reader (any task).
+bool app_book_path_is_open(const char* path);

@@ -46,6 +46,8 @@ void tr_text(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFo
 void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
 /// 截断到 max_w 像素并加省略号，按 UTF-8 边界。/ Fit into max_w with an ellipsis on UTF-8 boundaries.
 void tr_fit(char* text, int px, int max_w);
+/// 能完整放进 w 的最长尾巴（输入框显示末尾用），按字符边界。/ Longest tail that fits in w, on a character boundary.
+const char* tr_tail_fit(const char* text, int px, int w);
 /// 自动换行，最多 max_lines 行，超出加省略号；返回实际行数。/ Wrap into at most max_lines; returns lines drawn.
 int tr_wrap(uint8_t* fb, int x, int y_top, int w, int px, int line_h, const char* text, int max_lines);
 

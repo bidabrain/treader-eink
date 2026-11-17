@@ -67,6 +67,9 @@ esp_err_t book_progress_set_last_path(const char* path);
 /// After a Tomato update appends chapters, move this book's recorded size from old_size to new_size, keeping
 /// chapter and offset. A missing record returns ESP_OK; a size or owner mismatch leaves it unchanged.
 esp_err_t book_progress_resize(const char* path, uint32_t old_size, uint32_t new_size);
+/// WebDAV 导入一条进度：沿用已有记录的阅读序号，不把这本书顶到“最近阅读”最前。
+/// Import progress from WebDAV, keeping the existing reading sequence so it does not jump to the top of "recent".
+esp_err_t book_progress_import(const char* path, const book_progress_t* progress);
 
 typedef struct {
     char path[BOOK_STORE_PATH_MAX]; ///< 完整路径 / Full path

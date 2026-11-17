@@ -152,6 +152,13 @@ bool tomato_time_valid(void);
 /// 上次取走之后是否又用 SNTP 对过时（取走即清零）。主程序据此把时间写进 PMU 的 RTC。
 /// Whether SNTP set the time since the last call (cleared on read); the app then writes it to the PMU RTC.
 bool tomato_take_time_synced(void);
+/// 判断一个路径是不是阅读器正开着的书；是的话更新会跳过它（阅读器还持有旧文件）。
+/// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
+typedef bool (*tomato_open_check_t)(const char* path);
+void tomato_sync_set_open_check(tomato_open_check_t check);
+/// 取消并等待后台任务结束，最多 timeout_ms；锁屏断电前调用。返回是否已停。
+/// Cancel and wait up to timeout_ms for the task to end; call before a power-down lock. Returns whether it stopped.
+bool tomato_sync_stop(int timeout_ms);
 /// 请求取消；任务在下一个安全点退出。/ Request cancel; the task exits at its next safe point.
 void tomato_sync_cancel(void);
 /// 后台任务是否在跑。/ Whether the task is running.

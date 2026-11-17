@@ -11,12 +11,19 @@
  * 合并规则：TF 卡 tomato/webdav_state.json 记着上次同步时每本书的进度签名和同步时间。
  * - 本机进度和签名不同：本机改过，以本机为准。
  * - 本机没改、服务器那条在上次同步之后更新过：以服务器为准写回本机。
+ * - 本机这本书从没同步过、服务器上已有：以服务器为准（新设备或重置后不会把别处的进度冲掉）。
  * - 番茄书架按 book_id 取并集；只在服务器上的书加进本机书架，章节数记 0，等用户点“下载全部更新”。
+ *   书库删掉的书记在“已删除”清单里，两边都不再加回；远端的文件名不可信，新加的书由下载时重新命名。
+ * - 没对过时不同步；服务器文件读得到却解析不了时不覆盖它。
  *
  * Merge: tomato/webdav_state.json on TF records each book's progress signature and the last sync time.
  * - Local differs from its signature: changed here, local wins.
  * - Local unchanged and the remote entry is newer than the last sync: remote wins and is written back.
+ * - A book never synced here but present remotely takes the remote entry (new or reset devices don't clobber others).
  * - The Tomato shelf is a union by book_id; remote-only books join locally with 0 chapters, pending download.
+ *   Books deleted from the library stay on a removed list and are never re-added; remote file names are not
+ *   trusted, so new books get named at download time.
+ * - No sync without a valid clock; a remote file that downloads but fails to parse is never overwritten.
  */
 
 #include <stdio.h>
@@ -24,6 +31,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
@@ -138,20 +146,28 @@ static esp_err_t write_state(const cJSON* root) {
     bool ok = f && fwrite(text, 1, len, f) == len;
     if (f && fclose(f) != 0) ok = false;
     cJSON_free(text);
-    if (ok) { remove(STATE_PATH); ok = rename(tmp, STATE_PATH) == 0; }
-    if (!ok) remove(tmp);
-    return ok ? ESP_OK : ESP_FAIL;
+    if (!ok) { remove(tmp); return ESP_FAIL; }
+    remove(STATE_PATH);
+    return rename(tmp, STATE_PATH) == 0 ? ESP_OK : ESP_FAIL;
 }
 
 /* ---- 番茄书架合并 / Tomato shelf merge ---- */
 
-static int merge_shelf(cJSON* remote_list, tomato_book_t* shelf, int* count) {
-    int added = 0;
+static bool id_in(const char (*ids)[TOMATO_ID_LEN], int n, const char* id) {
+    for (int i = 0; i < n; i++) if (!strcmp(ids[i], id)) return true;
+    return false;
+}
+
+// 合并远端书架；返回本机书架是否变了，added 记新增本数。/ Merge the remote shelf; returns whether the local shelf changed.
+static bool merge_shelf(cJSON* remote_list, tomato_book_t* shelf, int* count,
+                        const char (*removed)[TOMATO_ID_LEN], int removed_n, int* added) {
+    bool changed = false;
+    *added = 0;
     const cJSON* it;
     cJSON_ArrayForEach(it, remote_list) {
         char id[TOMATO_ID_LEN];
         tomato_json_str(it, "book_id", id, sizeof(id));
-        if (!id[0]) continue;
+        if (!id[0] || id_in(removed, removed_n, id)) continue;
         int remote_total = tomato_json_int(it, "chapters");
         int r2 = tomato_json_int(it, "remote");
         if (r2 > remote_total) remote_total = r2;
@@ -161,18 +177,27 @@ static int merge_shelf(cJSON* remote_list, tomato_book_t* shelf, int* count) {
             if (*count >= TOMATO_SHELF_MAX) continue;
             tomato_book_t* b = &shelf[(*count)++];
             memset(b, 0, sizeof(*b));
-            snprintf(b->book_id, sizeof(b->book_id), "%s", id);
+            tomato_copy_utf8(b->book_id, sizeof(b->book_id), id);
             tomato_json_str(it, "title", b->title, sizeof(b->title));
             tomato_json_str(it, "author", b->author, sizeof(b->author));
-            tomato_json_str(it, "file", b->file, sizeof(b->file));
+            // 文件名留空：本机还没有这本，下载时再起名。/ Leave the file empty: not downloaded here yet; named at download.
             b->chapters = 0;
             b->remote = (uint16_t)(remote_total > 0 ? remote_total : 1);
-            added++;
+            (*added)++;
+            changed = true;
         } else if (remote_total > shelf[at].remote) {
             shelf[at].remote = (uint16_t)remote_total;
+            changed = true;
         }
     }
-    return added;
+    // 另一台设备删掉的书，本机书架也去掉记录（文件不删）。/ Drop shelf records another device removed (files stay).
+    int write = 0;
+    for (int i = 0; i < *count; i++) {
+        if (id_in(removed, removed_n, shelf[i].book_id)) { changed = true; continue; }
+        shelf[write++] = shelf[i];
+    }
+    *count = write;
+    return changed;
 }
 
 static cJSON* shelf_to_json(const tomato_book_t* shelf, int count) {
@@ -207,6 +232,12 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
     int uploaded = 0, downloaded = 0, added = 0;
     if (!local || !shelf) { err = ESP_ERR_NO_MEM; snprintf(msg, cap, "内存不足"); goto done; }
 
+    if (!tomato_time_valid()) {
+        // 没有可信时间就判断不了新旧。/ Without a trusted clock, newer and older cannot be told apart.
+        err = ESP_ERR_INVALID_STATE;
+        snprintf(msg, cap, "对时失败，暂不能同步");
+        goto done;
+    }
     int status = 0;
     err = dav_request(&cfg, false, NULL, &body, &status);
     if (err != ESP_OK || (status != 200 && status != 404)) {
@@ -215,6 +246,13 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
         goto done;
     }
     remote = body ? cJSON_Parse(body) : NULL;
+    if (!remote && status == 200) {
+        // 文件在但读不懂（被截断或是登录页）：别用空内容覆盖别的设备的数据。
+        // The file exists but does not parse (truncated or a login page): never overwrite other devices' data.
+        err = ESP_ERR_INVALID_RESPONSE;
+        snprintf(msg, cap, "服务器上的同步文件损坏，未覆盖");
+        goto done;
+    }
     if (!remote) remote = cJSON_CreateObject();
     cJSON* rp = cJSON_GetObjectItemCaseSensitive(remote, "progress");
     if (!cJSON_IsObject(rp)) {
@@ -233,15 +271,19 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
         char sig[48];
         signature(&local[i], sig, sizeof(sig));
         const cJSON* old = cJSON_GetObjectItemCaseSensitive(sigs, local[i].path);
-        bool changed = !cJSON_IsString(old) || strcmp(old->valuestring, sig);
+        bool never_synced = !cJSON_IsString(old);
+        bool changed = !never_synced && strcmp(old->valuestring, sig);
         cJSON* r = cJSON_GetObjectItemCaseSensitive(rp, local[i].path);
-        if (r && !changed && json_num(r, "time") > last) {
+        // 从没同步过且服务器有：用服务器的；没改过且服务器更新过：也用服务器的。
+        // Never synced and present remotely: take remote; unchanged here and newer remotely: take remote too.
+        if (r && (never_synced || (!changed && json_num(r, "time") > last))) {
             tomato_progress_t in;
             progress_from_json(r, local[i].path, &in);
             if (import_cb(&in)) downloaded++;
             continue;
         }
         if (!r || changed) {
+            // 本机新改的或服务器没有的，上传。/ Upload what changed here or is missing remotely.
             cJSON_DeleteItemFromObjectCaseSensitive(rp, local[i].path);
             cJSON* o = cJSON_AddObjectToObject(rp, local[i].path);
             if (o) { progress_to_json(o, &local[i], now); uploaded++; }
@@ -259,12 +301,29 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
     }
 
     // 番茄书架。/ Tomato shelf.
+    // 已删除清单两边取并集。/ The removed list is a union of both sides.
+    EXT_RAM_BSS_ATTR static char removed[TOMATO_REMOVED_MAX][TOMATO_ID_LEN];
+    int removed_n = tomato_removed_load(removed, TOMATO_REMOVED_MAX);
+    bool removed_changed = false;
+    const cJSON* rid;
+    cJSON_ArrayForEach(rid, cJSON_GetObjectItemCaseSensitive(remote, "removed")) {
+        if (!cJSON_IsString(rid) || !rid->valuestring || !rid->valuestring[0]) continue;
+        if (id_in((const char (*)[TOMATO_ID_LEN])removed, removed_n, rid->valuestring) || removed_n >= TOMATO_REMOVED_MAX) continue;
+        tomato_copy_utf8(removed[removed_n++], TOMATO_ID_LEN, rid->valuestring);
+        removed_changed = true;
+    }
+    if (removed_changed) tomato_removed_save((const char (*)[TOMATO_ID_LEN])removed, removed_n);
     int count = 0;
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
-    added = merge_shelf(cJSON_GetObjectItemCaseSensitive(remote, "tomato"), shelf, &count);
-    if (added) tomato_shelf_save(shelf, count);
+    if (merge_shelf(cJSON_GetObjectItemCaseSensitive(remote, "tomato"), shelf, &count,
+                    (const char (*)[TOMATO_ID_LEN])removed, removed_n, &added)) {
+        tomato_shelf_save(shelf, count);
+    }
     cJSON_DeleteItemFromObjectCaseSensitive(remote, "tomato");
     cJSON_AddItemToObject(remote, "tomato", shelf_to_json(shelf, count));
+    cJSON_DeleteItemFromObjectCaseSensitive(remote, "removed");
+    cJSON* rarr = cJSON_AddArrayToObject(remote, "removed");
+    for (int i = 0; rarr && i < removed_n; i++) cJSON_AddItemToArray(rarr, cJSON_CreateString(removed[i]));
     cJSON_DeleteItemFromObjectCaseSensitive(remote, "version");
     cJSON_AddNumberToObject(remote, "version", 1);
     cJSON_DeleteItemFromObjectCaseSensitive(remote, "updated");

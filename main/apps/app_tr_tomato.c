@@ -19,6 +19,7 @@
 #include "app.h"
 #include "book_progress.h"
 #include "esp_heap_caps.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include "pinyin_ime.h"
@@ -57,13 +58,14 @@ static int s_pending;
 static bool s_has_config;
 static int s_page;
 
-static tomato_hit_t s_hits[TOMATO_SEARCH_MAX];
+// 约 6 KB，放 PSRAM。/ About 6 KB, kept in PSRAM.
+EXT_RAM_BSS_ATTR static tomato_hit_t s_hits[TOMATO_SEARCH_MAX];
 static int s_hit_count;
 static int s_result_page;
 static int s_detail;
 static char s_query[TR_KBD_TEXT_MAX];
 static char s_recent[RECENT_QUERIES][48];
-static tr_kbd_t s_kbd;
+EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 
 static op_t s_op;         // 正在跑的操作 / Running operation
 static op_t s_last;       // 刚结束的操作，用于显示结果或失败 / Just-finished op, for result or error text
@@ -246,10 +248,8 @@ static void draw_field(uint8_t* fb, const char* text, bool caret) {
     tr_pill(fb, f, "", false, 30);
     tr_icon(fb, TR_ICON_SEARCH, f.x + 44, f.y + 40, false);
     char shown[TR_KBD_TEXT_MAX];
-    const char* tail = text;
-    // 太长时显示末尾。/ Show the tail when too long.
-    while (*tail && ttf_text_width_px(34, tail) > f.width - 120) tail++;
-    snprintf(shown, sizeof(shown), "%s", tail);
+    // 太长时显示末尾，按字符边界。/ Show the tail when too long, on a character boundary.
+    snprintf(shown, sizeof(shown), "%s", tr_tail_fit(text, 34, f.width - 120));
     tr_text(fb, f.x + 78, f.y + 20, 34, shown, EPD_DRAW_ALIGN_LEFT, false);
     if (caret) {
         int cx = f.x + 80 + ttf_text_width_px(34, shown);
@@ -283,14 +283,16 @@ static int recent_hit(uint16_t x, uint16_t y) {
     return -1;
 }
 
-static void submit_search(const char* q) {
-    if (!q[0]) return;
+// 只有真正开始搜索了才清掉旧结果。/ Clear old results only once a search actually starts.
+static bool submit_search(const char* q) {
+    if (!q[0] || tomato_sync_busy()) return false;
+    if (!start_op(OP_SEARCH, tomato_sync_start_search(q))) return false;
     snprintf(s_query, sizeof(s_query), "%s", q);
     remember_query(q);
     s_hit_count = 0;
     s_result_page = 0;
     s_view = V_RESULTS;
-    start_op(OP_SEARCH, tomato_sync_start_search(q));
+    return true;
 }
 
 /* ---- 结果 / Results ---- */
@@ -417,6 +419,7 @@ static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     tomato_sync_set_file_hook(file_hook);
+    tomato_sync_set_open_check(app_book_path_is_open);
     static bool recent_loaded;
     if (!recent_loaded) { load_recent(); recent_loaded = true; }
     load_shelf();
@@ -431,8 +434,7 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
-    // 词库占 1 MB PSRAM，离开就释放；后台同步不受影响。/ The lexicon holds 1 MB of PSRAM; free it on exit. Sync keeps running.
-    pinyin_ime_unload();
+    // 词库留在 PSRAM（约 1 MB），下次打开键盘不用再读 1 秒。/ Keep the ~1 MB lexicon in PSRAM so the next keyboard opens instantly.
     if (s_view == V_SEARCH) s_view = V_LIST;
 }
 
@@ -474,13 +476,14 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     int top = list_top();
-    if (y >= top && y < LIST_BOTTOM) {
+    // 只认画出来的行，行下面的空白不算。/ Only drawn rows count; the gap below them does not.
+    if (y >= top && (y - top) / ROW_H < rows_per_page()) {
         int k = s_page * rows_per_page() + (y - top) / ROW_H;
-        if (k < s_count) {
-            char path[BOOK_STORE_PATH_MAX];
-            book_path(&s_shelf[s_order[k]], path, sizeof(path));
-            tr_nav_open_book(ctx, path);
-        }
+        struct stat st;
+        char path[BOOK_STORE_PATH_MAX];
+        if (k < s_count) book_path(&s_shelf[s_order[k]], path, sizeof(path));
+        // 还没下载到本机的书（WebDAV 合并来的）没有文件，不打开。/ Books merged from WebDAV but not downloaded have no file.
+        if (k < s_count && s_shelf[s_order[k]].file[0] && stat(path, &st) == 0) tr_nav_open_book(ctx, path);
     }
     return APP_REDRAW_NONE;
 }
@@ -488,15 +491,17 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 static app_redraw_t touch_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < 180 && x < 96) { s_view = s_hit_count ? V_RESULTS : V_LIST; return APP_REDRAW_PAGE; }
     int r = recent_hit(x, y);
-    if (r >= 0) { submit_search(s_recent[r]); return APP_REDRAW_PAGE; }
+    if (r >= 0) {
+        char q[sizeof(s_recent[0])];
+        memcpy(q, s_recent[r], sizeof(q));
+        return submit_search(q) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
+    }
     tr_kbd_result_t res = tr_kbd_touch(&s_kbd, x, y);
     if (res == TR_KBD_SUBMIT) {
         if (!s_kbd.text[0] || tomato_sync_busy()) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
         char q[TR_KBD_TEXT_MAX];
         snprintf(q, sizeof(q), "%s", s_kbd.text);
-        pinyin_ime_unload();
-        submit_search(q);
-        return APP_REDRAW_PAGE;
+        return submit_search(q) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
     }
     if (res == TR_KBD_CHANGED) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
     return APP_REDRAW_NONE;
@@ -578,6 +583,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         s_op = OP_NONE;
         if (s_last == OP_SEARCH) s_hit_count = tomato_sync_hits(s_hits, TOMATO_SEARCH_MAX);
         load_shelf();
+        if (s_page >= list_pages()) s_page = list_pages() - 1;
         s_du_count = 0;
         s_seen_revision = s_status.revision;
         return s_view == V_SEARCH ? APP_REDRAW_NONE : APP_REDRAW_PAGE;

@@ -52,6 +52,7 @@
 #include "book_store.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
+#include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -114,7 +115,7 @@ static bool s_delete_confirm, s_file_removed;
 static char s_shelf_warning[128], s_manage_message[128];
 static char s_query[65], s_search_draft[65], s_batch_message[128];
 static book_view_t s_search_parent;
-static tr_kbd_t s_search_kbd;
+EXT_RAM_BSS_ATTR static tr_kbd_t s_search_kbd;
 static bool s_batch_confirm, s_batch_delete;
 typedef struct pending_progress {
     char path[BOOK_STORE_PATH_MAX];
@@ -141,6 +142,21 @@ static char s_open_request[BOOK_STORE_PATH_MAX];
 
 void app_book_request_open(const char* path) {
     snprintf(s_open_request, sizeof(s_open_request), "%s", path ? path : "");
+}
+// 正在阅读的书的路径，给同步任务查询；用自旋锁保护跨任务读写。
+// Path of the book being read, queried by the sync task; a spinlock guards cross-task access.
+static portMUX_TYPE s_open_lock = portMUX_INITIALIZER_UNLOCKED;
+static char s_open_shared[BOOK_STORE_PATH_MAX];
+static void publish_open_path(const char* path) {
+    portENTER_CRITICAL(&s_open_lock);
+    snprintf(s_open_shared, sizeof(s_open_shared), "%s", path);
+    portEXIT_CRITICAL(&s_open_lock);
+}
+bool app_book_path_is_open(const char* path) {
+    portENTER_CRITICAL(&s_open_lock);
+    bool open = s_open_shared[0] && !strcmp(s_open_shared, path);
+    portEXIT_CRITICAL(&s_open_lock);
+    return open;
 }
 static char s_message[128], s_storage[128], s_path[BOOK_STORE_PATH_MAX], s_title[128];
 static char s_font_path[192];
@@ -313,9 +329,9 @@ static void select_page(int page) {
 static void search_begin(void) {
     s_search_parent = s_view;
     memcpy(s_search_draft, s_query, sizeof(s_query));
-    tr_kbd_open(&s_search_kbd, s_query, true, "搜索");
-    // 文件名搜索多用首字母，默认英文。/ File-name search mostly uses initials, so start in English.
-    s_search_kbd.mode = s_search_kbd.letters = TR_KBD_ENGLISH;
+    // 文件名搜索多用首字母，默认英文；切到拼音时才加载词库。
+    // File-name search mostly uses initials: start in English and load the lexicon only when pinyin is chosen.
+    tr_kbd_open(&s_search_kbd, s_query, false, "搜索");
     s_view = SEARCH;
 }
 static void refresh_search_matches(void) {
@@ -326,7 +342,6 @@ static void search_finish(app_ctx_t* ctx, bool apply) {
     s_view = s_search_parent;
     if (apply) copy_text(s_search_draft, sizeof(s_search_draft), s_search_kbd.text);
     memset(&s_search_kbd, 0, sizeof(s_search_kbd));
-    pinyin_ime_unload();
     if (apply) {
         memcpy(s_query, s_search_draft, sizeof(s_query));
         refresh_search_matches();
@@ -496,8 +511,7 @@ static void draw_search(uint8_t* fb) {
     EpdRect f = {96, 84, UI_LOCK_WIDTH - 96 - UI_MARGIN, 80};
     tr_pill(fb, f, "", false, 30);
     tr_icon(fb, TR_ICON_SEARCH, f.x + 44, f.y + 40, false);
-    const char* tail = s_search_kbd.text;
-    while (*tail && ttf_text_width_px(34, tail) > f.width - 120) ++tail;
+    const char* tail = tr_tail_fit(s_search_kbd.text, 34, f.width - 120);
     tr_text(fb, f.x + 78, f.y + 20, 34, tail, EPD_DRAW_ALIGN_LEFT, false);
     epd_fill_rect((EpdRect){f.x + 80 + ttf_text_width_px(34, tail), f.y + 18, 3, 44}, UI_GRAY_BLACK, fb);
     tr_text(fb, UI_MARGIN, 200, 28, "拼音首字母、全拼或英文都能搜", EPD_DRAW_ALIGN_LEFT, false);
@@ -523,10 +537,6 @@ static const char* tomato_file_of(const char* path) {
 }
 static void save_progress(void) {
     if (!s_text || !s_path[0] || !book_layout_page_count()) return;
-    // 正在读的番茄书被后台更新替换后文件变大：章节和偏移仍有效，改用新大小保存，免得进度作废。
-    // A Tomato book replaced by a background update grows; chapter and offset stay valid, so save against the new size.
-    struct stat st;
-    if (tomato_file_of(s_path) && stat(s_path, &st) == 0 && (uint32_t)st.st_size > s_file_size) s_file_size = (uint32_t)st.st_size;
     bool was_failed = s_save_failed;
     pending_progress_t* pending = pending_find(s_path);
     if (!pending) { s_save_failed = true; return; }
@@ -771,9 +781,11 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         ui_clear_page(fb);
         tr_status_bar(fb);
         tr_title(fb, "目录");
-        char head[128];
+        char head[128], page_no[32];
+        snprintf(page_no, sizeof(page_no), " · %d / %d", ctx->leaf + 1, leaves());
         copy_text(head, sizeof(head), s_title);
-        fit_text(head, 28, ui_content_width());
+        fit_text(head, 28, ui_content_width() - ttf_text_width_px(28, page_no));
+        strncat(head, page_no, sizeof(head) - strlen(head) - 1);
         tr_text(fb, UI_MARGIN, 156, 28, head, EPD_DRAW_ALIGN_LEFT, false);
         if (s_message[0]) tr_text(fb, UI_MARGIN, 220, 28, s_message, EPD_DRAW_ALIGN_LEFT, false);
         else {
@@ -791,12 +803,9 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
                 tr_hline(fb, r.y + r.height, UI_MARGIN, ui_content_width(), true);
             }
         }
-        char page[32];
-        snprintf(page, sizeof(page), "%d / %d", ctx->leaf + 1, leaves());
         if (ctx->leaf > 0) tr_text(fb, nav_rect(0).x, 1132, 30, "‹ 上一页", EPD_DRAW_ALIGN_LEFT, false);
         tr_pill(fb, nav_rect(1), "返回阅读", true, 30);
         if (ctx->leaf + 1 < leaves()) tr_text(fb, nav_rect(2).x + nav_rect(2).width, 1132, 30, "下一页 ›", EPD_DRAW_ALIGN_RIGHT, false);
-        tr_text(fb, UI_LOCK_WIDTH / 2, 1070, 26, page, EPD_DRAW_ALIGN_CENTER, false);
     } else {
         draw_shelf(ctx, fb);
         if (s_view == MANAGE) draw_manage(fb);
@@ -927,6 +936,7 @@ static void free_book(void) {
     s_text_len = 0;
     book_close();
     s_path[0] = 0;
+    publish_open_path("");
 }
 static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool last_page) {
     loading_detail(ctx, "正在加载和排版…", "长章节需要更多时间，请稍候");
@@ -1022,6 +1032,7 @@ static bool open_book(app_ctx_t* ctx, const char* path) {
         return false;
     }
     copy_text(s_path, sizeof(s_path), path);
+    publish_open_path(path);
     s_file_size = (uint32_t)st.st_size;
     book_progress_t p = {0};
     bool resume = pending_restore(path, s_file_size, &p) || book_progress_load(path, s_file_size, &p);
@@ -1514,7 +1525,8 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     int nav = nav_hit(x, y);
     if (nav == 0 || nav == 2) {
         int next = ctx->leaf + (nav == 0 ? -1 : 1);
-        if (next >= 0 && next < leaves()) ctx->leaf = next;
+        if (next < 0 || next >= leaves()) return APP_REDRAW_NONE;
+        ctx->leaf = next;
         return APP_REDRAW_PAGE;
     }
     if (nav == 1) {
@@ -1550,7 +1562,11 @@ static void on_enter(app_ctx_t* ctx) {
     s_count = 0;
     s_px = app_settings_book_px();
     s_scan_pending = true;
-    s_resume_pending = true;
+    // 书库是标签页，切过来很频繁：续读弹窗只在开机后第一次进入时问。
+    // The library is a tab visited often: offer resume only on the first entry after boot.
+    static bool resume_offered;
+    s_resume_pending = !resume_offered;
+    resume_offered = true;
     // 传书页已停止并 join HTTP，安全注销且只丢弃对应路径的旧进度。
     // Transfer has stopped and joined HTTP; safely unregister only invalidated paths.
     pending_drop_invalidated();
@@ -1569,7 +1585,7 @@ static void on_enter(app_ctx_t* ctx) {
 }
 static void book_on_exit(app_ctx_t* ctx) {
     s_resume_path[0] = 0;
-    if (s_view == SEARCH) { memset(&s_search_kbd, 0, sizeof(s_search_kbd)); pinyin_ime_unload(); s_view = SHELF; }
+    if (s_view == SEARCH) { memset(&s_search_kbd, 0, sizeof(s_search_kbd)); s_view = SHELF; }
     s_pressed_control = -1;
     save_progress();
     sensor_set(ctx, false);
@@ -1721,6 +1737,8 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) 
     if (ev->type == UI_GESTURE_TAP && !s_scan_pending) {
         if (start >= 0 && start == end) {
             app_redraw_t result = action_at(ctx, ev->x0, ev->y0);
+            // 整页类控件（搜索页、标签、图标）没动作就什么也不刷。/ Page-wide controls with no action refresh nothing.
+            if (result == APP_REDRAW_NONE && (start == 499 || (start >= 114 && start < 130))) return APP_REDRAW_NONE;
             return result != APP_REDRAW_NONE ? result : paint_control(ctx, start_rect);
         }
         if (start < 0 && end < 0 && s_view == READING && !s_clear_confirm)

@@ -33,7 +33,8 @@
 #define IME_MAX_BYTES (2u * 1024u * 1024u)
 #define IME_MAX_ENTRIES 65535u
 #define IME_EXACT_SCAN 32
-#define IME_TAIL_SCAN 96
+#define IME_TAIL_SCAN 400   // 补全窗口：最多看这么多条 / Completion window: entries examined
+#define IME_TAIL_KEEP 12    // 补全只取频率最高的几条 / Completions keep only the most frequent few
 #define IME_TAIL_SLACK 4
 #define IME_INF 1000000
 
@@ -43,6 +44,7 @@ static uint8_t* s_blob;
 static uint32_t s_count;
 static uint32_t s_bytes;
 static char s_path[96];
+static char s_failed[96];   // 上次载入失败的文件，避免每次打开键盘都重读 / Last failed file, so it is not re-read on every open
 
 static uint32_t rd32(const uint8_t* p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
@@ -102,39 +104,39 @@ static int prefix_cmp(const char* pinyin, const char* key, size_t key_len, bool 
     return 0;
 }
 
+// 检查一条记录完全落在数据区内，且字段合法。写成减法形式，偏移再大也不会回绕。
+// Check one record lies fully inside the data and is well formed. Written with subtraction so huge offsets cannot wrap.
+static bool record_ok(const uint8_t* data, uint32_t data_bytes, uint32_t off) {
+    if (off >= data_bytes || data_bytes - off < 5) return false;
+    const uint8_t* e = data + off;
+    unsigned plen = e[0], tlen = e[1];
+    if (!plen || plen > PINYIN_IME_MAX_INPUT || !tlen || tlen >= PINYIN_IME_CAND_TEXT) return false;
+    if (data_bytes - off < 5u + plen + tlen || e[3 + plen] || e[4 + plen + tlen]) return false;
+    for (unsigned j = 0; j < plen; j++) {
+        if (e[3 + j] < 'a' || e[3 + j] > 'z') return false;
+    }
+    return u8_valid(e + 4 + plen, tlen);
+}
+
 static bool validate(const uint8_t* blob, uint32_t count, uint32_t bytes) {
     const uint32_t data_bytes = bytes - count * 8;
     const uint8_t* data = blob + count * 8;
     uint32_t previous = 0;
     for (uint32_t i = 0; i < count; i++) {
         uint32_t off = rd32(blob + i * 4);
-        uint32_t other = rd32(blob + (count + i) * 4);
-        if (off + 4 >= data_bytes || other + 4 >= data_bytes) return false;
-        const uint8_t* e = data + off;
-        unsigned plen = e[0], tlen = e[1];
-        if (!plen || plen > PINYIN_IME_MAX_INPUT || !tlen || tlen >= PINYIN_IME_CAND_TEXT) return false;
-        if (off + 5u + plen + tlen > data_bytes || e[3 + plen] || e[4 + plen + tlen]) return false;
-        for (unsigned j = 0; j < plen; j++) {
-            if (e[3 + j] < 'a' || e[3 + j] > 'z') return false;
-        }
-        if (!u8_valid(e + 4 + plen, tlen)) return false;
-        // 记录按拼音序依次写入，所以全拼表偏移严格递增，九键表可以二分核对。
-        // Records are written in pinyin order, so pinyin offsets strictly increase and T9 offsets can be binary-checked.
-        if (i && (off <= previous || strcmp((const char*)data + previous + 3, (const char*)e + 3) > 0)) return false;
+        if (!record_ok(data, data_bytes, off)) return false;
+        // 记录按拼音序依次写入，全拼表偏移严格递增、拼音不减。/ Records are in pinyin order: offsets increase, pinyin never decreases.
+        if (i && (off <= previous || strcmp((const char*)data + previous + 3, (const char*)data + off + 3) > 0)) return false;
         previous = off;
     }
-    // 九键表的每个偏移都必须是合法词条，且按数字序排列。/ Every T9 offset must be a real entry, in digit order.
+    // 九键表：每个偏移都指向一条合法记录（O(1)），并按数字序排列。内存安全只需要这两点。
+    // T9 table: every offset points at a valid record (O(1)) and the order is by digits; that is all memory safety needs.
     for (uint32_t i = 0; i < count; i++) {
         uint32_t off = rd32(blob + (count + i) * 4);
-        uint32_t lo = 0, hi = count;
-        while (lo < hi) {
-            uint32_t mid = lo + (hi - lo) / 2;
-            if (rd32(blob + mid * 4) < off) lo = mid + 1; else hi = mid;
-        }
-        if (lo == count || rd32(blob + lo * 4) != off) return false;
+        if (!record_ok(data, data_bytes, off)) return false;
         if (i) {
             const char* a = (const char*)entry_at(blob, count, i - 1, true) + 3;
-            const char* b = (const char*)entry_at(blob, count, i, true) + 3;
+            const char* b = (const char*)data + off + 3;
             while (*a && *b && pinyin_ime_t9_digit(*a) == pinyin_ime_t9_digit(*b)) { a++; b++; }
             char da = *a ? pinyin_ime_t9_digit(*a) : 0, db = *b ? pinyin_ime_t9_digit(*b) : 0;
             if (da > db) return false;
@@ -146,8 +148,9 @@ static bool validate(const uint8_t* blob, uint32_t count, uint32_t bytes) {
 bool pinyin_ime_load(const char* path) {
     if (!path) path = PINYIN_IME_DEFAULT_PATH;
     if (s_blob && !strcmp(path, s_path)) return true;
+    if (!strcmp(path, s_failed)) return false;
     FILE* f = fopen(path, "rb");
-    if (!f) return false;
+    if (!f) return false;   // 文件不存在不记失败，插卡后还能再试 / A missing file is not remembered; retry after inserting a card
     uint8_t header[32];
     bool ok = fread(header, 1, sizeof(header), f) == sizeof(header) && !memcmp(header, "PICOIME1", 8);
     uint32_t count = ok ? rd32(header + 8) : 0;
@@ -163,6 +166,7 @@ bool pinyin_ime_load(const char* path) {
     }
     if (!ok) {
         IME_FREE(blob);
+        snprintf(s_failed, sizeof(s_failed), "%s", path);
         return false;
     }
     pinyin_ime_unload();
@@ -178,6 +182,7 @@ void pinyin_ime_unload(void) {
     s_blob = NULL;
     s_count = s_bytes = 0;
     s_path[0] = 0;
+    s_failed[0] = 0;   // 换卡后允许重试 / Allow a retry after a card change
 }
 
 bool pinyin_ime_ready(void) { return s_blob != NULL; }
@@ -195,7 +200,15 @@ typedef struct {
     uint8_t raw_end[PINYIN_IME_MAX_INPUT];   // 第 i 个编码对应原串的结束字节 / Raw end byte of input i
     uint8_t boundary[PINYIN_IME_MAX_INPUT + 1]; // i 之前有分词符 / Separator before i
     struct { int cost; char text[PINYIN_IME_CAND_TEXT]; } path[PINYIN_IME_MAX_INPUT + 1];
+    const char* raw;                         // 原始编码串 / Raw composition
 } ime_work_t;
+
+// 选中后要消耗的原始字节数，连同紧跟的分词符。/ Raw bytes to consume on pick, including a following separator.
+static int consumed_through(const ime_work_t* w, int end) {
+    int c = w->raw_end[end - 1];
+    while (w->raw[c] == '\'') c++;
+    return c;
+}
 
 static void cand_add(ime_work_t* w, const char* text, int consumed, int score) {
     for (int i = 0; i < w->count; i++) {
@@ -239,7 +252,7 @@ static void try_entry(ime_work_t* w, const char* pinyin, const char* text, int r
     }
     if (start) return;
     int score = exact ? (end == w->n ? 0 : 240 - end * 2) : 90 + (plen - same) * 4;
-    cand_add(w, text, w->raw_end[end - 1], score + rank);
+    cand_add(w, text, consumed_through(w, end), score + rank);
 }
 
 static void scan_from(ime_work_t* w, int start) {
@@ -256,6 +269,8 @@ static void scan_from(ime_work_t* w, int start) {
             if (key_cmp((const char*)entry_at(s_blob, s_count, mid, w->t9) + 3, key, len, w->t9) < 0) lo = mid + 1;
             else hi = mid;
         }
+        // 下界处连前缀都对不上，更长的键也不可能匹配。/ If even the prefix fails at the bound, longer keys cannot match.
+        if (lo >= s_count || prefix_cmp((const char*)entry_at(s_blob, s_count, lo, w->t9) + 3, key, len, w->t9)) break;
         for (uint32_t at = lo, seen = 0; at < s_count && seen < IME_EXACT_SCAN; at++, seen++) {
             const uint8_t* e = entry_at(s_blob, s_count, at, w->t9);
             const char* py = (const char*)e + 3;
@@ -274,12 +289,23 @@ static void scan_from(ime_work_t* w, int start) {
         if (prefix_cmp((const char*)entry_at(s_blob, s_count, mid, w->t9) + 3, key, (size_t)remaining, w->t9) < 0) lo = mid + 1;
         else hi = mid;
     }
-    for (uint32_t at = lo, seen = 0; at < s_count && seen < IME_TAIL_SCAN; at++, seen++) {
+    // 窗口按拼音排序而不是按频率，所以先挑出频率最高的几条再用。/ The window is in pinyin order, not by frequency: pick the most frequent first.
+    const uint8_t* best[IME_TAIL_KEEP];
+    int best_n = 0;
+    for (uint32_t at = lo, seen = 0; at < s_count && seen < IME_TAIL_SCAN && at - lo < 4 * IME_TAIL_SCAN; at++) {
         const uint8_t* e = entry_at(s_blob, s_count, at, w->t9);
         const char* py = (const char*)e + 3;
         if (prefix_cmp(py, key, (size_t)remaining, w->t9)) break;
         if (e[0] == remaining || e[0] - remaining > IME_TAIL_SLACK) continue;
-        try_entry(w, py, py + e[0] + 1, e[2], start);
+        seen++;
+        if (best_n < IME_TAIL_KEEP) { best[best_n++] = e; continue; }
+        int worst = 0;
+        for (int k = 1; k < best_n; k++) if (best[k][2] > best[worst][2]) worst = k;
+        if (e[2] < best[worst][2]) best[worst] = e;
+    }
+    for (int k = 0; k < best_n; k++) {
+        const char* py = (const char*)best[k] + 3;
+        try_entry(w, py, py + best[k][0] + 1, best[k][2], start);
     }
 }
 
@@ -291,6 +317,7 @@ int pinyin_ime_query(const char* composition, pinyin_ime_mode_t mode, pinyin_ime
     w.out = out;
     w.max = max;
     w.t9 = mode == PINYIN_IME_T9;
+    w.raw = composition;
     for (int i = 0; composition[i]; i++) {
         char c = composition[i];
         if (c == '\'') { w.boundary[w.n] = 1; continue; }
