@@ -9,6 +9,8 @@ User-visible changes by date and author; Git retains implementation history. See
   Covers: EPUBs show their embedded cover and Tomato downloads fetch one; the library, home and lock screen show image covers cached under `.treader/covers/` on the TF card.
 - 设置新增“关于 Treader”：版本、项目地址和开源致谢；设备信息从这里进入。
   Settings gains "About Treader" with the version, project link and open-source credits; device info opens from there.
+- 删书时一起删掉封面缓存；壁纸页只保留当前壁纸的缓存；书城换榜单时清掉旧缓存和详情页封面，TF 卡不再越用越大。
+  Deleting a book also deletes its cover cache; the wallpaper page keeps only the current wallpaper cache; new ranks clear old store caches and covers.
 - 分区表改成两个 7 MB 程序槽，去掉不用的 5 MB 内置书库分区；新增 TF 卡升级（关于 Treader → 版本），新固件起不来自动退回。从旧分区表换过来要“完整安装”一次。
   Partition table now has two 7 MB app slots (the unused 5 MB book partition is gone); TF-card upgrade added (About -> Version) with automatic rollback. Moving from the old table needs one full install.
 - 网页刷机：GitHub Pages 上的刷机页，选择本地的 treader-full.bin 写入，默认保留设置；固件不上传、仓库里不放固件。

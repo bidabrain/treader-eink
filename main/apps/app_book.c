@@ -1242,6 +1242,8 @@ static void manage_apply(app_ctx_t* ctx) {
             retry->entry.removed = true;
             s_file_removed = true;
             if (tomato_file_of(s_managed.path)) tomato_shelf_remove_file(tomato_file_of(s_managed.path));
+            // 封面缓存跟着书一起删，TF 卡不越用越大。/ Delete the cover cache with the book so the card does not keep growing.
+            book_cover_forget(s_managed.path);
             pending_discard(s_managed.path);
             book_store_notify_changed();
             s_store_revision = book_store_revision();
@@ -1399,6 +1401,7 @@ static void batch_apply(app_ctx_t* ctx) {
                     retry->entry.removed = true;
                     item.removed = true; pending_discard(item.path);
                     if (tomato_file_of(item.path)) tomato_shelf_remove_file(tomato_file_of(item.path));
+                    book_cover_forget(item.path);
                     book_store_notify_changed(); s_store_revision = book_store_revision();
                 } else delete_retry_discard(item.path);
             } else { pending_discard(item.path); err = book_progress_forget(item.path); }

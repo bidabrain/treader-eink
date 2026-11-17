@@ -242,6 +242,8 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    // 预览过但没选的图，缓存（每张约 400 KB）离开时删掉。/ Drop caches (~400 KB each) of previewed but unchosen images.
+    book_screen_prune(s_current[0] ? s_current : NULL);
     free_preview();
     book_cover_drop_pending();
     s_view = V_LIST;

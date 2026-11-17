@@ -92,18 +92,26 @@ bool tomato_rank_cat_cached(const tomato_rank_cat_t* cat) {
     return stat(path, &st) == 0 && st.st_size > 0;
 }
 
-// 榜单换了日期就删掉旧的分类缓存。/ When the rank date changes, delete the old category caches.
-void tomato_rank_drop_categories(void) {
-    DIR* d = opendir(TOMATO_RANK_DIR);
+// 删掉 dir 里名字以 prefix 开头的文件。/ Delete files in dir whose names start with prefix.
+static void remove_matching(const char* dir, const char* prefix) {
+    DIR* d = opendir(dir);
     if (!d) return;
     struct dirent* e;
-    char path[300];
+    char path[320];
+    const size_t n = strlen(prefix);
     while ((e = readdir(d))) {
-        if (strncmp(e->d_name, "c_", 2)) continue;
-        snprintf(path, sizeof(path), TOMATO_RANK_DIR "/%.255s", e->d_name);
+        if (e->d_name[0] == '.' || strncmp(e->d_name, prefix, n)) continue;
+        snprintf(path, sizeof(path), "%.60s/%.255s", dir, e->d_name);
         remove(path);
     }
     closedir(d);
+}
+
+// 榜单换了日期就删掉旧的分类缓存和详情页封面，书城缓存不会一直变大。
+// When the rank date changes, delete old category caches and detail covers so the store cache stays bounded.
+void tomato_rank_drop_categories(void) {
+    remove_matching(TOMATO_RANK_DIR, "c_");
+    remove_matching(TOMATO_RANK_DIR "/covers", "");
 }
 
 static cJSON* read_json_file(const char* path) {

@@ -1,4 +1,26 @@
-# TF 卡部署 / TF card deployment
+# TF 卡模板 / TF card template
+
+把**本文件夹里的全部内容**（不是 `sdcard` 这个文件夹本身）复制到 FAT32 格式 TF 卡的根目录，就是 Treader 需要的完整结构：
+
+Copy **everything inside this folder** (not the `sdcard` folder itself) to the root of a FAT32 TF card.
+
+```
+TF 卡根目录/
+├── books/          放 TXT、EPUB；番茄下载的书也存这里
+├── fonts/          中文字体 ChillDuanSansVF.ttf（必需，否则缺字）
+├── ime/            拼音词库 pinyin-v1.bin（输入中文必需）
+├── wallpapers/     锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图
+├── update/         TF 卡升级用，放编译出的 Read_Pico.bin 或 treader-full.bin
+└── tomato/
+    └── config.example.json   可选：改名为 config.json 并填写服务器、WebDAV、榜单地址；也可以在设备“设置”里填
+```
+
+- 设备运行时会自己生成 `tomato/shelf.json`、`tomato/store/`、`tomato/covers/` 和 `.treader/`（封面、壁纸缓存，可以整个删掉）。
+- 各文件夹里的 `.gitkeep` 只是为了让 git 保留空文件夹，设备会忽略它，复制过去也没关系。
+- 放进本文件夹 `books/`、`wallpapers/`、`update/` 的文件不会被 git 提交；`update/` 里的固件可能带着你的内置服务器，不要公开。
+- 已经刷好 Treader 的话，也可以在 设置 → TF 卡 里格式化，设备会建好同样的文件夹，然后再从这里复制 `fonts/` 和 `ime/`。
+
+## 字体部署 / Font deployment
 
 将本目录的 `fonts/` 整个复制到 TF 卡根目录，包括字体及 `OFL.txt`。也可在设备 WiFi 网页的“上传字体”区选择 `fonts/ChillDuanSansVF.ttf`；保存后停止传书，在设备“字体”页选用。网页仅接受 TTF，许可文本随本部署目录保留。
 

@@ -65,5 +65,10 @@ void book_screen_draw(uint8_t* fb, const uint8_t* packed);
 /// 是不是能当壁纸的图片（JPEG/PNG）。/ Whether a file name is a usable image (JPEG/PNG).
 bool book_image_name(const char* name);
 
+/// 删书后调用：删掉这本书的缩略图缓存和内存里的那张。/ After deleting a book: drop its thumbnail cache and memory copy.
+void book_cover_forget(const char* book_path);
+/// 只留 keep_image 的全屏壁纸缓存，其余删掉（keep 为 NULL 全删）。/ Keep only keep_image's wallpaper cache (NULL deletes all).
+void book_screen_prune(const char* keep_image);
+
 /// 释放内存里的全部封面（打开书前调用，把 PSRAM 让给排版）。/ Free all thumbnails (before opening a book).
 void book_cover_release(void);

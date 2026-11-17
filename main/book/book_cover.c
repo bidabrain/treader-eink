@@ -14,6 +14,7 @@
 #include "book_cover.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -434,6 +435,19 @@ void book_cover_drop_pending(void) {
     s_built_new = false;
 }
 
+void book_cover_forget(const char* book) {
+    if (!book || !book[0]) return;
+    const uint32_t key = path_key(book);
+    slot_t* slot = find_slot(key);
+    if (slot) {
+        heap_caps_free(slot->px);
+        memset(slot, 0, sizeof(*slot));
+    }
+    char path[64];
+    cache_path(key, path, sizeof(path));
+    remove(path);
+}
+
 void book_cover_release(void) {
     for (int i = 0; i < SLOT_MAX; i++) heap_caps_free(s_slots[i].px);
     memset(s_slots, 0, sizeof(s_slots));
@@ -579,4 +593,24 @@ void book_screen_draw(uint8_t* fb, const uint8_t* packed) {
             epd_draw_pixel(x + 1, y, (uint8_t)((b & 0x0F) * 17), fb);
         }
     }
+}
+
+void book_screen_prune(const char* keep) {
+    char keep_name[64] = "";
+    if (keep && keep[0]) {
+        char full[64];
+        screen_path(keep, full, sizeof(full));
+        const char* base = strrchr(full, '/');
+        snprintf(keep_name, sizeof(keep_name), "%s", base ? base + 1 : full);
+    }
+    DIR* d = opendir(SCREEN_DIR);
+    if (!d) return;
+    struct dirent* e;
+    char path[300];
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.' || !strcmp(e->d_name, keep_name)) continue;
+        snprintf(path, sizeof(path), SCREEN_DIR "/%.255s", e->d_name);
+        remove(path);
+    }
+    closedir(d);
 }
