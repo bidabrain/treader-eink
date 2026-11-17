@@ -268,7 +268,8 @@ static void draw_about(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(fb, 96, 100, 36, "关于 Treader", EPD_DRAW_ALIGN_LEFT, true);
     tr_text(fb, TR_MARGIN, 184, 60, "Treader", EPD_DRAW_ALIGN_LEFT, true);
-    tr_text(fb, TR_MARGIN, 262, 28, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", EPD_DRAW_ALIGN_LEFT, false);
+    // 一行放不下（约 730 px），折成两行。/ Too wide for one line (~730 px); wrap to two.
+    tr_wrap(fb, TR_MARGIN, 256, TR_W - 2 * TR_MARGIN, 28, 34, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", 2);
     snprintf(line, sizeof(line), "%.20s · TF 卡升级 ›", app->version);
     about_row(fb, 336, "版本", line);
     tr_hline(fb, 390, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
@@ -278,8 +279,12 @@ static void draw_about(uint8_t* fb) {
     about_row(fb, 484, "项目主页", "github.com/bidabrain/treader-eink");
     tr_text(fb, TR_MARGIN, 584, 26, "开源致谢", EPD_DRAW_ALIGN_LEFT, false);
     int y = 628;
-    for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++, y += 42)
-        tr_text(fb, TR_MARGIN, y, 28, CREDITS[i], EPD_DRAW_ALIGN_LEFT, false);
+    for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++, y += 42) {
+        char credit[96];
+        snprintf(credit, sizeof(credit), "%s", CREDITS[i]);
+        tr_fit(credit, 28, TR_W - 2 * TR_MARGIN);
+        tr_text(fb, TR_MARGIN, y, 28, credit, EPD_DRAW_ALIGN_LEFT, false);
+    }
     tr_wrap(fb, TR_MARGIN, y + 16, TR_W - 2 * TR_MARGIN, 26, 38,
             "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 2);
     tr_hline(fb, ABOUT_DEVICE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
