@@ -14,6 +14,9 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
+#include <stdlib.h>
+#include <time.h>
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -30,6 +33,10 @@ static esp_netif_t* s_netif;
 static esp_event_handler_instance_t s_wifi_h, s_ip_h;
 static bool s_loop_owned, s_inited, s_started;
 static int s_retries;
+static bool s_sntp;
+
+// 2025 年以后才算对过时。/ Treat time as set once it is past 2025.
+bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
 
 static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
     (void)arg; (void)data;
@@ -94,6 +101,14 @@ esp_err_t tomato_net_up(int timeout_ms) {
     if (err != ESP_OK) goto fail;
     memset(pass, 0, sizeof(pass));
     ESP_LOGI(TAG, "connected");
+    // 顺便对时，最多等 3 秒；失败不影响后续操作。/ Sync time on the way, waiting at most 3 s; failure is harmless.
+    setenv("TZ", "CST-8", 1);
+    tzset();
+    esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("ntp.aliyun.com");
+    if (esp_netif_sntp_init(&sc) == ESP_OK) {
+        s_sntp = true;
+        esp_netif_sntp_sync_wait(pdMS_TO_TICKS(3000));
+    }
     return ESP_OK;
 
 fail:
@@ -104,6 +119,7 @@ fail:
 }
 
 void tomato_net_down(void) {
+    if (s_sntp) { esp_netif_sntp_deinit(); s_sntp = false; }
     if (s_started) { esp_wifi_disconnect(); esp_wifi_stop(); s_started = false; }
     if (s_wifi_h) { esp_event_handler_instance_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, s_wifi_h); s_wifi_h = NULL; }
     if (s_ip_h) { esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_ip_h); s_ip_h = NULL; }

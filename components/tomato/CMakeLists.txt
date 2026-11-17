@@ -4,5 +4,5 @@ idf_component_register(
     SRCS "tomato_net.c" "tomato_http.c" "tomato_store.c" "tomato_sync.c"
     INCLUDE_DIRS "include"
     REQUIRES espressif__cjson
-    PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif esp_event esp_http_client mbedtls heap fatfs
+    PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif lwip esp_event esp_http_client mbedtls heap fatfs
 )

@@ -233,3 +233,68 @@ esp_err_t book_progress_set_last_path(const char* path) {
     nvs_close(h);
     return warn_error(err);
 }
+
+/* ---- Treader 扩展 / Treader extensions ---- */
+
+esp_err_t book_progress_resize(const char* path, uint32_t old_size, uint32_t new_size) {
+    if (!path_valid(path)) return ESP_ERR_INVALID_ARG;
+    char key[11];
+    make_key(path, key);
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return warn_error(err);
+    uint8_t data[RECORD_CAP];
+    size_t len = sizeof(data);
+    err = nvs_get_blob(h, key, data, &len);
+    if (err == ESP_OK && (!record_valid(data, len) || strcmp((const char*)data + HEADER_SIZE, path) != 0 ||
+        get32(data + 4) != old_size)) err = ESP_ERR_INVALID_STATE;
+    // 只改文件大小，章节和章内偏移照旧；不动序号，更新不算“最近读过”。
+    // Change only the size; chapter and offset stay, and the sequence is untouched so an update is not a "recent read".
+    if (err == ESP_OK) {
+        put32(data + 4, new_size);
+        err = nvs_set_blob(h, key, data, len);
+    }
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : warn_error(err);
+}
+
+static int recent_cmp(const void* a, const void* b) {
+    const book_progress_recent_t* x = a;
+    const book_progress_recent_t* y = b;
+    return x->order == y->order ? 0 : x->order > y->order ? -1 : 1;
+}
+
+int book_progress_recent(book_progress_recent_t* out, int max) {
+    if (!out || max <= 0) return 0;
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return 0;
+    nvs_iterator_t it = NULL;
+    int count = 0;
+    esp_err_t res = nvs_entry_find_in_handle(h, NVS_TYPE_BLOB, &it);
+    while (res == ESP_OK) {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        uint8_t data[RECORD_CAP];
+        size_t len = sizeof(data);
+        if (!strncmp(info.key, "b_", 2) && nvs_get_blob(h, info.key, data, &len) == ESP_OK &&
+            record_valid(data, len) && data[3] == 2) {
+            book_progress_recent_t item = {
+                .order = get32(data + 16), .file_size = get32(data + 4), .pct = data[15] > 100 ? 100 : data[15],
+            };
+            snprintf(item.path, sizeof(item.path), "%s", (const char*)data + HEADER_SIZE);
+            // 保留序号最大的 max 条。/ Keep the max entries with the highest sequence.
+            if (count < max) out[count++] = item;
+            else {
+                int low = 0;
+                for (int i = 1; i < count; ++i) if (out[i].order < out[low].order) low = i;
+                if (item.order > out[low].order) out[low] = item;
+            }
+        }
+        res = nvs_entry_next(&it);
+    }
+    nvs_release_iterator(it);
+    nvs_close(h);
+    qsort(out, (size_t)count, sizeof(out[0]), recent_cmp);
+    return count;
+}

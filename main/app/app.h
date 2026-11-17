@@ -102,6 +102,9 @@ struct app_desc_s {
     /// true = 停留在本页时不计空闲自动休眠。电源键锁屏仍走全局路径。
     /// true = idle time does not auto-sleep while this page is current. The power key still locks.
     bool blocks_idle_sleep;
+    /// true = 页面自带底部标签栏，右下角菜单按钮的点击区让给标签栏；中键仍打开菜单。
+    /// true = the page draws the bottom tab bar, so the corner menu-handle hit area yields to it; KEY3 still opens the menu.
+    bool tab_nav;
     /// 进页/离页。on_enter 里做上电、唤醒传感器、拉一次数据这类副作用。
     /// / Enter/exit. on_enter powers up, wakes sensors, takes a first sample.
     /// 锁屏走软睡/关机前也调 on_exit；下电失败回来再调 on_enter。

@@ -131,17 +131,16 @@ void ui_draw_menu_page(uint8_t* framebuffer, const app_desc_t* current, int leaf
     ui_clear_page(framebuffer);
     snprintf(
         line, sizeof(line),
-        "第 %d / %d 页　Page %d / %d",
-        leaf + 1, leaves, leaf + 1, leaves
+        "第 %d / %d 页", leaf + 1, leaves
     );
-    ui_draw_header(framebuffer, "演示项目 Demo Projects", line);
+    ui_draw_header(framebuffer, "菜单", line);
 
     for (int row = 0; row < count; row++) {
         ui_draw_menu_row_pressed(framebuffer, current, leaf, row, false);
     }
 
-    ui_draw_button(framebuffer, menu_nav_rect(false), "上一页 Prev", leaf > 0);
-    ui_draw_button(framebuffer, menu_nav_rect(true), "下一页 Next", leaf + 1 < leaves);
+    ui_draw_button(framebuffer, menu_nav_rect(false), "上一页", leaf > 0);
+    ui_draw_button(framebuffer, menu_nav_rect(true), "下一页", leaf + 1 < leaves);
     ui_draw_menu_handle(framebuffer, true);
 }
 

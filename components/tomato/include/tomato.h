@@ -110,6 +110,12 @@ esp_err_t tomato_sync_start_update(void);
 esp_err_t tomato_sync_start_search(const char* query);
 /// 下载一本并加入书架（已在书架则覆盖更新）。/ Download one book and add it to the shelf (refresh if present).
 esp_err_t tomato_sync_start_download(const tomato_hit_t* hit);
+/// 下载替换 TXT 后回调（在同步任务里调用），用来迁移阅读进度。old_size 为 0 表示新书。
+/// Called on the sync task after a TXT is replaced, to migrate reading progress. old_size 0 means a new book.
+typedef void (*tomato_file_hook_t)(const char* path, uint32_t old_size, uint32_t new_size);
+void tomato_sync_set_file_hook(tomato_file_hook_t hook);
+/// 系统时间是否已经对过（联网时用 SNTP 对时）。/ Whether system time has been set (SNTP while online).
+bool tomato_time_valid(void);
 /// 请求取消；任务在下一个安全点退出。/ Request cancel; the task exits at its next safe point.
 void tomato_sync_cancel(void);
 /// 后台任务是否在跑。/ Whether the task is running.

@@ -16,6 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "book_store.h"
 
 /// 调用方须串行化所有进度写入与遗忘；HTTP 退出并 join 后才交回阅读页。
 /// Callers serialize progress writes and forget operations; HTTP stops and joins before returning to reading.
@@ -60,3 +61,19 @@ esp_err_t book_progress_forget(const char* path);
 bool book_progress_last_path(char* out, size_t cap);
 /// 保存最后路径；空串清除自动恢复入口。/ Save last path; empty string clears automatic restore.
 esp_err_t book_progress_set_last_path(const char* path);
+
+/// 番茄更新在 TXT 末尾追加章节后，把这本书记录里的文件大小从 old_size 改成 new_size，保留章节和偏移。
+/// 记录不存在返回 ESP_OK；大小不符或路径不属于该记录则不改。
+/// After a Tomato update appends chapters, move this book's recorded size from old_size to new_size, keeping
+/// chapter and offset. A missing record returns ESP_OK; a size or owner mismatch leaves it unchanged.
+esp_err_t book_progress_resize(const char* path, uint32_t old_size, uint32_t new_size);
+
+typedef struct {
+    char path[BOOK_STORE_PATH_MAX]; ///< 完整路径 / Full path
+    uint32_t file_size;             ///< 记录时的文件大小 / File size when recorded
+    uint32_t order;                 ///< 持久阅读序号，越大越近 / Reading sequence, higher is newer
+    uint8_t pct;                    ///< 全书百分比 / Whole-book percentage
+} book_progress_recent_t;
+
+/// 按最近阅读顺序列出至多 max 本（只含 v2 记录），返回条数。/ List up to max books, most recent first (v2 records only).
+int book_progress_recent(book_progress_recent_t* out, int max);

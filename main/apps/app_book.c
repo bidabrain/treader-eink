@@ -117,6 +117,12 @@ static int64_t s_save_retry_ms;
 static unsigned s_store_revision;
 static bool s_scan_pending, s_resume_pending, s_toolbar, s_clear_confirm;
 static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
+// 别的页面要求直接打开的书（首页“接着读”、番茄书架）。/ Book another page asked to open directly (Home, Tomato).
+static char s_open_request[BOOK_STORE_PATH_MAX];
+
+void app_book_request_open(const char* path) {
+    snprintf(s_open_request, sizeof(s_open_request), "%s", path ? path : "");
+}
 static char s_message[128], s_storage[128], s_path[BOOK_STORE_PATH_MAX], s_title[128];
 static char s_font_path[192];
 static char* s_text;
@@ -1629,6 +1635,13 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         if (read_pico_sd_get_info(&info) == ESP_ERR_NOT_FINISHED) return APP_REDRAW_NONE;
         s_scan_pending = false;
         scan_shelf(ctx);
+        if (s_open_request[0]) {
+            char path[BOOK_STORE_PATH_MAX];
+            copy_text(path, sizeof(path), s_open_request);
+            s_open_request[0] = 0;
+            s_resume_pending = false;
+            if (open_book(ctx, path)) return APP_REDRAW_FULL;
+        }
         if (s_resume_pending) {
             s_resume_pending = false;
             char path[BOOK_STORE_PATH_MAX];
@@ -1694,7 +1707,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
 static EpdRect area_hint(app_ctx_t* ctx) { (void)ctx; return s_area; }
 
 const app_desc_t app_book = {
-    .title = "图书 Books", .detail = "TF 卡 txt / epub 阅读", .enter_full = true, .owns_keys = true,
+    .title = "书库", .detail = "TF 卡上的 TXT 与 EPUB", .enter_full = true, .owns_keys = true,
     .render = render, .present = present, .on_enter = on_enter, .on_exit = book_on_exit,
     .on_media_lost = book_on_media_lost,
     .on_gesture = gesture_event, .on_key = on_key, .on_key_long = on_key_long,

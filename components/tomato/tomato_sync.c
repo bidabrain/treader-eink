@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -42,6 +43,9 @@ static volatile uint32_t s_bytes;
 static op_t s_op;
 static char s_query[96];
 static tomato_hit_t s_target;
+static tomato_file_hook_t s_file_hook;
+
+void tomato_sync_set_file_hook(tomato_file_hook_t hook) { s_file_hook = hook; }
 
 /* ---- 状态 / Status ---- */
 
@@ -228,8 +232,11 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
     tomato_url_escape(rel, esc, sizeof(esc), true);
     snprintf(url_path, sizeof(url_path), "/download/%s", esc);
     set_phase(TOMATO_DOWNLOADING, title);
+    struct stat st;
+    uint32_t old_size = stat(dest, &st) == 0 ? (uint32_t)st.st_size : 0;
     err = tomato_http_download(cfg, url_path, dest, &s_cancel, &s_bytes);
     if (err != ESP_OK) return err;
+    if (s_file_hook && stat(dest, &st) == 0) s_file_hook(dest, old_size, (uint32_t)st.st_size);
 
     snprintf(book->title, sizeof(book->title), "%s", title);
     snprintf(book->file, sizeof(book->file), "%s", file);

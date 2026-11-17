@@ -9,22 +9,19 @@
 
 #include "app_registry.h"
 
+extern const app_desc_t app_tr_home;
 extern const app_desc_t app_book;
-extern const app_desc_t app_transfer;
-extern const app_desc_t app_font_pick;
-extern const app_desc_t app_sleep;
-extern const app_desc_t app_home;
+extern const app_desc_t app_tr_tomato;
+extern const app_desc_t app_tr_settings;
 extern const app_desc_t app_selftest;
 
-// 只留读书要用的页；开发演示页（刷新、触摸、加速度计、PMU、扩展口等）已移出固件。
-// Reading pages only; developer demo pages (refresh, touch, IMU, PMU, IO expander, ...) are dropped from the firmware.
+// 菜单（中键打开）只列四个主页面，和底部标签栏一致；传书、字体、睡眠等从“设置”进入。
+// The menu (KEY3) lists the four main pages, matching the tab bar; transfer, fonts, sleep etc. live under Settings.
 static const app_desc_t* const s_apps[] = {
+    &app_tr_home,
     &app_book,
-    &app_transfer,
-    &app_font_pick,
-    &app_sleep,
-    &app_home,
-    &app_selftest,
+    &app_tr_tomato,
+    &app_tr_settings,
 };
 
 #define APP_COUNT ((int)(sizeof(s_apps) / sizeof(s_apps[0])))
@@ -45,9 +42,9 @@ int app_index_of(const app_desc_t* app) {
     return -1;
 }
 
-// 开机和回退的默认页是书架。/ Boot and fallback page is the shelf.
+// 开机和回退的默认页是首页。/ Boot and fallback page is Home.
 const app_desc_t* app_home_page(void) {
-    return &app_book;
+    return &app_tr_home;
 }
 
 const app_desc_t* app_selftest_page(void) {

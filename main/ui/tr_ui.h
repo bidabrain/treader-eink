@@ -1,0 +1,86 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Treader contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Treader 界面原语：状态栏、底部标签栏、文字封面、虚线进度条、胶囊按钮、线条图标、自动换行。
+ * 版式见 docs/design/ui.html。只用黑、白和一级浅灰，不画图片。
+ *
+ * Treader UI primitives: status bar, tab bar, text covers, dotted progress, pills, line icons,
+ * wrapped text. Layout follows docs/design/ui.html. Black, white and one light gray only; no images.
+ *
+ * 冻结：纯绘制，不读文件、不碰 I2C；页面在 on_enter/on_tick 里准备数据。
+ * Frozen: drawing only, no file or I2C access; pages prepare data in on_enter/on_tick.
+ */
+#pragma once
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "epdiy.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define TR_W 684
+#define TR_H 1216
+#define TR_MARGIN 40
+#define TR_STATUS_Y 22
+#define TR_TITLE_Y 88
+#define TR_TABS_Y 1094
+#define TR_TAB_COUNT 4
+#define TR_GRAY_LINE 0xC0
+
+typedef enum { TR_TAB_HOME = 0, TR_TAB_LIBRARY, TR_TAB_TOMATO, TR_TAB_SETTINGS } tr_tab_t;
+
+typedef enum {
+    TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,
+    TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
+} tr_icon_t;
+
+/// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.
+void tr_text(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
+/// 白字（画在黑底上）。/ White text for black fills.
+void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
+/// 截断到 max_w 像素并加省略号，按 UTF-8 边界。/ Fit into max_w with an ellipsis on UTF-8 boundaries.
+void tr_fit(char* text, int px, int max_w);
+/// 自动换行，最多 max_lines 行，超出加省略号；返回实际行数。/ Wrap into at most max_lines; returns lines drawn.
+int tr_wrap(uint8_t* fb, int x, int y_top, int w, int px, int line_h, const char* text, int max_lines);
+
+/// 细线；soft 用浅灰。/ Hairline; soft uses light gray.
+void tr_hline(uint8_t* fb, int y, int x, int w, bool soft);
+/// 顶部状态栏：时间（未对时则不显示）与电量。/ Status bar: time (hidden until set) and battery.
+void tr_status_bar(uint8_t* fb);
+/// 页标题（大号粗体）。/ Page title (large bold).
+void tr_title(uint8_t* fb, const char* title);
+
+/// 底部标签栏。/ Bottom tab bar.
+void tr_tab_bar(uint8_t* fb, tr_tab_t active);
+/// 命中的标签，未命中返回 -1。/ Hit tab or -1.
+int tr_tab_hit(uint16_t x, uint16_t y);
+/// 标签栏区域。/ Tab bar area.
+EpdRect tr_tab_area(void);
+
+void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white);
+
+/// 文字封面：双线框，作者、书名、格式。dark 为黑底白字。/ Text cover: double frame, author, title, format; dark = inverted.
+void tr_cover(uint8_t* fb, EpdRect r, const char* title, const char* author, const char* format, bool dark);
+/// 列表用小封面：竖排前几个字。/ Small list cover: first characters stacked vertically.
+void tr_mini_cover(uint8_t* fb, EpdRect r, const char* title, bool dark);
+
+/// 进度：已读部分实心，剩余部分点线。/ Progress: solid read part, dotted remainder.
+void tr_progress(uint8_t* fb, int x, int y, int w, int pct);
+/// 胶囊按钮。filled 为黑底白字。/ Pill button; filled = black with white text.
+void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px);
+/// 分页指示“‹ 1 / 5 ›”。/ Pager "‹ 1 / 5 ›".
+void tr_pager(uint8_t* fb, int y, int page, int pages);
+/// 分页指示的左右热区。返回 -1 上一页、1 下一页、0 未命中。/ Pager hit: -1 prev, 1 next, 0 none.
+int tr_pager_hit(int y, uint16_t x, uint16_t y_touch);
+
+/// 去掉目录和扩展名得到书名。/ Book title from a path: no directory, no extension.
+void tr_title_from_path(const char* path, char* out, size_t cap);
+
+#ifdef __cplusplus
+}
+#endif
