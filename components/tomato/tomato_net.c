@@ -34,6 +34,13 @@ static esp_event_handler_instance_t s_wifi_h, s_ip_h;
 static bool s_loop_owned, s_inited, s_started;
 static int s_retries;
 static bool s_sntp;
+static volatile bool s_time_fresh;
+
+bool tomato_take_time_synced(void) {
+    bool fresh = s_time_fresh;
+    s_time_fresh = false;
+    return fresh;
+}
 
 // 2025 年以后才算对过时。/ Treat time as set once it is past 2025.
 bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
@@ -107,7 +114,7 @@ esp_err_t tomato_net_up(int timeout_ms) {
     esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("ntp.aliyun.com");
     if (esp_netif_sntp_init(&sc) == ESP_OK) {
         s_sntp = true;
-        esp_netif_sntp_sync_wait(pdMS_TO_TICKS(3000));
+        if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(3000)) == ESP_OK && tomato_time_valid()) s_time_fresh = true;
     }
     return ESP_OK;
 

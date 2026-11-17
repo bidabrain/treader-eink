@@ -429,7 +429,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     if (s_view == TRANSFER_PASSWORD) { draw_password(fb); return; }
     (void)ctx;
     ui_clear_page(fb);
-    ui_draw_header(fb, "传书 Transfer", "浏览器上传图书或 TTF 字体");
+    ui_draw_header(fb, "传书", "浏览器上传图书或 TTF 字体");
     for (int i = 0; i < 2; ++i) {
         EpdRect r = control_rect(i);
         if (s_pressed == i) ui_draw_pressed_round_rect(fb, r, UI_BTN_RADIUS);
@@ -651,7 +651,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
 
 const app_desc_t app_transfer = {
     .on_media_lost = transfer_on_media_lost,
-    .title = "传书 Transfer", .detail = "热点或已有 WiFi，浏览器上传", .enter_full = true,
+    .title = "传书", .detail = "热点或已有 WiFi，浏览器上传", .enter_full = true,
     .blocks_idle_sleep = true,
     .on_enter = on_enter, .on_exit = transfer_on_exit, .render = render, .present = present,
     .on_tick = on_tick, .on_gesture = on_gesture,

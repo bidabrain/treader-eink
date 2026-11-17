@@ -98,6 +98,9 @@ esp_err_t tomato_webdav_config_save(const tomato_webdav_config_t* cfg);
 /// 书架读写。load 失败时 count 置 0。/ Shelf I/O. On load failure count is 0.
 esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count);
 esp_err_t tomato_shelf_save(const tomato_book_t* books, int count);
+/// 书库删了文件后，从番茄书架去掉对应记录（file 是 books 目录下的文件名）。
+/// After the library deletes a file, drop its Tomato shelf entry (file is the name under the books dir).
+esp_err_t tomato_shelf_remove_file(const char* file);
 
 /* ---- 后台同步 / Background sync ---- */
 
@@ -146,6 +149,9 @@ typedef void (*tomato_file_hook_t)(const char* path, uint32_t old_size, uint32_t
 void tomato_sync_set_file_hook(tomato_file_hook_t hook);
 /// 系统时间是否已经对过（联网时用 SNTP 对时）。/ Whether system time has been set (SNTP while online).
 bool tomato_time_valid(void);
+/// 上次取走之后是否又用 SNTP 对过时（取走即清零）。主程序据此把时间写进 PMU 的 RTC。
+/// Whether SNTP set the time since the last call (cleared on read); the app then writes it to the PMU RTC.
+bool tomato_take_time_synced(void);
 /// 请求取消；任务在下一个安全点退出。/ Request cancel; the task exits at its next safe point.
 void tomato_sync_cancel(void);
 /// 后台任务是否在跑。/ Whether the task is running.

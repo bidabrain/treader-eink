@@ -20,6 +20,7 @@
 #include "esp_heap_caps.h"
 #include "tomato.h"
 #include "tr_nav.h"
+#include "tr_time.h"
 #include "tr_ui.h"
 #include "ui_kit.h"
 
@@ -168,6 +169,7 @@ static int current_minute(void) {
 
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
+    tr_time_restore();
     load_data();
     s_drawn_minute = current_minute();
 }
@@ -205,6 +207,7 @@ static EpdRect area_hint(app_ctx_t* ctx) {
 
 // 时间变了只重画状态栏一条。/ When the minute changes, redraw only the status strip.
 static app_redraw_t on_tick(app_ctx_t* ctx) {
+    tr_time_poll();
     int minute = current_minute();
     if (minute == s_drawn_minute || !tomato_time_valid()) return APP_REDRAW_NONE;
     s_drawn_minute = minute;

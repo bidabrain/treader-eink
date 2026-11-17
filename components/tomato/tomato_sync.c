@@ -25,7 +25,8 @@
 #include "tomato_internal.h"
 
 #define TAG "tomato_sync"
-#define TASK_STACK 8192
+// HTTPS 握手和 cJSON 都吃栈，留足余量。/ TLS handshakes and cJSON need stack; leave headroom.
+#define TASK_STACK 12288
 #define NET_TIMEOUT_MS 20000
 #define POLL_MS 2000
 #define SCAN_WAIT_POLLS 30   // 更新扫描最多等 60 秒 / Update scan waits at most 60 s
@@ -253,7 +254,7 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
 }
 
 // 拉服务器更新扫描，把章节数写进 shelf[i].remote。/ Run the server update scan and fill shelf[i].remote.
-static esp_err_t fetch_remote_totals(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
+static esp_err_t fetch_remote_totals(const tomato_config_t* cfg, tomato_book_t* shelf, int count, uint8_t* found) {
     set_phase(TOMATO_CHECKING, "检查更新");
     cJSON* root = NULL; int status;
     esp_err_t err = tomato_http_json(cfg, "GET", "/api/updates?start=true", NULL, &root, &status);
@@ -274,7 +275,7 @@ static esp_err_t fetch_remote_totals(const tomato_config_t* cfg, tomato_book_t* 
             int local = tomato_json_int(row, "local_total");
             int total = remote > local ? remote : local;
             for (int i = 0; i < count; i++) {
-                if (!strcmp(shelf[i].book_id, id) && total > 0) shelf[i].remote = (uint16_t)total;
+                if (!strcmp(shelf[i].book_id, id) && total > 0) { shelf[i].remote = (uint16_t)total; found[i] = 1; }
             }
         }
     }
@@ -297,8 +298,20 @@ static void set_pending(int pending) {
 // 只检查：更新每本书的 remote 并保存，不下载。/ Check only: refresh each book's remote and save; no downloads.
 static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
     if (!count) { set_phase(TOMATO_DONE, "书架上还没有番茄小说"); return; }
-    esp_err_t err = fetch_remote_totals(cfg, shelf, count);
+    uint8_t found[TOMATO_SHELF_MAX] = {0};
+    esp_err_t err = fetch_remote_totals(cfg, shelf, count, found);
     if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "检查更新失败"); return; }
+    // 服务器扫描里没有的书（缓存被清或新加），直接查番茄目录接口数章节。
+    // Books missing from the server scan (cleared cache or new): count chapters from the Tomato directory API.
+    for (int i = 0; i < count && !s_cancel; i++) {
+        if (found[i]) continue;
+        char url[160];
+        snprintf(url, sizeof(url), "https://fanqienovel.com/api/reader/directory/detail?bookId=%s", shelf[i].book_id);
+        int chapters = 0;
+        set_progress(i + 1, count);
+        if (tomato_http_count_keys(url, "\"itemId\"", "\"item_id\"", &chapters) == ESP_OK && chapters > 0)
+            shelf[i].remote = (uint16_t)chapters;
+    }
     tomato_shelf_save(shelf, count);
     int pending = count_pending(shelf, count);
     set_pending(pending);

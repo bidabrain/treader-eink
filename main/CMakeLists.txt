@@ -36,6 +36,7 @@ idf_component_register(
         "ui/tr_ui.c"
         "ui/tr_kbd.c"
         "app/tr_nav.c"
+        "app/tr_time.c"
         "apps/app_tr_home.c"
         "apps/app_tr_tomato.c"
         "apps/app_tr_settings.c"

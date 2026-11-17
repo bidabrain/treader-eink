@@ -146,3 +146,46 @@ done:
     esp_http_client_cleanup(c);
     return err;
 }
+
+// 边收边数两个键名出现的次数，取较大者；不缓存整个响应。
+// Count two key names while streaming and keep the larger; never buffers the whole reply.
+esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char* key_b, int* count) {
+    *count = 0;
+    esp_http_client_config_t hc = {
+        .url = url,
+        .timeout_ms = TIMEOUT_MS,
+        .buffer_size = IO_CHUNK,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    if (!c) return ESP_ERR_NO_MEM;
+    const size_t la = strlen(key_a), lb = strlen(key_b);
+    const size_t keep = (la > lb ? la : lb) - 1;
+    char* buf = heap_caps_malloc(IO_CHUNK + keep + 1, MALLOC_CAP_DEFAULT);
+    int na = 0, nb = 0;
+    esp_err_t err = buf ? esp_http_client_open(c, 0) : ESP_ERR_NO_MEM;
+    if (err == ESP_OK) {
+        esp_http_client_fetch_headers(c);
+        if (esp_http_client_get_status_code(c) != 200) err = ESP_ERR_NOT_FOUND;
+    }
+    size_t carry = 0;
+    while (err == ESP_OK) {
+        int n = esp_http_client_read(c, buf + carry, IO_CHUNK);
+        if (n < 0) { err = ESP_FAIL; break; }
+        if (n == 0) break;
+        size_t len = carry + (size_t)n;
+        buf[len] = 0;
+        // 只数起点落在新数据里的匹配，避免跨块重复计数。/ Count only matches starting in new data to avoid double counting.
+        for (size_t i = 0; i + 1 <= len; i++) {
+            if (i + la <= len && i + la > carry && !memcmp(buf + i, key_a, la)) na++;
+            if (i + lb <= len && i + lb > carry && !memcmp(buf + i, key_b, lb)) nb++;
+        }
+        carry = len < keep ? len : keep;
+        memmove(buf, buf + len - carry, carry);
+    }
+    *count = na > nb ? na : nb;
+    free(buf);
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
+    return err;
+}

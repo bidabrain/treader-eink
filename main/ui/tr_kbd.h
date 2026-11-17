@@ -2,10 +2,10 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 屏幕键盘：26 键拼音、英文、数字符号三种布局，带候选条。占屏幕下半部分（TR_KBD_TOP 以下）。
+ * 屏幕键盘：26 键拼音、九键拼音、英文、数字符号四种布局，带候选条。占屏幕下半部分（TR_KBD_TOP 以下）。
  * 输入框由页面自己画；键盘只管按键、编码串和候选。
  *
- * On-screen keyboard: pinyin, English and symbol layouts with a candidate bar, occupying the
+ * On-screen keyboard: full pinyin, T9 pinyin, English and symbol layouts with a candidate bar, occupying the
  * lower screen from TR_KBD_TOP. The page draws its own field; the keyboard owns keys,
  * composition and candidates.
  */
@@ -25,7 +25,7 @@ extern "C" {
 #define TR_KBD_TEXT_MAX 128
 #define TR_KBD_CANDS 24
 
-typedef enum { TR_KBD_PINYIN = 0, TR_KBD_ENGLISH, TR_KBD_SYMBOL } tr_kbd_mode_t;
+typedef enum { TR_KBD_PINYIN = 0, TR_KBD_T9, TR_KBD_ENGLISH, TR_KBD_SYMBOL } tr_kbd_mode_t;
 
 typedef enum {
     TR_KBD_NONE = 0,  ///< 没点中 / Nothing hit
@@ -39,6 +39,7 @@ typedef struct {
     tr_kbd_mode_t mode;
     tr_kbd_mode_t letters;                 ///< 从数字符号切回时用的布局 / Layout to return to from symbols
     bool ime_ok;                           ///< 拼音词库可用 / Pinyin lexicon loaded
+    bool want_ime;                         ///< 调用方要中文输入 / Caller asked for Chinese input
     pinyin_ime_cand_t cands[TR_KBD_CANDS];
     int cand_count;
     int cand_first;                        ///< 候选条第一个显示的下标 / First visible candidate

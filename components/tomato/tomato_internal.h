@@ -37,6 +37,9 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
 esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_import_t import_cb,
                             char* msg, size_t cap);
 
+/// GET 一个完整 URL，边收边数 key_a / key_b 出现次数，返回较大者。/ GET a full URL and count key occurrences while streaming.
+esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char* key_b, int* count);
+
 /// 数字字段可能是数字也可能是字符串。/ Numeric fields may arrive as numbers or strings.
 int tomato_json_int(const cJSON* obj, const char* key);
 /// 复制字符串字段，缺失时写空串。/ Copy a string field, empty when missing.

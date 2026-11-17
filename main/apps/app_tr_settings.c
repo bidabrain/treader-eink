@@ -20,21 +20,23 @@
 #include "tomato.h"
 #include "tr_kbd.h"
 #include "tr_nav.h"
+#include "tr_time.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
 
-#define ROW_H 80
+#define ROW_H 76
 #define POLL_MS 500
 
 extern const app_desc_t app_font_pick;
 extern const app_desc_t app_sleep;
 extern const app_desc_t app_transfer;
 extern const app_desc_t app_home;
+extern const app_desc_t app_selftest;
 
 typedef enum {
-    R_FONT, R_SLEEP, R_WIFI, R_SERVER, R_IMPORT, R_DAV, R_DAV_SYNC, R_ABOUT, R_COUNT
+    R_FONT, R_SLEEP, R_WIFI, R_SERVER, R_IMPORT, R_DAV, R_DAV_SYNC, R_ABOUT, R_SELFTEST, R_COUNT
 } row_id_t;
 
 typedef struct {
@@ -45,13 +47,14 @@ typedef struct {
 
 static const row_t ROWS[R_COUNT] = {
     [R_FONT] = {"阅读", "字体", 200},
-    [R_SLEEP] = {"电源", "睡眠与锁屏", 328},
-    [R_WIFI] = {"连接", "Wi-Fi", 456},
-    [R_SERVER] = {NULL, "番茄服务器", 536},
-    [R_IMPORT] = {NULL, "导入书籍", 616},
-    [R_DAV] = {"同步", "WebDAV", 744},
-    [R_DAV_SYNC] = {NULL, "立即同步", 824},
-    [R_ABOUT] = {"关于", "关于本机", 952},
+    [R_SLEEP] = {"电源", "睡眠与锁屏", 324},
+    [R_WIFI] = {"连接", "Wi-Fi", 448},
+    [R_SERVER] = {NULL, "番茄服务器", 524},
+    [R_IMPORT] = {NULL, "导入书籍", 600},
+    [R_DAV] = {"同步", "WebDAV", 724},
+    [R_DAV_SYNC] = {NULL, "立即同步", 800},
+    [R_ABOUT] = {"关于", "关于本机", 924},
+    [R_SELFTEST] = {NULL, "设备自检", 1000},
 };
 
 // 编辑步骤：番茄（地址→密码）、WebDAV（地址→用户名→密码）。
@@ -146,6 +149,7 @@ static void row_value(row_id_t id, char* out, size_t cap) {
         break;
     }
     case R_ABOUT: snprintf(out, cap, "电量、存储、版本 ›"); break;
+    case R_SELFTEST: snprintf(out, cap, "屏幕、触摸、电源 ›"); break;
     default: out[0] = 0; break;
     }
 }
@@ -162,7 +166,7 @@ static void draw_list(uint8_t* fb) {
     }
     for (int i = 0; i < R_COUNT; i++) {
         const row_t* r = &ROWS[i];
-        if (r->section) tr_text(fb, TR_MARGIN, r->y - 40, 26, r->section, EPD_DRAW_ALIGN_LEFT, false);
+        if (r->section) tr_text(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT, false);
         tr_text(fb, TR_MARGIN, r->y + 22, 32, r->label, EPD_DRAW_ALIGN_LEFT, false);
         char value[160];
         row_value((row_id_t)i, value, sizeof(value));
@@ -289,6 +293,7 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             if (tomato_sync_start_webdav() == ESP_OK) s_syncing = true;
             return APP_REDRAW_PAGE;
         case R_ABOUT: ctx->request_app = &app_home; break;
+        case R_SELFTEST: ctx->request_app = &app_selftest; break;
         default: break;
         }
         return APP_REDRAW_NONE;
@@ -339,6 +344,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 // 同步进行中只刷新“立即同步”这一行；结束后整页显示结果。
 // While syncing, refresh only the "Sync now" row; when done, show the result with a page refresh.
 static app_redraw_t on_tick(app_ctx_t* ctx) {
+    tr_time_poll();
     if (!s_syncing || s_edit != E_NONE || ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
     tomato_status_t st;

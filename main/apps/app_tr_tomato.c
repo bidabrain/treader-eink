@@ -20,11 +20,13 @@
 #include "book_progress.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "pinyin_ime.h"
 #include "tomato.h"
 #include "tr_kbd.h"
 #include "ttf_font.h"
 #include "tr_nav.h"
+#include "tr_time.h"
 #include "tr_ui.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
@@ -125,10 +127,30 @@ static bool start_op(op_t op, esp_err_t err) {
     return true;
 }
 
+// 最近搜索存 NVS，重启后还在。/ Recent searches live in NVS so they survive restarts.
+static void load_recent(void) {
+    nvs_handle_t h;
+    if (nvs_open("treader", NVS_READONLY, &h) != ESP_OK) return;
+    size_t len = sizeof(s_recent);
+    if (nvs_get_blob(h, "searches", s_recent, &len) != ESP_OK || len != sizeof(s_recent)) memset(s_recent, 0, sizeof(s_recent));
+    nvs_close(h);
+    for (int i = 0; i < RECENT_QUERIES; i++) s_recent[i][sizeof(s_recent[i]) - 1] = 0;
+}
+
+static void save_recent(void) {
+    nvs_handle_t h;
+    if (nvs_open("treader", NVS_READWRITE, &h) != ESP_OK) return;
+    if (nvs_set_blob(h, "searches", s_recent, sizeof(s_recent)) == ESP_OK) nvs_commit(h);
+    nvs_close(h);
+}
+
 static void remember_query(const char* q) {
-    for (int i = 0; i < RECENT_QUERIES; i++) if (!strcmp(s_recent[i], q)) return;
-    memmove(s_recent[1], s_recent[0], sizeof(s_recent[0]) * (RECENT_QUERIES - 1));
-    snprintf(s_recent[0], sizeof(s_recent[0]), "%s", q);
+    int at = RECENT_QUERIES - 1;
+    for (int i = 0; i < RECENT_QUERIES; i++) if (!strcmp(s_recent[i], q)) { at = i; break; }
+    // 用过的词移到最前。/ Move a reused query to the front.
+    memmove(s_recent[1], s_recent[0], sizeof(s_recent[0]) * (size_t)at);
+    snprintf(s_recent[0], sizeof(s_recent[0]), "%.47s", q);
+    save_recent();
 }
 
 /* ---- 列表 / List ---- */
@@ -395,6 +417,8 @@ static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     tomato_sync_set_file_hook(file_hook);
+    static bool recent_loaded;
+    if (!recent_loaded) { load_recent(); recent_loaded = true; }
     load_shelf();
     tomato_sync_get_status(&s_status);
     s_seen_revision = s_status.revision;
@@ -543,6 +567,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
+    tr_time_poll();
     s_poll_ms = ctx->now_ms;
     if (s_op == OP_NONE) return APP_REDRAW_NONE;
     bool busy = tomato_sync_busy();

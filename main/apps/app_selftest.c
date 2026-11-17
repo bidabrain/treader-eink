@@ -23,7 +23,7 @@
 #include "ui_menu.h"
 
 #define TAG "app_selftest"
-#define ST_TITLE "设备功能自检 Device"
+#define ST_TITLE "设备功能自检"
 #define ST_GATE_ROWS 2
 #define ST_CMD_ROWS 7
 
@@ -47,8 +47,8 @@ static st_geom_t st_geom(void) {
 }
 
 static const char* st_cell(uint8_t res) {
-    if (res == PMU_ST_RES_PASS) return "通过 Pass";
-    if (res == PMU_ST_RES_FAIL) return "失败 Fail";
+    if (res == PMU_ST_RES_PASS) return "通过";
+    if (res == PMU_ST_RES_FAIL) return "失败";
     return "-";
 }
 
@@ -81,10 +81,10 @@ static void draw_page(uint8_t* fb) {
     );
     ui_draw_header(fb, ST_TITLE, v->hint[0] != '\0' ? v->hint : sub);
 
-    ui_draw_section(fb, g.gate_y, "探活 Probe");
+    ui_draw_section(fb, g.gate_y, "探活");
     draw_pairs(fb, g.gate_y + UI_SEC_HEAD, 0, PMU_ST_GATE_END);
 
-    ui_draw_section(fb, g.cmd_y, "命令 Commands");
+    ui_draw_section(fb, g.cmd_y, "命令");
     draw_pairs(fb, g.cmd_y + UI_SEC_HEAD, PMU_ST_GATE_END, PMU_ST_CMD_END);
     if (v->last_msg[0] != '\0') {
         ui_text(
@@ -94,8 +94,8 @@ static void draw_page(uint8_t* fb) {
         );
     }
 
-    ui_draw_button(fb, g.probe, "探测 Probe", false);
-    ui_draw_button(fb, g.reset, "清空 Clear", false);
+    ui_draw_button(fb, g.probe, "探测", false);
+    ui_draw_button(fb, g.reset, "清空", false);
     ui_draw_menu_handle(fb, false);
 }
 
@@ -127,7 +127,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
 
 const app_desc_t app_selftest = {
     .title = ST_TITLE,
-    .detail = "探活与命令 Probe & Commands",
+    .detail = "探活与命令",
     .holds_pmu = true,
     .render = render,
     .on_exit = st_on_exit,

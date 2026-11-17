@@ -133,6 +133,20 @@ esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count) {
     return ESP_OK;
 }
 
+esp_err_t tomato_shelf_remove_file(const char* file) {
+    tomato_book_t* books = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(*books), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!books) return ESP_ERR_NO_MEM;
+    int count = 0, write = 0;
+    esp_err_t err = tomato_shelf_load(books, TOMATO_SHELF_MAX, &count);
+    for (int i = 0; err == ESP_OK && i < count; i++) {
+        if (!strcmp(books[i].file, file)) continue;
+        books[write++] = books[i];
+    }
+    if (err == ESP_OK && write != count) err = tomato_shelf_save(books, write);
+    heap_caps_free(books);
+    return err == ESP_ERR_NOT_FOUND ? ESP_OK : err;
+}
+
 esp_err_t tomato_shelf_save(const tomato_book_t* books, int count) {
     cJSON* root = cJSON_CreateObject();
     cJSON* arr = root ? cJSON_AddArrayToObject(root, "books") : NULL;

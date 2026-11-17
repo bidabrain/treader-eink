@@ -63,6 +63,7 @@
 #include "read_pico_search.h"
 #include "settings.h"
 #include "tomato.h"
+#include "tr_kbd.h"
 #include "tr_nav.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
@@ -113,6 +114,7 @@ static bool s_delete_confirm, s_file_removed;
 static char s_shelf_warning[128], s_manage_message[128];
 static char s_query[65], s_search_draft[65], s_batch_message[128];
 static book_view_t s_search_parent;
+static tr_kbd_t s_search_kbd;
 static bool s_batch_confirm, s_batch_delete;
 typedef struct pending_progress {
     char path[BOOK_STORE_PATH_MAX];
@@ -203,10 +205,7 @@ static EpdRect progress_rect(void) {
     return (EpdRect){b.x, UI_BAR_TOP, b.width, UI_BAR_H};
 }
 static EpdRect row_rect(int row, bool toc) {
-    if (toc) {
-        int h = (UI_CONTENT_BOTTOM - UI_CONTENT_TOP) / BOOK_TOC_ROWS;
-        return (EpdRect){UI_MARGIN, UI_CONTENT_TOP + row * h, ui_content_width(), h - 6};
-    }
+    if (toc) return (EpdRect){UI_MARGIN, 210 + row * 88, ui_content_width(), 84};
     return (EpdRect){UI_MARGIN, SHELF_ROW_TOP + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - 12};
 }
 // 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 清残影、5 书架、6 顶部返回。
@@ -229,7 +228,10 @@ static EpdRect import_icon_rect(void) { return (EpdRect){576, 80, 72, 72}; }
 static EpdRect save_retry_rect(void) { return (EpdRect){UI_MARGIN, 150, ui_content_width(), 44}; }
 // 翻页：目录沿用官方底栏，书架用“‹ 1 / 5 ›”左右两半。/ Paging: TOC keeps the official bar; the shelf uses the pager halves.
 static EpdRect nav_rect(int i) {
-    if (s_view == TOC) return ui_bar_rect(i, 3);
+    if (s_view == TOC) {
+        static const int xs[3] = {40, 222, 474}, ws[3] = {170, 240, 170};
+        return (EpdRect){xs[i], 1110, ws[i], 80};
+    }
     if (i == 1) return (EpdRect){0, 0, 0, 0};
     return (EpdRect){i == 0 ? UI_MARGIN : UI_LOCK_WIDTH / 2, SHELF_PAGER_Y - 16, UI_LOCK_WIDTH / 2 - UI_MARGIN, 72};
 }
@@ -294,14 +296,6 @@ static EpdRect batch_rect(int id) {
     if (id < 3) return ui_row_rect(id, 3, 1100, 48);
     return ui_row_rect(id - 3, 2, 1158, 48);
 }
-static EpdRect search_rect(int id) {
-    if (id < 40) {
-        int width = (ui_content_width() - 54) / 10;
-        return (EpdRect){UI_MARGIN + id % 10 * (width + 6), 388 + id / 10 * 100, width, 88};
-    }
-    if (id < 43) return ui_row_rect(id - 40, 3, 808, 80);
-    return ui_bar_rect(id - 43, 2);
-}
 static size_t selected_count(void) {
     size_t selected = 0;
     for (int i = 0; i < s_count; ++i) if (s_shelf[i].selected) ++selected;
@@ -316,12 +310,12 @@ static void toggle_selection(int index) {
 static void select_page(int page) {
     for (int i = page * BOOK_ROWS; i < s_visible_count && i < (page + 1) * BOOK_ROWS; ++i) s_shelf[i].selected = true;
 }
-static const char* search_keys(void) {
-    return "1234567890" "qwertyuiop" "asdfghjkl-" "zxcvbnm._'";
-}
 static void search_begin(void) {
     s_search_parent = s_view;
     memcpy(s_search_draft, s_query, sizeof(s_query));
+    tr_kbd_open(&s_search_kbd, s_query, true, "搜索");
+    // 文件名搜索多用首字母，默认英文。/ File-name search mostly uses initials, so start in English.
+    s_search_kbd.mode = s_search_kbd.letters = TR_KBD_ENGLISH;
     s_view = SEARCH;
 }
 static void refresh_search_matches(void) {
@@ -330,6 +324,9 @@ static void refresh_search_matches(void) {
 }
 static void search_finish(app_ctx_t* ctx, bool apply) {
     s_view = s_search_parent;
+    if (apply) copy_text(s_search_draft, sizeof(s_search_draft), s_search_kbd.text);
+    memset(&s_search_kbd, 0, sizeof(s_search_kbd));
+    pinyin_ime_unload();
     if (apply) {
         memcpy(s_query, s_search_draft, sizeof(s_query));
         refresh_search_matches();
@@ -338,18 +335,6 @@ static void search_finish(app_ctx_t* ctx, bool apply) {
         s_batch_message[0] = 0;
     }
     memset(s_search_draft, 0, sizeof(s_search_draft));
-}
-static app_redraw_t search_action(app_ctx_t* ctx, int id) {
-    size_t len = strlen(s_search_draft);
-    if ((id >= 0 && id < 40) || id == 40) {
-        if (len < sizeof(s_search_draft) - 1) {
-            s_search_draft[len] = id == 40 ? ' ' : search_keys()[id];
-            s_search_draft[len + 1] = 0;
-        }
-    } else if (id == 41 && len) s_search_draft[len - 1] = 0;
-    else if (id == 42) s_search_draft[0] = 0;
-    else if (id == 43 || id == 44) { search_finish(ctx, id == 44); return APP_REDRAW_PAGE; }
-    return APP_REDRAW_AREA;
 }
 static bool pending_reserve(const char* path) {
     if (pending_find(path)) return true;
@@ -478,8 +463,8 @@ static void draw_manage(uint8_t* fb) {
     EpdRect panel = manage_panel();
     ui_fill_round_rect(fb, panel, UI_BTN_RADIUS, UI_GRAY_WHITE);
     ui_draw_round_rect(fb, panel, UI_BTN_RADIUS, UI_GRAY_BLACK);
-    ui_text(fb, UI_MARGIN, panel.y + 18, UI_PX_BODY,
-            s_clear_confirm ? (s_delete_confirm ? "确认删除文件？" : "确认清除进度？") : "图书详情", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, UI_MARGIN, panel.y + 18, 38,
+            s_clear_confirm ? (s_delete_confirm ? "确认删除文件？" : "确认清除进度？") : "图书详情", EPD_DRAW_ALIGN_LEFT, true);
     int y = draw_wrapped_name(fb, s_managed.name, panel.y + 74) + 12;
     char info[96];
     snprintf(info, sizeof(info), "%s · %s · %.2f MB", s_managed.is_flash ? "内置存储" : "TF 卡",
@@ -491,39 +476,33 @@ static void draw_manage(uint8_t* fb) {
     if (s_manage_message[0]) ui_text(fb, UI_MARGIN, panel.y + panel.height - 198, UI_PX_CAPTION, s_manage_message, EPD_DRAW_ALIGN_LEFT, false);
     if (s_clear_confirm) {
         ui_text(fb, UI_MARGIN, panel.y + panel.height - 142, UI_PX_CAPTION, s_delete_confirm ? "删除后文件无法恢复" : "仅清阅读进度，保留图书文件", EPD_DRAW_ALIGN_LEFT, false);
-        draw_control(fb, manage_rect(0, 2), "取消", 300);
-        draw_control(fb, manage_rect(1, 2), s_delete_confirm ? "确认删除" : "确认清除", 301);
+        tr_pill(fb, manage_rect(0, 2), "取消", false, 30);
+        tr_pill(fb, manage_rect(1, 2), s_delete_confirm ? "确认删除" : "确认清除", true, 30);
     } else if (s_file_removed) {
-        draw_control(fb, manage_rect(0, 2), "关闭", 400);
-        draw_control(fb, manage_rect(1, 2), "重试清理", 403);
+        tr_pill(fb, manage_rect(0, 2), "关闭", false, 30);
+        tr_pill(fb, manage_rect(1, 2), "重试清理", true, 30);
     } else {
-        draw_control(fb, manage_rect(0, 3), "关闭", 400);
-        draw_control(fb, manage_rect(1, 3), "清进度", 401);
-        draw_control(fb, manage_rect(2, 3), "删除文件", 402);
+        tr_pill(fb, manage_rect(0, 3), "关闭", false, 30);
+        tr_pill(fb, manage_rect(1, 3), "清进度", false, 30);
+        tr_pill(fb, manage_rect(2, 3), "删除文件", true, 30);
     }
 }
+// 书库搜索：输入框加 Treader 键盘，默认英文（匹配拼音首字母、全拼和英文），可切全拼输入汉字。
+// Library search: field plus the Treader keyboard, English by default (initials, full pinyin, English); pinyin can enter Chinese.
 static void draw_search(uint8_t* fb) {
     ui_clear_page(fb);
-    ui_draw_header(fb, "搜索图书", "输入拼音首字母、完整拼音或英文");
-    EpdRect field = {UI_MARGIN, 200, ui_content_width(), 88};
-    ui_draw_round_rect(fb, field, UI_BTN_RADIUS, UI_GRAY_BLACK);
-    const char* tail = s_search_draft;
-    while (*tail && ttf_text_width_px(UI_PX_BODY, tail) > field.width - 2 * UI_PAD) ++tail;
-    ui_text_vc(fb, field.x + UI_PAD, field.y + field.height / 2, UI_PX_BODY, tail, EPD_DRAW_ALIGN_LEFT, false);
-    char count[48];
-    snprintf(count, sizeof(count), "%u/64 · 清空后应用可显示全部", (unsigned)strlen(s_search_draft));
-    ui_text(fb, UI_MARGIN, 310, UI_PX_CAPTION, count, EPD_DRAW_ALIGN_LEFT, false);
-    const char* keys = search_keys();
-    for (int i = 0; i < 40; ++i) {
-        char label[2] = {keys[i], 0};
-        draw_control(fb, search_rect(i), label, 500 + i);
-    }
-    draw_control(fb, search_rect(40), "空格", 540);
-    draw_control(fb, search_rect(41), "退格", 541);
-    draw_control(fb, search_rect(42), "清空", 542);
-    ui_text(fb, UI_MARGIN, 938, UI_PX_CAPTION, "应用清除勾选 · KEY1 取消", EPD_DRAW_ALIGN_LEFT, false);
-    draw_control(fb, search_rect(43), "取消", 543);
-    draw_control(fb, search_rect(44), "应用", 544);
+    tr_status_bar(fb);
+    tr_text(fb, UI_MARGIN, 94, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    EpdRect f = {96, 84, UI_LOCK_WIDTH - 96 - UI_MARGIN, 80};
+    tr_pill(fb, f, "", false, 30);
+    tr_icon(fb, TR_ICON_SEARCH, f.x + 44, f.y + 40, false);
+    const char* tail = s_search_kbd.text;
+    while (*tail && ttf_text_width_px(34, tail) > f.width - 120) ++tail;
+    tr_text(fb, f.x + 78, f.y + 20, 34, tail, EPD_DRAW_ALIGN_LEFT, false);
+    epd_fill_rect((EpdRect){f.x + 80 + ttf_text_width_px(34, tail), f.y + 18, 3, 44}, UI_GRAY_BLACK, fb);
+    tr_text(fb, UI_MARGIN, 200, 28, "拼音首字母、全拼或英文都能搜", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, UI_MARGIN, 244, 26, "要输入汉字就把键盘切到“全拼”", EPD_DRAW_ALIGN_LEFT, false);
+    tr_kbd_draw(fb, &s_search_kbd);
 }
 static void draw_batch_confirmation(uint8_t* fb) {
     if (!s_batch_confirm) return;
@@ -532,13 +511,22 @@ static void draw_batch_confirmation(uint8_t* fb) {
     ui_draw_round_rect(fb, panel, UI_BTN_RADIUS, UI_GRAY_BLACK);
     char title[96];
     snprintf(title, sizeof(title), "%s %u 本图书？", s_batch_delete ? "删除" : "清除进度：", (unsigned)selected_count());
-    ui_text(fb, UI_MARGIN, 438, UI_PX_BODY, title, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, UI_MARGIN, 438, 38, title, EPD_DRAW_ALIGN_LEFT, true);
     ui_text(fb, UI_MARGIN, 508, UI_PX_CAPTION, s_batch_delete ? "删除文件不可撤销，失败项可重试" : "仅清阅读进度，所有文件保留", EPD_DRAW_ALIGN_LEFT, false);
-    draw_control(fb, ui_row_rect(0, 2, 620, UI_BTN_H), "取消", 600);
-    draw_control(fb, ui_row_rect(1, 2, 620, UI_BTN_H), "确认", 601);
+    tr_pill(fb, ui_row_rect(0, 2, 620, UI_BTN_H), "取消", false, 32);
+    tr_pill(fb, ui_row_rect(1, 2, 620, UI_BTN_H), "确认", true, 32);
+}
+// 番茄书在 books 目录下，更新只在末尾追加章节。/ Tomato books live in the books dir; updates only append.
+static const char* tomato_file_of(const char* path) {
+    const size_t n = strlen(TOMATO_BOOKS_DIR);
+    return !strncmp(path, TOMATO_BOOKS_DIR, n) && path[n] == '/' ? path + n + 1 : NULL;
 }
 static void save_progress(void) {
     if (!s_text || !s_path[0] || !book_layout_page_count()) return;
+    // 正在读的番茄书被后台更新替换后文件变大：章节和偏移仍有效，改用新大小保存，免得进度作废。
+    // A Tomato book replaced by a background update grows; chapter and offset stay valid, so save against the new size.
+    struct stat st;
+    if (tomato_file_of(s_path) && stat(s_path, &st) == 0 && (uint32_t)st.st_size > s_file_size) s_file_size = (uint32_t)st.st_size;
     bool was_failed = s_save_failed;
     pending_progress_t* pending = pending_find(s_path);
     if (!pending) { s_save_failed = true; return; }
@@ -781,8 +769,13 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         draw_reader(fb, s_page);
     } else if (s_view == TOC) {
         ui_clear_page(fb);
-        ui_draw_header(fb, "目录", s_title);
-        if (s_message[0]) ui_text(fb, UI_MARGIN, UI_CONTENT_TOP, UI_PX_CAPTION, s_message, EPD_DRAW_ALIGN_LEFT, false);
+        tr_status_bar(fb);
+        tr_title(fb, "目录");
+        char head[128];
+        copy_text(head, sizeof(head), s_title);
+        fit_text(head, 28, ui_content_width());
+        tr_text(fb, UI_MARGIN, 156, 28, head, EPD_DRAW_ALIGN_LEFT, false);
+        if (s_message[0]) tr_text(fb, UI_MARGIN, 220, 28, s_message, EPD_DRAW_ALIGN_LEFT, false);
         else {
             for (int row = 0; row < BOOK_TOC_ROWS; ++row) {
                 int i = ctx->leaf * BOOK_TOC_ROWS + row;
@@ -790,16 +783,20 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
                 EpdRect r = row_rect(row, true);
                 char name[128];
                 if (book_chapter_title(i, name, sizeof(name)) != ESP_OK) snprintf(name, sizeof(name), "第 %d 节", i + 1);
-                fit_text(name, UI_PX_BTN, r.width - 2 * UI_PAD);
-                if (s_pressed_control == row) ui_draw_pressed_round_rect(fb, r, UI_BTN_RADIUS);
-                ui_draw_round_rect(fb, r, UI_BTN_RADIUS, UI_GRAY_BLACK);
-                if (i == (int)s_chapter) ui_draw_selected_round_rect(fb, r, UI_BTN_RADIUS);
-                ui_text_vc(fb, r.x + UI_PAD, r.y + r.height / 2, UI_PX_BTN, name, EPD_DRAW_ALIGN_LEFT, false);
+                bool current = i == (int)s_chapter;
+                fit_text(name, 32, r.width - (current ? 110 : 16));
+                if (s_pressed_control == row) ui_draw_selected_round_rect(fb, r, UI_BTN_RADIUS);
+                tr_text(fb, r.x, r.y + 22, 32, name, EPD_DRAW_ALIGN_LEFT, current);
+                if (current) tr_text(fb, r.x + r.width, r.y + 26, 28, "在读", EPD_DRAW_ALIGN_RIGHT, true);
+                tr_hline(fb, r.y + r.height, UI_MARGIN, ui_content_width(), true);
             }
         }
-        draw_control(fb, nav_rect(0), "上一页", 100);
-        draw_control(fb, nav_rect(1), "返回阅读", 101);
-        draw_control(fb, nav_rect(2), "下一页", 102);
+        char page[32];
+        snprintf(page, sizeof(page), "%d / %d", ctx->leaf + 1, leaves());
+        if (ctx->leaf > 0) tr_text(fb, nav_rect(0).x, 1132, 30, "‹ 上一页", EPD_DRAW_ALIGN_LEFT, false);
+        tr_pill(fb, nav_rect(1), "返回阅读", true, 30);
+        if (ctx->leaf + 1 < leaves()) tr_text(fb, nav_rect(2).x + nav_rect(2).width, 1132, 30, "下一页 ›", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text(fb, UI_LOCK_WIDTH / 2, 1070, 26, page, EPD_DRAW_ALIGN_CENTER, false);
     } else {
         draw_shelf(ctx, fb);
         if (s_view == MANAGE) draw_manage(fb);
@@ -1228,6 +1225,7 @@ static void manage_apply(app_ctx_t* ctx) {
         if (removed) {
             retry->entry.removed = true;
             s_file_removed = true;
+            if (tomato_file_of(s_managed.path)) tomato_shelf_remove_file(tomato_file_of(s_managed.path));
             pending_discard(s_managed.path);
             book_store_notify_changed();
             s_store_revision = book_store_revision();
@@ -1349,12 +1347,11 @@ static app_redraw_t resize_text(app_ctx_t* ctx, int dir) {
     s_size_settle_ms = ctx->now_ms + BOOK_SIZE_SETTLE_MS;
     return paint_reading(ctx, MODE_DU);
 }
+// Treader：字体页不在菜单里了，直接引用。/ Treader: the font page left the menu, so reference it directly.
+extern const app_desc_t app_font_pick;
 static void goto_font(app_ctx_t* ctx) {
-    // 通过注册表查找，不引用另一个页面符号。/ Find via registry without referencing another page symbol.
-    for (int i = 0; i < app_count(); ++i) {
-        const app_desc_t* app = app_at(i);
-        if (strstr(app->title, " Font")) { save_progress(); ctx->request_app = app; break; }
-    }
+    save_progress();
+    ctx->request_app = &app_font_pick;
 }
 static app_redraw_t manage_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     int count = s_clear_confirm || s_file_removed ? 2 : 3;
@@ -1385,6 +1382,7 @@ static void batch_apply(app_ctx_t* ctx) {
                 if (removed) {
                     retry->entry.removed = true;
                     item.removed = true; pending_discard(item.path);
+                    if (tomato_file_of(item.path)) tomato_shelf_remove_file(tomato_file_of(item.path));
                     book_store_notify_changed(); s_store_revision = book_store_revision();
                 } else delete_retry_discard(item.path);
             } else { pending_discard(item.path); err = book_progress_forget(item.path); }
@@ -1428,12 +1426,14 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (s_view == MANAGE) return manage_action(ctx, x, y);
     if (s_view == SEARCH) {
-        for (int i = 0; i < 45; ++i) if (ui_rect_hit(search_rect(i), x, y)) {
-            app_redraw_t result = search_action(ctx, i);
-            if (result == APP_REDRAW_AREA) { render(ctx, ctx->fb); s_area = (EpdRect){UI_MARGIN, 190, ui_content_width(), 850}; s_mode = MODE_DU; }
-            return result;
-        }
-        return APP_REDRAW_NONE;
+        if (y < 180 && x < 96) { search_finish(ctx, false); return APP_REDRAW_PAGE; }
+        tr_kbd_result_t res = tr_kbd_touch(&s_search_kbd, x, y);
+        if (res == TR_KBD_SUBMIT) { search_finish(ctx, true); return APP_REDRAW_PAGE; }
+        if (res != TR_KBD_CHANGED) return APP_REDRAW_NONE;
+        render(ctx, ctx->fb);
+        s_area = (EpdRect){0, 70, UI_LOCK_WIDTH, UI_LOCK_HEIGHT - 70};
+        s_mode = MODE_DU;
+        return APP_REDRAW_AREA;
     }
     if (s_view == BULK) { app_redraw_t result = batch_action(ctx, x, y); if (result != APP_REDRAW_NONE) return result; }
     if (s_view == READING) {
@@ -1569,6 +1569,7 @@ static void on_enter(app_ctx_t* ctx) {
 }
 static void book_on_exit(app_ctx_t* ctx) {
     s_resume_path[0] = 0;
+    if (s_view == SEARCH) { memset(&s_search_kbd, 0, sizeof(s_search_kbd)); pinyin_ime_unload(); s_view = SHELF; }
     s_pressed_control = -1;
     save_progress();
     sensor_set(ctx, false);
@@ -1613,8 +1614,9 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         return -1;
     }
     if (s_view == SEARCH) {
-        for (int i = 0; i < 45; ++i) { *rect = search_rect(i); if (ui_rect_hit(*rect, x, y)) return 500 + i; }
-        return -1;
+        // 整个搜索页算一个控件：按下不画按压态，抬起交给键盘。/ The search page is one control: no press paint; release goes to the keyboard.
+        *rect = (EpdRect){0, 0, UI_LOCK_WIDTH, UI_LOCK_HEIGHT};
+        return 499;
     }
     if (s_view == BULK && s_batch_confirm) {
         for (int i = 0; i < 2; ++i) { *rect = ui_row_rect(i, 2, 620, UI_BTN_H); if (ui_rect_hit(*rect, x, y)) return 600 + i; }
@@ -1694,7 +1696,7 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) 
     int start = control_at(ctx, ev->x0, ev->y0, &start_rect);
     int end = control_at(ctx, ev->x, ev->y, &end_rect);
     if (ev->type == UI_GESTURE_PRESS) {
-        if (start >= 1000) { s_pressed_control = -1; return APP_REDRAW_NONE; }
+        if (start >= 1000 || start == 499) { s_pressed_control = -1; return APP_REDRAW_NONE; }
         s_pressed_control = start;
         return start >= 0 ? paint_control(ctx, start_rect) : APP_REDRAW_NONE;
     }

@@ -26,7 +26,7 @@
 #include "ui_menu.h"
 
 #define TAG "app_font"
-#define FONT_TITLE "字体 Font"
+#define FONT_TITLE "字体"
 #define FONT_ROW_H UI_BTN_H
 #define FONT_NAV_H 56
 #define FONT_MIN_LIST 2
@@ -80,7 +80,7 @@ static int current_wght(void) {
 
 static void font_sub(char* buf, size_t n) {
     const char* name = ttf_font_display_name();
-    snprintf(buf, n, "当前 %s", name[0] != '\0' ? name : "内建 Built-in");
+    snprintf(buf, n, "当前：%s", name[0] != '\0' ? name : "内置字体");
 }
 
 static ui_header_skel_t font_head(const char* sub) {
@@ -128,7 +128,8 @@ static int rows_for(int budget) {
 
 static font_geom_t font_geom(void) {
     const int content = UI_CONTENT_BOTTOM - UI_CONTENT_TOP;
-    const int score_h = UI_SEC_HEAD + FONT_SCORE_ROWS * UI_ROW_H_SM;
+    // Treader：去掉跑分区，空间留给字体列表和预览。/ Treader: no benchmark section; the space goes to the list and preview.
+    const int score_h = 0;
     const int min_list = UI_SEC_HEAD + FONT_MIN_LIST * FONT_ROW_H
         + (FONT_MIN_LIST - 1) * UI_GAP;
     const int sample_n = sample_fit(
@@ -161,8 +162,8 @@ static font_geom_t font_geom(void) {
         .paged = paged,
         .prev = ui_row_rect(0, 2, nav_y, FONT_NAV_H),
         .next = ui_row_rect(1, 2, nav_y, FONT_NAV_H),
-        .cold = ui_bar_rect(0, 2),
-        .warm = ui_bar_rect(1, 2),
+        .cold = ui_bar_rect(0, 1),
+        .warm = (EpdRect){0, 0, 0, 0},
         .wght = font_head(sub).accessory,
     };
 }
@@ -177,15 +178,15 @@ static EpdRect font_item_rect(const font_geom_t* g, int row) {
 }
 
 static const char* font_dir_label(const char* path) {
-    if (ttf_font_path_is_builtin(path)) return "内建 Built-in";
+    if (ttf_font_path_is_builtin(path)) return "内置";
     if (strstr(path, "/assets/fonts/") != NULL) return "assets/fonts";
     if (strstr(path, "/fonts/") != NULL) return "fonts";
     return path;
 }
 
 static void font_item(int index, const char** name, const char** dir) {
-    *name = "内建 Built-in";
-    *dir = "内建 Built-in";
+    *name = "内置字体";
+    *dir = "内置";
     if (index <= 0) return;
     const ttf_font_item_t* item = ttf_font_item(index - 1);
     if (item == NULL) return;
@@ -220,19 +221,6 @@ static void bench_reset(void) {
     memset(&s_bench, 0, sizeof(s_bench));
 }
 
-static void fmt_ms(char* buf, size_t n, bool ok, int64_t us) {
-    if (!ok) {
-        strlcpy(buf, "-", n);
-        return;
-    }
-    snprintf(buf, n, "%d ms", (int)((us + 500) / 1000));
-}
-
-static int64_t bench_rest_us(const ttf_bench_stats_t* s) {
-    const int64_t used = s->read_us + s->raster_us;
-    return s->total_us > used ? s->total_us - used : 0;
-}
-
 static int draw_sample_lines(uint8_t* fb, int y, int spec_w, int n) {
     const int old = ttf_get_weight();
     const int wght = current_wght();
@@ -256,30 +244,10 @@ static int draw_sample_lines(uint8_t* fb, int y, int spec_w, int n) {
     return y;
 }
 
-static void draw_scores(uint8_t* fb, int y) {
-    char cold[16], warm[16], rast[16], epd[16];
-    const ttf_bench_stats_t* last = NULL;
-    if (s_bench.cold_ok || s_bench.warm_ok) {
-        last = s_bench.last_cold ? &s_bench.cold : &s_bench.warm;
-    }
-    fmt_ms(cold, sizeof(cold), s_bench.cold_ok, s_bench.cold.total_us);
-    fmt_ms(warm, sizeof(warm), s_bench.warm_ok, s_bench.warm.total_us);
-    fmt_ms(rast, sizeof(rast), last != NULL, last ? last->raster_us : 0);
-    if (s_bench.last_refresh_ms > 0) {
-        snprintf(epd, sizeof(epd), "%d ms", (int)s_bench.last_refresh_ms);
-    } else {
-        strlcpy(epd, "-", sizeof(epd));
-    }
-
-    y = ui_draw_section(fb, y, "成绩 Bench");
-    y = ui_draw_row2(fb, y, "冷启动 Cold", cold, "热启动 Warm", warm);
-    ui_draw_row2(fb, y, "光栅 Raster", rast, "刷屏 EPD", epd);
-}
-
 static void draw_fonts(uint8_t* fb, const font_geom_t* g, int leaf) {
     const int n = font_total();
     const int first = leaf * g->per_page;
-    ui_draw_section(fb, g->list_y, "字体 Fonts");
+    ui_draw_section(fb, g->list_y, "TF 卡和内置字体");
     for (int row = 0; row < g->per_page; row++) {
         const int index = first + row;
         if (index >= n) break;
@@ -296,13 +264,13 @@ static void draw_fonts(uint8_t* fb, const font_geom_t* g, int leaf) {
         );
         ui_text_vc(
             fb, card.x + card.width - UI_PAD, cy, UI_PX_CAPTION,
-            on ? "使用中 On" : dir, EPD_DRAW_ALIGN_RIGHT, false
+            on ? "使用中" : dir, EPD_DRAW_ALIGN_RIGHT, false
         );
     }
     if (!g->paged) return;
     const int leaves = leaf_count(g->per_page);
-    ui_draw_button(fb, g->prev, "上一页 Prev", leaf > 0);
-    ui_draw_button(fb, g->next, "下一页 Next", leaf + 1 < leaves);
+    ui_draw_button(fb, g->prev, "上一页", leaf > 0);
+    ui_draw_button(fb, g->next, "下一页", leaf + 1 < leaves);
 }
 
 static void draw_page(uint8_t* fb, int leaf, bool time_samples) {
@@ -328,7 +296,7 @@ static void draw_page(uint8_t* fb, int leaf, bool time_samples) {
     ui_draw_header_skel(fb, &head, FONT_TITLE, sub);
     ui_draw_button(fb, g.wght, wght, false);
     draw_fonts(fb, &g, leaf);
-    ui_draw_section(fb, g.sample_y, "排版 Type");
+    ui_draw_section(fb, g.sample_y, "预览");
     if (time_samples) ttf_bench_begin();
     draw_sample_lines(fb, g.sample_y + UI_SEC_HEAD, g.spec_w, g.sample_n);
     if (time_samples) {
@@ -342,9 +310,7 @@ static void draw_page(uint8_t* fb, int leaf, bool time_samples) {
             s_bench.warm_ok = true;
         }
     }
-    draw_scores(fb, g.score_y);
-    ui_draw_button(fb, g.cold, "冷启动 Cold", false);
-    ui_draw_button(fb, g.warm, "热启动 Warm", false);
+    ui_draw_button(fb, g.cold, "返回设置", false);
     ui_draw_menu_handle(fb, false);
 }
 
@@ -369,33 +335,6 @@ static int hit_test(uint16_t x, uint16_t y, int leaf) {
         if (ui_rect_hit(font_item_rect(&g, row), x, y)) return index;
     }
     return FONT_HIT_NONE;
-}
-
-static void bench_log(bool cold) {
-    const ttf_bench_stats_t* s = cold ? &s_bench.cold : &s_bench.warm;
-    ESP_LOGI(
-        TAG,
-        "ttf_bench %s font=%s n=%u hit=%u miss=%u "
-        "total=%dms read=%dms raster=%dms rest=%dms epd=%dms",
-        cold ? "cold" : "warm", ttf_font_display_name(),
-        (unsigned)s->glyphs, (unsigned)s->hits, (unsigned)s->misses,
-        (int)((s->total_us + 500) / 1000),
-        (int)((s->read_us + 500) / 1000),
-        (int)((s->raster_us + 500) / 1000),
-        (int)(bench_rest_us(s) / 1000),
-        (int)s_bench.last_refresh_ms
-    );
-}
-
-static app_redraw_t bench_run(app_ctx_t* ctx, bool cold) {
-    if (cold) ttf_font_cache_clear();
-    s_bench.last_cold = cold;
-    draw_page(ctx->fb, ctx->leaf, true);
-    const int64_t t0 = esp_timer_get_time();
-    guard_draw_result(ctx->hl, update_display_mode(ctx->hl, APP_PAGE_REFRESH_MODE));
-    s_bench.last_refresh_ms = (int32_t)((esp_timer_get_time() - t0) / 1000);
-    bench_log(cold);
-    return APP_REDRAW_PAGE;
 }
 
 static app_redraw_t pick(int index) {
@@ -449,8 +388,8 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         bench_reset();
         return APP_REDRAW_FULL;
     }
-    if (hit == FONT_HIT_COLD) return bench_run(ctx, true);
-    if (hit == FONT_HIT_WARM) return bench_run(ctx, false);
+    // Treader：底栏只剩“返回设置”。/ Treader: the bar holds only "Back to Settings".
+    if (hit == FONT_HIT_COLD) { ctx->request_return = true; return APP_REDRAW_NONE; }
     if (hit < 0) return APP_REDRAW_NONE;
     return pick(hit);
 }
@@ -465,7 +404,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 const app_desc_t app_font_pick = {
     .title = FONT_TITLE,
-    .detail = "选择、排版与基准 Select, Type & Bench",
+    .detail = "选择阅读和界面字体",
     .enter_full = true,
     .render = render,
     .on_enter = on_enter,
