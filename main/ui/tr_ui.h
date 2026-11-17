@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Treader 界面原语：状态栏、底部标签栏、文字封面、虚线进度条、胶囊按钮、线条图标、自动换行。
- * 版式见 docs/design/ui.html。只用黑、白和一级浅灰，不画图片。
+ * 版式见 docs/design/ui.html。只用黑、白和一级浅灰；图片封面交给 book_cover 画。
  *
  * Treader UI primitives: status bar, tab bar, text covers, dotted progress, pills, line icons,
- * wrapped text. Layout follows docs/design/ui.html. Black, white and one light gray only; no images.
+ * wrapped text. Layout follows docs/design/ui.html. Black, white and one light gray only; image covers come from book_cover.
  *
  * 冻结：纯绘制，不读文件、不碰 I2C；页面在 on_enter/on_tick 里准备数据。
  * Frozen: drawing only, no file or I2C access; pages prepare data in on_enter/on_tick.

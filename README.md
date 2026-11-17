@@ -4,11 +4,11 @@
 ![Target](https://img.shields.io/badge/target-ESP32--S3-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge)](LICENSE)
 
-**Treader 是给小纸 Pico（Read Pico）用的墨水屏阅读固件**：本地 TXT / EPUB 阅读、番茄小说搜索下载与更新、番茄榜单书城、WebDAV 进度同步，全部为 4.7 寸 16 级灰度墨水屏和 ESP32-S3 的性能重新设计。
+**Treader 是给小纸 Pico（Read Pico）用的墨水屏阅读固件**：本地 TXT / EPUB 阅读、番茄小说搜索下载与更新、番茄榜单书城、虎扑浏览、WebDAV 进度同步，全部为 4.7 寸 16 级灰度墨水屏和 ESP32-S3 的性能重新设计。
 
-它基于 MindReset 官方的 [Read Pico 示例固件](https://github.com/MindReset/read_pico_firmware)，把演示页换成了一套完整的阅读系统，并移植了安卓版 [番茄阅读器 Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（不含 TTS）。
+它基于 MindReset 官方的 [Read Pico 示例固件](https://github.com/MindReset/read_pico_firmware)，把演示页换成了一套完整的阅读系统，并移植了安卓版 [番茄阅读器 Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（不含 TTS）和 [虎扑 X](https://github.com/bidabrain/hupuX) 的浏览部分。
 
-> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
+> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore, read-only Hupu browsing and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
 
 > ⚠️ 非官方固件，与 MindReset、番茄小说没有隶属关系。刷机前请备份原固件。
 
@@ -18,13 +18,13 @@
 - 书库：TF 卡 `books/` 里的 TXT、EPUB，按书名或最近阅读排序，拼音首字母搜索，按来源筛选（番茄 / 其他书）
 - 图片封面：EPUB 自带封面、番茄书下载时一起取封面；书库、锁屏都显示
 - 阅读器：目录、字号、逐书记住进度；排版可调行距、段距、页边距、首行缩进和每行下划线；局部 DU 快刷翻页，周期性 GC16 压灰底，长按中键整屏刷新
-- 书库就是主页：开机直接进书库，顶部“继续阅读”卡片点一下接着读，番茄有新章节时状态行提示；底部只有书库、番茄、设置三个标签
+- 书库就是主页：开机直接进书库，顶部“继续阅读”卡片点一下接着读，番茄有新章节时状态行提示；底部四个标签：书库、番茄、虎扑、设置
 
 **番茄小说**（需要[自建下载服务器](#自建番茄下载服务器)）
 - 搜索：点结果先看简介、分类、章节、字数，再决定下载
 - 下载：服务器生成 TXT 后存进 `books/`，在书库里像普通书一样阅读
 - 检查更新与下载分开：都只在你点的时候运行，**不会自动检查**；正在读的那本不替换
-- 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，封面网格显示，详情页直接下载
+- 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，封面网格显示，详情页直接下载；国内直连 GitHub Pages 超时会自动改用 jsDelivr 镜像
 - 所有列表都按页显示，点按钮或滑一下翻一整页，墨水屏不做滚动
 
 **虎扑**（只读，不需要服务器，移植自安卓版 [虎扑 X](https://github.com/bidabrain/hupuX)）
@@ -43,8 +43,9 @@
 - 拔卡不崩，重新插卡自动挂载；**书、图片和缓存只存 TF 卡**，系统 flash 只放固件和设置
 - TF 卡升级：把新固件放进 `update/`，在“关于 Treader”里升级；两个 7 MB 程序槽，新固件起不来自动退回旧版本
 - 联网时用 SNTP 对时并写进电源管理芯片的 RTC，断电后时间仍在
+- 联网失败时提示具体原因（Wi-Fi、DNS、HTTPS、超时、HTTP 状态），见[联网排查](#联网排查)
 
-界面设计稿：[系统与阅读](docs/design/ui.html)、[书城](docs/design/store.html)（下载后用浏览器打开）。
+全部界面和每个页面的功能：[docs/design/ui.html](docs/design/ui.html)（下载后用浏览器打开）。
 
 ## 硬件
 
@@ -195,9 +196,10 @@ Windows 上在命令行运行下载到的 `.exe`，加上 `--server --password �
 | 场景 | 设备上填的地址 | 说明 |
 | --- | --- | --- |
 | 只在家里用 | `http://192.168.1.10:18423` | 服务器和设备在同一个局域网，填服务器的局域网 IP |
-| 在外面也要用 | `https://你的域名` | 用 Nginx / Caddy 等反向代理加 HTTPS，**证书必须是正规 CA 签发的**（如 Let's Encrypt） |
+| 在外面也要用 | `https://你的域名` | 用 Nginx / Caddy / Cloudflare 等加 HTTPS，**证书必须是正规 CA 签发的**（如 Let's Encrypt、Google Trust Services） |
 
-- 设备会校验 HTTPS 证书，**自签名证书连不上**。
+- 设备会校验 HTTPS 证书，**自签名证书连不上**。Cloudflare 那种以交叉签名根证书结尾的证书链也支持。
+- 域名解析到内网 IP 时，有的路由器开着“DNS 重绑定保护”会拦掉解析结果；设备解析失败会自动改用阿里 / 腾讯公共 DNS 再试一次。
 - 设备只连 2.4 GHz Wi-Fi。
 - 暴露到公网时务必开着密码，最好在反向代理上再加限流。
 
@@ -219,7 +221,7 @@ Windows 上在命令行运行下载到的 `.exe`，加上 `--server --password �
    | 连接被拒绝或超时 | 没有监听 `0.0.0.0`、端口没映射，或者被防火墙挡了 |
    | HTTPS 报证书错误 | 证书不被信任，设备也会连不上 |
 
-3. **在设备上试**：设置 → 番茄服务器 填好地址和密码 → 番茄 → 搜索一本书 → 下载。失败时页面会提示原因，比如“服务器密码不对”“未设置 Wi-Fi”“Wi-Fi 连接失败”。
+3. **在设备上试**：设置 → 番茄服务器 填好地址和密码 → 番茄 → 搜索一本书 → 下载。失败时提示后面括号里写着原因，对照[联网排查](#联网排查)。
 
 设备用到的接口（和安卓版一致）：`GET /api/search`、`POST /api/jobs`、`GET /api/jobs?id=`、`GET /api/library?name=`、`GET /download/<路径>`、检查更新用 `GET /api/updates`。详细说明见安卓版 README 的[下载服务器 API 说明](https://github.com/bidabrain/Tomato-Novel#下载服务器-api-说明)。
 
@@ -262,6 +264,25 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 
 - 想用自己的榜单：fork 这个仓库并打开 GitHub Pages，然后在 设置 → 书城榜单 填你的网站地址（或在 `local.properties` 里设 `STORE_URL`）。填安卓版用的 `.../api/lastest/all.json` 也可以，会自动截到网站根。
 - 设备按分类取数据（每个约 55 KB），取过的缓存在 TF 卡 `tomato/store/`，点“刷新”才重新联网。
+- 国内直连 `*.github.io` 常超时。地址是 `https://用户.github.io/仓库` 时，失败后会依次改用 `https://{fastly,gcore,cdn}.jsdelivr.net/gh/用户/仓库@main`（读仓库 main 分支里提交的 `api/lastest/`），用通的那个记到重启。jsDelivr 对分支内容最多缓存 12 小时，经镜像看到的榜单可能晚半天。也可以直接在 设置 → 书城榜单 填其中一个镜像地址。
+
+## 联网排查
+
+联网失败时，提示后面的括号写着卡在哪一步：
+
+| 提示里的原因 | 意思 | 怎么办 |
+| --- | --- | --- |
+| 未设置 Wi-Fi | 还没配网 | 设置 → Wi-Fi 与传书 |
+| 密码不对或信号太弱 | 连不上 Wi-Fi | 检查密码；设备只支持 2.4 GHz |
+| 连上了但没拿到 IP | 路由器没分配地址 | 重启路由器或换个网络 |
+| 传书还在占用 Wi-Fi | 传书页还开着 | 退出传书页再试 |
+| 域名解析失败 | 路由器和公共 DNS 都没解析出来 | 检查地址拼写；内网服务器可以直接填 `http://内网IP:端口` |
+| HTTPS 握手失败 | 证书不被信任或协议不兼容 | 换正规 CA 的证书；内网可以直接用 http |
+| 连接服务器超时 / 连不上服务器 errno N | 拿到地址但连不通 | 检查服务器是否在线、端口和防火墙；国外站点可能被墙 |
+| HTTP 401 / 403 | 密码不对 | 核对番茄服务器密码 |
+| HTTP 404 | 地址不对 | 检查是否漏了子路径 |
+
+Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而设备打不开时，常见原因是电脑走了 IPv6、代理或加速工具。
 
 ## WebDAV 同步
 
@@ -284,6 +305,7 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 
 | 文档 | 内容 |
 | --- | --- |
+| [docs/design/ui.html](docs/design/ui.html) | 全部界面示意图和每个页面的功能（唯一的设计稿） |
 | [docs/TREADER.md](docs/TREADER.md) | Treader 的行为细节、TF 卡目录、各模块职责、已知限制 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
 | [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |

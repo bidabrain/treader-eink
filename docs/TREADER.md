@@ -1,15 +1,17 @@
 # Treader
 
 基于[小纸 Pico 官方固件](https://github.com/MindReset/read_pico_firmware)的分支，把安卓版
-[Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（搜索番茄小说、下载 TXT、
-检查更新）做进系统。阅读器、目录、字体、传书全部沿用官方固件，只新增番茄同步和拼音输入。
+[Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（搜索番茄小说、下载 TXT、检查更新、书城）
+和 [hupuX](https://github.com/bidabrain/hupuX) 的虎扑浏览做进系统。阅读器、目录、字体、传书沿用官方固件，
+在此之上加了书库主页、图片封面、阅读排版、锁屏壁纸、拼音输入、WebDAV 同步和 TF 卡升级。
 
-设计原则：设备是 ESP32-S3 单片机，**能少做就少做**。只有黑白界面，没有颜色和主题，没有动画；
-封面用文字生成，不解码图片。界面风格参考 RickyOS，设计稿见 [design/ui.html](design/ui.html)。联网只在一次操作期间打开，做完就断。
+设计原则：设备是 ESP32-S3 单片机，**能少做就少做**。只有黑白灰界面，没有颜色和主题，没有动画；
+图片（封面、壁纸、帖子图）只在需要时解码一次并缓存到 TF 卡。界面风格参考 RickyOS，全部界面和功能说明见
+[design/ui.html](design/ui.html)（唯一的设计稿）。联网只在一次操作期间打开，做完就断。
 
 ## 当前状态
 
-全部只确认了能编译，**都还没上机验证**。
+已在真机上验证：番茄搜书（含 DNS 回退和 HTTPS 交叉签名证书链）、键盘。书城的 jsDelivr 镜像在测试者的浏览器里能打开，设备上还待确认；虎扑、阅读排版、九键候选等只确认了能编译，**还没在真机上验证**。
 
 | 部分 | 状态 |
 | --- | --- |
@@ -114,7 +116,7 @@
 
 ## 虎扑（只读）
 
-底部第三个标签。移植安卓版 [hupuX](https://github.com/bidabrain/hupuX) 的浏览部分，界面见 [docs/design/hupu.html](design/hupu.html)。
+底部第三个标签。移植安卓版 [hupuX](https://github.com/bidabrain/hupuX) 的浏览部分，界面见 [design/ui.html](design/ui.html) 的“虎扑”一节。
 顶部分段 推荐 / 关注 / 比分；还有全部专区、专区帖子、帖子详情和比赛评分。
 
 - **数据**：设备直接用 HTTPS 取虎扑移动版页面，不需要自建服务器、不登录、不带 Cookie。

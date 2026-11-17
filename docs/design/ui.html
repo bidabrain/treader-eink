@@ -75,6 +75,42 @@
   td, th { border: 1px solid #999; padding: 4px 8px; text-align: left; vertical-align: top; }
   @media (max-width: 400px) { figure { width: 100%; } }
 </style>
+<style>
+  .img { position: absolute; border: 2px solid #000; overflow: hidden; }
+  .img .t { position: absolute; left: 10px; right: 10px; top: 14px; color: #fff; font-weight: 700; text-shadow: 0 0 5px #000; }
+  .g1 { background: linear-gradient(160deg, #2e2e2e 0%, #8a8a8a 40%, #d9d9d9 65%, #4a4a4a 100%); }
+  .g2 { background: linear-gradient(200deg, #1c1c1c 0%, #9a9a9a 45%, #e4e4e4 70%, #3c3c3c 100%); }
+  .g3 { background: linear-gradient(120deg, #555 0%, #bdbdbd 50%, #777 100%); }
+  .g4 { background: radial-gradient(circle at 30% 30%, #eee 0%, #999 40%, #333 100%); }
+  .wall { position: absolute; left: 0; top: 0; width: 684px; height: 1216px;
+    background: linear-gradient(180deg, #d8d8d8 0%, #f2f2f2 35%, #a8a8a8 60%, #4a4a4a 85%, #222 100%); }
+  .wall::before { content: ""; position: absolute; left: 120px; top: 260px; width: 440px; height: 440px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #fff 0%, #cfcfcf 45%, #7a7a7a 100%); }
+  .done { position: absolute; left: 0; right: 0; bottom: 0; background: #000; color: #fff; text-align: center; font-weight: 700; }
+  .seg { position: absolute; left: 40px; right: 40px; top: 160px; height: 64px; border: 2px solid #000; border-radius: 32px; display: flex; overflow: hidden; }
+  .seg span { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .seg span.on { background: #000; color: #fff; font-weight: 700; border-radius: 32px; }
+  .cats { position: absolute; left: 40px; right: 30px; display: flex; flex-wrap: wrap; gap: 14px 0; }
+  .cats .chip { height: 62px; font-size: 30px; padding: 0 22px; }
+  .rank { position: absolute; left: 40px; font-size: 44px; font-weight: 700; }
+  .intro { position: absolute; left: 40px; right: 40px; font-size: 30px; line-height: 48px; text-align: justify; }
+  .credit { position: absolute; left: 40px; font-size: 28px; }
+  .keys { margin-top: 30px; }
+</style>
+<style>
+  .t2 { position: absolute; font-weight: 700; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .t3 { position: absolute; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta { position: absolute; font-size: 24px; color: #6b6b6b; white-space: nowrap; }
+  .thumb { position: absolute; width: 150px; height: 100px; border: 2px solid #000; }
+  .seg4 { position: absolute; left: 40px; right: 40px; top: 160px; height: 64px; border: 2px solid #000; border-radius: 32px; display: flex; overflow: hidden; }
+  .seg4 span { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .seg4 span.on { background: #000; color: #fff; font-weight: 700; border-radius: 32px; }
+  .zone { position: absolute; width: 192px; height: 88px; border: 2px solid #000; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 28px; white-space: nowrap; }
+  .zone.on { background: #000; color: #fff; font-weight: 700; }
+  .ptext { position: absolute; left: 40px; right: 40px; font-size: 32px; line-height: 52px; text-align: justify; font-family: "Noto Serif SC", "Songti SC", "SimSun", serif; font-weight: 400; }
+  .quoteb { position: absolute; left: 40px; right: 40px; border-left: 6px solid #9a9a9a; padding-left: 16px; font-size: 24px; line-height: 34px; color: #555; }
+  .score { position: absolute; font-size: 40px; font-weight: 700; }
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
@@ -90,348 +126,844 @@
     <symbol id="i-flash" viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="26" rx="3"/><path d="M14 20h12M20 14v12"/></symbol>
     <symbol id="i-mark" viewBox="0 0 40 40"><path d="M11 6h18v28l-9-7-9 7z"/></symbol>
     <symbol id="i-import" viewBox="0 0 40 40"><path d="M20 6v20M12 18l8 8 8-8"/><path d="M7 28v5h26v-5"/></symbol>
+      <symbol id="i-ball" viewBox="0 0 40 40"><circle cx="20" cy="20" r="13"/><path d="M7 20h26M20 7v26"/><path d="M11 10c5 5 5 15 0 20M29 10c-5 5-5 15 0 20"/></symbol>
   </defs>
 </svg>
 
-<h1>Treader 界面设计稿（RickyOS 风格）</h1>
-<p class="lead">按小纸 Pico 屏幕真实像素（684×1216）绘制，缩小一半显示。风格参照 RickyOS：顶部状态栏，底部四个图标标签页；不用粗框和按钮堆叠，靠细线、留白和字重分层；没有图片封面，用“文字封面”（双线框里排书名、作者和格式）代替。只用黑、白、浅灰三种灰阶。</p>
+<h1>Treader 界面与功能（0.3.0）</h1>
+<p class="lead">这是 Treader 当前版本（0.3.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
+底部四个标签页：书库、番茄、虎扑、设置。没有画出来的页面和全局规则写在最后。</p>
 
-<h2>系统</h2>
+<h2>书库、阅读与锁屏</h2>
 <div class="grid">
 
-<!-- 首页 -->
-<figure><div class="frame"><div class="s">
-  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
-  <div class="a l b" style="top:92px;font-size:46px">11 月 17 日 · 星期一</div>
-  <div class="a l" style="top:152px;font-size:30px">留一点时间，读几页。</div>
-  <div class="a l" style="top:232px;font-size:28px">继续阅读</div>
-  <div class="cover" style="left:40px;top:280px;width:176px;height:236px"><div class="in"><span class="au" style="font-size:20px;white-space:nowrap">爱潜水的乌贼</span><span class="ti">诡秘<br>之主</span><span class="fm">番茄</span></div></div>
-  <div class="a b" style="left:248px;top:288px;font-size:36px">诡秘之主</div>
-  <div class="a" style="left:248px;top:340px;font-size:28px">第三章 黑夜</div>
-  <div class="pbar" style="left:248px;right:40px;top:446px"><i style="width:41%"></i></div>
-  <div class="a" style="left:248px;top:470px;font-size:28px">已读 41%</div>
-  <div class="a r" style="top:470px;font-size:30px">接着读 →</div>
-  <div class="a l" style="top:566px;font-size:30px">番茄小说 · 3 本有新章节</div>
-  <div class="a r" style="top:566px;font-size:30px">去更新 ›</div>
-  <div class="hl" style="top:620px"></div>
-  <div class="a l" style="top:662px;font-size:28px">最近翻过</div>
-  <div class="a r" style="top:662px;font-size:28px">全部书籍 →</div>
-  <div class="cover" style="left:40px;top:712px;width:120px;height:164px"><div class="in" style="padding:12px 4px 8px"><span class="au" style="font-size:18px">余华</span><span class="ti" style="font-size:26px;line-height:32px">活着</span><span class="fm" style="font-size:16px">EPUB</span></div></div>
-  <div class="a b" style="left:40px;top:892px;font-size:28px">活着</div>
-  <div class="a" style="left:40px;top:932px;font-size:26px">已读 12%</div>
-  <div class="cover dark" style="left:282px;top:712px;width:120px;height:164px"><div class="in" style="padding:12px 4px 8px"><span class="au" style="font-size:18px">刘慈欣</span><span class="ti" style="font-size:26px;line-height:32px">三体</span><span class="fm" style="font-size:16px">EPUB</span></div></div>
-  <div class="a b" style="left:282px;top:892px;font-size:28px">三体</div>
-  <div class="a" style="left:282px;top:932px;font-size:26px">读完</div>
-  <div class="cover" style="left:524px;top:712px;width:120px;height:164px"><div class="in" style="padding:12px 4px 8px"><span class="au" style="font-size:18px">杀虫队队员</span><span class="ti" style="font-size:26px;line-height:32px">十日<br>终焉</span><span class="fm" style="font-size:16px">番茄</span></div></div>
-  <div class="a b" style="left:524px;top:892px;font-size:28px">十日终焉</div>
-  <div class="a" style="left:524px;top:932px;font-size:26px">已读 64%</div>
-  <div class="quote" style="top:1020px">慢一点，读几页。</div>
-  <div class="tabs">
-    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
-  </div>
-</div></div>
-<figcaption><b>① 首页（开机页）</b>大字日期，下面是正在读的书和“接着读”；一行番茄更新提示，点了去番茄页；最近翻过的 3 本。封面全是文字生成的，深色封面用来区分读完的书。没有阅读时长统计。</figcaption></figure>
-
-<!-- 书库 -->
+<!-- ① 书库 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">书库</div>
-  <div class="a" style="right:120px;top:96px"><svg class="icon"><use href="#i-search"/></svg></div>
-  <div class="a" style="right:40px;top:96px"><svg class="icon"><use href="#i-import"/></svg></div>
+  <svg class="icon a" style="left:520px;top:96px"><use href="#i-search"/></svg>
+  <svg class="icon a" style="left:592px;top:96px"><use href="#i-import"/></svg>
   <div class="a l" style="top:156px;font-size:28px">23 本 · 按最近阅读</div>
-  <div class="a l" style="top:212px"><span class="chip on">全部</span><span class="chip">番茄</span><span class="chip">本地</span><span class="chip">读完</span></div>
-  <div class="mini" style="left:40px;top:306px">诡秘之主</div>
-  <div class="a b" style="left:136px;top:304px;font-size:34px">诡秘之主<span class="tag">+7 章</span></div>
-  <div class="a" style="left:136px;top:352px;font-size:26px">爱潜水的乌贼 · 番茄</div>
-  <div class="pbar" style="left:136px;width:360px;top:398px"><i style="width:41%"></i></div>
-  <div class="a r" style="top:388px;font-size:26px">41%</div>
-  <div class="hl soft" style="top:426px"></div>
-  <div class="mini" style="left:40px;top:446px">十日终焉</div>
-  <div class="a b" style="left:136px;top:444px;font-size:34px">十日终焉</div>
-  <div class="a" style="left:136px;top:492px;font-size:26px">杀虫队队员 · 番茄</div>
-  <div class="pbar" style="left:136px;width:360px;top:538px"><i style="width:64%"></i></div>
-  <div class="a r" style="top:528px;font-size:26px">64%</div>
-  <div class="hl soft" style="top:566px"></div>
-  <div class="mini dark" style="left:40px;top:586px">三体</div>
-  <div class="a b" style="left:136px;top:584px;font-size:34px">三体</div>
-  <div class="a" style="left:136px;top:632px;font-size:26px">刘慈欣 · EPUB</div>
-  <div class="a" style="left:136px;top:664px;font-size:26px">读完</div>
-  <div class="hl soft" style="top:706px"></div>
-  <div class="mini" style="left:40px;top:726px">活着</div>
-  <div class="a b" style="left:136px;top:724px;font-size:34px">活着</div>
-  <div class="a" style="left:136px;top:772px;font-size:26px">余华 · EPUB</div>
-  <div class="pbar" style="left:136px;width:360px;top:818px"><i style="width:12%"></i></div>
-  <div class="a r" style="top:808px;font-size:26px">12%</div>
-  <div class="hl soft" style="top:846px"></div>
-  <div class="mini" style="left:40px;top:866px">我与地坛</div>
-  <div class="a b" style="left:136px;top:864px;font-size:34px">我与地坛</div>
-  <div class="a" style="left:136px;top:912px;font-size:26px">史铁生 · EPUB</div>
-  <div class="a" style="left:136px;top:944px;font-size:26px">未读</div>
-  <div class="hl soft" style="top:986px"></div>
-  <div class="a" style="left:0;right:0;top:1022px;text-align:center;font-size:30px">‹　　1 / 5　　›</div>
+  <div class="a r b" style="top:156px;font-size:28px">番茄 1 本有更新 ›</div>
+  <div class="pill out" style="left:40px;top:212px;width:150px;height:54px;font-size:28px">全部</div>
+  <div class="pill out" style="left:202px;top:212px;width:150px;height:54px;font-size:28px">按最近</div>
+  <div class="pill out" style="left:364px;top:212px;width:120px;height:54px;font-size:28px">管理</div>
+  <div style="position:absolute;left:40px;top:284px;width:604px;height:136px;border:2px solid #000;border-radius:16px"></div>
+  <div class="img g1" style="left:56px;top:304px;width:70px;height:96px"></div>
+  <div class="a" style="left:148px;top:298px;font-size:24px">继续阅读</div>
+  <div class="a" style="right:60px;top:298px;font-size:24px">接着读 →</div>
+  <div class="a b" style="left:148px;top:330px;font-size:32px">宿命之环</div>
+  <div class="pbar" style="left:148px;right:140px;top:392px"><i style="width:41%"></i></div><div class="a" style="right:60px;top:378px;font-size:26px">41%</div>
+  <div class="img g2" style="left:40px;top:444px;width:70px;height:96px"></div>
+  <div class="a b" style="left:136px;top:440px;font-size:34px">十日终焉</div>
+  <div class="a" style="left:136px;top:488px;font-size:26px">番茄 · 杀虫队队员</div>
+  <div class="pbar" style="left:136px;right:130px;top:534px"><i style="width:64%"></i></div><div class="a r" style="top:522px;font-size:26px">64%</div>
+  <div class="hl soft" style="top:568px"></div>
+  <div class="cover" style="left:40px;top:584px;width:70px;height:96px"><div class="in" style="inset:4px;padding:4px 2px"><span class="ti" style="font-size:18px;line-height:22px">夜<br>航<br>船</span></div></div>
+  <div class="a b" style="left:136px;top:580px;font-size:34px">夜航船</div>
+  <div class="a" style="left:136px;top:628px;font-size:26px">TXT</div>
+  <div class="pbar" style="left:136px;right:130px;top:674px"><i style="width:12%"></i></div><div class="a r" style="top:662px;font-size:26px">12%</div>
+  <div class="hl soft" style="top:708px"></div>
+  <div class="img g3" style="left:40px;top:724px;width:70px;height:96px"><div class="done" style="font-size:16px;line-height:28px">读完</div></div>
+  <div class="a b" style="left:136px;top:720px;font-size:34px">三体</div>
+  <div class="a" style="left:136px;top:768px;font-size:26px">EPUB</div>
+  <div class="a" style="left:136px;top:804px;font-size:26px">读完</div>
+  <div class="hl soft" style="top:848px"></div>
+  <div class="img g4" style="left:40px;top:864px;width:70px;height:96px"></div>
+  <div class="a b" style="left:136px;top:860px;font-size:34px">斗破苍穹</div><div class="a r b" style="top:864px;font-size:28px">+3 章</div>
+  <div class="a" style="left:136px;top:908px;font-size:26px">番茄 · 天蚕土豆</div>
+  <div class="pbar" style="left:136px;right:130px;top:954px"><i style="width:8%"></i></div><div class="a r" style="top:942px;font-size:26px">8%</div>
+  <div class="hl soft" style="top:988px"></div>
+  <div class="a" style="left:0;right:0;top:1010px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
   <div class="tabs">
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>② 书库</b>官方书架的功能（筛选、排序、拼音搜索、管理）全保留，换成这个排版：竖排书名的小封面、书名加作者和来源、进度线。番茄书有更新时标出新增章数。右上角是搜索和导入（导入即官方的“传书”）。长按一本进入管理。</figcaption></figure>
+<figcaption><b>① 书库</b>开机页，也是中键（home）回到的地方。顶部“继续阅读”卡片是最近读的那本，点一下接着读；番茄有新章节时状态行右边提示，点了去番茄页。下面是 TF 卡上的全部书：自己放的 TXT、EPUB 和番茄下载的书都在，每页 4 本。左边第一个按钮是来源筛选，默认“全部”，点一下依次切到“番茄”（只看番茄下载的）、“其他书”（只看自己放的），再点回“全部”；排序：按书名 / 按最近；“管理”可多选删除。右上角搜索（拼音首字母）和传书。长按一本书进图书详情，可以删除文件或清进度。</figcaption></figure>
 
-<!-- 阅读 -->
+<!-- ② 阅读 -->
 <figure><div class="frame"><div class="s">
   <div class="body" style="top:44px">　　克莱恩没有立刻离开，而是站在窗边，透过玻璃看着外面依旧热闹的街道。煤气路灯一盏盏亮起，马车的车轮碾过湿润的石板，发出沉闷的声响。<br>　　他想起了那本笔记里的内容，想起了那些被反复涂改的字句。那些字句像是某种暗号，又像是某个人在极度慌乱时留下的求救信号。<br>　　“也许我应该再去一次那里。”他低声自语。<br>　　窗外的雾气越来越浓，远处钟楼的轮廓渐渐模糊，只剩下一点昏黄的光，像是悬在半空中的一只眼睛。</div>
   <div class="a l mid" style="top:1158px;font-size:24px">第三章 黑夜</div>
   <div class="a r mid" style="top:1158px;font-size:24px">3 / 12　41%</div>
 </div></div>
-<figcaption><b>③ 阅读</b>整屏只有正文，页脚一行小字：章节名、本章页码、全书进度。没有状态栏和菜单按钮。点左右翻页，点中间呼出菜单；三个实体键照官方的规则（上页 / 菜单 / 下页）。</figcaption></figure>
+<figcaption><b>② 阅读</b>整屏正文，页脚章节名、本章页码和全书进度。点左右或左/右键翻页（DU 快刷，定期 GC16 清灰底）；点中间或短按中键呼出工具条；长按中键整屏刷新。</figcaption></figure>
 
-<!-- 阅读菜单 -->
+<!-- ③ 阅读工具条 -->
 <figure><div class="frame"><div class="s">
   <div class="body" style="top:44px;color:#9a9a9a">　　克莱恩没有立刻离开，而是站在窗边，透过玻璃看着外面依旧热闹的街道。煤气路灯一盏盏亮起，马车的车轮碾过湿润的石板，发出沉闷的声响。<br>　　他想起了那本笔记里的内容，想起了那些被反复涂改的字句。</div>
   <div class="a" style="left:0;right:0;top:0;height:120px;background:#fff;border-bottom:2px solid #000"></div>
   <div class="a l" style="top:40px;font-size:32px">‹ 书库</div>
-  <div class="a b" style="left:0;right:0;top:38px;text-align:center;font-size:34px">诡秘之主</div>
-  <div class="a" style="left:0;right:0;top:700px;bottom:0;background:#fff;border-top:2px solid #000"></div>
-  <div class="a l" style="top:734px;font-size:28px">第三章 黑夜</div>
-  <div class="a r" style="top:734px;font-size:28px">全书 41%</div>
-  <div class="pbar" style="left:40px;right:40px;top:788px"><i style="width:41%"></i></div>
-  <div class="a l" style="top:822px;font-size:28px">‹ 上一章</div>
-  <div class="a r" style="top:822px;font-size:28px">下一章 ›</div>
-  <div class="a" style="left:40px;right:40px;top:900px;display:flex;justify-content:space-between">
+  <div class="a b" style="left:0;right:0;top:38px;text-align:center;font-size:34px">宿命之环</div>
+  <div class="a" style="left:0;right:0;top:760px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l" style="top:794px;font-size:28px">第三章 黑夜</div>
+  <div class="a r" style="top:794px;font-size:28px">全书 41%</div>
+  <div class="pbar" style="left:40px;right:40px;top:848px"><i style="width:41%"></i></div>
+  <div class="a" style="left:40px;right:40px;top:910px;display:flex;justify-content:space-between">
     <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-toc"/></svg><br>目录</div>
-    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-aa"/></svg><br>字号</div>
-    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-mark"/></svg><br>书签</div>
-    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-flash"/></svg><br>清残影</div>
+    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-set"/></svg><br>菜单</div>
+    <div style="width:130px;text-align:center;font-size:28px"><div style="height:48px;font-size:36px;font-weight:700;line-height:48px">Aa</div>排版</div>
+    <div style="width:130px;text-align:center;font-size:28px"><svg class="icon" style="width:48px;height:48px"><use href="#i-books"/></svg><br>书库</div>
   </div>
-  <div class="hl soft" style="top:1040px"></div>
-  <div class="a l" style="top:1080px;font-size:28px">A−</div>
-  <div class="a" style="left:110px;right:110px;top:1096px;height:4px;background:#000"></div>
-  <div class="a" style="left:300px;top:1082px;width:32px;height:32px;border-radius:50%;background:#000"></div>
-  <div class="a r" style="top:1080px;font-size:28px">A+</div>
-  <div class="a" style="left:0;right:0;top:1140px;text-align:center;font-size:26px" class="mid">字号 40 · 点“字号”收起</div>
+  <div class="hl soft" style="top:1050px"></div>
+  <div class="pill out" style="left:40px;top:1080px;width:290px;height:76px">A−</div>
+  <div class="pill out" style="left:354px;top:1080px;width:290px;height:76px">A+</div>
 </div></div>
-<figcaption><b>④ 阅读菜单</b>点正文中间呼出：顶部返回书库，底部章节进度、上下章和四个功能。“字号”展开一条滑杆。去掉了官方工具栏里的按键说明、演示菜单入口和晃动翻页。“书签”是可选新增。</figcaption></figure>
+<figcaption><b>③ 阅读工具条</b>顶部返回书库；底部章节名、全书进度、目录、菜单、排版、回书库，以及字号 A− / A+（36～72 px，每档 4 px）。整屏刷新用长按中键。EPUB 插图显示为占位，点开单独预览。</figcaption></figure>
 
-<!-- 设置 -->
+<!-- ④ 排版面板 -->
 <figure><div class="frame"><div class="s">
-  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
-  <div class="a l b" style="top:88px;font-size:52px">设置</div>
-  <div class="sec" style="top:184px">阅读</div>
-  <div class="row" style="top:226px;height:88px"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
-  <div class="row" style="top:314px;height:88px"><span>整页刷新</span><span class="v">每 10 页 ›</span></div>
-  <div class="sec" style="top:430px">电源</div>
-  <div class="row" style="top:472px;height:88px"><span>自动锁屏</span><span class="v">2 分钟 ›</span></div>
-  <div class="row" style="top:560px;height:88px"><span>锁屏后</span><span class="v">浅睡，拿起唤醒 ›</span></div>
-  <div class="sec" style="top:676px">连接</div>
-  <div class="row" style="top:718px;height:88px"><span>Wi-Fi</span><span class="v">HomeNet ›</span></div>
-  <div class="row" style="top:806px;height:88px"><span>番茄服务器</span><span class="v">192.168.1.10 ›</span></div>
-  <div class="row" style="top:894px;height:88px"><span>导入书籍</span><span class="v">浏览器上传 ›</span></div>
-  <div class="row" style="top:982px;height:88px;border:0"><span>关于本机</span><span class="v">版本、存储、自检 ›</span></div>
-  <div class="tabs">
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
-    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
-  </div>
+  <div class="body" style="top:44px;font-size:40px;line-height:72px">　　克莱恩没有立刻离开，而是站在窗边，透过玻璃看着外面依旧热闹的街道。<br>　　他想起了那本笔记里的内容，想起了那些被反复涂改的字句。</div>
+  <div class="a" style="left:0;right:0;top:0;height:110px;background:#fff;border-bottom:2px solid #000"></div>
+  <div class="a l" style="top:40px;font-size:32px">‹ 书库</div>
+  <div class="a b" style="left:0;right:0;top:38px;text-align:center;font-size:34px">宿命之环</div>
+  <div class="a" style="left:0;right:0;top:620px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l b" style="top:644px;font-size:32px">排版</div>
+  <div class="pill blk" style="left:504px;top:634px;width:140px;height:56px;font-size:28px">完成</div>
+  <div class="a l" style="top:718px;font-size:28px">行距</div>
+  <div class="pill out" style="left:224px;top:704px;width:132px;height:56px;font-size:28px">紧凑</div>
+  <div class="pill blk" style="left:368px;top:704px;width:132px;height:56px;font-size:28px">标准</div>
+  <div class="pill out" style="left:512px;top:704px;width:132px;height:56px;font-size:28px">宽松</div>
+  <div class="a l" style="top:794px;font-size:28px">段距</div>
+  <div class="pill out" style="left:224px;top:780px;width:132px;height:56px;font-size:28px">无</div>
+  <div class="pill blk" style="left:368px;top:780px;width:132px;height:56px;font-size:28px">小</div>
+  <div class="pill out" style="left:512px;top:780px;width:132px;height:56px;font-size:28px">大</div>
+  <div class="a l" style="top:870px;font-size:28px">页边距</div>
+  <div class="pill out" style="left:224px;top:856px;width:132px;height:56px;font-size:28px">窄</div>
+  <div class="pill blk" style="left:368px;top:856px;width:132px;height:56px;font-size:28px">中</div>
+  <div class="pill out" style="left:512px;top:856px;width:132px;height:56px;font-size:28px">宽</div>
+  <div class="a l" style="top:946px;font-size:28px">首行缩进</div>
+  <div class="pill out" style="left:224px;top:932px;width:204px;height:56px;font-size:28px">按原文</div>
+  <div class="pill blk" style="left:440px;top:932px;width:204px;height:56px;font-size:28px">缩进两字</div>
+  <div class="a l" style="top:1022px;font-size:28px">下划线</div>
+  <div class="pill out" style="left:224px;top:1008px;width:204px;height:56px;font-size:28px">无</div>
+  <div class="pill blk" style="left:440px;top:1008px;width:204px;height:56px;font-size:28px">有</div>
 </div></div>
-<figcaption><b>⑤ 设置</b>分组清单，只有细分隔线和右侧的当前值。官方的字体、睡眠、传书、概览、自检页都收在这里，点进去换成同样的排版和中文文案（字体页不再显示跑分）。</figcaption></figure>
+<figcaption><b>④ 排版面板</b>工具条点“排版”打开。行距（字号的 1.3 / 1.5 / 1.8 倍）、段距、页边距（24 / 40 / 64 px）、首行缩进（自动缩进两个字，去掉原文段首空白）、下划线（每行下面一条虚线）。点一下立即按当前位置重排，设置对所有书生效；点上面的正文收起。</figcaption></figure>
 
-<!-- 锁屏 -->
+<!-- ⑤ 锁屏 · 书卡 -->
 <figure><div class="frame"><div class="s">
   <div class="a l" style="top:120px;font-size:30px">正在读</div>
-  <div class="cover" style="left:40px;top:180px;width:300px;height:400px"><div class="in" style="padding:34px 14px 22px"><span class="au" style="font-size:30px">爱潜水的乌贼</span><span class="ti" style="font-size:54px;line-height:66px">诡秘<br>之主</span><span class="fm" style="font-size:26px">番茄</span></div></div>
-  <div class="a b" style="left:40px;top:630px;font-size:54px">诡秘之主</div>
-  <div class="a" style="left:40px;top:704px;font-size:32px">第三章 黑夜 · 已读 41%</div>
-  <div class="pbar" style="left:40px;right:40px;top:770px"><i style="width:41%"></i></div>
+  <div class="img g1" style="left:40px;top:180px;width:300px;height:400px"><div class="t" style="font-size:40px;line-height:50px">宿命之环</div></div>
+  <div class="a b" style="left:40px;top:630px;font-size:54px">宿命之环</div>
+  <div class="a" style="left:40px;top:704px;font-size:32px">爱潜水的乌贼 · 已读 41%</div>
+  <div class="pbar" style="left:40px;right:40px;top:772px"><i style="width:41%"></i></div>
   <div class="quote" style="top:960px">慢一点，读几页。</div>
-  <div class="a" style="left:0;right:0;top:1120px;text-align:center;font-size:26px">按电源键，或拿起设备继续　·　82%</div>
+  <div class="a" style="left:0;right:0;top:1120px;text-align:center;font-size:26px">按电源键或拿起设备继续 · 电量 82%</div>
 </div></div>
-<figcaption><b>⑥ 锁屏</b>大号文字封面加进度和一句话。只在锁屏那一刻画一次，之后不再刷新。</figcaption></figure>
+<figcaption><b>⑤ 锁屏 · 书卡</b>没设壁纸时的样式：在读的书的封面、进度和电量。数据在屏幕上电前准备好，只画一次。</figcaption></figure>
+
+<!-- ⑥ 锁屏 · 壁纸 -->
+<figure><div class="frame"><div class="s">
+  <div class="wall"></div>
+  <div class="a" style="left:0;right:0;top:1056px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l b" style="top:1076px;font-size:32px">宿命之环</div>
+  <div class="a r" style="top:1078px;font-size:28px">已读 41%</div>
+  <div class="a" style="left:0;right:0;top:1150px;text-align:center;font-size:26px">按电源键或拿起设备继续 · 电量 82%</div>
+</div></div>
+<figcaption><b>⑥ 锁屏 · 壁纸</b>设了壁纸后铺满全屏，底部白条写在读的书、进度和电量。壁纸缓存丢了会在屏幕上电前重建。</figcaption></figure>
 
 </div>
 
-<h2>番茄小说</h2>
+<h2>番茄小说与书城</h2>
 <div class="grid">
 
-<!-- 番茄 -->
+<!-- ⑦ 番茄 · 书架 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
   <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>检查更新</div>
-  <div class="a l" style="top:156px;font-size:28px">12 本 · 上次检查 11/17 09:40</div>
-  <div class="pill out" style="left:40px;right:40px;top:212px;height:80px;justify-content:flex-start;padding-left:28px;gap:14px;color:#6b6b6b"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>搜索书名或作者</div>
-  <div class="sec" style="top:332px">有新章节 · 3</div>
-  <div class="a b" style="left:40px;top:378px;font-size:34px">诡秘之主</div><div class="a" style="left:40px;top:424px;font-size:26px">爱潜水的乌贼 · 1439 章</div><div class="a r b" style="top:392px;font-size:30px">+7 章</div>
-  <div class="hl soft" style="top:470px"></div>
-  <div class="a b" style="left:40px;top:488px;font-size:34px">道诡异仙</div><div class="a" style="left:40px;top:534px;font-size:26px">狐尾的笔 · 1236 章</div><div class="a r b" style="top:502px;font-size:30px">+23 章</div>
-  <div class="hl soft" style="top:580px"></div>
-  <div class="a b" style="left:40px;top:598px;font-size:34px">我在精神病院学斩神</div><div class="a" style="left:40px;top:644px;font-size:26px">三九音域 · 1810 章</div><div class="a r b" style="top:612px;font-size:30px">+2 章</div>
-  <div class="pill blk" style="left:40px;right:40px;top:708px;height:80px">下载全部更新</div>
-  <div class="sec" style="top:830px">书架 · 12</div>
-  <div class="a" style="left:40px;top:876px;font-size:32px">十日终焉</div><div class="a r" style="top:880px;font-size:28px">已读 64%</div>
-  <div class="hl soft" style="top:932px"></div>
-  <div class="a" style="left:40px;top:950px;font-size:32px">宿命之环</div><div class="a r" style="top:954px;font-size:28px">已读 3%</div>
-  <div class="hl soft" style="top:1006px"></div>
-  <div class="a" style="left:0;right:0;top:1030px;text-align:center;font-size:28px">全部 12 本 →</div>
+  <div class="seg"><span class="on">书架</span><span>书城</span></div>
+  <div class="a l" style="top:240px;font-size:28px">12 本 · 3 本有新章节</div>
+  <div class="pill out" style="left:40px;right:40px;top:290px;height:80px;justify-content:flex-start;padding-left:28px;gap:14px;color:#6b6b6b"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>搜索书名或作者</div>
+  <div class="pill blk" style="left:40px;right:40px;top:394px;height:80px">下载全部更新（3 本）</div>
+  <div class="a b" style="left:40px;top:506px;font-size:34px">宿命之环</div><div class="a" style="left:40px;top:550px;font-size:26px">爱潜水的乌贼 · 1180 章</div><div class="a r b" style="top:522px;font-size:28px">+7 章</div>
+  <div class="hl soft" style="top:586px"></div>
+  <div class="a b" style="left:40px;top:598px;font-size:34px">道诡异仙</div><div class="a" style="left:40px;top:642px;font-size:26px">狐尾的笔 · 1236 章</div><div class="a r b" style="top:614px;font-size:28px">+23 章</div>
+  <div class="hl soft" style="top:678px"></div>
+  <div class="a b" style="left:40px;top:690px;font-size:34px">我在精神病院学斩神</div><div class="a" style="left:40px;top:734px;font-size:26px">三九音域 · 1810 章</div><div class="a r b" style="top:706px;font-size:28px">+2 章</div>
+  <div class="hl soft" style="top:770px"></div>
+  <div class="a" style="left:40px;top:782px;font-size:34px">十日终焉</div><div class="a" style="left:40px;top:826px;font-size:26px">杀虫队队员 · 820 章</div><div class="a r" style="top:798px;font-size:28px">已读 64%</div>
+  <div class="hl soft" style="top:862px"></div>
+  <div class="a" style="left:40px;top:874px;font-size:34px">斗破苍穹</div><div class="a" style="left:40px;top:918px;font-size:26px">天蚕土豆 · 1648 章</div><div class="a r" style="top:890px;font-size:28px">未读</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
   <div class="tabs">
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑦ 番茄</b>第三个标签页。顶部搜索框；“有新章节”一节列出待更新的书和新增章数，下面一个黑色按钮“下载全部更新”；再往下是番茄书架。右上角“检查更新”只查不下载。</figcaption></figure>
+<figcaption><b>⑦ 番茄 · 书架</b>“检查更新”只查不下，有新章节才出现黑色的“下载全部更新”。有更新的排前面。顶部切到书城。</figcaption></figure>
 
-<!-- 更新中 -->
-<figure><div class="frame"><div class="s">
-  <div class="status"><span>21:31</span><span class="batt">81% <i></i></span></div>
-  <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
-  <div class="a l" style="top:156px;font-size:28px">正在更新，可以先去看书</div>
-  <div class="a l b" style="top:236px;font-size:40px">2 / 3　道诡异仙</div>
-  <div class="a l" style="top:296px;font-size:28px">服务器已生成，正在下载 · 1.2 MB</div>
-  <div class="pbar" style="left:40px;right:40px;top:358px"><i style="width:55%"></i></div>
-  <div class="a r" style="top:392px;font-size:30px">取消</div>
-  <div class="hl" style="top:460px"></div>
-  <div class="a" style="left:40px;top:494px;font-size:32px">诡秘之主</div><div class="a r" style="top:498px;font-size:28px">✓ 已更新 +7</div>
-  <div class="hl soft" style="top:550px"></div>
-  <div class="a b" style="left:40px;top:568px;font-size:32px">道诡异仙</div><div class="a r b" style="top:572px;font-size:28px">下载中</div>
-  <div class="hl soft" style="top:624px"></div>
-  <div class="a" style="left:40px;top:642px;font-size:32px">我在精神病院学斩神</div><div class="a r mid" style="top:646px;font-size:28px">等待</div>
-  <div class="hl soft" style="top:698px"></div>
-  <div class="a l mid" style="top:1030px;font-size:26px">联网只在更新期间打开，完成后自动断开</div>
-  <div class="tabs">
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
-    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
-  </div>
-</div></div>
-<figcaption><b>⑧ 更新进行中</b>大字显示当前在下哪本，一条进度线，右侧“取消”。下面逐本显示状态。只局部刷新这块区域。离开去看书也不中断。</figcaption></figure>
-
-<!-- 搜索键盘 -->
+<!-- ⑧ 番茄 · 搜索 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:32</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:94px;font-size:44px">‹</div>
-  <div class="pill out" style="left:96px;right:40px;top:84px;height:80px;justify-content:flex-start;padding-left:24px;gap:12px;font-size:34px"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>诡秘<span style="display:inline-block;width:3px;height:40px;background:#000"></span></div>
+  <div class="pill out" style="left:96px;right:40px;top:84px;height:80px;justify-content:flex-start;padding-left:24px;gap:12px;font-size:34px"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>宿命<span style="display:inline-block;width:3px;height:40px;background:#000"></span></div>
   <div class="sec" style="top:208px">最近搜索</div>
-  <div class="a l" style="top:254px"><span class="chip">诡秘之主</span><span class="chip">十日终焉</span><span class="chip">乌贼</span></div>
+  <div class="a l" style="top:254px"><span class="chip">宿命之环</span><span class="chip">十日终焉</span><span class="chip">乌贼</span></div>
   <div class="a" style="left:0;right:0;top:580px;bottom:0;border-top:2px solid #000;background:#fff"></div>
-  <div class="a l b" style="top:600px;font-size:30px">zhi'zhu</div>
-  <div class="a" style="left:40px;right:40px;top:650px;height:70px;display:flex;align-items:center;font-size:36px;gap:0">
-    <span class="b" style="padding-right:26px">之主</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">蜘蛛</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">知足</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">只</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">之</span><span style="margin-left:auto">›</span>
+  <div class="a l b" style="top:600px;font-size:30px">zhi'huan</div>
+  <div class="a" style="left:40px;right:40px;top:650px;height:70px;display:flex;align-items:center;font-size:36px">
+    <span class="b" style="padding-right:26px">之环</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">指环</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">纸环</span><span style="border-left:2px solid #c8c8c8;padding:0 26px">之</span><span style="margin-left:auto">›</span>
   </div>
   <div class="hl soft" style="top:730px"></div>
-  <div id="kb"></div>
+  <div class="kb"></div>
 </div></div>
-<figcaption><b>⑨ 搜索</b>键盘从底部升起，盖住标签栏。拼音一行、候选一行（只用细竖线隔开），浅灰底的字母键，回车位是黑色“搜索”。打字时只局部刷新键盘区，不闪屏。左下角可切九键。</figcaption></figure>
+<figcaption><b>⑧ 番茄 · 搜索</b>离线拼音输入法：全拼 / 九键 / 英文循环切换，“123”切符号。候选按词频排序，打字只局部刷新键盘区。</figcaption></figure>
 
-<!-- 搜索结果 -->
+<!-- ⑨ 搜索结果 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:32</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:94px;font-size:44px">‹</div>
-  <div class="pill out" style="left:96px;right:40px;top:84px;height:80px;justify-content:flex-start;padding-left:24px;gap:12px;font-size:34px"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>诡秘</div>
-  <div class="sec" style="top:204px">8 个结果</div>
-  <div class="mini" style="left:40px;top:254px">诡秘之主</div>
-  <div class="a b" style="left:136px;top:252px;font-size:34px">诡秘之主</div>
-  <div class="a" style="left:136px;top:300px;font-size:26px">爱潜水的乌贼 · 玄幻</div>
-  <div class="a" style="left:136px;top:336px;font-size:26px">完结 · 1432 章 · 446 万字</div>
-  <div class="a r mid" style="top:256px;font-size:26px">已在书库</div>
+  <div class="pill out" style="left:96px;right:40px;top:84px;height:80px;justify-content:flex-start;padding-left:24px;gap:12px;font-size:34px"><svg class="icon" style="width:34px;height:34px"><use href="#i-search"/></svg>宿命</div>
+  <div class="sec" style="top:204px">6 个结果</div>
+  <div class="mini" style="left:40px;top:256px">宿命之环</div>
+  <div class="a b" style="left:136px;top:254px;font-size:34px">宿命之环</div><div class="a r mid" style="top:260px;font-size:26px">已在书库</div>
+  <div class="a" style="left:136px;top:302px;font-size:26px">爱潜水的乌贼 · 玄幻</div>
+  <div class="a" style="left:136px;top:338px;font-size:26px">连载 · 1180 章 · 312 万字</div>
   <div class="hl soft" style="top:374px"></div>
-  <div class="mini" style="left:40px;top:394px">宿命之环</div>
-  <div class="a b" style="left:136px;top:392px;font-size:34px">宿命之环</div>
-  <div class="a" style="left:136px;top:440px;font-size:26px">爱潜水的乌贼 · 玄幻</div>
-  <div class="a" style="left:136px;top:476px;font-size:26px">连载 · 1180 章 · 312 万字</div>
+  <div class="mini" style="left:40px;top:396px">宿命回廊</div>
+  <div class="a b" style="left:136px;top:394px;font-size:34px">宿命回廊</div>
+  <div class="a" style="left:136px;top:442px;font-size:26px">青山不改 · 悬疑</div>
+  <div class="a" style="left:136px;top:478px;font-size:26px">完结 · 640 章 · 186 万字</div>
   <div class="hl soft" style="top:514px"></div>
-  <div class="mini" style="left:40px;top:534px">诡秘复苏</div>
-  <div class="a b" style="left:136px;top:532px;font-size:34px">诡秘复苏</div>
-  <div class="a" style="left:136px;top:580px;font-size:26px">佛前献花 · 悬疑</div>
-  <div class="a" style="left:136px;top:616px;font-size:26px">完结 · 1012 章 · 298 万字</div>
+  <div class="mini" style="left:40px;top:536px">宿命之子</div>
+  <div class="a b" style="left:136px;top:534px;font-size:34px">宿命之子</div>
+  <div class="a" style="left:136px;top:582px;font-size:26px">北风辞 · 奇幻</div>
+  <div class="a" style="left:136px;top:618px;font-size:26px">连载 · 302 章 · 88 万字</div>
   <div class="hl soft" style="top:654px"></div>
-  <div class="mini" style="left:40px;top:674px">诡秘求生</div>
-  <div class="a b" style="left:136px;top:672px;font-size:34px">诡秘求生：开局一座院子</div>
-  <div class="a" style="left:136px;top:720px;font-size:26px">夜雨江南 · 都市</div>
-  <div class="a" style="left:136px;top:756px;font-size:26px">连载 · 208 章 · 61 万字</div>
-  <div class="hl soft" style="top:794px"></div>
-  <div class="mini" style="left:40px;top:814px">守夜人</div>
-  <div class="a b" style="left:136px;top:812px;font-size:34px">诡秘世界：我是守夜人</div>
-  <div class="a" style="left:136px;top:860px;font-size:26px">墨染青衫 · 奇幻</div>
-  <div class="a" style="left:136px;top:896px;font-size:26px">连载 · 455 章 · 132 万字</div>
-  <div class="hl soft" style="top:934px"></div>
-  <div class="a" style="left:0;right:0;top:1022px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
   <div class="tabs">
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-home"/></svg></span>首页</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>⑩ 搜索结果</b>和书库同一种行样式：竖排小封面、书名、作者和分类、完结状态和规模。已下载的书标“已在书库”。一页 5 条，翻页不滚动。</figcaption></figure>
+<figcaption><b>⑨ 搜索结果</b>一页 5 条：书名、作者和分类、连载状态和规模。已下载的标“已在书库”。点一本先看详情。</figcaption></figure>
 
-<!-- 详情 -->
+<!-- ⑩ 搜索详情 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:33</span><span class="batt">81% <i></i></span></div>
   <div class="a l" style="top:90px;font-size:30px">‹ 搜索结果</div>
-  <div class="cover" style="left:232px;top:160px;width:220px;height:296px"><div class="in" style="padding:24px 8px 16px"><span class="au">爱潜水的乌贼</span><span class="ti" style="font-size:40px;line-height:50px">宿命<br>之环</span><span class="fm">番茄</span></div></div>
-  <div class="a b" style="left:0;right:0;top:488px;text-align:center;font-size:48px">宿命之环</div>
-  <div class="a" style="left:0;right:0;top:554px;text-align:center;font-size:30px">爱潜水的乌贼</div>
+  <div class="cover" style="left:232px;top:160px;width:220px;height:296px"><div class="in" style="padding:24px 8px 16px"><span class="au">青山不改</span><span class="ti" style="font-size:40px;line-height:50px">宿命<br>回廊</span><span class="fm">番茄</span></div></div>
+  <div class="a b" style="left:0;right:0;top:488px;text-align:center;font-size:48px">宿命回廊</div>
+  <div class="a" style="left:0;right:0;top:554px;text-align:center;font-size:30px">青山不改</div>
   <div class="a" style="left:40px;right:40px;top:626px;display:flex;border-top:2px solid #c8c8c8;border-bottom:2px solid #c8c8c8;height:116px">
-    <div style="flex:1;text-align:center;padding-top:16px"><div style="font-size:24px">分类</div><div class="b" style="font-size:32px">玄幻</div></div>
-    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">状态</div><div class="b" style="font-size:32px">连载</div></div>
-    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">章节</div><div class="b" style="font-size:32px">1180</div></div>
-    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">字数</div><div class="b" style="font-size:32px">312 万</div></div>
+    <div style="flex:1;text-align:center;padding-top:16px"><div style="font-size:24px">分类</div><div class="b" style="font-size:32px">悬疑</div></div>
+    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">状态</div><div class="b" style="font-size:32px">完结</div></div>
+    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">章节</div><div class="b" style="font-size:32px">640</div></div>
+    <div style="flex:1;text-align:center;padding-top:16px;border-left:2px solid #c8c8c8"><div style="font-size:24px">字数</div><div class="b" style="font-size:32px">186 万</div></div>
   </div>
-  <div class="a" style="left:40px;right:40px;top:772px;font-size:28px;line-height:44px">　　“我们会在这片被遗忘的土地上，寻找属于自己的命运……”蒸汽与机械的浪潮中，谁能触及非凡？</div>
+  <div class="a" style="left:40px;right:40px;top:772px;font-size:28px;line-height:44px">　　一座没有出口的回廊，每扇门后都是另一个人的命运。他必须在第七次轮回前找到写下这一切的人……</div>
   <div class="pill blk" style="left:40px;right:40px;top:960px;height:88px">下载到书库</div>
 </div></div>
-<figcaption><b>⑪ 书籍详情</b>点搜索结果进入：居中的文字封面、书名作者、四格信息、两三行简介（服务器搜索结果自带，不额外请求），底部一个黑色按钮。点下载后按钮变成进度线，完成后变成“开始阅读”。</figcaption></figure>
+<figcaption><b>⑩ 搜索详情</b>简介来自搜索结果，不额外联网。下载时按钮换成进度和“取消”；完成后变成“开始阅读”，封面一起保存。</figcaption></figure>
+
+<!-- ⑪ 书城 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">番茄小说</div>
+  <div class="seg"><span>书架</span><span class="on">书城</span></div>
+  <div class="a l" style="top:258px;font-size:28px">榜单 2026-10-28</div>
+  <div class="a r" style="top:254px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="a" style="left:40px;top:322px;display:flex;gap:14px"><span class="chip on" style="height:62px;font-size:30px">男频</span><span class="chip" style="height:62px;font-size:30px">女频</span></div>
+  <div class="hl soft" style="top:404px"></div>
+  <div class="cats" style="top:430px">
+    <span class="chip">西方奇幻</span><span class="chip">东方仙侠</span><span class="chip">科幻末世</span>
+    <span class="chip on">都市日常</span><span class="chip">都市修真</span><span class="chip">都市高武</span>
+    <span class="chip">历史古代</span><span class="chip">战神赘婿</span><span class="chip">都市种田</span>
+    <span class="chip">传统玄幻</span><span class="chip">历史脑洞</span><span class="chip">悬疑脑洞</span>
+    <span class="chip">都市脑洞</span><span class="chip">玄幻脑洞</span><span class="chip">悬疑灵异</span>
+    <span class="chip">抗战谍战</span><span class="chip">游戏体育</span><span class="chip">动漫衍生</span>
+    <span class="chip">男频衍生</span>
+  </div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑪ 书城</b>FanqieRankTracker 榜单，男频 / 女频共 37 个分类。只在点“刷新”或打开没缓存的分类时联网，记住上次的频道和分类。直连 GitHub Pages 超时会自动改用 jsDelivr 镜像。</figcaption></figure>
+
+<!-- ⑫ 分类榜单 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">都市日常</div>
+  <div class="a r" style="top:104px;font-size:28px">男频 · 2026-10-28</div>
+  <div class="hl" style="top:170px"></div>
+  <div style="position:absolute;left:40px;top:186px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#3a3a3a,#9a9a9a);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">扫黑风暴之怒</div>
+  <div class="a b" style="left:40px;top:394px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">1 扫黑风暴之怒海惊涛</div>
+  <div class="a" style="left:40px;top:432px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 25.4万</div>
+  <div style="position:absolute;left:267px;top:186px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#555,#d0d0d0);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">高冷？外冷内</div>
+  <div class="a b" style="left:267px;top:394px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">2 高冷？外冷内齁！你们请攻略我吧</div>
+  <div class="a" style="left:267px;top:432px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 23.2万</div>
+  <div style="position:absolute;left:494px;top:186px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#222,#777);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">啊？我是背景</div>
+  <div class="a b" style="left:494px;top:394px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">3 啊？我是背景通天的大佬？</div>
+  <div class="a b" style="left:494px;top:432px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">已在书架</div>
+  <div style="position:absolute;left:40px;top:470px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#6a6a6a,#e4e4e4);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">穿书女频，被</div>
+  <div class="a b" style="left:40px;top:678px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">4 穿书女频，被病娇姐妹缠上了</div>
+  <div class="a" style="left:40px;top:716px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 16.8万</div>
+  <div style="position:absolute;left:267px;top:470px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#2c2c2c,#8c8c8c);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">正光加代那些</div>
+  <div class="a b" style="left:267px;top:678px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">5 正光加代那些事</div>
+  <div class="a" style="left:267px;top:716px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 15.2万</div>
+  <div style="position:absolute;left:494px;top:470px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#4a4a4a,#bdbdbd);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">情迷沪上贵妇</div>
+  <div class="a b" style="left:494px;top:678px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">6 情迷沪上贵妇</div>
+  <div class="a" style="left:494px;top:716px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 13.7万</div>
+  <div style="position:absolute;left:40px;top:754px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#777,#eee);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">谈了个女朋友</div>
+  <div class="a b" style="left:40px;top:962px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">7 谈了个女朋友，比我大18岁！</div>
+  <div class="a" style="left:40px;top:1000px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 10.5万</div>
+  <div style="position:absolute;left:267px;top:754px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#333,#a8a8a8);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">我在都市当神</div>
+  <div class="a b" style="left:267px;top:962px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">8 我在都市当神豪</div>
+  <div class="a" style="left:267px;top:1000px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 9.8万</div>
+  <div style="position:absolute;left:494px;top:754px;width:150px;height:200px;border:2px solid #000;box-sizing:border-box;background:linear-gradient(160deg,#505050,#c8c8c8);color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;font-size:24px;font-weight:700;padding:10px;line-height:30px">重生之商海浮</div>
+  <div class="a b" style="left:494px;top:962px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">9 重生之商海浮沉</div>
+  <div class="a" style="left:494px;top:1000px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 9.1万</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑫ 分类榜单</b>3×3 封面网格，20 本分 3 页，点按钮或滑一下翻整页。打开分类时后台一次取完封面，缩略图生成完整页刷新一次。书名前是名次，已在书架的书第二行加粗标出；封面上不叠字。（示意图用灰色块代替真实封面）</figcaption></figure>
+
+<!-- ⑬ 书城详情 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a" style="left:96px;top:100px;font-size:30px">都市日常 · 第 1 名</div>
+  <div class="img g2" style="left:40px;top:180px;width:220px;height:296px"><div class="t" style="font-size:32px;line-height:40px">扫黑风暴之怒海惊涛</div></div>
+  <div class="a b" style="left:292px;top:188px;right:40px;font-size:40px;line-height:52px">扫黑风暴之<br>怒海惊涛</div>
+  <div class="a" style="left:292px;top:310px;font-size:30px">南第</div>
+  <div class="a" style="left:292px;top:360px;font-size:28px">在读 25.4万</div>
+  <div class="a" style="left:292px;top:404px;font-size:28px">男频 · 都市日常</div>
+  <div class="hl soft" style="top:510px"></div>
+  <div class="intro" style="top:536px">文海县，两任公安局长离奇死亡，全家惨遭灭门。而最后一任，更是死在自己的办公室，脑袋被人放置在自己的办公桌上。陆缨临危受命，上任第一天就与黑恶势力的保护伞展开殊死较量……</div>
+  <div class="pill blk" style="left:40px;right:40px;top:1000px;height:84px">下载到书库</div>
+  <div class="a" style="left:0;right:0;top:1110px;text-align:center;font-size:26px">经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到</div>
+</div></div>
+<figcaption><b>⑬ 书城详情</b>封面多半在榜单页已经取好；还缺才单取这一本。“下载到书库”直接用榜单里的 book_id，和搜索下载走同一条路；已在书架的书按钮变成“开始阅读”。</figcaption></figure>
 
 </div>
 
+<h2>虎扑（只读）</h2>
+<div class="grid">
+<!-- ⑭ 虎扑 · 推荐 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span class="on">推荐</span><span>关注</span><span>比分</span></div>
+  <div class="a l mid" style="top:240px;font-size:26px">首页推荐 · 30 条</div>
+  <div class="t2" style="left:40px;right:220px;top:294px;font-size:30px;line-height:40px">[流言板]BLG现身篮网主场，转播字幕展示世界冠军身份</div>
+  <div class="meta" style="left:40px;top:384px">英雄联盟 · 1095 回复</div>
+  <div class="thumb g1" style="left:494px;top:302px"></div>
+  <div class="hl soft" style="top:426px"></div>
+  <div class="t2" style="left:40px;right:220px;top:442px;font-size:30px;line-height:40px">[流言板]B站上单老祖发文向Bin致歉：今后不再夸大，不再标题党引流</div>
+  <div class="meta" style="left:40px;top:532px">英雄联盟 · 378 回复</div>
+  <div class="thumb g2" style="left:494px;top:450px"></div>
+  <div class="hl soft" style="top:574px"></div>
+  <div class="t2" style="left:40px;right:40px;top:590px;font-size:30px;line-height:40px">[DADE奖]经过JRs的评选，Gumayusi当选2026全球总决赛Dade奖</div>
+  <div class="meta" style="left:40px;top:680px">英雄联盟 · 660 回复</div>
+  <div class="hl soft" style="top:722px"></div>
+  <div class="t2" style="left:40px;right:220px;top:738px;font-size:30px;line-height:40px">[情报站]韩媒：Nuguri张夏权时隔4年试水重返现役赛场</div>
+  <div class="meta" style="left:40px;top:828px">英雄联盟 · 1022 回复</div>
+  <div class="thumb g3" style="left:494px;top:746px"></div>
+  <div class="hl soft" style="top:870px"></div>
+  <div class="t2" style="left:40px;right:220px;top:886px;font-size:30px;line-height:40px">[流言板]LOL官方更新赛区强度排名：LPL力压LCK，三年来首次登顶</div>
+  <div class="meta" style="left:40px;top:976px">英雄联盟 · 251 回复</div>
+  <div class="thumb g4" style="left:494px;top:894px"></div>
+  <div class="hl soft" style="top:1018px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑭ 虎扑 · 推荐</b>虎扑首页推荐，每页 5 条。顶部分段切 推荐 / 关注 / 比分。标题最多两行，下面是专区和回复数；帖子带图的，右边显示第一张缩略图。点“刷新”才联网。列表先出文字，缩略图在后台一次取完，全部到齐后整页刷新一次（和书城封面网格一样）。翻页点“‹ ›”或滑一下。</figcaption></figure>
+<!-- ⑮ 帖子 · 正文 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
+  <div class="seg" style="top:150px"><span class="on">正文</span><span>亮了 50</span><span>回复 1095</span></div>
+  <div class="t2" style="left:40px;right:40px;top:240px;font-size:38px;line-height:50px">[流言板]BLG现身篮网主场，转播字幕展示世界冠军身份</div>
+  <div class="meta" style="left:40px;top:350px">虎扑游戏电竞资讯 · 11-17 20:41 · 1095 回复</div>
+  <div class="hl soft" style="top:394px"></div>
+  <div class="ptext" style="top:412px">　　虎扑11月17日讯 今日BLG全员受邀来到篮网主场观赛，现场转播在镜头给到众人时，打出了“英雄联盟全球总决赛冠军”的字幕。</div>
+  <div class="img g1" style="left:40px;top:578px;width:604px;height:300px"></div>
+  <div class="a mid" style="left:0;right:0;top:886px;text-align:center;font-size:22px">图 1 / 3 · 点图看大图</div>
+  <div class="ptext" style="top:926px">　　队员们身穿主队球衣，赛前还在场边与球员合影，并获赠了签名球衣。</div>
+  <div class="a" style="left:0;right:0;top:1124px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
+
+</div></div>
+<figcaption><b>⑮ 帖子 · 正文</b>正文转成文字分页显示，点左右两侧、滑一下或点底部“‹ ›”翻页。图片按屏幕宽度缩成 JPG 嵌在正文里：文字先出来，图片后台取完后这一页刷新一次；点图全屏看（⑰）。视频和动图只显示静态封面。顶部切“亮了”“回复”。</figcaption></figure>
+<!-- ⑯ 帖子 · 亮了 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
+  <div class="seg" style="top:150px"><span>正文</span><span class="on">亮了 50</span><span>回复 1095</span></div>
+  <div class="a b" style="left:40px;top:240px;font-size:26px">怀中有金</div>
+  <div class="a r b" style="top:240px;font-size:24px">亮 312</div>
+  <div class="t3" style="left:40px;right:40px;top:282px;font-size:30px;line-height:44px">电竞很方便的，电脑设备半天就搞定了，篮球复原也很简单呀，只要对齐就行</div>
+  <div class="hl soft" style="top:388px"></div>
+  <div class="a b" style="left:40px;top:408px;font-size:26px">theleego7</div>
+  <div class="a r b" style="top:408px;font-size:24px">亮 256</div>
+  <div class="t3" style="left:40px;right:40px;top:450px;font-size:30px;line-height:44px">有排面</div>
+  <div class="hl soft" style="top:512px"></div>
+  <div class="a b" style="left:40px;top:532px;font-size:26px">虎扑JR1392826315</div>
+  <div class="a r b" style="top:532px;font-size:24px">亮 198</div>
+  <div class="quoteb" style="top:574px">引用 晚秋笛声悠悠：哈哈截到了</div>
+  <div class="t3" style="left:40px;right:40px;top:620px;font-size:30px;line-height:44px">大师手里的估计是道哥的，这球衣尺码一看就不对</div>
+  <div class="hl soft" style="top:726px"></div>
+  <div class="a b" style="left:40px;top:746px;font-size:26px">晚秋笛声悠悠</div>
+  <div class="a r b" style="top:746px;font-size:24px">亮 143</div>
+  <div class="t3" style="left:40px;right:40px;top:788px;font-size:30px;line-height:44px">哈哈截到了，转播导播是懂流量的，这个镜头给了足足十秒</div>
+  <div class="hl soft" style="top:894px"></div>
+  <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 13　　›</div>
+
+</div></div>
+<figcaption><b>⑯ 帖子 · 亮了</b>“亮了”的热门回复，每页放得下几条就放几条，长回复最多三行，点开看全文。引用的楼层用灰色竖线标出。“回复”分段是全部回复，按时间排序，同样分页。不登录只能看，不能回复和点亮。</figcaption></figure>
+<!-- ⑰ 看大图 -->
+<figure><div class="frame"><div class="s">
+
+  <div class="img g2" style="left:0;top:0;width:684px;height:1216px;border:0"></div>
+  <div class="a" style="left:0;right:0;top:1120px;height:96px;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l b" style="top:1146px;font-size:30px">图 1 / 3</div>
+  <div class="a r" style="top:1146px;font-size:28px">左右翻图 · 点中间返回</div>
+
+</div></div>
+<figcaption><b>⑰ 看大图</b>点正文里的图全屏查看，抖动成 16 级灰度。左右切换这帖子里的图，点中间返回正文。</figcaption></figure>
+<!-- ⑱ 虎扑 · 关注 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span>推荐</span><span class="on">关注</span><span>比分</span></div>
+  <div class="a l" style="top:240px;font-size:26px">来自 5 个专区：步行街、湖人、英雄联盟…</div>
+  <div class="a r b" style="top:240px;font-size:26px">管理 ›</div>
+  <div class="t2" style="left:40px;right:40px;top:294px;font-size:30px;line-height:40px">[步行街主干道]下班路上捡到一只橘猫，现在它已经是家里的老大了</div>
+  <div class="meta" style="left:40px;top:384px">步行街主干道 · 2310 回复</div>
+  <div class="hl soft" style="top:426px"></div>
+  <div class="t2" style="left:40px;right:40px;top:442px;font-size:30px;line-height:40px">[湖人专区]詹姆斯：我还没想过退役的事，身体感觉很好</div>
+  <div class="meta" style="left:40px;top:532px">湖人专区 · 856 回复</div>
+  <div class="hl soft" style="top:574px"></div>
+  <div class="t2" style="left:40px;right:40px;top:590px;font-size:30px;line-height:40px">[英雄联盟]Knight晒照：谢谢叔叔的商务舱，准备飞啦</div>
+  <div class="meta" style="left:40px;top:680px">英雄联盟 · 350 回复</div>
+  <div class="hl soft" style="top:722px"></div>
+  <div class="t2" style="left:40px;right:40px;top:738px;font-size:30px;line-height:40px">[数码]用了三个月墨水屏阅读器，说说真实感受</div>
+  <div class="meta" style="left:40px;top:828px">数码 · 421 回复</div>
+  <div class="hl soft" style="top:870px"></div>
+  <div class="t2" style="left:40px;right:40px;top:886px;font-size:30px;line-height:40px">[步行街主干道]大家每天花多少时间看手机？</div>
+  <div class="meta" style="left:40px;top:976px">步行街主干道 · 1288 回复</div>
+  <div class="hl soft" style="top:1018px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 4　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑱ 虎扑 · 关注</b>关注的专区只存在设备上（TF 卡），不用登录。这里把各专区第一页的帖子轮流混排（每个专区取 10 条，最多 12 个专区）。没关注时显示“去选专区”按钮。“管理”进全部专区网格（⑲）加减关注。</figcaption></figure>
+<!-- ⑲ 全部专区 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">全部专区</div>
+  <div class="a r" style="top:104px;font-size:28px">已关注 5</div>
+  <div class="pill out" style="left:40px;top:170px;width:110px;height:50px;font-size:26px">步行街</div>
+  <div class="pill blk" style="left:160px;top:170px;width:80px;height:50px;font-size:26px">NBA</div>
+  <div class="pill out" style="left:250px;top:170px;width:80px;height:50px;font-size:26px">CBA</div>
+  <div class="pill out" style="left:340px;top:170px;width:136px;height:50px;font-size:26px">国际足球</div>
+  <div class="pill out" style="left:486px;top:170px;width:136px;height:50px;font-size:26px">中国足球</div>
+  <div class="pill out" style="left:40px;top:230px;width:136px;height:50px;font-size:26px">综合体育</div>
+  <div class="pill out" style="left:186px;top:230px;width:136px;height:50px;font-size:26px">影视娱乐</div>
+  <div class="pill out" style="left:332px;top:230px;width:84px;height:50px;font-size:26px">游戏</div>
+  <div class="pill out" style="left:426px;top:230px;width:110px;height:50px;font-size:26px">二次元</div>
+  <div class="pill out" style="left:546px;top:230px;width:84px;height:50px;font-size:26px">装备</div>
+  <div class="pill out" style="left:40px;top:290px;width:84px;height:50px;font-size:26px">数码</div>
+  <div class="pill out" style="left:134px;top:290px;width:84px;height:50px;font-size:26px">汽车</div>
+  <div class="hl" style="top:358px"></div>
+  <div class="zone" style="left:40px;top:380px">火箭专区</div>
+  <div class="zone" style="left:246px;top:380px">勇士专区</div>
+  <div class="zone" style="left:452px;top:380px">骑士专区</div>
+  <div class="zone" style="left:40px;top:482px">马刺专区</div>
+  <div class="zone on" style="left:246px;top:482px">✓ 湖人专区</div>
+  <div class="zone" style="left:452px;top:482px">凯尔特人</div>
+  <div class="zone" style="left:40px;top:584px">篮网专区</div>
+  <div class="zone" style="left:246px;top:584px">雷霆专区</div>
+  <div class="zone" style="left:452px;top:584px">掘金专区</div>
+  <div class="zone" style="left:40px;top:686px">76人专区</div>
+  <div class="zone" style="left:246px;top:686px">快船专区</div>
+  <div class="zone" style="left:452px;top:686px">尼克斯</div>
+  <div class="zone" style="left:40px;top:788px">独行侠</div>
+  <div class="zone" style="left:246px;top:788px">国王专区</div>
+  <div class="zone" style="left:452px;top:788px">热火专区</div>
+  <div class="zone" style="left:40px;top:890px">公牛专区</div>
+  <div class="zone" style="left:246px;top:890px">老鹰专区</div>
+  <div class="zone" style="left:452px;top:890px">魔术专区</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑲ 全部专区</b>约 240 个专区按分类分页，翻页不滚动。黑底带 ✓ 的是已关注；点专区名进它的帖子列表，在列表顶部关注或取消关注。专区列表缓存在 TF 卡，平时不用联网。</figcaption></figure>
+<!-- ⑳ 专区帖子 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">湖人专区</div>
+  <div class="pill out" style="right:40px;top:92px;width:160px;height:56px;font-size:28px">✓ 已关注</div>
+  <div class="pill blk" style="left:40px;top:176px;width:170px;height:54px;font-size:28px">最新回复</div>
+  <div class="pill out" style="left:222px;top:176px;width:170px;height:54px;font-size:28px">最新发布</div>
+  <div class="a r" style="top:186px;font-size:30px">刷新</div>
+  <div class="t2" style="left:40px;right:40px;top:258px;font-size:30px;line-height:40px">詹姆斯：我还没想过退役的事，身体感觉很好</div>
+  <div class="meta" style="left:40px;top:348px">紫金王朝 · 4小时前 · 856 回复</div>
+  <div class="hl soft" style="top:390px"></div>
+  <div class="t2" style="left:40px;right:40px;top:406px;font-size:30px;line-height:40px">赛后采访：东契奇谈最后两分钟的处理</div>
+  <div class="meta" style="left:40px;top:496px">湖人老球迷 · 5小时前 · 432 回复</div>
+  <div class="hl soft" style="top:538px"></div>
+  <div class="t2" style="left:40px;right:40px;top:554px;font-size:30px;line-height:40px">湖人今晚轮换：八村塁复出，替补阵容有调整</div>
+  <div class="meta" style="left:40px;top:644px">洛城之光 · 6小时前 · 298 回复</div>
+  <div class="hl soft" style="top:686px"></div>
+  <div class="t2" style="left:40px;right:40px;top:702px;font-size:30px;line-height:40px">数据流：詹姆斯 28 分 7 篮板 9 助攻</div>
+  <div class="meta" style="left:40px;top:792px">JR数据组 · 7小时前 · 177 回复</div>
+  <div class="hl soft" style="top:834px"></div>
+  <div class="t2" style="left:40px;right:40px;top:850px;font-size:30px;line-height:40px">有没有懂哥分析一下湖人现在的防守体系</div>
+  <div class="meta" style="left:40px;top:940px">虎扑JR123 · 8小时前 · 640 回复</div>
+  <div class="hl soft" style="top:982px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 20　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑳ 专区帖子</b>专区的帖子，每页 5 条，可按最新回复或最新发布排序；翻到还没取的一页时自动取下一批（最多缓存 200 条），右边“刷新”重新取第一页。右上角关注或取消关注（只记在设备上）。</figcaption></figure>
+<!-- ㉑ 虎扑 · 比分 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span>推荐</span><span>关注</span><span class="on">比分</span></div>
+  <div class="pill blk" style="left:40px;top:244px;width:118px;height:54px;font-size:28px">NBA</div>
+  <div class="pill out" style="left:170px;top:244px;width:118px;height:54px;font-size:28px">CBA</div>
+  <div class="pill out" style="left:300px;top:244px;width:108px;height:54px;font-size:28px">英超</div>
+  <div class="pill out" style="left:420px;top:244px;width:118px;height:54px;font-size:28px">LOL</div>
+  <div class="pill out" style="left:550px;top:244px;width:108px;height:54px;font-size:28px">网球</div>
+  <div class="a" style="left:0;right:0;top:320px;text-align:center;font-size:30px"><b>‹　　11 月 17 日 周一 · 今天　　›</b></div>
+  <div class="hl" style="top:378px"></div>
+  <div class="a b" style="left:40px;width:190px;top:416px;font-size:32px;text-align:center">湖人</div>
+  <div class="score" style="left:230px;width:224px;top:408px;text-align:center">112 : 108</div>
+  <div class="a b" style="left:454px;width:190px;top:416px;font-size:32px;text-align:center">勇士</div>
+  <div class="meta" style="left:0;right:0;top:470px;text-align:center">已结束 · 评分 ›</div>
+  <div class="hl soft" style="top:516px"></div>
+  <div class="a b" style="left:40px;width:190px;top:540px;font-size:32px;text-align:center">凯尔特人</div>
+  <div class="score" style="left:230px;width:224px;top:532px;text-align:center">98 : 101</div>
+  <div class="a b" style="left:454px;width:190px;top:540px;font-size:32px;text-align:center">尼克斯</div>
+  <div class="meta" style="left:0;right:0;top:594px;text-align:center">已结束 · 评分 ›</div>
+  <div class="hl soft" style="top:640px"></div>
+  <div class="a b" style="left:40px;width:190px;top:664px;font-size:32px;text-align:center">掘金</div>
+  <div class="score" style="left:230px;width:224px;top:656px;text-align:center">87 : 79</div>
+  <div class="a b" style="left:454px;width:190px;top:664px;font-size:32px;text-align:center">雷霆</div>
+  <div class="meta" style="left:0;right:0;top:718px;text-align:center">第三节 4:12</div>
+  <div class="hl soft" style="top:764px"></div>
+  <div class="a b" style="left:40px;width:190px;top:788px;font-size:32px;text-align:center">76人</div>
+  <div class="score" style="left:230px;width:224px;top:780px;text-align:center">— : —</div>
+  <div class="a b" style="left:454px;width:190px;top:788px;font-size:32px;text-align:center">热火</div>
+  <div class="meta" style="left:0;right:0;top:842px;text-align:center">11:30 开赛</div>
+  <div class="hl soft" style="top:888px"></div>
+  <div class="a b" style="left:40px;width:190px;top:912px;font-size:32px;text-align:center">快船</div>
+  <div class="score" style="left:230px;width:224px;top:904px;text-align:center">— : —</div>
+  <div class="a b" style="left:454px;width:190px;top:912px;font-size:32px;text-align:center">太阳</div>
+  <div class="meta" style="left:0;right:0;top:966px;text-align:center">12:00 开赛</div>
+  <div class="hl soft" style="top:1012px"></div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㉑ 虎扑 · 比分</b>赛程按天看，进来自动定位到今天，点“‹ ›”换日期。联赛可选 NBA、CBA、英超、LOL、网球等。比分只在点“刷新”或换日期时更新，不自动刷新（省电，也避免墨水屏频繁闪）。已结束的比赛点进去看评分。</figcaption></figure>
+<!-- ㉒ 比赛评分 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 比分</div>
+  <div class="a r b" style="top:92px;font-size:30px">湖人 112 : 108 勇士</div>
+  <div class="seg" style="top:150px"><span class="on">湖人</span><span>勇士</span></div>
+  <div class="meta" style="left:40px;top:250px">球员</div><div class="meta" style="left:320px;width:100px;top:250px;text-align:center">评分</div><div class="meta" style="right:40px;top:250px">技术统计</div>
+  <div class="hl" style="top:288px"></div>
+  <div class="a b" style="left:40px;top:310px;font-size:30px">勒布朗·詹姆斯</div>
+  <div class="meta" style="left:40px;top:356px">出场 36:12</div>
+  <div class="score" style="left:320px;width:100px;top:316px;text-align:center">8.9</div>
+  <div class="a r" style="top:314px;font-size:24px">28 分 7 板 9 助</div>
+  <div class="meta" style="right:40px;top:356px">1.2 万 人评</div>
+  <div class="hl soft" style="top:406px"></div>
+  <div class="a b" style="left:40px;top:422px;font-size:30px">卢卡·东契奇</div>
+  <div class="meta" style="left:40px;top:468px">出场 38:04</div>
+  <div class="score" style="left:320px;width:100px;top:428px;text-align:center">8.4</div>
+  <div class="a r" style="top:426px;font-size:24px">31 分 8 板 6 助</div>
+  <div class="meta" style="right:40px;top:468px">9876 人评</div>
+  <div class="hl soft" style="top:518px"></div>
+  <div class="a b" style="left:40px;top:534px;font-size:30px">奥斯汀·里夫斯</div>
+  <div class="meta" style="left:40px;top:580px">出场 33:20</div>
+  <div class="score" style="left:320px;width:100px;top:540px;text-align:center">7.6</div>
+  <div class="a r" style="top:538px;font-size:24px">16 分 3 板 5 助</div>
+  <div class="meta" style="right:40px;top:580px">5432 人评</div>
+  <div class="hl soft" style="top:630px"></div>
+  <div class="a b" style="left:40px;top:646px;font-size:30px">八村塁</div>
+  <div class="meta" style="left:40px;top:692px">出场 22:41</div>
+  <div class="score" style="left:320px;width:100px;top:652px;text-align:center">7.1</div>
+  <div class="a r" style="top:650px;font-size:24px">12 分 5 板</div>
+  <div class="meta" style="right:40px;top:692px">3210 人评</div>
+  <div class="hl soft" style="top:742px"></div>
+  <div class="a b" style="left:40px;top:758px;font-size:30px">杰克逊·海斯</div>
+  <div class="meta" style="left:40px;top:804px">出场 18:09</div>
+  <div class="score" style="left:320px;width:100px;top:764px;text-align:center">6.2</div>
+  <div class="a r" style="top:762px;font-size:24px">6 分 9 板 2 帽</div>
+  <div class="meta" style="right:40px;top:804px">2108 人评</div>
+  <div class="hl soft" style="top:854px"></div>
+  <div class="a b" style="left:40px;top:870px;font-size:30px">马克西·克勒伯</div>
+  <div class="meta" style="left:40px;top:916px">出场 14:30</div>
+  <div class="score" style="left:320px;width:100px;top:876px;text-align:center">5.4</div>
+  <div class="a r" style="top:874px;font-size:24px">2 分 3 板</div>
+  <div class="meta" style="right:40px;top:916px">1890 人评</div>
+  <div class="hl soft" style="top:966px"></div>
+  <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
+
+</div></div>
+<figcaption><b>㉒ 比赛评分</b>全场球员评分榜：虎扑用户的平均分、评分人数和技术统计，按评分排序。只读，不能打分（打分要登录）。</figcaption></figure>
+</div>
+
+<h2>设置</h2>
+<div class="grid">
+
+<!-- ㉓ 设置 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">设置</div>
+  <div class="sec" style="top:154px;font-size:26px">阅读</div>
+  <div class="row" style="top:190px;height:70px;border:0"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
+  <div class="sec" style="top:268px;font-size:26px">电源</div>
+  <div class="row" style="top:304px;height:70px"><span>睡眠与锁屏</span><span class="v">›</span></div>
+  <div class="row" style="top:374px;height:70px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
+  <div class="sec" style="top:452px;font-size:26px">连接</div>
+  <div class="row" style="top:488px;height:70px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
+  <div class="row" style="top:558px;height:70px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
+  <div class="row" style="top:628px;height:70px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
+  <div class="sec" style="top:706px;font-size:26px">同步</div>
+  <div class="row" style="top:742px;height:70px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
+  <div class="row" style="top:812px;height:70px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
+  <div class="sec" style="top:890px;font-size:26px">设备</div>
+  <div class="row" style="top:926px;height:70px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
+  <div class="row" style="top:996px;height:70px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㉓ 设置</b>五组十项。内置服务器只显示“内置服务器”，不露地址和密码。服务器、WebDAV、榜单地址在本页用键盘编辑。</figcaption></figure>
+
+<!-- ㉔ 关于 Treader -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">关于 Treader</div>
+  <div class="a l b" style="top:184px;font-size:60px">Treader</div>
+  <div class="a" style="left:40px;right:40px;top:256px;font-size:28px;line-height:34px">小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步</div>
+  <div class="row" style="top:322px;height:68px"><span style="font-size:30px">版本</span><span class="v">0.3.0 · TF 卡升级 ›</span></div>
+  <div class="row" style="top:396px;height:68px"><span style="font-size:30px">构建时间</span><span class="v">Nov 17 2026 09:00:58 UTC</span></div>
+  <div class="row" style="top:470px;height:68px;border:0"><span style="font-size:30px">项目主页</span><span class="v">github.com/bidabrain/treader-eink</span></div>
+  <div class="sec" style="top:584px;font-size:26px">开源致谢</div>
+  <div class="credit" style="top:628px">MindReset Read Pico 示例固件 · Apache-2.0</div>
+  <div class="credit" style="top:670px">epdiy 墨水屏驱动 · LGPL-3.0</div>
+  <div class="credit" style="top:712px">XH View OS 拼音引擎 · Apache-2.0</div>
+  <div class="credit" style="top:754px">jieba、pypinyin 词库数据 · MIT</div>
+  <div class="credit" style="top:796px">寒蝉端黑体 · SIL OFL 1.1</div>
+  <div class="credit" style="top:838px">stb_truetype、stb_image、TJpgDec、cJSON</div>
+  <div class="credit" style="top:880px">Tomato-Novel-Downloader 下载服务</div>
+  <div class="a" style="left:40px;right:40px;top:938px;font-size:26px;line-height:38px">非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。</div>
+  <div class="hl" style="top:1010px"></div>
+  <div class="row" style="top:1030px;height:76px"><span>设备信息</span><span class="v">电量、存储、芯片 ›</span></div>
+  <div class="row" style="top:1106px;height:76px;border:0"><span>设备自检</span><span class="v">屏幕、触摸、电源 ›</span></div>
+</div></div>
+<figcaption><b>㉔ 关于 Treader</b>版本、构建时间、项目主页和开源致谢。点“版本”进系统升级；底部进设备信息（官方概览页）和设备自检。</figcaption></figure>
+
+<!-- ㉕ TF 卡 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">TF 卡</div>
+  <div class="row" style="top:186px;height:68px"><span style="font-size:30px">状态</span><span class="v">正常</span></div>
+  <div class="row" style="top:262px;height:68px"><span style="font-size:30px">容量</span><span class="v">59.5 GB</span></div>
+  <div class="row" style="top:338px;height:68px"><span style="font-size:30px">可用</span><span class="v">41.2 GB</span></div>
+  <div class="sec" style="top:460px;font-size:26px">Treader 用到的文件夹</div>
+  <div class="credit" style="top:506px">books　书籍（TXT、EPUB，番茄下载也放这里）</div>
+  <div class="credit" style="top:550px">fonts　中文字体（TTF）</div>
+  <div class="credit" style="top:594px">ime　拼音词库</div>
+  <div class="credit" style="top:638px">wallpapers　锁屏壁纸（JPG、PNG）</div>
+  <div class="credit" style="top:682px">tomato　番茄书架、封面和设置</div>
+  <div class="a l" style="top:740px;font-size:26px">书、图片和缓存只存在 TF 卡上，不占系统存储。</div>
+  <div class="pill out" style="left:40px;top:900px;width:290px;height:84px">重新挂载</div>
+  <div class="pill blk" style="right:40px;top:900px;width:290px;height:84px">格式化 TF 卡</div>
+</div></div>
+<figcaption><b>㉕ TF 卡</b>状态、容量和用到的文件夹。拔卡后重新插卡会自动挂载，这里的“重新挂载”是手动兜底。</figcaption></figure>
+
+<!-- ㉖ 格式化确认 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">TF 卡</div>
+  <div class="a l b" style="top:200px;font-size:44px">格式化 TF 卡？</div>
+  <div class="a" style="left:40px;right:40px;top:290px;font-size:32px;line-height:48px">TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的文件、字体、拼音词库、壁纸、番茄书架和服务器设置。</div>
+  <div class="a" style="left:40px;right:40px;top:560px;font-size:28px;line-height:42px">格式化后会建好 Treader 需要的文件夹。字体和拼音词库要从电脑重新复制到 fonts 和 ime。</div>
+  <div class="pill blk" style="left:40px;top:900px;width:290px;height:84px">取消</div>
+  <div class="pill out" style="right:40px;top:900px;width:290px;height:84px;font-size:30px">再点一次确认</div>
+  <div class="a b" style="left:0;right:0;top:1014px;text-align:center;font-size:28px">这一步不能撤销</div>
+</div></div>
+<figcaption><b>㉖ 格式化确认</b>两步确认：先点“清空并格式化”，按钮变成“再点一次确认”。黑色的是“取消”。同步进行中不允许格式化。</figcaption></figure>
+
+<!-- ㉗ 锁屏壁纸 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">锁屏壁纸</div>
+  <div class="a l" style="top:172px;font-size:28px">当前：lake.jpg</div>
+  <div class="pill out" style="right:40px;top:160px;width:170px;height:56px;font-size:28px">不用壁纸</div>
+  <div class="a l b" style="top:228px;font-size:26px">已设为锁屏壁纸</div>
+  <div class="img g4" style="left:40px;top:288px;width:87px;height:116px"></div>
+  <div class="a" style="left:150px;top:302px;font-size:32px">forest.png</div><div class="a" style="left:150px;top:352px;font-size:26px">0.8 MB</div>
+  <div class="hl soft" style="top:410px;left:150px"></div>
+  <div class="img g1" style="left:40px;top:420px;width:87px;height:116px"></div>
+  <div class="a" style="left:150px;top:434px;font-size:32px">lake.jpg</div><div class="a b" style="left:150px;top:484px;font-size:26px">1.2 MB · 当前壁纸</div>
+  <div class="hl soft" style="top:542px;left:150px"></div>
+  <div class="img g3" style="left:40px;top:552px;width:87px;height:116px"></div>
+  <div class="a" style="left:150px;top:566px;font-size:32px">moon.jpg</div><div class="a" style="left:150px;top:616px;font-size:26px">0.6 MB</div>
+  <div class="hl soft" style="top:674px;left:150px"></div>
+  <div class="img g2" style="left:40px;top:684px;width:87px;height:116px"></div>
+  <div class="a" style="left:150px;top:698px;font-size:32px">street.png</div><div class="a" style="left:150px;top:748px;font-size:26px">1.9 MB</div>
+  <div class="hl soft" style="top:806px;left:150px"></div>
+</div></div>
+<figcaption><b>㉗ 锁屏壁纸</b>只列 TF 卡 wallpapers 文件夹里的 JPG/PNG，带缩略图。“不用壁纸”改回书卡样式。</figcaption></figure>
+
+<!-- ㉘ 壁纸预览 -->
+<figure><div class="frame"><div class="s">
+  <div class="wall"></div>
+  <div class="a" style="left:0;right:0;top:1064px;bottom:0;background:#fff;border-top:2px solid #000"></div>
+  <div class="pill blk" style="left:40px;top:1104px;width:290px;height:80px">设为壁纸</div>
+  <div class="pill out" style="right:40px;top:1104px;width:290px;height:80px">返回</div>
+</div></div>
+<figcaption><b>㉘ 壁纸预览</b>点一张图先做全屏缓存（16 级灰度抖动）再全屏预览，满意再设为壁纸。离开时只保留当前壁纸的缓存。</figcaption></figure>
+
+<!-- ㉙ 系统升级 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
+  <div class="row" style="top:176px;height:68px"><span style="font-size:30px">当前版本</span><span class="v">0.3.0（Nov 18 2026 09:00:58）</span></div>
+  <div class="row" style="top:252px;height:68px"><span style="font-size:30px">运行位置</span><span class="v">ota_0</span></div>
+  <div class="row" style="top:328px;height:68px"><span style="font-size:30px">电量</span><span class="v">82%</span></div>
+  <div class="a b" style="left:40px;top:482px;font-size:32px">Read_Pico.bin</div>
+  <div class="a" style="left:40px;top:530px;font-size:26px">版本 0.1.1 · Nov 24 2026 · 3.0 MB</div>
+  <div class="hl soft" style="top:586px"></div>
+  <div class="a" style="left:40px;top:602px;font-size:32px">old-test.bin</div>
+  <div class="a" style="left:40px;top:650px;font-size:26px">不是 Treader 固件</div>
+  <div class="hl soft" style="top:706px"></div>
+</div></div>
+<figcaption><b>㉙ 系统升级</b>扫描 TF 卡 update 文件夹和根目录的 .bin，核对芯片、工程名和大小，不合格的写明原因。电量低于 30% 且没充电时不让升级。</figcaption></figure>
+
+<!-- ㉚ 升级中 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">82% <i></i></span></div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
+  <div class="a l b" style="top:420px;font-size:40px">正在写入 0.1.1</div>
+  <div class="pbar" style="left:40px;right:40px;top:520px"><i style="width:45%"></i></div>
+  <div class="a l" style="top:560px;font-size:30px">45% · 1.3 / 3.0 MB</div>
+  <div class="a l" style="top:640px;font-size:30px">不要拔 TF 卡，也不要关机。</div>
+</div></div>
+<figcaption><b>㉚ 升级中</b>写进另一个程序槽，进度每 5% 局部刷新；期间电源键不锁屏。校验通过后自动重启，新固件起不来会自动退回旧版本。</figcaption></figure>
+
+</div>
+
+
 <div class="notes">
-  <h2>和上一版比改了什么</h2>
-  <ul>
-    <li><b>导航</b>：去掉右下角菜单按钮和全屏菜单，改成底部四个标签页：首页、书库、番茄、设置。阅读时标签栏隐藏。</li>
-    <li><b>视觉</b>：不再每一行都套圆角框，改用细分隔线、留白和字重；黑色胶囊只用在主操作上（当前标签、主按钮）。</li>
-    <li><b>封面</b>：用文字生成，不解码图片，速度和内存都没有额外开销。</li>
-    <li><b>新增</b>：首页、状态栏、锁屏书卡、书籍详情的简介（数据来自搜索结果，不需要额外请求）。</li>
-  </ul>
-  <h2>实现上要注意</h2>
-  <table>
-    <tr><th>项目</th><th>说明</th></tr>
-    <tr><td>工作量</td><td>比上一版大：要新写一套绘制原语（标签栏、文字封面、虚线进度条、胶囊按钮、线条图标），并把书架、阅读工具、设置等官方页面改成新排版。官方的阅读排版、字体渲染、刷新策略、传书服务不动。</td></tr>
-    <tr><td>图标</td><td>9 个线条图标做成 40×40 的 1-bit 位图编进固件，几 KB。</td></tr>
-    <tr><td>时间</td><td>设备没有联网对时，状态栏和首页日期要等番茄同步时顺便用 SNTP 对一次时，之前只显示电量。</td></tr>
-    <tr><td>刷新</td><td>切换标签用整页 GL16；进度、键盘、候选条用局部 DU；每 N 次整页刷新做一次 GC16 清残影，沿用官方均衡档。</td></tr>
-  </table>
+<h2>其他页面（无示意图）</h2>
+<ul>
+<li><b>目录</b>：阅读工具条点“目录”。每页 10 章，正在读的那章右边标“在读”，点一章跳过去，翻页同书库。</li>
+<li><b>图书详情</b>：书库里长按一本书。显示完整书名、格式、大小和进度，可以分别“清进度”和“删除文件”（各要再确认一次）；番茄书删除时一起删掉封面缓存和番茄书架记录。</li>
+<li><b>书库搜索</b>：书库右上角放大镜。默认英文键盘，按拼音首字母、全拼或英文匹配书名；结果在书库里显示，筛选条出现“关键词 ×”，点掉恢复。</li>
+<li><b>管理书库</b>：书库筛选条点“管理”。多选后批量删除或清进度，还有本页全选、清除勾选、重新扫描。</li>
+<li><b>菜单</b>：一般页面按右键（或点右下角把手）打开，列出书库、番茄、虎扑、设置四个主页面，再按一次关闭。</li>
+<li><b>字体</b>：设置 → 字体。列出 TF 卡 <code>fonts/</code> 里的 TTF，选字体和字重，没有字体时用内置小字库。</li>
+<li><b>睡眠与锁屏</b>：设置 → 睡眠与锁屏。电源键短按时用浅睡、深睡还是关机；浅睡可选“拿起唤醒”。</li>
+<li><b>Wi-Fi 与传书</b>：设置 → Wi-Fi 与传书（书库右上角也能进）。设备开热点或连已有 Wi-Fi，屏幕上显示二维码和地址，手机或电脑打开网页上传 TXT / EPUB 和 TTF 字体、删书、配置 Wi-Fi。停留期间不自动睡眠，离开页面就停止。</li>
+<li><b>番茄服务器 / 书城榜单 / WebDAV</b>：设置里对应的行，用屏幕键盘填地址、密码。番茄服务器留空就用编译进固件的内置服务器（只显示“内置服务器”，不露地址和密码）；书城榜单留空用默认地址。</li>
+<li><b>立即同步</b>：设置 → 立即同步。用 WebDAV 同步阅读进度和番茄书架，书本身不传；结果写在设置标题右边。</li>
+<li><b>设备信息 / 设备自检</b>：关于 Treader 页底部。设备信息是官方的概览页（I²C 设备、识别码、电池、构建时间）；设备自检逐项检查电源管理芯片和各个外设（探测是真测，其余看芯片应答）。</li>
+</ul>
+
+<h2>全局规则</h2>
+<ul>
+<li><b>翻页不滚动</b>：所有列表、正文、回复都按页显示，点“‹ ›”或滑一下（左 / 上滑下一页，右 / 下滑上一页）翻一整页。阅读正文还可以点左右两侧或按左右键。</li>
+<li><b>刷新</b>：翻页用 DU 局部快刷，积累几次后自动整页刷新压残影；长按中键 0.5 秒随时整屏刷新。</li>
+<li><b>只在点的时候联网</b>：番茄检查更新、下载，书城刷新，虎扑刷新，同步，都只在用户操作时联网，做完就断开；不会后台自动联网。打开没有缓存的内容（书城分类、虎扑帖子 / 专区 / 赛程）时会自动取一次。</li>
+<li><b>不联网也能用</b>：书库、阅读不需要网络；番茄书架、书城、虎扑都先显示 TF 卡上的缓存，没有缓存就提示“联网后点刷新”。</li>
+<li><b>失败提示带原因</b>：联网失败时提示后面括号写具体原因，如“未设置 Wi-Fi”“密码不对或信号太弱”“传书还在占用 Wi-Fi”“域名解析失败”“HTTPS 握手失败”“连接服务器超时”“HTTP 404”。一行放不下就换两行显示。</li>
+<li><b>国内网络</b>：Wi-Fi 按中国信道（1～13）。路由器 DNS 解析失败时自动改用阿里 223.5.5.5 / 腾讯 119.29.29.29 再试；书城直连 GitHub Pages 超时会自动改用 jsDelivr 镜像。</li>
+<li><b>锁屏</b>：电源键短按锁屏，空闲 2 分钟自动锁屏；同步、升级、传书期间不自动锁屏。</li>
+<li><b>TF 卡</b>：书、封面、缓存都只放 TF 卡。拔卡不会死机，重新插卡自动挂载。</li>
+</ul>
+</div>
+<div class="notes keys">
+<h2>按键</h2>
+<table>
+<tr><th>按键</th><th>一般页面</th><th>阅读时</th></tr>
+<tr><td>左</td><td>返回上一层</td><td>上一页</td></tr>
+<tr><td>中（home）</td><td>短按回书库（已在书库就回第一页或整屏刷新）；长按 0.5 秒整屏刷新</td><td>短按开关工具条；长按整屏刷新</td></tr>
+<tr><td>右</td><td>打开或关闭菜单</td><td>下一页</td></tr>
+<tr><td>电源键</td><td colspan="2">短按锁屏；空闲 2 分钟自动锁屏（同步、升级、传书期间不锁）</td></tr>
+</table>
 </div>
 
 <script>
-  (function () {
-    var kb = document.getElementById('kb');
-    if (!kb) return;
+  // 画两套键盘：全拼 QWERTY。/ Draw the QWERTY keyboard.
+  document.querySelectorAll('.kb').forEach(function (kb) {
     var rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
     var w = 56, gap = 6, top = 752, h = 92, rowGap = 12, html = '';
     rows.forEach(function (row, r) {
       var total = row.length * w + (row.length - 1) * gap;
       var x0 = Math.round((684 - total) / 2);
-      for (var i = 0; i < row.length; i++) {
+      for (var i = 0; i < row.length; i++)
         html += '<div class="key" style="left:' + (x0 + i * (w + gap)) + 'px;top:' + (top + r * (h + rowGap)) + 'px;width:' + w + 'px;height:' + h + 'px">' + row[i] + '</div>';
-      }
     });
     var y = top + 2 * (h + rowGap);
     html += '<div class="key fn" style="left:24px;top:' + y + 'px;width:92px;height:' + h + 'px">分词</div>';
-    html += '<div class="key fn" style="left:568px;top:' + y + 'px;width:92px;height:' + h + 'px">⌫</div>';
+    html += '<div class="key fn" style="left:568px;top:' + y + 'px;width:92px;height:' + h + 'px">删除</div>';
     y += h + rowGap;
-    html += '<div class="key fn" style="left:24px;top:' + y + 'px;width:120px;height:' + h + 'px">九键</div>';
-    html += '<div class="key fn" style="left:156px;top:' + y + 'px;width:120px;height:' + h + 'px">中/英</div>';
+    html += '<div class="key fn" style="left:24px;top:' + y + 'px;width:120px;height:' + h + 'px">123</div>';
+    html += '<div class="key fn" style="left:156px;top:' + y + 'px;width:120px;height:' + h + 'px">全拼</div>';
     html += '<div class="key" style="left:288px;top:' + y + 'px;width:200px;height:' + h + 'px;font-size:28px">空格</div>';
     html += '<div class="key go" style="left:500px;top:' + y + 'px;width:160px;height:' + h + 'px">搜索</div>';
     kb.innerHTML = html;
-  })();
+  });
 </script>
 </body>
 </html>
