@@ -9,6 +9,8 @@ User-visible changes by date and author; Git retains implementation history. See
   Covers: EPUBs show their embedded cover and Tomato downloads fetch one; the library, home and lock screen show image covers cached under `.treader/covers/` on the TF card.
 - 设置新增“关于 Treader”：版本、项目地址和开源致谢；设备信息从这里进入。
   Settings gains "About Treader" with the version, project link and open-source credits; device info opens from there.
+- 网页刷机：GitHub Pages 上的刷机页，选择本地的 treader-full.bin 写入，默认保留设置；固件不上传、仓库里不放固件。
+  Web flasher: a GitHub Pages tool that writes a local treader-full.bin, keeping settings by default; firmware is never uploaded or stored in the repo.
 - 书城：番茄页加“书架 / 书城”切换，按频道和分类看 FanqieRankTracker 榜单，详情页直接下载到书库；榜单地址可在设置里改，编译时可用 `STORE_URL` 设默认。
   Bookstore: a "shelf / store" switch on the Tomato tab browses FanqieRankTracker ranks by channel and category and downloads from the detail page; the rank URL is configurable in Settings with a `STORE_URL` build default.
 - 设置里“Wi-Fi”和“导入书籍”合并为“Wi-Fi 与传书”。

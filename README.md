@@ -76,6 +76,12 @@ idf.py build
 
 ### 3. 刷机
 
+**方式 A：网页刷机（不用装工具）**
+
+用电脑上的 Chrome 或 Edge 打开 [bidabrain.github.io/treader-eink](https://bidabrain.github.io/treader-eink/)，把自己编译出的 `build/treader-full.bin` 拖进去，选“升级”或“完整安装”，连接设备开始。固件只在本机读取，不会上传；网页按地址分段写入，默认不碰设置区，Wi-Fi 和阅读进度都保留。网页源码在 [`site/`](site/index.html)。
+
+**方式 B：命令行**
+
 USB-C 连接设备。第一次刷之前先备份原固件（整片 16 MB）：
 
 ```bash

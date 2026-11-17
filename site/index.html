@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treader 刷机</title>
+<meta name="description" content="在浏览器里给小纸 Pico 刷入 Treader 固件。固件文件只在本机读取，不会上传。">
+<style>
+  :root { --bg: #f4f3ef; --card: #fff; --ink: #161616; --mid: #666; --line: #d6d4cc; --accent: #111; --ok: #1d7a3a; --warn: #a3470e; --bad: #b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #191918; --card: #232322; --ink: #ececea; --mid: #a3a29d; --line: #3a3936; --accent: #ececea; --ok: #6ccf8b; --warn: #f0a46c; --bad: #f28b82; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: .5px; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  .lead { color: var(--mid); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+  .step { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 14px; font-weight: 700; align-items: center; justify-content: center; margin-right: 8px; vertical-align: 2px; }
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 26px 16px; text-align: center; cursor: pointer; color: var(--mid); }
+  .drop.over { border-color: var(--accent); color: var(--ink); }
+  .drop b { color: var(--ink); }
+  input[type=file] { display: none; }
+  .info { margin-top: 14px; display: none; }
+  .info table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  .info td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .info td:first-child { color: var(--mid); width: 6.5em; }
+  .modes { display: grid; gap: 10px; }
+  .mode { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+  .mode input { margin-top: 5px; }
+  .mode small { display: block; color: var(--mid); font-size: 14px; }
+  .mode.disabled { opacity: .45; cursor: not-allowed; }
+  .erase { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--bad); font-size: 15px; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 12px 26px; background: var(--accent); color: var(--bg); cursor: pointer; }
+  button:disabled { opacity: .35; cursor: not-allowed; }
+  .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 16px 0 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .status { font-size: 15px; min-height: 1.6em; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--warn); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; height: 180px; overflow: auto; font-size: 12.5px; line-height: 1.5; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+  ul { padding-left: 20px; margin: 6px 0 0; }
+  li { margin: 3px 0; }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .92em; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 4px; }
+  .unsupported { display: none; border-color: var(--bad); color: var(--bad); }
+  footer { color: var(--mid); font-size: 14px; margin-top: 28px; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Treader 刷机</h1>
+  <p class="lead">在浏览器里给小纸 Pico 刷入 Treader。固件文件只在你的电脑上读取，通过 USB 直接写进设备，<b>不会上传到任何服务器</b>。</p>
+
+  <div class="card unsupported" id="unsupported">
+    这个浏览器不支持网页串口（Web Serial）。请用电脑上的 <b>Chrome</b> 或 <b>Edge</b> 打开本页；手机和 Safari、Firefox 都不行。
+  </div>
+
+  <div class="card">
+    <h2><span class="step">1</span>选择固件</h2>
+    <label class="drop" id="drop" for="file">
+      把 <b>treader-full.bin</b> 拖到这里，或<b>点击选择</b><br>
+      <small>也接受只含主程序的 <code>Read_Pico.bin</code>（只能升级）</small>
+    </label>
+    <input type="file" id="file" accept=".bin">
+    <div class="info" id="info"><table id="infoTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span>选择方式</h2>
+    <div class="modes">
+      <label class="mode" id="modeUpgrade"><input type="radio" name="mode" value="upgrade" checked>
+        <span><b>升级</b>（推荐）<small>只写主程序，最快。Wi-Fi、阅读进度、壁纸等设置都保留。</small></span></label>
+      <label class="mode" id="modeFull"><input type="radio" name="mode" value="full">
+        <span><b>完整安装</b><small>写入引导程序、分区表和主程序，跳过设置区，设置仍保留。第一次刷 Treader 时用这个。</small></span></label>
+    </div>
+    <label class="erase"><input type="checkbox" id="erase">
+      <span><b>擦除设备</b>：先清空整片 Flash 再完整写入。会删除 Wi-Fi、阅读进度等所有设置（TF 卡不受影响）。只在从其他第三方固件换过来、或系统出问题时勾选。</span></label>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span>连接并刷入</h2>
+    <div class="row">
+      <button id="go" disabled>连接设备并开始</button>
+      <span class="status" id="status">先选择固件文件</span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <pre id="log"></pre>
+  </div>
+
+  <div class="card">
+    <h2>说明</h2>
+    <ul>
+      <li>用 USB-C 数据线连接小纸 Pico，点“连接设备并开始”，在弹窗里选设备的串口（通常叫 USB JTAG/serial debug unit）。</li>
+      <li>写入约 1～2 分钟，<b>完成前不要拔线</b>。完成后设备会自动重启。</li>
+      <li>连接不上：按住 BOOT 键再插 USB 线，进入下载模式后重试；或者换一根能传数据的线。</li>
+      <li>固件文件来自你自己编译的 <code>build/treader-full.bin</code>（或 <code>build/Read_Pico.bin</code>）。页面会核对文件头，确认是给 ESP32-S3 的 Treader 固件才允许写入。</li>
+      <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库），详见 <a href="https://github.com/bidabrain/treader-eink#快速开始">项目说明</a>。</li>
+    </ul>
+  </div>
+
+  <footer>
+    Treader · <a href="https://github.com/bidabrain/treader-eink">GitHub</a> · 刷写由 Espressif 的 <a href="https://github.com/espressif/esptool-js">esptool-js</a> 完成 · 非官方固件，刷机有风险，请先备份。
+  </footer>
+</main>
+
+<script type="module">
+import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/bundle.js";
+
+// 和 Treader 的分区表一致。/ Matches Treader's partition table.
+const NVS_OFFSET = 0x9000;
+const APP_OFFSET = 0x10000;
+const PT_OFFSET = 0x8000;
+
+const $ = (id) => document.getElementById(id);
+let image = null;   // { bytes, kind: "merged" | "app", app }
+
+if (!("serial" in navigator)) {
+  $("unsupported").style.display = "block";
+}
+
+function log(line) {
+  const el = $("log");
+  el.textContent += line + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(text, cls = "") {
+  const el = $("status");
+  el.textContent = text;
+  el.className = "status " + cls;
+}
+
+const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const cstr = (b, o, n) => {
+  let end = o;
+  while (end < o + n && b[end]) end++;
+  return new TextDecoder().decode(b.subarray(o, end));
+};
+
+// 读 ESP-IDF 应用描述（镜像头 24 字节 + 段头 8 字节之后）。/ Read the ESP-IDF app description after the image and segment headers.
+function readApp(b, base) {
+  if (b.length < base + 0x100 || b[base] !== 0xe9) return null;
+  const d = base + 0x20;
+  if (u32(b, d) !== 0xabcd5432) return null;
+  return {
+    chipId: b[base + 12] | (b[base + 13] << 8),
+    version: cstr(b, d + 16, 32),
+    project: cstr(b, d + 48, 32),
+    time: cstr(b, d + 80, 16),
+    date: cstr(b, d + 96, 16),
+  };
+}
+
+function readPartitions(b) {
+  const out = [];
+  for (let o = PT_OFFSET; o + 32 <= Math.min(b.length, PT_OFFSET + 0xc00); o += 32) {
+    if (b[o] !== 0xaa || b[o + 1] !== 0x50) break;
+    out.push({ type: b[o + 2], subtype: b[o + 3], offset: u32(b, o + 4), size: u32(b, o + 8), label: cstr(b, o + 12, 16) });
+  }
+  return out;
+}
+
+function analyse(bytes) {
+  // 单独的主程序。/ App-only image.
+  const appOnly = readApp(bytes, 0);
+  if (appOnly) return { kind: "app", app: appOnly };
+  if (bytes[0] !== 0xe9) throw new Error("不是 ESP32 固件镜像。");
+  if (bytes.length <= APP_OFFSET) throw new Error("这只是引导程序，请选 build 目录里的 treader-full.bin。");
+  const parts = readPartitions(bytes);
+  if (!parts.length) throw new Error("没找到分区表。请选 build 目录里合并好的 treader-full.bin。");
+  const nvs = parts.find((p) => p.type === 1 && p.subtype === 2);
+  const app = parts.find((p) => p.type === 0);
+  if (!nvs || nvs.offset !== NVS_OFFSET || !app || app.offset !== APP_OFFSET)
+    throw new Error("分区布局和 Treader 不一样，为安全起见不刷。");
+  if (bytes.length - APP_OFFSET > app.size) throw new Error("主程序比分区还大。");
+  const desc = readApp(bytes, APP_OFFSET);
+  if (!desc) throw new Error("0x10000 处不是有效的主程序。");
+  return { kind: "merged", app: desc, parts };
+}
+
+function showInfo(file, res) {
+  const rows = [
+    ["文件", `${file.name}（${(file.size / 1048576).toFixed(2)} MB）`],
+    ["类型", res.kind === "merged" ? "合并镜像（引导程序 + 分区表 + 主程序）" : "只有主程序（只能升级）"],
+    ["版本", res.app.version || "—"],
+    ["工程", res.app.project || "—"],
+    ["编译时间", `${res.app.date} ${res.app.time}`],
+  ];
+  if (res.app.chipId !== 9) rows.push(["芯片", "⚠️ 镜像不是给 ESP32-S3 的"]);
+  if (res.app.project && res.app.project !== "Read_Pico") rows.push(["提示", "⚠️ 工程名不是 Read_Pico，可能不是 Treader"]);
+  $("infoTable").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v.replace(/</g, "&lt;")}</td></tr>`).join("");
+  $("info").style.display = "block";
+}
+
+function refreshModes() {
+  const merged = image && image.kind === "merged";
+  $("modeFull").classList.toggle("disabled", !merged);
+  $("modeFull").querySelector("input").disabled = !merged;
+  $("erase").disabled = !merged;
+  if (!merged) {
+    $("modeUpgrade").querySelector("input").checked = true;
+    $("erase").checked = false;
+  }
+  $("go").disabled = !image || !("serial" in navigator) || image.app.chipId !== 9;
+}
+
+async function loadFile(file) {
+  $("info").style.display = "none";
+  image = null;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const res = analyse(bytes);
+    image = { bytes, ...res };
+    showInfo(file, res);
+    setStatus(res.app.chipId === 9 ? "文件没问题，可以开始" : "这个镜像不是给 ESP32-S3 的，不能刷", res.app.chipId === 9 ? "ok" : "bad");
+  } catch (e) {
+    setStatus(e.message, "bad");
+  }
+  refreshModes();
+}
+
+$("file").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+$("erase").addEventListener("change", (e) => {
+  if (e.target.checked) $("modeFull").querySelector("input").checked = true;
+});
+document.querySelectorAll('input[name=mode]').forEach((r) => r.addEventListener("change", () => {
+  if (r.value === "upgrade" && r.checked) $("erase").checked = false;
+}));
+
+// 按方式切出要写的段；默认绝不碰 0x9000～0x10000 的设置区。
+// Slice the regions to write; by default never touch the settings area at 0x9000-0x10000.
+function plan() {
+  const b = image.bytes;
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const erase = $("erase").checked;
+  if (image.kind === "app") return { erase: false, files: [{ data: b, address: APP_OFFSET }], label: "升级主程序" };
+  if (erase) return { erase: true, files: [{ data: b, address: 0 }], label: "擦除后完整写入" };
+  if (mode === "full") return {
+    erase: false,
+    files: [{ data: b.slice(0, NVS_OFFSET), address: 0 }, { data: b.slice(APP_OFFSET), address: APP_OFFSET }],
+    label: "完整安装（保留设置）",
+  };
+  return { erase: false, files: [{ data: b.slice(APP_OFFSET), address: APP_OFFSET }], label: "升级主程序" };
+}
+
+$("go").addEventListener("click", async () => {
+  const p = plan();
+  if (p.erase && !confirm("会清空设备上的所有设置（Wi-Fi、阅读进度等），确定继续？")) return;
+  $("go").disabled = true;
+  $("log").textContent = "";
+  $("bar").style.width = "0";
+  let transport = null;
+  try {
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    const terminal = { clean() {}, writeLine: (s) => log(s), write: (s) => log(s) };
+    setStatus("正在连接…");
+    const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    const chip = await loader.main();
+    log("芯片：" + chip);
+    if (!/ESP32-S3/i.test(chip)) throw new Error("连接的不是 ESP32-S3（" + chip + "），已停止。");
+    const total = p.files.reduce((n, f) => n + f.data.length, 0);
+    let done = 0;
+    setStatus(p.label + "，请勿拔线…", "warn");
+    await loader.writeFlash({
+      fileArray: p.files,
+      flashSize: "keep",
+      flashMode: "keep",
+      flashFreq: "keep",
+      eraseAll: p.erase,
+      compress: true,
+      reportProgress: (i, written, size) => {
+        const before = p.files.slice(0, i).reduce((n, f) => n + f.data.length, 0);
+        done = before + written;
+        $("bar").style.width = Math.min(100, (done / total) * 100).toFixed(1) + "%";
+      },
+    });
+    $("bar").style.width = "100%";
+    log("写入完成，正在重启设备…");
+    await loader.after("hard_reset");
+    setStatus("完成。设备已重启，可以拔线了。", "ok");
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    log("错误：" + msg);
+    if (/No port selected|requestPort/i.test(msg)) setStatus("没有选择设备", "warn");
+    else setStatus("失败：" + msg + "。可以按住 BOOT 键重新插线后再试。", "bad");
+  } finally {
+    try { if (transport) await transport.disconnect(); } catch (_) {}
+    refreshModes();
+  }
+});
+</script>
+</body>
+</html>
