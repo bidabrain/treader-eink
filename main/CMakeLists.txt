@@ -2,6 +2,8 @@ set(main_requires
     read_pico
     read_pico_transfer
     read_pico_search
+    tomato
+    pinyin_ime
     espressif__qrcode
     continuous_du
     e0470_epaper_waveform
@@ -32,8 +34,6 @@ idf_component_register(
         "ui/datamatrix.c"
         "ui/ui_menu.c"
         "apps/app_home.c"
-        "apps/app_refresh.c"
-        "apps/app_reading.c"
         "apps/app_book.c"
         "apps/app_transfer.c"
         "book/book_store.c"
@@ -47,16 +47,9 @@ idf_component_register(
         "book/html_text.c"
         "book/book_layout.c"
         "book/gbk.c"
-        "apps/app_touch.c"
-        "apps/app_axis.c"
-        "apps/app_power.c"
-        "apps/app_ioe.c"
-        "apps/app_pmu.c"
-        "apps/app_sd.c"
         "apps/app_font_pick.c"
         "apps/app_sleep.c"
         "apps/app_selftest.c"
-        "apps/app_key.c"
         "font/ttf_font.c"
         "factory/pmu_selftest.c"
         "factory/vcom_setup.c"
@@ -66,5 +59,4 @@ idf_component_register(
         "assets/lock_4bpp.bin"
         "assets/loading_4bpp.bin"
         "assets/builtin.ttf"
-        "assets/reading.md"
 )

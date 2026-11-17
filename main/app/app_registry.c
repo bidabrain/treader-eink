@@ -9,41 +9,22 @@
 
 #include "app_registry.h"
 
-extern const app_desc_t app_home;
-extern const app_desc_t app_refresh;
-extern const app_desc_t app_reading;
-extern const app_desc_t app_touch;
-extern const app_desc_t app_axis;
-extern const app_desc_t app_axis_lab;
-extern const app_desc_t app_power;
-extern const app_desc_t app_pmu;
-extern const app_desc_t app_key;
-extern const app_desc_t app_sleep;
-extern const app_desc_t app_sd;
-extern const app_desc_t app_font_pick;
-extern const app_desc_t app_ioe;
-extern const app_desc_t app_selftest;
 extern const app_desc_t app_book;
 extern const app_desc_t app_transfer;
+extern const app_desc_t app_font_pick;
+extern const app_desc_t app_sleep;
+extern const app_desc_t app_home;
+extern const app_desc_t app_selftest;
 
-// 一份菜单，相近的页挨着排，由 ui_menu 按页翻。/ One menu, similar pages together; ui_menu pages through it.
+// 只留读书要用的页；开发演示页（刷新、触摸、加速度计、PMU、扩展口等）已移出固件。
+// Reading pages only; developer demo pages (refresh, touch, IMU, PMU, IO expander, ...) are dropped from the firmware.
 static const app_desc_t* const s_apps[] = {
-    &app_home,
-    &app_refresh,
-    &app_reading,
-    &app_touch,
-    &app_axis,
-    &app_axis_lab,
-    &app_power,
-    &app_pmu,
-    &app_key,
-    &app_sleep,
-    &app_sd,
-    &app_font_pick,
-    &app_ioe,
-    &app_selftest,
     &app_book,
     &app_transfer,
+    &app_font_pick,
+    &app_sleep,
+    &app_home,
+    &app_selftest,
 };
 
 #define APP_COUNT ((int)(sizeof(s_apps) / sizeof(s_apps[0])))
@@ -64,8 +45,9 @@ int app_index_of(const app_desc_t* app) {
     return -1;
 }
 
+// 开机和回退的默认页是书架。/ Boot and fallback page is the shelf.
 const app_desc_t* app_home_page(void) {
-    return &app_home;
+    return &app_book;
 }
 
 const app_desc_t* app_selftest_page(void) {

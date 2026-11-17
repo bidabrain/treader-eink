@@ -72,6 +72,9 @@ void read_pico_transfer_get_status(read_pico_transfer_status_t *out);
 void read_pico_transfer_service_poll(void);
 /// 只读已保存SSID；未配置仍返回ESP_OK。/ Read only the saved SSID; unconfigured still returns ESP_OK.
 esp_err_t read_pico_transfer_get_saved_wifi(char ssid[33], bool *configured);
+/// 读出已保存的凭据，供番茄同步自行连网；调用方用毕须擦除密码。未配置返回 ESP_ERR_NOT_FOUND。
+/// Read saved credentials so Tomato sync can connect on its own; caller must wipe the password. ESP_ERR_NOT_FOUND when unset.
+esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]);
 /// 仅热点或停止状态可遗忘；上传中拒绝。/ Forget only while AP or stopped; rejected during upload.
 esp_err_t read_pico_transfer_forget_wifi(void);
 /// 停服后同步扫描2.4GHz网络；最多16个去重SSID，按信号降序，所有临时资源均释放。/ Scan synchronously while stopped; up to 16 unique SSIDs by descending RSSI; release all temporary resources.

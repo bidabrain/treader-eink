@@ -1,5 +1,7 @@
 # 小纸 Pico 官方演示固件
 
+> **这是 Treader**：在官方固件上加入番茄小说搜索、下载和更新，并精简了演示页。说明见 [docs/TREADER.md](docs/TREADER.md)。下文为官方原文。
+
 **语言:** [English](./README.md) | [简体中文](./README.zh-CN.md) | [日本語](./README.ja-JP.md)
 
 [贡献指南](CONTRIBUTING.md) · [支持](SUPPORT.md) · [安全政策](SECURITY.md) · [行为准则](CODE_OF_CONDUCT.md)

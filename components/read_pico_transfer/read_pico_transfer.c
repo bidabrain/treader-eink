@@ -402,6 +402,18 @@ esp_err_t read_pico_transfer_get_saved_wifi(char ssid[33], bool *configured) {
     return err;
 }
 
+esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]) {
+    if (!ssid || !password) return ESP_ERR_INVALID_ARG;
+    ssid[0] = 0; password[0] = 0;
+    if (!claim_config()) return ESP_ERR_INVALID_STATE;
+    transfer_credentials_t saved;
+    esp_err_t err = load_credentials(&saved);
+    if (err == ESP_OK && saved.version != 1) err = ESP_ERR_NOT_FOUND;
+    if (err == ESP_OK) { memcpy(ssid, saved.ssid, 33); memcpy(password, saved.password, 65); }
+    clear_secret(&saved, sizeof(saved)); release_config();
+    return err;
+}
+
 esp_err_t read_pico_transfer_save_wifi(const char *ssid, const char *password) {
     read_pico_transfer_status_t status;
     read_pico_transfer_get_status(&status);
