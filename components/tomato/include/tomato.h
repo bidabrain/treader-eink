@@ -190,8 +190,9 @@ esp_err_t tomato_sync_start_download(const tomato_hit_t* hit);
 /// 取书城榜单：cat 为 NULL 只取分类列表，否则顺带取这个分类。不需要番茄服务器。
 /// Fetch ranks: NULL fetches the category index only, else also this category. Needs no Tomato server.
 esp_err_t tomato_sync_start_rank(const tomato_rank_cat_t* cat);
-/// 下载一本榜单书的封面到 tomato_rank_cover_path()。/ Fetch one rank book's cover to tomato_rank_cover_path().
-esp_err_t tomato_sync_start_rank_cover(const tomato_rank_book_t* book);
+/// 一次联网下载这些榜单书缺的封面到 tomato_rank_cover_path()；目录太大先清理。
+/// Fetch these rank books' missing covers to tomato_rank_cover_path() in one session; prunes an oversized dir first.
+esp_err_t tomato_sync_start_rank_covers(const tomato_rank_book_t* books, int n);
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);
 /// 注册阅读进度的读写回调（进度存储在主程序里）。/ Register progress I/O callbacks (progress lives in the main app).

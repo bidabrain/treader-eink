@@ -11,6 +11,10 @@ User-visible changes by date and author; Git retains implementation history. See
   Settings gains "About Treader" with the version, project link and open-source credits; device info opens from there.
 - 中键改为 home 键：短按回首页，长按 0.5 秒整屏刷新；阅读时短按仍开关工具条。
   The middle key is now Home: a short press goes home and a 500 ms hold does a full refresh; while reading a short press still toggles the toolbar.
+- 书城榜单改成 3×3 封面网格：打开分类时后台一次取完封面，缩略图生成完整页刷新一次；超过约 6 个分类的封面缓存会自动清理。
+  The store rank list is now a 3x3 cover grid: covers download in one background session when a category opens and the page refreshes once when thumbnails are ready; the cover cache is pruned past about six categories.
+- 番茄书架、搜索结果、书城榜单和壁纸列表支持滑动翻整页（左滑 / 上滑下一页，右滑 / 下滑上一页），所有列表都不滚动。
+  The Tomato shelf, search results, store ranks and wallpaper list turn a whole page per swipe; no list scrolls.
 - 删书时一起删掉封面缓存；壁纸页只保留当前壁纸的缓存；书城换榜单时清掉旧缓存和详情页封面，TF 卡不再越用越大。
   Deleting a book also deletes its cover cache; the wallpaper page keeps only the current wallpaper cache; new ranks clear old store caches and covers.
 - 分区表改成两个 7 MB 程序槽，去掉不用的 5 MB 内置书库分区；新增 TF 卡升级（关于 Treader → 版本），新固件起不来自动退回。从旧分区表换过来要“完整安装”一次。

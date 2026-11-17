@@ -62,7 +62,8 @@ static char s_query[96];
 static tomato_hit_t s_target;
 static tomato_rank_cat_t s_rank_cat;
 static bool s_rank_has_cat;
-static tomato_rank_book_t* s_rank_book;   // PSRAM，封面任务用 / PSRAM, for the cover op
+static tomato_rank_book_t* s_rank_books;  // PSRAM，封面任务要取的书 / PSRAM, books for the cover op
+static int s_rank_book_n;
 static work_t* s_work;
 static tomato_file_hook_t s_file_hook;
 static tomato_open_check_t s_open_check;
@@ -559,23 +560,43 @@ static void run_rank(void) {
     set_phase(TOMATO_DONE, "榜单已更新");
 }
 
-static void run_rank_cover(void) {
-    if (!s_rank_book || !s_rank_book->cover[0]) { set_phase(TOMATO_DONE, NULL); return; }
-    mkdir(TOMATO_RANK_DIR, 0775);
-    mkdir(TOMATO_RANK_DIR "/covers", 0775);
-    char dest[96];
-    tomato_rank_cover_path(s_rank_book->book_id, dest, sizeof(dest));
-    set_phase(TOMATO_DOWNLOADING, "下载封面");
-    esp_err_t err = tomato_http_fetch(s_rank_book->cover, dest, 1024 * 1024, true, &s_cancel);
+// 取一张榜单封面。/ Fetch one rank cover.
+static esp_err_t fetch_rank_cover(const tomato_rank_book_t* b, const char* dest) {
+    esp_err_t err = tomato_http_fetch(b->cover, dest, 1024 * 1024, true, &s_cancel);
     if (err != ESP_OK && !s_cancel) {
         // 和番茄下载一样，拿到 WEBP 就去掉处理参数再要一次。/ As with downloads, retry without processing params on WEBP.
-        snprintf(s_work->url, sizeof(s_work->url), "%s", s_rank_book->cover);
+        snprintf(s_work->url, sizeof(s_work->url), "%s", b->cover);
         char* cut = strchr(s_work->url, '~');
         if (!cut) cut = strchr(s_work->url, '?');
         if (cut) { *cut = 0; err = tomato_http_fetch(s_work->url, dest, 1024 * 1024, true, &s_cancel); }
     }
-    if (err == ESP_OK) set_phase(TOMATO_DONE, NULL);
-    else fail(err, "封面下载失败");
+    return err;
+}
+
+// 一次联网取完一个分类缺的封面；单张失败只跳过。/ Fetch a category's missing covers in one session; a failed one is skipped.
+static void run_rank_cover(void) {
+    mkdir(TOMATO_RANK_DIR, 0775);
+    mkdir(TOMATO_RANK_DIR "/covers", 0775);
+    tomato_rank_prune_covers(s_rank_books, s_rank_book_n);
+    char dest[96];
+    struct stat st;
+    int need = 0;
+    for (int i = 0; i < s_rank_book_n; i++) {
+        tomato_rank_cover_path(s_rank_books[i].book_id, dest, sizeof(dest));
+        if (s_rank_books[i].cover[0] && stat(dest, &st) != 0) need++;
+    }
+    if (!need) { set_phase(TOMATO_DONE, NULL); return; }
+    set_phase(TOMATO_DOWNLOADING, "下载封面");
+    int done = 0, got = 0;
+    for (int i = 0; i < s_rank_book_n && !s_cancel; i++) {
+        tomato_rank_cover_path(s_rank_books[i].book_id, dest, sizeof(dest));
+        if (!s_rank_books[i].cover[0] || stat(dest, &st) == 0) continue;
+        set_progress(++done, need);
+        if (fetch_rank_cover(&s_rank_books[i], dest) == ESP_OK) got++;
+    }
+    if (s_cancel) fail(ESP_ERR_INVALID_STATE, "已取消");
+    else if (!got) fail(ESP_FAIL, "封面下载失败");
+    else set_phase(TOMATO_DONE, NULL);
 }
 
 static void run_download(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
@@ -708,12 +729,14 @@ esp_err_t tomato_sync_start_rank(const tomato_rank_cat_t* cat) {
     return start(OP_RANK);
 }
 
-esp_err_t tomato_sync_start_rank_cover(const tomato_rank_book_t* book) {
-    if (!book || !book->book_id[0] || !book->cover[0]) return ESP_ERR_INVALID_ARG;
+esp_err_t tomato_sync_start_rank_covers(const tomato_rank_book_t* books, int n) {
+    if (!books || n <= 0) return ESP_ERR_INVALID_ARG;
     if (s_busy) return ESP_ERR_INVALID_STATE;
-    if (!s_rank_book) s_rank_book = heap_caps_malloc(sizeof(*s_rank_book), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!s_rank_book) return ESP_ERR_NO_MEM;
-    *s_rank_book = *book;
+    if (!s_rank_books)
+        s_rank_books = heap_caps_malloc(TOMATO_RANK_BOOK_MAX * sizeof(*s_rank_books), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_rank_books) return ESP_ERR_NO_MEM;
+    s_rank_book_n = n > TOMATO_RANK_BOOK_MAX ? TOMATO_RANK_BOOK_MAX : n;
+    memcpy(s_rank_books, books, (size_t)s_rank_book_n * sizeof(*s_rank_books));
     return start(OP_RANK_COVER);
 }
 

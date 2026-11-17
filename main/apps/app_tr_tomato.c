@@ -30,6 +30,7 @@
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
+#include "ui_gesture.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
 
@@ -460,6 +461,13 @@ static void open_search(const char* initial) {
     s_view = V_SEARCH;
 }
 
+static app_redraw_t turn_list(int turn) {
+    int next = s_page + turn;
+    if (next < 0 || next >= list_pages()) return APP_REDRAW_NONE;
+    s_page = next;
+    return APP_REDRAW_PAGE;
+}
+
 static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     bool busy = tomato_sync_busy();
     if (!busy && y >= 80 && y < 150 && x > TR_W - TR_MARGIN - 200) {
@@ -479,12 +487,7 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     int pager = tr_pager_hit(PAGER_Y, x, y);
-    if (pager) {
-        int next = s_page + pager;
-        if (next < 0 || next >= list_pages()) return APP_REDRAW_NONE;
-        s_page = next;
-        return APP_REDRAW_PAGE;
-    }
+    if (pager) return turn_list(pager);
     int top = list_top();
     // 只认画出来的行，行下面的空白不算。/ Only drawn rows count; the gap below them does not.
     if (y >= top && (y - top) / ROW_H < rows_per_page()) {
@@ -517,17 +520,20 @@ static app_redraw_t touch_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_NONE;
 }
 
+// 翻一整页；到头不动。/ Turn one whole page; stop at the ends.
+static app_redraw_t turn_results(int turn) {
+    int pages = (s_hit_count + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE;
+    int next = s_result_page + turn;
+    if (next < 0 || next >= pages) return APP_REDRAW_NONE;
+    s_result_page = next;
+    return APP_REDRAW_PAGE;
+}
+
 static app_redraw_t touch_results(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     (void)ctx;
     if (y >= 84 && y < 164) { open_search(s_query); return APP_REDRAW_PAGE; }
-    int pages = (s_hit_count + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE;
     int pager = tr_pager_hit(PAGER_Y, x, y);
-    if (pager) {
-        int next = s_result_page + pager;
-        if (next < 0 || next >= pages) return APP_REDRAW_NONE;
-        s_result_page = next;
-        return APP_REDRAW_PAGE;
-    }
+    if (pager) return turn_results(pager);
     if (y >= RESULT_TOP && y < RESULT_TOP + RESULTS_PER_PAGE * RESULT_ROW_H) {
         int i = s_result_page * RESULTS_PER_PAGE + (y - RESULT_TOP) / RESULT_ROW_H;
         if (i < s_hit_count) { s_detail = i; s_view = V_DETAIL; return APP_REDRAW_PAGE; }
@@ -556,8 +562,7 @@ static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_PAGE;
 }
 
-static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
-    uint16_t x = touch->x, y = touch->y;
+static app_redraw_t tap(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_view != V_SEARCH && tr_nav_touch(ctx, x, y, TR_TAB_TOMATO)) return APP_REDRAW_NONE;
     switch (s_view) {
     case V_LIST: return touch_list(ctx, x, y);
@@ -565,6 +570,19 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case V_RESULTS: return touch_results(ctx, x, y);
     case V_DETAIL: return touch_detail(ctx, x, y);
     }
+    return APP_REDRAW_NONE;
+}
+
+// 键盘照旧按下即响应；其余页松手才算轻点。书架和搜索结果左滑 / 上滑下一页，右滑 / 下滑上一页，不滚动。
+// The keyboard still acts on press; other views act on a tap. Shelf and results turn a whole page per swipe.
+static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
+    if (s_view == V_SEARCH) return ev->type == UI_GESTURE_PRESS ? tap(ctx, ev->x0, ev->y0) : APP_REDRAW_NONE;
+    if (ev->type == UI_GESTURE_TAP) return tap(ctx, ev->x0, ev->y0);
+    const int turn = ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U ? 1
+                   : ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D ? -1 : 0;
+    if (!turn) return APP_REDRAW_NONE;
+    if (s_view == V_LIST) return turn_list(turn);
+    if (s_view == V_RESULTS) return turn_results(turn);
     return APP_REDRAW_NONE;
 }
 
@@ -619,7 +637,7 @@ const app_desc_t app_tr_tomato = {
     .on_enter = on_enter,
     .on_exit = page_on_exit,
     .on_media_lost = on_media_lost,
-    .on_touch = on_touch,
+    .on_gesture = on_gesture,
     .on_key = on_key,
     .on_tick = on_tick,
     .area_hint = area_hint,

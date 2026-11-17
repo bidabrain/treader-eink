@@ -32,7 +32,7 @@
 #define COVER_DIR COVER_ROOT "/covers"
 #define SCREEN_DIR COVER_ROOT "/wall"
 #define SLOT_MAX 12
-#define QUEUE_MAX 8
+#define QUEUE_MAX 12   // 书城一页 9 本 / A store page shows 9
 #define PATH_MAX_LEN 320
 #define PX_BYTES ((size_t)BOOK_COVER_W * BOOK_COVER_H)
 #define IMAGE_MAX (2u * 1024u * 1024u)
@@ -88,8 +88,15 @@ static bool cover_source(const char* book, char* src, size_t cap, bool* epub, st
     return stat(src, st) == 0 && st->st_size > 0;
 }
 
-static void cache_path(uint32_t key, char* out, size_t cap) {
-    snprintf(out, cap, COVER_DIR "/%08lx.tcv", (unsigned long)key);
+// 书城封面的缩略图放在封面旁边，跟着书城缓存一起清理；其余放 .treader/covers。
+// Store-cover thumbnails sit beside the cover so they are cleaned with the store cache; others go under .treader/covers.
+static void cache_path(const char* book, char* out, size_t cap) {
+    static const char STORE_COVERS[] = TOMATO_RANK_DIR "/covers/";
+    const char* dot = strrchr(book, '.');
+    if (!strncmp(book, STORE_COVERS, sizeof(STORE_COVERS) - 1) && dot && !strchr(dot, '/') &&
+        snprintf(out, cap, "%.*s.tcv", (int)(dot - book), book) < (int)cap)
+        return;
+    snprintf(out, cap, COVER_DIR "/%08lx.tcv", (unsigned long)path_key(book));
 }
 
 static slot_t* find_slot(uint32_t key) {
@@ -130,8 +137,8 @@ book_cover_state_t book_cover_load(const char* book) {
     struct stat st;
     if (!cover_source(book, src, sizeof(src), &epub, &st)) return BOOK_COVER_NONE;
 
-    char path[64];
-    cache_path(key, path, sizeof(path));
+    char path[PATH_MAX_LEN];
+    cache_path(book, path, sizeof(path));
     FILE* f = fopen(path, "rb");
     cover_head_t head;
     bool fresh = f && fread(&head, sizeof(head), 1, f) == 1 && !memcmp(head.magic, "TRC1", 4) &&
@@ -379,11 +386,11 @@ static void fit_image(const uint8_t* src, int sw, int sh, uint8_t* dst, int dw, 
     }
 }
 
-static void write_cache(uint32_t key, const struct stat* st, const uint8_t* px) {
+static void write_cache(const char* book, const struct stat* st, const uint8_t* px) {
     mkdir(COVER_ROOT, 0775);
     mkdir(COVER_DIR, 0775);
-    char path[64], tmp[72];
-    cache_path(key, path, sizeof(path));
+    char path[PATH_MAX_LEN], tmp[PATH_MAX_LEN + 8];
+    cache_path(book, path, sizeof(path));
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
     cover_head_t head = {.magic = {'T', 'R', 'C', '1'}, .src_size = (uint32_t)st->st_size,
                          .src_mtime = (uint32_t)st->st_mtime, .w = px ? BOOK_COVER_W : 0, .h = px ? BOOK_COVER_H : 0};
@@ -411,7 +418,7 @@ static bool build(const char* book) {
     if (px) fit_image(gray, w, h, px, BOOK_COVER_W, BOOK_COVER_H);
     free(gray);
     if (decoded && !px) return false;   // 只是内存不够，下次再试 / Only out of memory; retry later
-    write_cache(path_key(book), &st, px);
+    write_cache(book, &st, px);
     slot_t* slot = new_slot(path_key(book));
     slot->state = px ? BOOK_COVER_READY : BOOK_COVER_NONE;
     slot->px = px;
@@ -443,8 +450,8 @@ void book_cover_forget(const char* book) {
         heap_caps_free(slot->px);
         memset(slot, 0, sizeof(*slot));
     }
-    char path[64];
-    cache_path(key, path, sizeof(path));
+    char path[PATH_MAX_LEN];
+    cache_path(book, path, sizeof(path));
     remove(path);
 }
 

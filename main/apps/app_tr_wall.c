@@ -26,6 +26,7 @@
 #include "tr_lock.h"
 #include "tr_time.h"
 #include "tr_ui.h"
+#include "ui_gesture.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
 
@@ -161,8 +162,14 @@ static app_redraw_t back_to_list(void) {
     return APP_REDRAW_FULL;
 }
 
-static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
-    const int x = touch->x, y = touch->y;
+static app_redraw_t turn_page(int turn) {
+    if (pages() <= 1) return APP_REDRAW_NONE;
+    s_page = (s_page + turn + pages()) % pages();
+    book_cover_drop_pending();
+    return APP_REDRAW_PAGE;
+}
+
+static app_redraw_t tap(app_ctx_t* ctx, int x, int y) {
     if (s_view == V_LOADING) return APP_REDRAW_NONE;
     if (s_view == V_PREVIEW) {
         if (y < BAND_Y + 20) return APP_REDRAW_NONE;
@@ -184,11 +191,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         return APP_REDRAW_PAGE;
     }
     int turn = tr_pager_hit(PAGER_Y, (uint16_t)x, (uint16_t)y);
-    if (turn && pages() > 1) {
-        s_page = (s_page + turn + pages()) % pages();
-        book_cover_drop_pending();
-        return APP_REDRAW_PAGE;
-    }
+    if (turn) return turn_page(turn);
     if (y >= LIST_TOP && (y - LIST_TOP) / ROW_H < ROWS) {
         int i = s_page * ROWS + (y - LIST_TOP) / ROW_H;
         if (i >= s_count) return APP_REDRAW_NONE;
@@ -197,6 +200,15 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         snprintf(s_msg, sizeof(s_msg), "正在处理图片，请稍候…");
         return APP_REDRAW_PAGE;
     }
+    return APP_REDRAW_NONE;
+}
+
+// 松手才算轻点；列表左滑 / 上滑下一页，右滑 / 下滑上一页。/ Taps on release; list swipes turn whole pages.
+static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
+    if (ev->type == UI_GESTURE_TAP) return tap(ctx, ev->x0, ev->y0);
+    if (s_view != V_LIST) return APP_REDRAW_NONE;
+    if (ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U) return turn_page(1);
+    if (ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D) return turn_page(-1);
     return APP_REDRAW_NONE;
 }
 
@@ -257,7 +269,7 @@ const app_desc_t app_tr_wall = {
     .render = render,
     .on_enter = on_enter,
     .on_exit = page_on_exit,
-    .on_touch = on_touch,
+    .on_gesture = on_gesture,
     .on_key = on_key,
     .on_tick = on_tick,
 };

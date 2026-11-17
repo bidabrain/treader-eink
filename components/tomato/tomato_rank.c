@@ -107,6 +107,34 @@ static void remove_matching(const char* dir, const char* prefix) {
     closedir(d);
 }
 
+// 书城封面目录里超过这么多个文件就清理（每本一张图加一份缩略图，约 6 个分类）。
+// Prune the store cover dir past this many files (an image plus a thumbnail per book, about 6 categories).
+#define COVER_FILES_MAX 240
+
+void tomato_rank_prune_covers(const tomato_rank_book_t* keep, int n) {
+    const char* dir = TOMATO_RANK_DIR "/covers";
+    DIR* d = opendir(dir);
+    if (!d) return;
+    int files = 0;
+    struct dirent* e;
+    while ((e = readdir(d))) if (e->d_name[0] != '.') files++;
+    if (files <= COVER_FILES_MAX) { closedir(d); return; }
+    rewinddir(d);
+    char path[320];
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        bool kept = false;
+        for (int i = 0; i < n && !kept; i++) {
+            size_t len = strlen(keep[i].book_id);
+            kept = len && !strncmp(e->d_name, keep[i].book_id, len) && e->d_name[len] == '.';
+        }
+        if (kept) continue;
+        snprintf(path, sizeof(path), "%s/%.255s", dir, e->d_name);
+        remove(path);
+    }
+    closedir(d);
+}
+
 // 榜单换了日期就删掉旧的分类缓存和详情页封面，书城缓存不会一直变大。
 // When the rank date changes, delete old category caches and detail covers so the store cache stays bounded.
 void tomato_rank_drop_categories(void) {

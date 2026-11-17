@@ -9,9 +9,14 @@
  * Data is FanqieRankTracker rank JSON; the components/tomato task does the networking and this page reads
  * the TF card cache only.
  *
- * 冻结：只在用户点“刷新”、打开没缓存的分类、进详情取封面、点下载时联网；不自动刷新榜单。
- * Frozen: network only on "Refresh", opening an uncached category, fetching a detail cover, or downloading;
- * never refresh ranks automatically.
+ * 冻结（2026-11-17 改）：榜单页改成 3×3 封面网格，所以打开分类时会在后台一次联网取完这个分类缺的封面（以前只在进详情时取一张）。
+ * 其余联网仍只在用户点“刷新”、打开没缓存的分类、点下载时发生；不自动刷新榜单。取封面让路给用户操作：要取榜单或下载时先取消它。
+ * 列表只翻页不滚动：点“‹ ›”或左右/上下滑一下翻一整页。
+ * Frozen (changed 2026-11-17): the rank page is now a 3x3 cover grid, so opening a category fetches that category's
+ * missing covers in one background session (formerly one cover on the detail page). Other network use still
+ * happens only on "Refresh", opening an uncached category, or downloading; ranks never refresh automatically.
+ * Cover fetching yields to the user: a rank fetch or download cancels it first. Lists page, never scroll:
+ * the pager or one swipe turns a whole page.
  */
 
 #include <stdio.h>
@@ -29,6 +34,7 @@
 #include "tr_time.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
+#include "ui_gesture.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
 
@@ -40,8 +46,12 @@
 #define CHANNEL_Y 322
 #define CATS_Y 430
 #define RANK_TOP 176
-#define RANK_ROW_H 118
-#define RANK_ROWS 7
+#define GRID_COLS 3
+#define GRID_PER 9                       // 每页 3×3 / 3x3 per page
+#define CELL_W 150
+#define CELL_COVER_H 200                 // 3:4 封面 / 3:4 cover
+#define CELL_ROW_H 284
+#define CELL_GAP ((TR_W - 2 * TR_MARGIN - GRID_COLS * CELL_W) / (GRID_COLS - 1))
 #define PAGER_Y 1040
 #define COVER_RECT (EpdRect){TR_MARGIN, 180, 220, 296}
 #define DETAIL_BTN (EpdRect){TR_MARGIN, 1000, TR_W - 2 * TR_MARGIN, 84}
@@ -68,6 +78,9 @@ static int s_shelf_count;
 
 static op_t s_op, s_last;
 static tomato_status_t s_status;
+// 取封面被用户操作打断后要接着做的事。/ What to do once a cancelled cover fetch stops.
+typedef enum { Q_NONE, Q_INDEX, Q_CATEGORY, Q_COVERS, Q_DOWNLOAD } queued_t;
+static queued_t s_queued;
 static uint32_t s_seen_revision;
 static int64_t s_poll_ms;
 
@@ -132,7 +145,37 @@ static bool cover_file(const tomato_rank_book_t* b, char* out, size_t cap) {
 }
 
 static int rank_pages(void) {
-    return s_book_count > 0 ? (s_book_count + RANK_ROWS - 1) / RANK_ROWS : 1;
+    return s_book_count > 0 ? (s_book_count + GRID_PER - 1) / GRID_PER : 1;
+}
+
+// 第 k 格的封面位置。/ Cover rect of grid cell k.
+static EpdRect cell_rect(int k) {
+    return (EpdRect){TR_MARGIN + (k % GRID_COLS) * (CELL_W + CELL_GAP), RANK_TOP + 10 + (k / GRID_COLS) * CELL_ROW_H,
+                     CELL_W, CELL_COVER_H};
+}
+
+// 这个分类还有没下载的封面。/ Whether the category still misses covers.
+static bool covers_missing(void) {
+    char path[96];
+    for (int i = 0; i < s_book_count; i++)
+        if (s_books[i].cover[0] && !cover_file(&s_books[i], path, sizeof(path))) return true;
+    return false;
+}
+
+// 后台空闲时一次取完本分类缺的封面。/ When idle, fetch all of this category's missing covers at once.
+static void fetch_covers(void) {
+    if (s_book_count > 0 && !tomato_sync_busy() && covers_missing())
+        start_op(OP_COVER, tomato_sync_start_rank_covers(s_books, s_book_count));
+}
+
+// 后台空闲返回 true；在取封面就取消它，记下 q 等它停了再做。/ True when idle; cancels a cover fetch and queues q.
+static bool claim_sync(queued_t q) {
+    if (!tomato_sync_busy()) return true;
+    if (s_op == OP_COVER) {
+        s_queued = q;
+        tomato_sync_cancel();
+    }
+    return false;
 }
 
 /* ---- 分类胶囊排版 / Category chip layout ---- */
@@ -174,7 +217,7 @@ static void draw_home(uint8_t* fb) {
     else snprintf(line, sizeof(line), "还没有榜单");
     tr_fit(line, 28, TR_W - 2 * TR_MARGIN - 160);
     tr_text(fb, TR_MARGIN, 258, 28, line, EPD_DRAW_ALIGN_LEFT, false);
-    if (!tomato_sync_busy()) {
+    if (!tomato_sync_busy() || s_op == OP_COVER) {
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 96, 274, false);
         tr_text(fb, TR_W - TR_MARGIN, 254, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
@@ -213,23 +256,23 @@ static void draw_rank(uint8_t* fb) {
         tr_wrap(fb, TR_MARGIN, RANK_TOP + 30, TR_W - 2 * TR_MARGIN, 30, 46, msg, 3);
         return;
     }
-    for (int row = 0; row < RANK_ROWS; row++) {
-        const int i = s_page * RANK_ROWS + row;
+    for (int k = 0; k < GRID_PER; k++) {
+        const int i = s_page * GRID_PER + k;
         if (i >= s_book_count) break;
         const tomato_rank_book_t* b = &s_books[i];
-        const int y = RANK_TOP + row * RANK_ROW_H;
-        snprintf(line, sizeof(line), "%d", i + 1);
-        tr_text(fb, TR_MARGIN, y + 22, 44, line, EPD_DRAW_ALIGN_LEFT, true);
-        snprintf(line, sizeof(line), "%s", b->title);
-        tr_fit(line, 34, TR_W - TR_MARGIN - 110);
-        tr_text(fb, 110, y + 16, 34, line, EPD_DRAW_ALIGN_LEFT, true);
+        const EpdRect r = cell_rect(k);
+        // 封面上不叠任何字，名次和“已在书架”放在封面下面两行，免得和文字封面的书名重叠。
+        // Nothing overlays the cover; rank and "on shelf" go in the two lines below so they never hit a text cover's title.
+        char cover[96];
+        tr_book_cover(fb, r, cover_file(b, cover, sizeof(cover)) ? cover : NULL, b->title, "", "", false);
+        snprintf(line, sizeof(line), "%d %s", i + 1, b->title);
+        tr_fit(line, 24, CELL_W);
+        tr_text(fb, r.x, r.y + r.height + 8, 24, line, EPD_DRAW_ALIGN_LEFT, true);
         const bool owned = shelf_index_of(b->book_id) >= 0;
-        const int mark_w = owned ? ttf_text_width_px(24, "已在书架") + 24 : 0;
-        snprintf(line, sizeof(line), "%s · 在读 %s", b->author, b->reads[0] ? b->reads : "—");
-        tr_fit(line, 26, TR_W - TR_MARGIN - 110 - mark_w);
-        tr_text(fb, 110, y + 64, 26, line, EPD_DRAW_ALIGN_LEFT, false);
-        if (owned) tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - mark_w + 8, y + 60, mark_w - 8, 38}, "已在书架", false, 24);
-        tr_hline(fb, y + RANK_ROW_H - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        if (owned) snprintf(line, sizeof(line), "已在书架");
+        else snprintf(line, sizeof(line), "在读 %s", b->reads[0] ? b->reads : "—");
+        tr_fit(line, 22, CELL_W);
+        tr_text(fb, r.x, r.y + r.height + 46, 22, line, EPD_DRAW_ALIGN_LEFT, owned);
     }
     tr_pager(fb, PAGER_Y, s_page, rank_pages());
 }
@@ -258,9 +301,10 @@ static void draw_detail(uint8_t* fb) {
     tr_wrap(fb, TR_MARGIN, 536, TR_W - 2 * TR_MARGIN, 30, 48, b->intro[0] ? b->intro : "暂无简介", 8);
 
     EpdRect btn = DETAIL_BTN;
-    const bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD;
+    const bool downloading = (tomato_sync_busy() && s_op == OP_DOWNLOAD) || s_queued == Q_DOWNLOAD;
     if (downloading) {
-        const char* what = s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi"
+        const char* what = s_queued == Q_DOWNLOAD ? "正在准备"
+                         : s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi"
                          : s_status.phase == TOMATO_QUEUED ? "服务器正在生成 TXT" : "正在下载";
         if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
         else snprintf(line, sizeof(line), "%s…", what);
@@ -300,10 +344,13 @@ static app_redraw_t open_category(int i) {
     s_page = 0;
     s_last = OP_NONE;
     s_view = V_RANK;
-    if (tomato_rank_cat_cached(&s_cats[i])) load_books();
-    else {
+    if (tomato_rank_cat_cached(&s_cats[i])) {
+        load_books();
+        // 换了分类：停掉上一个分类的封面，改取这个分类的。/ New category: stop the previous covers, fetch this one's.
+        if (claim_sync(Q_COVERS)) fetch_covers();
+    } else {
         s_book_count = -1;
-        if (!tomato_sync_busy()) start_op(OP_RANK, tomato_sync_start_rank(&s_cats[i]));
+        if (claim_sync(Q_CATEGORY)) start_op(OP_RANK, tomato_sync_start_rank(&s_cats[i]));
     }
     return APP_REDRAW_PAGE;
 }
@@ -312,11 +359,10 @@ static app_redraw_t open_detail(int i) {
     s_detail = i;
     s_last = OP_NONE;
     s_view = V_DETAIL;
-    book_cover_drop_pending();
-    // 只为这一本取封面；没设置 Wi-Fi 或失败就用文字封面。/ Fetch this book's cover only; a failure keeps the text cover.
+    // 封面多半在网格里已经取过；还缺就补这一本。/ The grid usually fetched the cover already; fill in this one if not.
     char cover[96];
     if (!cover_file(&s_books[i], cover, sizeof(cover)) && s_books[i].cover[0] && !tomato_sync_busy())
-        start_op(OP_COVER, tomato_sync_start_rank_cover(&s_books[i]));
+        start_op(OP_COVER, tomato_sync_start_rank_covers(&s_books[i], 1));
     return APP_REDRAW_PAGE;
 }
 
@@ -330,7 +376,8 @@ static app_redraw_t download_or_read(app_ctx_t* ctx) {
         if (s_shelf[owned].file[0] && stat(path, &st) == 0) tr_nav_open_book(ctx, path);
         return APP_REDRAW_NONE;
     }
-    if (tomato_sync_busy()) return APP_REDRAW_NONE;
+    if (s_queued == Q_DOWNLOAD) return APP_REDRAW_NONE;
+    if (!claim_sync(Q_DOWNLOAD)) return s_queued == Q_DOWNLOAD ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
     // 榜单书转成搜索结果的格式，走同一条下载路。/ Turn the rank book into a search hit and use the same download path.
     tomato_hit_t hit = {0};
     snprintf(hit.book_id, sizeof(hit.book_id), "%s", b->book_id);
@@ -345,8 +392,8 @@ static app_redraw_t download_or_read(app_ctx_t* ctx) {
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 0) { ctx->request_app = &app_tr_tomato; return APP_REDRAW_NONE; }
-    if (y >= 240 && y < 310 && x > TR_W - TR_MARGIN - 160 && !tomato_sync_busy()) {
-        start_op(OP_RANK, tomato_sync_start_rank(NULL));
+    if (y >= 240 && y < 310 && x > TR_W - TR_MARGIN - 160 && (!tomato_sync_busy() || s_op == OP_COVER)) {
+        if (claim_sync(Q_INDEX)) start_op(OP_RANK, tomato_sync_start_rank(NULL));
         return APP_REDRAW_PAGE;
     }
     if (y >= CHANNEL_Y && y < CHANNEL_Y + CHIP_H && x < TR_MARGIN + 260) {
@@ -366,18 +413,24 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_NONE;
 }
 
+static app_redraw_t turn_page(int turn) {
+    int next = s_page + turn;
+    if (next < 0 || next >= rank_pages()) return APP_REDRAW_NONE;
+    s_page = next;
+    // 上一页还在排队的缩略图不用再做。/ Drop thumbnails still queued for the previous page.
+    book_cover_drop_pending();
+    return APP_REDRAW_PAGE;
+}
+
 static app_redraw_t touch_rank(uint16_t x, uint16_t y) {
     if (y < 160 && x < 140) { s_view = V_HOME; return APP_REDRAW_PAGE; }
     int turn = tr_pager_hit(PAGER_Y, x, y);
-    if (turn) {
-        int next = s_page + turn;
-        if (next < 0 || next >= rank_pages()) return APP_REDRAW_NONE;
-        s_page = next;
-        return APP_REDRAW_PAGE;
-    }
-    if (s_book_count > 0 && y >= RANK_TOP && (y - RANK_TOP) / RANK_ROW_H < RANK_ROWS) {
-        int i = s_page * RANK_ROWS + (y - RANK_TOP) / RANK_ROW_H;
-        if (i < s_book_count) return open_detail(i);
+    if (turn) return turn_page(turn);
+    for (int k = 0; k < GRID_PER && s_book_count > 0; k++) {
+        EpdRect r = cell_rect(k);
+        r.height = CELL_ROW_H - 10;   // 书名两行也算 / The title lines count too
+        const int i = s_page * GRID_PER + k;
+        if (i < s_book_count && ui_rect_hit(r, x, y)) return open_detail(i);
     }
     return APP_REDRAW_NONE;
 }
@@ -393,8 +446,7 @@ static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_NONE;
 }
 
-static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
-    uint16_t x = touch->x, y = touch->y;
+static app_redraw_t tap(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_view != V_DETAIL && tr_nav_touch(ctx, x, y, TR_TAB_TOMATO)) {
         // 从书城点“番茄”标签回到书架。/ Tapping the Tomato tab from the store returns to the shelf.
         if (!ctx->request_app) ctx->request_app = &app_tr_tomato;
@@ -408,6 +460,15 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     return APP_REDRAW_NONE;
 }
 
+// 轻点照旧；榜单页左滑 / 上滑下一页，右滑 / 下滑上一页。/ Taps as before; on the rank page swipes turn whole pages.
+static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
+    if (ev->type == UI_GESTURE_TAP) return tap(ctx, ev->x0, ev->y0);
+    if (s_view != V_RANK) return APP_REDRAW_NONE;
+    if (ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U) return turn_page(1);
+    if (ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D) return turn_page(-1);
+    return APP_REDRAW_NONE;
+}
+
 static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     if (key != UI_KEY_1) return APP_REDRAW_NONE;
     switch (s_view) {
@@ -418,7 +479,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 }
 
 static app_redraw_t on_tick(app_ctx_t* ctx) {
-    if (s_view == V_DETAIL && !(ctx->touch && ctx->touch->touched) && book_cover_tick()) return APP_REDRAW_PAGE;
+    if (s_view != V_HOME && !(ctx->touch && ctx->touch->touched) && book_cover_tick()) return APP_REDRAW_PAGE;
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
     tr_time_poll();
@@ -436,8 +497,32 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
             snprintf(s_cat_name, sizeof(s_cat_name), "%s", keep);
         }
         if (s_last == OP_DOWNLOAD) load_shelf();
-        // 封面取失败不提示，文字封面就够了。/ A failed cover stays silent; the text cover is enough.
-        if (s_last == OP_COVER && s_status.phase == TOMATO_FAILED) return APP_REDRAW_NONE;
+        // 取封面被打断：接着做用户要的事。/ Cover fetch interrupted: carry on with what the user asked for.
+        const queued_t q = s_queued;
+        s_queued = Q_NONE;
+        if (q == Q_INDEX) { start_op(OP_RANK, tomato_sync_start_rank(NULL)); return APP_REDRAW_PAGE; }
+        if (q == Q_CATEGORY && s_cur >= 0) { start_op(OP_RANK, tomato_sync_start_rank(&s_cats[s_cur])); return APP_REDRAW_PAGE; }
+        if (q == Q_DOWNLOAD && s_view == V_DETAIL) return download_or_read(ctx);
+        if (q == Q_COVERS && s_view == V_RANK) { fetch_covers(); return APP_REDRAW_NONE; }
+        if (s_last == OP_RANK && s_view == V_RANK && s_status.phase == TOMATO_DONE) {
+            fetch_covers();
+            return APP_REDRAW_PAGE;
+        }
+        if (s_last == OP_COVER) {
+            // 封面到了不立刻整页刷：让本页缩略图排队生成，生成完 book_cover_tick 再刷一次。
+            // Covers arrived: queue this page's thumbnails; book_cover_tick redraws once they are built.
+            if (s_view == V_RANK) {
+                char cover[96];
+                for (int k = 0; k < GRID_PER; k++) {
+                    const int i = s_page * GRID_PER + k;
+                    if (i < s_book_count && cover_file(&s_books[i], cover, sizeof(cover))) book_cover_load(cover);
+                }
+            } else if (s_view == V_DETAIL) {
+                char cover[96];
+                if (cover_file(&s_books[s_detail], cover, sizeof(cover))) book_cover_load(cover);
+            }
+            return APP_REDRAW_NONE;
+        }
         return APP_REDRAW_PAGE;
     }
     if (s_status.revision == s_seen_revision || s_view != V_DETAIL || s_op != OP_DOWNLOAD) return APP_REDRAW_NONE;
@@ -466,6 +551,7 @@ static void on_enter(app_ctx_t* ctx) {
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
     book_cover_drop_pending();
+    s_queued = Q_NONE;
 }
 
 static void on_media_lost(app_ctx_t* ctx) {
@@ -486,7 +572,7 @@ const app_desc_t app_tr_store = {
     .on_enter = on_enter,
     .on_exit = page_on_exit,
     .on_media_lost = on_media_lost,
-    .on_touch = on_touch,
+    .on_gesture = on_gesture,
     .on_key = on_key,
     .on_tick = on_tick,
 };

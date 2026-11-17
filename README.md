@@ -24,7 +24,8 @@
 - 搜索：点结果先看简介、分类、章节、字数，再决定下载
 - 下载：服务器生成 TXT 后存进 `books/`，在书库里像普通书一样阅读
 - 检查更新与下载分开：都只在你点的时候运行，**不会自动检查**；正在读的那本不替换
-- 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，详情页直接下载
+- 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，封面网格显示，详情页直接下载
+- 所有列表都按页显示，点按钮或滑一下翻一整页，墨水屏不做滚动
 
 **系统**
 - 拼音输入法：全拼、九键、英文、符号，离线词库在 TF 卡上

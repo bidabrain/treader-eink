@@ -55,6 +55,8 @@ void tomato_rank_cat_path(const tomato_rank_cat_t* cat, char* out, size_t cap);
 bool tomato_rank_index_date(char* out, size_t cap);
 /// 删掉所有分类缓存（榜单换日期时）。/ Delete all category caches (when the rank date changes).
 void tomato_rank_drop_categories(void);
+/// 封面目录太大时，只留 keep 里这些书的封面和缩略图。/ When the cover dir grows too big, keep only these books' covers and thumbnails.
+void tomato_rank_prune_covers(const tomato_rank_book_t* keep, int n);
 
 /// GET 一个完整 URL，边收边数 key_a / key_b 出现次数，返回较大者。/ GET a full URL and count key occurrences while streaming.
 esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char* key_b,
