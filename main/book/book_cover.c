@@ -386,6 +386,10 @@ static void fit_image(const uint8_t* src, int sw, int sh, uint8_t* dst, int dw, 
     }
 }
 
+void book_image_fill(const uint8_t* src, int sw, int sh, uint8_t* dst, int dw, int dh) {
+    fit_image(src, sw, sh, dst, dw, dh);
+}
+
 static void write_cache(const char* book, const struct stat* st, const uint8_t* px) {
     mkdir(COVER_ROOT, 0775);
     mkdir(COVER_DIR, 0775);

@@ -96,6 +96,45 @@ static size_t fit_bytes(const char* p, int px, int w, bool stop_at_newline) {
     return len;
 }
 
+int tr_message(uint8_t* fb, int x, int y_one, int y_two, int w, int px, const char* text,
+               enum EpdFontFlags align, bool bold) {
+    if (!text || !text[0]) return 0;
+    if (ttf_text_width_px(px, text) <= w) {
+        tr_text(fb, x, y_one, px, text, align, bold);
+        return 1;
+    }
+    const int small = px - 4, lh = small + 4;
+    char line[192];
+    const char* p = text;
+    int lines = 0;
+    while (*p && lines < 2) {
+        size_t take = fit_bytes(p, small, w, true);
+        if (!take && *p != '\n') take = u8_len(p);
+        if (take >= sizeof(line) - 4) take = sizeof(line) - 4;
+        while (take && ((unsigned char)p[take] & 0xC0) == 0x80) take--;
+        memcpy(line, p, take);
+        line[take] = 0;
+        p += take;
+        if (*p == '\n') p++;
+        if (lines == 1 && *p) {
+            // 两行还放不下：第二行末尾加省略号。/ Still too long for two lines: end the second with an ellipsis.
+            size_t n = strlen(line);
+            if (n + 4 <= sizeof(line)) memcpy(line + n, "  ", 3);
+            fit_impl(line, small, w, true);
+        }
+        tr_text(fb, x, y_two + lines * lh, small, line, align, bold);
+        lines++;
+    }
+    return lines;
+}
+
+size_t tr_line_bytes(const char* text, int px, int w) {
+    size_t take = fit_bytes(text, px, w, true);
+    // 一个字都放不下时至少放一个，免得排版卡死。/ Take at least one character so layout always advances.
+    if (!take && *text && *text != '\n') take = u8_len(text);
+    return take;
+}
+
 const char* tr_tail_fit(const char* text, int px, int w) {
     // 从末尾往前累加，找到能放下的最长尾巴。/ Walk back from the end to find the longest tail that fits.
     size_t len = strlen(text);
@@ -210,6 +249,16 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 26, y + 10, x + 20, y + 14, c);
         thick_line(fb, x + 20, y + 14, x + 20, y + 7, c);
         break;
+    case TR_ICON_BALL:
+        // 篮球：圆、横竖两线、两条弧。/ Basketball: circle, cross lines and two curves.
+        thick_circle(fb, cx, cy, 13, c);
+        thick_line(fb, x + 7, cy, x + 33, cy, c);
+        thick_line(fb, cx, y + 7, cx, y + 33, c);
+        thick_line(fb, x + 11, y + 10, x + 15, y + 20, c);
+        thick_line(fb, x + 15, y + 20, x + 11, y + 30, c);
+        thick_line(fb, x + 29, y + 10, x + 25, y + 20, c);
+        thick_line(fb, x + 25, y + 20, x + 29, y + 30, c);
+        break;
     case TR_ICON_SETTINGS:
         thick_line(fb, x + 7, y + 12, x + 33, y + 12, c);
         thick_line(fb, x + 7, y + 28, x + 33, y + 28, c);
@@ -264,8 +313,8 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    static const char* const labels[TR_TAB_COUNT] = {"书库", "番茄", "设置"};
-    static const tr_icon_t icons[TR_TAB_COUNT] = {TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS};
+    static const char* const labels[TR_TAB_COUNT] = {"书库", "番茄", "虎扑", "设置"};
+    static const tr_icon_t icons[TR_TAB_COUNT] = {TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_BALL, TR_ICON_SETTINGS};
     epd_fill_rect(tr_tab_area(), UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
     const int cell = TR_W / TR_TAB_COUNT;

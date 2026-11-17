@@ -17,7 +17,7 @@
 **阅读**
 - 书库：TF 卡 `books/` 里的 TXT、EPUB，按书名或最近阅读排序，拼音首字母搜索，按来源筛选（番茄 / 其他书）
 - 图片封面：EPUB 自带封面、番茄书下载时一起取封面；书库、锁屏都显示
-- 阅读器：目录、字号、逐书记住进度、清残影；局部 DU 快刷翻页，周期性 GC16 压灰底
+- 阅读器：目录、字号、逐书记住进度；排版可调行距、段距、页边距、首行缩进和每行下划线；局部 DU 快刷翻页，周期性 GC16 压灰底，长按中键整屏刷新
 - 书库就是主页：开机直接进书库，顶部“继续阅读”卡片点一下接着读，番茄有新章节时状态行提示；底部只有书库、番茄、设置三个标签
 
 **番茄小说**（需要[自建下载服务器](#自建番茄下载服务器)）
@@ -26,6 +26,14 @@
 - 检查更新与下载分开：都只在你点的时候运行，**不会自动检查**；正在读的那本不替换
 - 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，封面网格显示，详情页直接下载
 - 所有列表都按页显示，点按钮或滑一下翻一整页，墨水屏不做滚动
+
+**虎扑**（只读，不需要服务器，移植自安卓版 [虎扑 X](https://github.com/bidabrain/hupuX)）
+- 推荐：首页推荐，每页 5 条，带缩略图
+- 关注：在设备上关注专区（不用登录），各专区最新帖子混排；全部专区按分类浏览，专区帖子可按最新回复或最新发布
+- 比分：NBA、CBA、英超、LOL、网球的赛程，默认显示今天；已结束的比赛看全场球员评分和技术统计
+- 帖子：正文分页显示，图片嵌在正文里，点图全屏看；“亮了”的热门回复和前面的回复
+- 只在点“刷新”或打开没缓存的内容时联网；不联网时照常看缓存
+- 不登录、不点亮、不回复、不打分；视频只提示去 App 看
 
 **系统**
 - 拼音输入法：全拼、九键、英文、符号，离线词库在 TF 卡上
@@ -62,6 +70,7 @@
 | `books/` | 自己放 | TXT、EPUB；番茄下载的书也放这里 |
 | `wallpapers/` | 自己放 | 锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图 |
 | `tomato/config.json` | 可选 | 服务器、WebDAV、榜单地址，也可以在设备“设置”里填 |
+| `hupu/` | 自动生成 | 虎扑推荐、帖子、专区、赛程、评分和图片缓存，有上限，可以整个删掉；`follow.json` 是关注的专区 |
 
 设备会自己生成 `tomato/` 下的书架、书城缓存，以及 `.treader/` 下的封面和壁纸缓存（可以整个删掉）。已经刷好 Treader 的话，也可以在“设置 → TF 卡”里格式化，它会建好上面这些文件夹。
 
@@ -290,6 +299,7 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 | [vroland/epdiy](https://github.com/vroland/epdiy) | 墨水屏驱动（LGPL-3.0） |
 | [zhongbai2333/Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) | 番茄小说下载服务器 |
 | [bidabrain/Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) | 安卓版番茄阅读器，接口与更新规则的来源 |
+| [bidabrain/hupuX](https://github.com/bidabrain/hupuX) | 安卓版虎扑客户端，虎扑页的接口取法来源 |
 | [wen1701/FanqieRankTracker](https://github.com/wen1701/FanqieRankTracker) | 番茄分类榜单数据 |
 | [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico) | 拼音输入引擎与词库格式（Apache-2.0） |
 | jieba、pypinyin | 拼音词库数据（MIT） |

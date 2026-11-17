@@ -88,7 +88,7 @@ static char s_wifi[33];
 static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
 static bool s_has_cfg, s_has_dav;
-static char s_message[64];
+static char s_message[112];
 EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 static char s_step1[160], s_step2[64];
 static bool s_syncing;
@@ -194,10 +194,7 @@ static void row_value(row_id_t id, char* out, size_t cap) {
 static void draw_list(uint8_t* fb) {
     tr_title(fb, "设置");
     if (s_message[0]) {
-        char msg[64];
-        snprintf(msg, sizeof(msg), "%s", s_message);
-        tr_fit(msg, 26, 420);
-        tr_text(fb, TR_W - TR_MARGIN, 104, 26, msg, EPD_DRAW_ALIGN_RIGHT, false);
+        tr_message(fb, TR_W - TR_MARGIN, 104, 92, 420, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
     }
     for (int i = 0; i < R_COUNT; i++) {
         const row_t* r = &ROWS[i];

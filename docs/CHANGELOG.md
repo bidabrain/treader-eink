@@ -3,6 +3,27 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-18 · Treader 0.3.0
+
+- 书城：榜单地址是 `xxx.github.io/仓库` 时，直连超时或失败会自动改从 jsDelivr 镜像（fastly、gcore、cdn）取同一仓库 main 分支的数据，用通的那个记到重启；国内直连 GitHub Pages 常超时。
+  Store: for `xxx.github.io/repo` rank sites, a timeout or failure falls back to jsDelivr mirrors (fastly, gcore, cdn) of the repo's main branch, keeping the working one until reboot; GitHub Pages often times out from China.
+- 修复 HTTPS：证书链以“被 GlobalSign Root CA 交叉签名的 GTS Root R4”结尾的站点（Cloudflare 后面的自建服务器常见）握手失败；打开证书包的交叉签名校验。
+  Fixed HTTPS to sites whose chain ends in GTS Root R4 cross-signed by GlobalSign Root CA (common behind Cloudflare) by enabling cross-signed verification in the certificate bundle.
+- 联网：路由器 DNS 解析不了服务器域名时（常见于开了“DNS 重绑定保护”、域名指向内网 IP 的自建服务器），自动改用阿里 223.5.5.5 / 腾讯 119.29.29.29 公共 DNS 再试一次；失败提示能分辨“域名解析失败”“HTTPS 握手失败”“连接服务器超时”。
+  Networking: when the router's DNS cannot resolve the server name (common with DNS-rebinding protection and self-hosted servers on LAN IPs), retry once via AliDNS 223.5.5.5 / Tencent 119.29.29.29; messages now distinguish DNS, HTTPS handshake and connect-timeout failures.
+- 阅读新增排版设置：行距、段距、页边距、首行缩进（自动缩进两字）、每行下划线；在阅读工具条点“排版”调整，立即重排并对所有书生效。工具条的“清残影”去掉了，整屏刷新用长按中键。
+  Reading layout options: line and paragraph spacing, margins, automatic two-character first-line indent and rules under lines, set from the reading toolbar and applied at once to all books. The toolbar's full-refresh tool is gone; hold the middle key instead.
+- 修复联网：传书页启动失败（比如选了“已有 WiFi”但没配好）后，状态一直停在“出错”，之后番茄、书城、虎扑都以为传书还占着 Wi-Fi，连不上网，设置里扫描和保存 Wi-Fi 也失败；虎扑还不显示任何提示。Wi-Fi 改按中国信道（1～13），路由器在 12、13 信道也能连。
+  Fixed networking: after the transfer page failed to start, its state stayed "error", so Tomato, store and Hupu all believed the transfer held Wi-Fi and never connected, and scanning/saving Wi-Fi in settings failed too; Hupu showed no message. Wi-Fi now uses the Chinese channel plan (1-13) so routers on channels 12-13 work.
+- 修复键盘：字母 d、e、f、g、h、i、j 被当成了“分词、删除、123、全拼、空格、搜索、清空”（功能键编号和字母撞了）。
+  Fixed the keyboard: letters d-j acted as function keys because their ids collided.
+- 修复九键和全拼候选缺字：没打完的音节现在在全部匹配的词条里挑最常用的补全（原来只看前 1600 条），只按一个键也有候选；整句组词优先常用词。
+  Fixed missing T9 and pinyin candidates: unfinished syllables now complete from every matching entry by frequency (previously only the first 1,600), a single key yields candidates, and sentence building prefers common words.
+- 联网失败的提示后面带上具体原因（如“密码不对或信号太弱”“连不上服务器 errno 113”“HTTP 404”），一行放不下就换两行显示，原因不会被截掉。
+  Network failure messages now carry the cause (wrong password or weak signal, server unreachable with errno, HTTP status) and wrap to two lines so it is not cut off.
+- 新增虎扑标签（只读）：推荐带缩略图；在设备上关注专区并混排最新帖子，全部专区按分类浏览，专区帖子可按最新回复或最新发布；比分看 NBA、CBA、英超、LOL、网球赛程和已结束比赛的球员评分；帖子正文分页并内嵌图片、点图全屏看，“亮了”和前面的回复。设备直接取虎扑，不需要服务器；不联网时看缓存。
+  New Hupu tab (read only): feed with thumbnails; follow zones on the device with an interleaved feed, browse all zones by category and zone posts by latest reply or newest; scores for NBA, CBA, EPL, LoL and tennis with player ratings for finished games; paged post bodies with inline images, a full-screen viewer, lit and first replies. The device reads Hupu directly with no server and shows caches offline.
+
 ## 2026-11-17 · Treader 0.2.0
 
 - 首页并入书库：开机进书库，底部标签只剩书库、番茄、设置；书架顶部加“继续阅读”卡片（代替续读弹窗），番茄有更新时状态行提示；中键回书库。

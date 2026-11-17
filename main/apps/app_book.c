@@ -14,6 +14,10 @@
  * 用户修订：单本管理为书架弹窗；管理页用于批量操作。分页和排序保留勾选，筛选/应用搜索及重扫清除勾选。
  * 失败进度仅按变更路径失效；删除后的清理重试保留到本次开机结束，不随切页释放。
  * 卡失效时先保存进度并关闭阅读资源，再由主循环回退字体；禁止自动续读失效挂载。
+ * Treader 修订：阅读工具条的“清残影”换成“排版”（中键长按就是整屏刷新），排版面板调行距、段距、页边距、首行缩进和行下虚线，
+ * 改了立即按当前位置重排并存进设置。/ Treader revision: the reading toolbar's full-refresh tool becomes Layout (a
+ * middle-key hold already refreshes); its panel sets line and paragraph spacing, margins, first-line indent and rules
+ * under lines, re-paginating at the current position at once and saving to settings.
  * Treader 修订（2026-11-17）：首页并入书库，书库是开机页。原来的续读弹窗换成书架顶部常驻的“继续阅读”卡片，点了才打开，
  * 大书照样不会在进书架时阻塞；番茄有更新时状态行右侧提示，点了去番茄页。中键（home）在书架上回第一页，已在第一页则整屏刷新。
  * 用户修订：图片点击后才加载，预览返回不改变正文分页；只缓存当前章节最近查看的一幅图，已读重复位置不冒充全书首次位置。
@@ -143,6 +147,18 @@ static delete_retry_t* s_delete_retries;
 static char s_latest_path[BOOK_STORE_PATH_MAX];
 static bool s_save_failed;
 static bool s_pending_invalidated;
+// 阅读排版：设置里存的样式，和排版面板是否打开。/ Reading layout: the stored style and whether the panel is open.
+static app_book_style_t s_style = {.line = 1, .para = 1, .margin = 1};
+static bool s_typeset;
+static const int LINE_PCT[3] = {130, 150, 180};
+static const int MARGIN_PX[3] = {24, 40, 64};
+#define TYPESET_Y 620
+#define TYPESET_ROWS 5
+#define TYPESET_ROW0 (TYPESET_Y + 84)
+#define TYPESET_ROW_H 76
+static void apply_style(void) {
+    book_layout_set_style(LINE_PCT[s_style.line], s_style.para, s_style.indent, s_style.underline);
+}
 static int64_t s_save_retry_ms;
 static unsigned s_store_revision;
 static bool s_scan_pending, s_resume_pending, s_toolbar, s_clear_confirm;
@@ -226,7 +242,34 @@ static size_t fb_bytes(void) { return (size_t)epd_width() * epd_height() / 2; }
 static EpdRect reader_area(void) { return (EpdRect){0, 0, UI_LOCK_WIDTH, (UI_BAR_TOP / 32) * 32}; }
 static EpdRect body_rect(void) {
     int top = ttf_font_is_builtin() ? 140 : 24;
-    return (EpdRect){UI_MARGIN, top, ui_content_width(), UI_BAR_TOP - 8 - top};
+    const int m = MARGIN_PX[s_style.margin];
+    return (EpdRect){m, top, UI_LOCK_WIDTH - 2 * m, UI_BAR_TOP - 8 - top};
+}
+// 排版面板：五行选项，前三行三选一，后两行二选一。/ Layout panel: five rows; three choices each for the first three.
+static int typeset_choices(int row) { return row < 3 ? 3 : 2; }
+static EpdRect typeset_rect(int row, int opt) {
+    const int n = typeset_choices(row), gap = 12, x0 = 224;
+    const int w = (UI_LOCK_WIDTH - UI_MARGIN - x0 - gap * (n - 1)) / n;
+    return (EpdRect){x0 + opt * (w + gap), TYPESET_ROW0 + row * TYPESET_ROW_H, w, 56};
+}
+static EpdRect typeset_done_rect(void) { return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 140, TYPESET_Y + 14, 140, 56}; }
+static int typeset_value(int row) {
+    return row == 0 ? s_style.line : row == 1 ? s_style.para : row == 2 ? s_style.margin : row == 3 ? s_style.indent : s_style.underline;
+}
+static void draw_typeset(uint8_t* fb) {
+    static const char* const NAMES[TYPESET_ROWS] = {"行距", "段距", "页边距", "首行缩进", "下划线"};
+    static const char* const CHOICES[TYPESET_ROWS][3] = {
+        {"紧凑", "标准", "宽松"}, {"无", "小", "大"}, {"窄", "中", "宽"}, {"按原文", "缩进两字", ""}, {"无", "有", ""},
+    };
+    epd_fill_rect((EpdRect){0, TYPESET_Y, UI_LOCK_WIDTH, UI_BAR_TOP - TYPESET_Y}, UI_GRAY_WHITE, fb);
+    tr_hline(fb, TYPESET_Y, 0, UI_LOCK_WIDTH, false);
+    tr_text(fb, UI_MARGIN, TYPESET_Y + 24, 32, "排版", EPD_DRAW_ALIGN_LEFT, true);
+    tr_pill(fb, typeset_done_rect(), "完成", true, 28);
+    for (int row = 0; row < TYPESET_ROWS; ++row) {
+        tr_text(fb, UI_MARGIN, TYPESET_ROW0 + row * TYPESET_ROW_H + 14, 28, NAMES[row], EPD_DRAW_ALIGN_LEFT, false);
+        for (int opt = 0; opt < typeset_choices(row); ++opt)
+            tr_pill(fb, typeset_rect(row, opt), CHOICES[row][opt], typeset_value(row) == opt, 28);
+    }
 }
 static EpdRect progress_rect(void) {
     EpdRect b = ui_bar_rect(0, 1);
@@ -657,17 +700,20 @@ static void draw_reader(uint8_t* fb, size_t page) {
         tr_text(fb, UI_LOCK_WIDTH - UI_MARGIN, TOOL_PANEL_Y + 24, 28, size_hint, EPD_DRAW_ALIGN_RIGHT, false);
         static const int tools[4] = {0, 3, 4, 5};
         static const tr_icon_t icons[4] = {TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BOOKS};
-        static const char* const labels[4] = {"目录", "菜单", "清残影", "书库"};
+        static const char* const labels[4] = {"目录", "菜单", "排版", "书库"};
         for (int k = 0; k < 4; ++k) {
             EpdRect r = tool_rect(tools[k]);
             if (s_pressed_control == 200 + tools[k]) ui_draw_selected_round_rect(fb, r, UI_BTN_RADIUS);
-            tr_icon(fb, icons[k], r.x + r.width / 2, r.y + 36, false);
+            // 排版用“Aa”当图标。/ Layout uses "Aa" as its icon.
+            if (tools[k] == 4) tr_text(fb, r.x + r.width / 2, r.y + 16, 36, "Aa", EPD_DRAW_ALIGN_CENTER, true);
+            else tr_icon(fb, icons[k], r.x + r.width / 2, r.y + 36, false);
             tr_text(fb, r.x + r.width / 2, r.y + 70, 28, labels[k], EPD_DRAW_ALIGN_CENTER, false);
         }
         tr_pill(fb, tool_rect(1), "A−", s_pressed_control == 201, 34);
         tr_pill(fb, tool_rect(2), "A+", s_pressed_control == 202, 34);
         snprintf(size_hint, sizeof(size_hint), "%d", s_px);
         tr_text(fb, UI_LOCK_WIDTH / 2, tool_rect(1).y + 20, 40, size_hint, EPD_DRAW_ALIGN_CENTER, true);
+        if (s_typeset) draw_typeset(fb);
     }
 }
 static void prep_task(void* arg) {
@@ -1431,6 +1477,41 @@ static app_redraw_t resize_text(app_ctx_t* ctx, int dir) {
     s_size_settle_ms = ctx->now_ms + BOOK_SIZE_SETTLE_MS;
     return paint_reading(ctx, MODE_DU);
 }
+// 换排版样式：按当前位置重排；失败就退回原样式。/ Change the style: re-paginate at the current position, or roll back.
+static app_redraw_t restyle(app_ctx_t* ctx, int row, int opt) {
+    app_book_style_t next = s_style;
+    if (row == 0) next.line = (uint8_t)opt;
+    else if (row == 1) next.para = (uint8_t)opt;
+    else if (row == 2) next.margin = (uint8_t)opt;
+    else if (row == 3) next.indent = opt != 0;
+    else next.underline = opt != 0;
+    if (!memcmp(&next, &s_style, sizeof(next))) return APP_REDRAW_NONE;
+    size_t off = book_layout_page_start_offset(s_page);
+    save_progress();
+    lock_draw();
+    invalidate_prep();
+    const app_book_style_t old = s_style;
+    s_style = next;
+    apply_style();
+    if (!book_layout_build_blocks(s_text, s_text_len, s_blocks, s_block_count, body_rect(), s_px)) {
+        s_style = old;
+        apply_style();
+        bool restored = book_layout_build_blocks(s_text, s_text_len, s_blocks, s_block_count, body_rect(), s_px);
+        unlock_draw();
+        if (!restored) {
+            free_book();
+            s_view = SHELF;
+            copy_text(s_message, sizeof(s_message), "排版失败，请重新扫描并打开图书");
+        }
+        return APP_REDRAW_PAGE;
+    }
+    s_page = book_layout_page_for_offset(off);
+    unlock_draw();
+    app_settings_set_book_style(&s_style);
+    save_progress();
+    (void)ctx;
+    return APP_REDRAW_PAGE;
+}
 // Treader：字体页不在菜单里了，直接引用。/ Treader: the font page left the menu, so reference it directly.
 extern const app_desc_t app_font_pick;
 static void goto_font(app_ctx_t* ctx) {
@@ -1524,13 +1605,24 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_view == READING) {
         if (s_image_open) return close_image();
         if (ttf_font_is_builtin() && y < 140) { goto_font(ctx); return APP_REDRAW_NONE; }
+        if (s_toolbar && s_typeset) {
+            if (y >= TYPESET_Y) {
+                if (ui_rect_hit(typeset_done_rect(), x, y)) { s_typeset = false; return APP_REDRAW_PAGE; }
+                for (int row = 0; row < TYPESET_ROWS; ++row)
+                    for (int opt = 0; opt < typeset_choices(row); ++opt)
+                        if (ui_rect_hit(typeset_rect(row, opt), x, y)) return restyle(ctx, row, opt);
+                return APP_REDRAW_NONE;
+            }
+            // 点正文区：收起面板和工具条，看效果。/ Tapping the page closes the panel and toolbar to show the result.
+            if (y > 110) { s_typeset = false; s_toolbar = false; invalidate_prep(); return APP_REDRAW_PAGE; }
+        }
         if (s_toolbar) {
             for (int i = 0; i < BOOK_TOOL_COUNT; ++i) if (ui_rect_hit(tool_rect(i), x, y)) {
                 invalidate_prep();
                 if (i == 0) { save_progress(); s_view = TOC; ctx->leaf = s_chapter / BOOK_TOC_ROWS; }
                 else if (i == 1 || i == 2) return resize_text(ctx, i == 1 ? -1 : 1);
                 else if (i == 3) { save_progress(); s_toolbar = false; ctx->request_menu = true; return APP_REDRAW_NONE; }
-                else if (i == 4) return APP_REDRAW_FULL;
+                else if (i == 4) { s_typeset = true; return APP_REDRAW_PAGE; }
                 else { save_progress(); free_book(); s_view = SHELF; scan_shelf(ctx); }
                 return APP_REDRAW_PAGE;
             }
@@ -1558,6 +1650,7 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         if (x < UI_LOCK_WIDTH * 3 / 10) return turn_page(ctx, -1);
         if (x >= UI_LOCK_WIDTH * 7 / 10) return turn_page(ctx, 1);
         s_toolbar = !s_toolbar;
+            s_typeset = false;
         invalidate_prep();
         return APP_REDRAW_PAGE;
     }
@@ -1643,6 +1736,10 @@ static void on_enter(app_ctx_t* ctx) {
     ctx->leaf = 0;
     s_count = 0;
     s_px = app_settings_book_px();
+    // 排版样式每次进书库读一次，排版前生效。/ Load the layout style on entry so it applies before any pagination.
+    s_style = app_settings_book_style();
+    s_typeset = false;
+    apply_style();
     s_scan_pending = true;
     // 续读弹窗不再出现：书架顶部的“继续阅读”卡片代替它。/ No resume dialog: the continue card replaces it.
     s_resume_pending = false;
@@ -1735,7 +1832,17 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         return -1;
     }
     if (s_view == READING) {
-        if (s_toolbar) for (int i = 0; i < BOOK_TOOL_COUNT; ++i) {
+        if (s_toolbar && s_typeset && y >= TYPESET_Y) {
+            *rect = typeset_done_rect();
+            if (ui_rect_hit(*rect, x, y)) return 820;
+            for (int row = 0; row < TYPESET_ROWS; ++row)
+                for (int opt = 0; opt < typeset_choices(row); ++opt) {
+                    *rect = typeset_rect(row, opt);
+                    if (ui_rect_hit(*rect, x, y)) return 800 + row * 4 + opt;
+                }
+            return -1;
+        }
+        if (s_toolbar && !s_typeset) for (int i = 0; i < BOOK_TOOL_COUNT; ++i) {
             *rect = tool_rect(i);
             if (ui_rect_hit(*rect, x, y)) return 200 + i;
         }
@@ -1861,6 +1968,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
         if (s_view == BULK) s_view = SHELF;
         else if (s_view == READING) {
             s_toolbar = !s_toolbar;
+            s_typeset = false;
             invalidate_prep();
         } else if (s_view == TOC && s_text) {
             s_view = READING;

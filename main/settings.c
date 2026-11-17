@@ -25,6 +25,7 @@
 #define NVS_KEY_PICKUP "pickup"
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
+#define NVS_KEY_BOOK_STYLE "bk_style"
 #define FONT_PATH_MAX 160
 
 static app_sleep_mode_t s_sleep = APP_SLEEP_OFF;
@@ -34,6 +35,23 @@ static uint8_t s_last_boot;
 static bool s_pickup_wake;
 static uint8_t s_book_px = 48;
 static bool s_book_shake;
+// 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
+// Defaults: standard line spacing, small paragraph gap, medium margins, indent as written, no rules (the old layout).
+static uint8_t s_book_style = 0x15;
+
+static app_book_style_t unpack_style(uint8_t v) {
+    app_book_style_t s = {.line = v & 3, .para = (v >> 2) & 3, .margin = (v >> 4) & 3,
+                          .indent = (v >> 6) & 1, .underline = (v >> 7) & 1};
+    if (s.line > 2) s.line = 1;
+    if (s.para > 2) s.para = 1;
+    if (s.margin > 2) s.margin = 1;
+    return s;
+}
+
+static uint8_t pack_style(const app_book_style_t* s) {
+    return (uint8_t)((s->line & 3) | (s->para & 3) << 2 | (s->margin & 3) << 4 | (s->indent ? 1 : 0) << 6 |
+                     (s->underline ? 1 : 0) << 7);
+}
 
 static uint8_t valid_book_px(uint8_t px) {
     return px >= 36 && px <= 72 && (px - 36) % 4 == 0 ? px : 48;
@@ -69,6 +87,8 @@ void app_settings_init(void) {
     uint8_t book_px = 48, book_shake = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_PX, &book_px) == ESP_OK) s_book_px = valid_book_px(book_px);
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
+    uint8_t book_style = 0;
+    if (nvs_get_u8(h, NVS_KEY_BOOK_STYLE, &book_style) == ESP_OK) s_book_style = book_style;
     nvs_close(h);
     ESP_LOGI(
         TAG, "sleep mode %s, font %s",
@@ -165,6 +185,18 @@ void app_settings_set_book_px(uint8_t px) {
 
 bool app_settings_book_shake(void) {
     return s_book_shake;
+}
+
+app_book_style_t app_settings_book_style(void) {
+    return unpack_style(s_book_style);
+}
+
+void app_settings_set_book_style(const app_book_style_t* style) {
+    const app_book_style_t clean = unpack_style(pack_style(style));
+    const uint8_t v = pack_style(&clean);
+    if (v == s_book_style) return;
+    s_book_style = v;
+    nvs_put_u8(NVS_KEY_BOOK_STYLE, v);
 }
 
 void app_settings_set_book_shake(bool on) {

@@ -33,8 +33,7 @@
 #define IME_MAX_BYTES (2u * 1024u * 1024u)
 #define IME_MAX_ENTRIES 65535u
 #define IME_EXACT_SCAN 32
-#define IME_TAIL_SCAN 400   // 补全窗口：最多看这么多条 / Completion window: entries examined
-#define IME_TAIL_KEEP 12    // 补全只取频率最高的几条 / Completions keep only the most frequent few
+#define IME_TAIL_KEEP 20    // 补全只取频率最高的几条 / Completions keep only the most frequent few
 #define IME_TAIL_SLACK 4
 #define IME_INF 1000000
 
@@ -242,7 +241,8 @@ static void try_entry(ime_work_t* w, const char* pinyin, const char* text, int r
     if (!exact && !completion) return;
     int end = start + same;
     if (w->path[start].cost < IME_INF) {
-        int cost = w->path[start].cost + 8 + (exact ? 0 : 18 + (plen - same) * 8);
+        // 词频也算进整句代价：同样长度时选常用字词。/ Word frequency counts toward the sentence cost: prefer common words.
+        int cost = w->path[start].cost + 8 + rank / 4 + (exact ? 0 : 18 + (plen - same) * 8);
         size_t have = strlen(w->path[start].text), add = strlen(text);
         if (cost < w->path[end].cost && have + add < sizeof(w->path[end].text)) {
             memcpy(w->path[end].text, w->path[start].text, have);
@@ -278,9 +278,13 @@ static void scan_from(ime_work_t* w, int start) {
             try_entry(w, py, py + e[0] + 1, e[2], start);
         }
     }
-    // 末尾不完整音节：前缀窗口内补全。/ Unfinished tail syllable: complete within a bounded prefix window.
+    // 末尾不完整音节（只按了一个键也算）：在整个前缀区间里挑频率最高的几条补全。
+    // 原来只看区间开头 1600 条，九键一个数字串对应好几个音，常用字（如 946 的“中”）常落在窗口外。
+    // Unfinished tail syllable (a single key counts): pick the most frequent completions from the whole prefix range.
+    // Only the first 1,600 entries used to be examined; a T9 digit string covers several syllables, so common
+    // characters (such as 中 for 946) often fell outside that window.
     int remaining = w->n - start;
-    if (remaining < 2) return;
+    if (remaining < 1) return;
     memcpy(key, w->input + start, (size_t)remaining);
     key[remaining] = 0;
     uint32_t lo = 0, hi = s_count;
@@ -289,15 +293,18 @@ static void scan_from(ime_work_t* w, int start) {
         if (prefix_cmp((const char*)entry_at(s_blob, s_count, mid, w->t9) + 3, key, (size_t)remaining, w->t9) < 0) lo = mid + 1;
         else hi = mid;
     }
-    // 窗口按拼音排序而不是按频率，所以先挑出频率最高的几条再用。/ The window is in pinyin order, not by frequency: pick the most frequent first.
+    uint32_t end = lo, top = s_count;
+    while (end < top) {
+        uint32_t mid = end + (top - end) / 2;
+        if (prefix_cmp((const char*)entry_at(s_blob, s_count, mid, w->t9) + 3, key, (size_t)remaining, w->t9) <= 0) end = mid + 1;
+        else top = mid;
+    }
+    // 区间按拼音排序而不是按频率，所以先挑出频率最高的几条再用。/ The range is in pinyin order, not by frequency: pick the most frequent first.
     const uint8_t* best[IME_TAIL_KEEP];
     int best_n = 0;
-    for (uint32_t at = lo, seen = 0; at < s_count && seen < IME_TAIL_SCAN && at - lo < 4 * IME_TAIL_SCAN; at++) {
+    for (uint32_t at = lo; at < end; at++) {
         const uint8_t* e = entry_at(s_blob, s_count, at, w->t9);
-        const char* py = (const char*)e + 3;
-        if (prefix_cmp(py, key, (size_t)remaining, w->t9)) break;
         if (e[0] == remaining || e[0] - remaining > IME_TAIL_SLACK) continue;
-        seen++;
         if (best_n < IME_TAIL_KEEP) { best[best_n++] = e; continue; }
         int worst = 0;
         for (int k = 1; k < best_n; k++) if (best[k][2] > best[worst][2]) worst = k;

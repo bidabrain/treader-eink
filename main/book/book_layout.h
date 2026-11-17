@@ -15,6 +15,10 @@
 #include "epdiy.h"
 #include "html_text.h"
 
+/// 排版样式：行距（字号的百分比，110～220）、段距 0 无 1 小 2 大、首行缩进两字、行下虚线。改了要重新排版。
+/// Style: line height as a percent of the size (110-220), paragraph gap 0 none 1 small 2 large, two-character first-line
+/// indent, dashed rules under lines. Re-paginate after changing it.
+void book_layout_set_style(int line_pct, int para, bool indent, bool underline);
 /// 重排借用文本；空文一页，失败清空布局，超过 4096 页返回 false。/ Borrow and paginate; empty text has one page, failure clears layout, over 4096 pages fails.
 bool book_layout_build(const char* utf8, size_t len, EpdRect rect, int px);
 /// 借用块表；标题字号加8，块间单换行；原文与块表须存活至free。/ Borrow blocks; headings add 8 px, with one newline between blocks; text and blocks must outlive layout.

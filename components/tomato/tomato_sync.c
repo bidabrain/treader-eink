@@ -37,7 +37,7 @@
 #define BUSY_RETRIES 6
 #define DEFER_MAX 8
 
-typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER } op_t;
+typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
 typedef struct {
@@ -64,6 +64,7 @@ static tomato_rank_cat_t s_rank_cat;
 static bool s_rank_has_cat;
 static tomato_rank_book_t* s_rank_books;  // PSRAM，封面任务要取的书 / PSRAM, books for the cover op
 static int s_rank_book_n;
+static tomato_hupu_req_t s_hupu;
 static work_t* s_work;
 static tomato_file_hook_t s_file_hook;
 static tomato_open_check_t s_open_check;
@@ -102,6 +103,14 @@ static void fail(esp_err_t err, const char* message) {
     portENTER_CRITICAL(&s_lock);
     s_status.error = err;
     portEXIT_CRITICAL(&s_lock);
+    // 有具体原因就接在后面（截断按字符边界）。/ Append the specific cause when there is one (cut on a char boundary).
+    const char* detail = tomato_http_detail();
+    if (message && detail[0] && err != ESP_ERR_INVALID_STATE) {
+        char full[104];
+        snprintf(full, sizeof(full), "%.56s（%.36s）", message, detail);
+        set_phase(TOMATO_FAILED, full);
+        return;
+    }
     set_phase(TOMATO_FAILED, message);
 }
 
@@ -540,24 +549,41 @@ static esp_err_t fetch_rank_index(void) {
     return ESP_OK;
 }
 
-static void run_rank(void) {
-    mkdir(TOMATO_DIR, 0775);
-    mkdir(TOMATO_RANK_DIR, 0775);
-    set_phase(TOMATO_SEARCHING, "正在获取榜单");
+// 按当前榜单地址取分类列表和（要的话）分类。/ Fetch the index and, if asked, a category from the current rank site.
+static esp_err_t rank_fetch_once(void) {
     struct stat st;
     // 只取分类时总是刷新；取某个分类时，没有分类列表才顺带取。/ Index-only always refreshes; a category fetch adds it if missing.
     if (!s_rank_has_cat || stat(tomato_rank_index_path(), &st) != 0) {
         esp_err_t err = fetch_rank_index();
-        if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "榜单获取失败，检查网络和榜单地址"); return; }
+        if (err != ESP_OK) return err;
     }
     if (s_rank_has_cat) {
         char path[96];
         tomato_rank_cat_path(&s_rank_cat, path, sizeof(path));
-        if (!tomato_rank_cat_url(&s_rank_cat, s_work->url, sizeof(s_work->url))) { fail(ESP_ERR_INVALID_SIZE, "榜单地址太长"); return; }
-        esp_err_t err = tomato_http_fetch(s_work->url, path, 256 * 1024, false, &s_cancel);
-        if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "榜单获取失败，检查网络和榜单地址"); return; }
+        if (!tomato_rank_cat_url(&s_rank_cat, s_work->url, sizeof(s_work->url))) return ESP_ERR_INVALID_SIZE;
+        return tomato_http_fetch(s_work->url, path, 256 * 1024, false, &s_cancel);
     }
-    set_phase(TOMATO_DONE, "榜单已更新");
+    return ESP_OK;
+}
+
+static void run_rank(void) {
+    mkdir(TOMATO_DIR, 0775);
+    mkdir(TOMATO_RANK_DIR, 0775);
+    set_phase(TOMATO_SEARCHING, "正在获取榜单");
+    // 先用上次通的地址；失败就依次换 jsDelivr 镜像（只对 github.io 站点有），通了就记住。
+    // Start with the site that worked last; on failure try the jsDelivr mirrors (github.io sites only) and remember a hit.
+    const int n = tomato_rank_mirror_count(), first = tomato_rank_mirror();
+    esp_err_t err = ESP_FAIL;
+    for (int k = 0; k < n && !s_cancel; k++) {
+        tomato_rank_use_mirror((first + k) % n);
+        if (k) set_phase(TOMATO_SEARCHING, "换镜像获取榜单");
+        tomato_http_clear_detail();
+        err = rank_fetch_once();
+        if (err == ESP_OK || err == ESP_ERR_INVALID_SIZE) break;
+    }
+    if (err == ESP_ERR_INVALID_SIZE) { fail(err, "榜单地址太长"); return; }
+    if (err != ESP_OK) { fail(err, s_cancel ? "已取消" : "榜单获取失败，检查网络和榜单地址"); return; }
+    set_phase(TOMATO_DONE, tomato_rank_mirror() ? "榜单已更新（经镜像）" : "榜单已更新");
 }
 
 // 取一张榜单封面。/ Fetch one rank cover.
@@ -646,9 +672,10 @@ static void sync_task(void* arg) {
     tomato_book_t* shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     s_work = heap_caps_calloc(1, sizeof(work_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     int count = 0;
+    tomato_http_clear_detail();
     if (!shelf || !s_work) { fail(ESP_ERR_NO_MEM, "内存不足"); goto out; }
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
-    const bool needs_server = s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER;
+    const bool needs_server = s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -659,7 +686,10 @@ static void sync_task(void* arg) {
     set_phase(TOMATO_CONNECTING, "连接 Wi-Fi");
     esp_err_t err = tomato_net_up(NET_TIMEOUT_MS, &s_cancel);
     if (err != ESP_OK) {
-        fail(err, s_cancel ? "已取消" : err == ESP_ERR_NOT_FOUND ? "未设置 Wi-Fi" : "Wi-Fi 连接失败");
+        // 只有真的取消才用 ESP_ERR_INVALID_STATE，页面据此不提示；其余失败一律 ESP_FAIL 带原因。
+        // Only a real cancel reports ESP_ERR_INVALID_STATE (pages stay quiet); other failures are ESP_FAIL with a cause.
+        fail(s_cancel ? ESP_ERR_INVALID_STATE : err == ESP_ERR_NOT_FOUND ? ESP_ERR_NOT_FOUND : ESP_FAIL,
+             s_cancel ? "已取消" : err == ESP_ERR_NOT_FOUND ? "未设置 Wi-Fi" : "Wi-Fi 连接失败");
         goto out;
     }
     switch (s_op) {
@@ -669,6 +699,24 @@ static void sync_task(void* arg) {
     case OP_DOWNLOAD: run_download(&cfg, shelf, count); break;
     case OP_RANK: run_rank(); break;
     case OP_RANK_COVER: run_rank_cover(); break;
+    case OP_HUPU: {
+        set_phase(TOMATO_DOWNLOADING, "正在加载");
+        char msg[64] = "";
+        const tomato_hupu_req_t* r = &s_hupu;
+        switch (r->job) {
+        case TOMATO_HUPU_HOME: err = tomato_hupu_home(&s_cancel, set_progress, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_POST: err = tomato_hupu_post(r->id, &s_cancel, set_progress, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_ZONES: err = tomato_hupu_zones(&s_cancel, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_THREADS: err = tomato_hupu_threads(r->id, r->sort, r->more, &s_cancel, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_FOLLOW: err = tomato_hupu_follow(&s_cancel, set_progress, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_SCHEDULE: err = tomato_hupu_schedule(r->id, &s_cancel, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_RATING: err = tomato_hupu_rating(r->id, r->key, &s_cancel, msg, sizeof(msg)); break;
+        default: err = ESP_ERR_INVALID_ARG; break;
+        }
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(err, s_cancel ? "已取消" : msg);
+        break;
+    }
     case OP_WEBDAV: {
         set_phase(TOMATO_WEBDAV, "正在同步");
         char msg[64];
@@ -712,6 +760,14 @@ static esp_err_t start(op_t op) {
 }
 
 esp_err_t tomato_sync_start_check(void) { return start(OP_CHECK); }
+esp_err_t tomato_sync_start_hupu(const tomato_hupu_req_t* req) {
+    if (!req) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    s_hupu = *req;
+    s_hupu.id[sizeof(s_hupu.id) - 1] = 0;
+    s_hupu.key[sizeof(s_hupu.key) - 1] = 0;
+    return start(OP_HUPU);
+}
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }
 

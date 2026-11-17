@@ -35,6 +35,25 @@ static esp_event_handler_instance_t s_wifi_h, s_ip_h;
 static bool s_loop_owned, s_inited, s_started;
 static int s_retries;
 static bool s_sntp;
+static bool s_public_dns;
+
+// 路由器的 DNS 解析失败时改用公共 DNS（阿里 223.5.5.5，腾讯 119.29.29.29 备用）。很多路由器开了“DNS 重绑定保护”，
+// 会拦掉解析到内网 IP 的公网域名（比如自建服务器），电脑、手机若用公共 DNS 就看不出来。只在本次联网期间生效。
+// When the router's DNS fails, switch to public DNS (AliDNS 223.5.5.5, Tencent 119.29.29.29 as backup). Many routers
+// enable DNS-rebinding protection and drop public names that resolve to LAN IPs (such as a self-hosted server), which
+// phones and PCs on public DNS never notice. Lasts for this connection only.
+bool tomato_net_use_public_dns(void) {
+    if (!s_netif || s_public_dns) return false;
+    esp_netif_dns_info_t dns = {0};
+    dns.ip.type = ESP_IPADDR_TYPE_V4;
+    dns.ip.u_addr.ip4.addr = esp_ip4addr_aton("223.5.5.5");
+    if (esp_netif_set_dns_info(s_netif, ESP_NETIF_DNS_MAIN, &dns) != ESP_OK) return false;
+    dns.ip.u_addr.ip4.addr = esp_ip4addr_aton("119.29.29.29");
+    esp_netif_set_dns_info(s_netif, ESP_NETIF_DNS_BACKUP, &dns);
+    s_public_dns = true;
+    ESP_LOGW(TAG, "router DNS failed, using public DNS");
+    return true;
+}
 static volatile bool s_time_fresh;
 
 bool tomato_take_time_synced(void) {
@@ -60,7 +79,14 @@ static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
 esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
     read_pico_transfer_status_t ts;
     read_pico_transfer_get_status(&ts);
-    if (ts.state != READ_PICO_TRANSFER_STOPPED || s_netif) return ESP_ERR_INVALID_STATE;
+    // 传书页正占着 Wi-Fi：返回 ESP_ERR_NOT_SUPPORTED，和“取消”（ESP_ERR_INVALID_STATE）区分开，提示才不会被吞掉。
+    // The transfer page holds Wi-Fi: return ESP_ERR_NOT_SUPPORTED, distinct from a cancel (ESP_ERR_INVALID_STATE), so the
+    // message is not swallowed.
+    if (ts.state != READ_PICO_TRANSFER_STOPPED) {
+        tomato_http_set_detail("传书还在占用 Wi-Fi");
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (s_netif) return ESP_ERR_NOT_SUPPORTED;
 
     char ssid[33], pass[65];
     // 设置页读 SSID 时会短暂占着凭据存储，稍等重试。/ The settings page briefly holds the credential store; retry.
@@ -88,6 +114,8 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
     err = esp_wifi_init(&init);
     if (err != ESP_OK) goto fail;
     s_inited = true;
+    // 按中国信道（1～13），和传书页一致。/ Chinese channel plan (1-13), matching the transfer page.
+    esp_wifi_set_country_code("CN", true);
     err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
     if (err != ESP_OK) goto fail;
     err = esp_event_handler_instance_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, on_event, NULL, &s_wifi_h);
@@ -119,6 +147,8 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
         bits = xEventGroupWaitBits(s_bits, BIT_IP | BIT_FAIL, pdFALSE, pdFALSE, pdMS_TO_TICKS(250));
     }
     err = (bits & BIT_IP) ? ESP_OK : (bits & BIT_FAIL) ? ESP_FAIL : (cancel && *cancel) ? ESP_ERR_INVALID_STATE : ESP_ERR_TIMEOUT;
+    if (err == ESP_FAIL) tomato_http_set_detail("密码不对或信号太弱");
+    else if (err == ESP_ERR_TIMEOUT) tomato_http_set_detail("连上了但没拿到 IP");
     if (err != ESP_OK) goto fail;
     memset(pass, 0, sizeof(pass));
     ESP_LOGI(TAG, "connected");
@@ -140,6 +170,7 @@ fail:
 }
 
 void tomato_net_down(void) {
+    s_public_dns = false;
     if (s_sntp) { esp_netif_sntp_deinit(); s_sntp = false; }
     // 先注销回调，免得断开事件又触发重连。/ Unregister first so the disconnect event cannot trigger a reconnect.
     if (s_wifi_h) { esp_event_handler_instance_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, s_wifi_h); s_wifi_h = NULL; }

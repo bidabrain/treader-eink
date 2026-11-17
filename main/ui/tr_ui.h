@@ -29,15 +29,15 @@ extern "C" {
 #define TR_STATUS_Y 22
 #define TR_TITLE_Y 88
 #define TR_TABS_Y 1094
-#define TR_TAB_COUNT 3
+#define TR_TAB_COUNT 4
 #define TR_GRAY_LINE 0xC0
 
-typedef enum { TR_TAB_LIBRARY = 0, TR_TAB_TOMATO, TR_TAB_SETTINGS } tr_tab_t;
+typedef enum { TR_TAB_LIBRARY = 0, TR_TAB_TOMATO, TR_TAB_HUPU, TR_TAB_SETTINGS } tr_tab_t;
 
 typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,
     TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
-    TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH,
+    TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BALL,
 } tr_icon_t;
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.
@@ -46,6 +46,15 @@ void tr_text(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFo
 void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
 /// 截断到 max_w 像素并加省略号，按 UTF-8 边界。/ Fit into max_w with an ellipsis on UTF-8 boundaries.
 void tr_fit(char* text, int px, int max_w);
+/// 提示文字：一行放得下就在 y_one 用 px 画一行；放不下就从 y_two 起用小 4 号的字画两行（还不够就省略号）。
+/// 返回画了几行。调用方给两行留好位置，原因（括号里的部分）就不会被截掉。
+/// Message text: one line at y_one in px when it fits; otherwise two lines 4 px smaller from y_two (ellipsis if still
+/// too long). Returns the lines drawn. Callers reserve room for two lines so the cause in brackets is not cut off.
+int tr_message(uint8_t* fb, int x, int y_one, int y_two, int w, int px, const char* text,
+               enum EpdFontFlags align, bool bold);
+/// 从 text 开始一行能放下多少字节（遇换行停，至少一个字符）。/ Bytes of text that fit on one line of width w
+/// (stops at a newline, at least one character).
+size_t tr_line_bytes(const char* text, int px, int w);
 /// 能完整放进 w 的最长尾巴（输入框显示末尾用），按字符边界。/ Longest tail that fits in w, on a character boundary.
 const char* tr_tail_fit(const char* text, int px, int w);
 /// 自动换行，最多 max_lines 行，超出加省略号；返回实际行数。/ Wrap into at most max_lines; returns lines drawn.

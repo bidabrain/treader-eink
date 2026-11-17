@@ -215,8 +215,7 @@ static void draw_home(uint8_t* fb) {
     else if (s_last == OP_RANK && s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%s", s_status.message);
     else if (s_cat_count >= 0) snprintf(line, sizeof(line), "榜单 %s", s_date[0] ? s_date : "已缓存");
     else snprintf(line, sizeof(line), "还没有榜单");
-    tr_fit(line, 28, TR_W - 2 * TR_MARGIN - 160);
-    tr_text(fb, TR_MARGIN, 258, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_message(fb, TR_MARGIN, 258, 246, TR_W - 2 * TR_MARGIN - 160, 28, line, EPD_DRAW_ALIGN_LEFT, false);
     if (!tomato_sync_busy() || s_op == OP_COVER) {
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 96, 274, false);
         tr_text(fb, TR_W - TR_MARGIN, 254, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
@@ -315,7 +314,8 @@ static void draw_detail(uint8_t* fb) {
         return;
     }
     if (s_last == OP_DOWNLOAD && s_status.phase == TOMATO_FAILED)
-        tr_text(fb, TR_MARGIN, btn.y - 50, 28, s_status.message, EPD_DRAW_ALIGN_LEFT, false);
+        tr_message(fb, TR_MARGIN, btn.y - 50, btn.y - 76, TR_W - 2 * TR_MARGIN, 28, s_status.message,
+                   EPD_DRAW_ALIGN_LEFT, false);
     const bool owned = shelf_index_of(b->book_id) >= 0;
     tr_pill(fb, btn, owned ? "开始阅读" : "下载到书库", true, 32);
     tr_text(fb, TR_W / 2, btn.y + btn.height + 26, 26,

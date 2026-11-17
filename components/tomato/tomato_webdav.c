@@ -67,7 +67,7 @@ static esp_err_t dav_request(const tomato_webdav_config_t* cfg, bool put, const 
     int len = out_body ? (int)strlen(out_body) : 0;
     if (put) esp_http_client_set_header(c, "Content-Type", "application/json");
     char* buf = NULL;
-    esp_err_t err = esp_http_client_open(c, len);
+    esp_err_t err = tomato_http_open(c, len);
     if (err == ESP_OK && len && esp_http_client_write(c, out_body, len) != len) err = ESP_FAIL;
     if (err == ESP_OK) {
         esp_http_client_fetch_headers(c);

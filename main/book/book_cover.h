@@ -70,5 +70,9 @@ void book_cover_forget(const char* book_path);
 /// 只留 keep_image 的全屏壁纸缓存，其余删掉（keep 为 NULL 全删）。/ Keep only keep_image's wallpaper cache (NULL deletes all).
 void book_screen_prune(const char* keep_image);
 
+/// 把灰度图缩放到 dw×dh，铺满并居中裁切（比例相同时就是纯缩放）。/ Scale a gray image to dw x dh, filling and
+/// center-cropping (a plain resize when the aspect ratios match).
+void book_image_fill(const uint8_t* src, int sw, int sh, uint8_t* dst, int dw, int dh);
+
 /// 释放内存里的全部封面（打开书前调用，把 PSRAM 让给排版）。/ Free all thumbnails (before opening a book).
 void book_cover_release(void);

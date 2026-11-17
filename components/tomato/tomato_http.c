@@ -19,6 +19,7 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_tls_errors.h"
 #include "tomato_internal.h"
 
 #define TAG "tomato_http"
@@ -27,6 +28,43 @@
 #define IO_CHUNK 4096
 #define TX_BUF 2048
 #define TIMEOUT_MS 15000
+
+// 最近一次联网失败的具体原因，同步失败时接在提示后面，方便在真机上定位。
+// The last network failure's cause, appended to sync failure messages to help diagnose on the device.
+static char s_detail[48];
+
+void tomato_http_clear_detail(void) { s_detail[0] = 0; }
+const char* tomato_http_detail(void) { return s_detail; }
+void tomato_http_set_detail(const char* text) { snprintf(s_detail, sizeof(s_detail), "%s", text ? text : ""); }
+
+// 最近一次连接失败的底层原因（esp-tls 错误码），由 tomato_http_open 记下。/ The last connect failure's esp-tls code.
+static esp_err_t s_tls_err;
+
+// 打开连接；域名解析失败就换公共 DNS 再试一次。/ Open the connection; on a DNS failure retry once with public DNS.
+esp_err_t tomato_http_open(esp_http_client_handle_t c, int len) {
+    s_tls_err = ESP_OK;
+    esp_err_t err = esp_http_client_open(c, len);
+    if (err == ESP_OK) return ESP_OK;
+    int code = 0, flags = 0;
+    s_tls_err = esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
+    if (s_tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME && tomato_net_use_public_dns()) {
+        err = esp_http_client_open(c, len);
+        s_tls_err = err == ESP_OK ? ESP_OK : esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
+    }
+    return err;
+}
+
+static void note(esp_err_t err, int status, esp_http_client_handle_t c) {
+    if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) return;
+    if (status && (status < 200 || status >= 300)) snprintf(s_detail, sizeof(s_detail), "HTTP %d", status);
+    else if (s_tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME) snprintf(s_detail, sizeof(s_detail), "域名解析失败");
+    else if (s_tls_err == ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED || s_tls_err == ESP_ERR_MBEDTLS_X509_CRT_PARSE_FAILED)
+        snprintf(s_detail, sizeof(s_detail), "HTTPS 握手失败");
+    else if (s_tls_err == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT) snprintf(s_detail, sizeof(s_detail), "连接服务器超时");
+    else if (err == ESP_ERR_HTTP_CONNECT) snprintf(s_detail, sizeof(s_detail), "连不上服务器 errno %d", c ? esp_http_client_get_errno(c) : 0);
+    else if (err == ESP_ERR_HTTP_EAGAIN) snprintf(s_detail, sizeof(s_detail), "服务器响应超时");
+    else snprintf(s_detail, sizeof(s_detail), "%.40s", esp_err_to_name(err));
+}
 
 /* ---- 小工具 / Helpers ---- */
 
@@ -146,7 +184,7 @@ esp_err_t tomato_http_json(const tomato_config_t* cfg, const char* method, const
     if (body) esp_http_client_set_header(c, "Content-Type", "application/json");
     char* buf = NULL;
     int len = 0;
-    esp_err_t err = esp_http_client_open(c, body_len);
+    esp_err_t err = tomato_http_open(c, body_len);
     if (err != ESP_OK) goto done;
     if (body_len && esp_http_client_write(c, body, body_len) != body_len) { err = ESP_FAIL; goto done; }
     int64_t content_length = esp_http_client_fetch_headers(c);
@@ -158,6 +196,7 @@ esp_err_t tomato_http_json(const tomato_config_t* cfg, const char* method, const
     if (!*out) err = ESP_ERR_INVALID_RESPONSE;
 done:
     if (err != ESP_OK) ESP_LOGW(TAG, "%s %s: %s http=%d", method, path, esp_err_to_name(err), *status);
+    note(err, *status, c);
     heap_caps_free(buf);
     esp_http_client_close(c);
     esp_http_client_cleanup(c);
@@ -174,11 +213,11 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
     FILE* f = NULL;
     char* buf = NULL;
     bool keep_part = false;
-    esp_err_t err = esp_http_client_open(c, 0);
+    esp_err_t err = tomato_http_open(c, 0);
     if (err != ESP_OK) goto done;
     esp_http_client_fetch_headers(c);
     int status = esp_http_client_get_status_code(c);
-    if (status != 200) { ESP_LOGW(TAG, "download http=%d", status); err = ESP_ERR_NOT_FOUND; goto done; }
+    if (status != 200) { ESP_LOGW(TAG, "download http=%d", status); note(ESP_FAIL, status, c); err = ESP_ERR_NOT_FOUND; goto done; }
     buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_DEFAULT);
     f = fopen(part, "wb");
     if (!buf || !f) { err = buf ? ESP_FAIL : ESP_ERR_NO_MEM; goto done; }
@@ -202,6 +241,7 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
         err = ESP_FAIL;
     }
 done:
+    if (err != ESP_OK && !s_detail[0]) note(err, 0, c);
     if (f) fclose(f);
     if (err != ESP_OK && !keep_part) remove(part);
     free(buf);
@@ -212,7 +252,10 @@ done:
 
 // 可能先跳转。取图片时只认 JPEG 和 PNG 文件头（图床会按 Accept 协商出 WEBP，解不了）。
 // May redirect. For images accept only JPEG and PNG magic (image hosts may negotiate WEBP, which we cannot decode).
-esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel) {
+esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out, size_t* out_len,
+                         const volatile bool* cancel) {
+    *out = NULL;
+    *out_len = 0;
     esp_http_client_config_t hc = {
         .url = url,
         .timeout_ms = TIMEOUT_MS,
@@ -228,7 +271,7 @@ esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool 
     esp_err_t err = ESP_FAIL;
     int status = 0;
     for (int hop = 0; hop < 4; hop++) {
-        err = esp_http_client_open(c, 0);
+        err = tomato_http_open(c, 0);
         if (err != ESP_OK) break;
         esp_http_client_fetch_headers(c);
         status = esp_http_client_get_status_code(c);
@@ -238,7 +281,8 @@ esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool 
         esp_http_client_close(c);
     }
     if (err == ESP_OK && status != 200) err = ESP_ERR_NOT_FOUND;
-    if (err == ESP_OK && !(buf = heap_caps_malloc(max, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) err = ESP_ERR_NO_MEM;
+    // 多留一个字节放结尾 0，文本可以直接当字符串用。/ One spare byte for a NUL so text can be used as a string.
+    if (err == ESP_OK && !(buf = heap_caps_malloc(max + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) err = ESP_ERR_NO_MEM;
     while (err == ESP_OK) {
         if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }
         if (len >= max) { err = ESP_ERR_INVALID_SIZE; break; }
@@ -251,19 +295,30 @@ esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool 
     const bool png = len > 8 && buf[0] == 0x89 && !memcmp(buf + 1, "PNG", 3);
     if (err == ESP_OK && image && !jpeg && !png) err = ESP_ERR_NOT_SUPPORTED;
     if (err == ESP_OK && !len) err = ESP_ERR_INVALID_SIZE;
-    if (err == ESP_OK) {
-        char tmp[200];
-        snprintf(tmp, sizeof(tmp), "%s.part", dest);
-        FILE* f = fopen(tmp, "wb");
-        bool ok = f && fwrite(buf, 1, len, f) == len;
-        if (f) ok = fclose(f) == 0 && ok;
-        remove(dest);
-        if (!ok || rename(tmp, dest) != 0) { remove(tmp); err = ESP_FAIL; }
-    }
-    if (err != ESP_OK) ESP_LOGW(TAG, "fetch: %s http=%d", esp_err_to_name(err), status);
-    heap_caps_free(buf);
+    if (err != ESP_OK) ESP_LOGW(TAG, "get: %s http=%d", esp_err_to_name(err), status);
+    note(err, status, c);
     esp_http_client_close(c);
     esp_http_client_cleanup(c);
+    if (err != ESP_OK) { heap_caps_free(buf); return err; }
+    buf[len] = 0;
+    *out = buf;
+    *out_len = len;
+    return ESP_OK;
+}
+
+esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel) {
+    uint8_t* buf;
+    size_t len;
+    esp_err_t err = tomato_http_get(url, max, image, &buf, &len, cancel);
+    if (err != ESP_OK) return err;
+    char tmp[200];
+    snprintf(tmp, sizeof(tmp), "%s.part", dest);
+    FILE* f = fopen(tmp, "wb");
+    bool ok = f && fwrite(buf, 1, len, f) == len;
+    if (f) ok = fclose(f) == 0 && ok;
+    remove(dest);
+    if (!ok || rename(tmp, dest) != 0) { remove(tmp); err = ESP_FAIL; }
+    heap_caps_free(buf);
     return err;
 }
 
@@ -284,12 +339,14 @@ esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char*
     const size_t la = strlen(key_a), lb = strlen(key_b);
     const size_t keep = (la > lb ? la : lb) - 1;
     char* buf = heap_caps_malloc(IO_CHUNK + keep + 1, MALLOC_CAP_DEFAULT);
-    int na = 0, nb = 0;
-    esp_err_t err = buf ? esp_http_client_open(c, 0) : ESP_ERR_NO_MEM;
+    int na = 0, nb = 0, status = 0;
+    esp_err_t err = buf ? tomato_http_open(c, 0) : ESP_ERR_NO_MEM;
     if (err == ESP_OK) {
         esp_http_client_fetch_headers(c);
-        if (esp_http_client_get_status_code(c) != 200) err = ESP_ERR_NOT_FOUND;
+        status = esp_http_client_get_status_code(c);
+        if (status != 200) err = ESP_ERR_NOT_FOUND;
     }
+    note(err, status, c);
     size_t carry = 0;
     while (err == ESP_OK) {
         if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }

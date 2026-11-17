@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>虎扑预览</title>
+<style>
+  :root { --ink: #000; --paper: #fff; --mid: #6b6b6b; --line: #c8c8c8; --key: #e8e8e8; --page: #dcdcd6; --note: #2b2b2b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #262626; --note: #ddd; } }
+  :root[data-theme="dark"] { --page: #262626; --note: #ddd; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--page); color: var(--note);
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  h2 { font-size: 18px; margin: 34px 0 12px; }
+  .lead { font-size: 14px; margin: 0 0 8px; max-width: 940px; line-height: 1.65; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; }
+  figure { margin: 0; width: 342px; }
+  figcaption { font-size: 13px; line-height: 1.55; margin-top: 10px; }
+  figcaption b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .frame { width: 342px; height: 608px; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 8px #e9e7e0, 0 0 0 9px #bbb, 0 8px 22px rgba(0,0,0,.3); }
+  .s { position: relative; width: 684px; height: 1216px; background: var(--paper); color: var(--ink);
+    transform: scale(.5); transform-origin: 0 0; font-weight: 500; overflow: hidden; }
+  .a { position: absolute; }
+  .r { right: 40px; text-align: right; }
+  .l { left: 40px; }
+  .mid { color: var(--mid); }
+  .b { font-weight: 700; }
+  .hl { position: absolute; left: 40px; right: 40px; height: 2px; background: var(--ink); }
+  .hl.soft { background: var(--line); }
+  /* 状态栏 */
+  .status { position: absolute; top: 22px; left: 40px; right: 40px; height: 36px; font-size: 28px; display: flex; justify-content: space-between; align-items: center; }
+  .batt { display: inline-flex; align-items: center; gap: 8px; }
+  .batt i { display: inline-block; width: 40px; height: 22px; border: 3px solid #000; border-radius: 5px; position: relative; }
+  .batt i::before { content: ""; position: absolute; left: 2px; top: 2px; bottom: 2px; width: 26px; background: #000; border-radius: 2px; }
+  .batt i::after { content: ""; position: absolute; right: -7px; top: 5px; width: 4px; height: 8px; background: #000; border-radius: 0 2px 2px 0; }
+  /* 标签栏 */
+  .tabs { position: absolute; left: 0; right: 0; top: 1094px; height: 122px; border-top: 2px solid #000; display: flex; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 28px; }
+  .tab .ic { width: 92px; height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 26px; }
+  .tab.on { font-weight: 700; }
+  .tab.on .ic { background: #000; }
+  .tab.on .ic svg { stroke: #fff; }
+  svg.icon { width: 40px; height: 40px; fill: none; stroke: #000; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+  /* 文字封面 */
+  .cover { position: absolute; border: 2px solid #000; background: #fff; }
+  .cover .in { position: absolute; inset: 7px; border: 2px solid #000; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 18px 8px 12px; text-align: center; }
+  .cover .au { font-size: 24px; white-space: nowrap; }
+  .cover .ti { font-size: 32px; font-weight: 700; line-height: 40px; }
+  .cover .fm { font-size: 22px; letter-spacing: 1px; }
+  .cover.dark { background: #000; }
+  .cover.dark .in { border-color: #fff; color: #fff; }
+  .mini { position: absolute; width: 70px; height: 96px; border: 2px solid #000; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; writing-mode: vertical-rl; letter-spacing: 0; white-space: nowrap; overflow: hidden; }
+  .mini.dark { background: #000; color: #fff; }
+  /* 进度 */
+  .pbar { position: absolute; height: 10px; background: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 7px); background-size: auto 2px; background-repeat: repeat-x; background-position: 0 4px; }
+  .pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: #000; }
+  .pill { position: absolute; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .pill.blk { background: #000; color: #fff; font-weight: 700; }
+  .pill.out { border: 2px solid #000; }
+  .chip { display: inline-flex; align-items: center; height: 54px; padding: 0 24px; border-radius: 27px; border: 2px solid #000; font-size: 28px; margin-right: 12px; }
+  .chip.on { background: #000; color: #fff; font-weight: 700; }
+  .tag { display: inline-block; font-size: 22px; border: 2px solid #000; border-radius: 6px; padding: 0 8px; line-height: 30px; margin-left: 10px; vertical-align: 4px; font-weight: 500; }
+  .row { position: absolute; left: 40px; right: 40px; display: flex; justify-content: space-between; align-items: center; font-size: 32px; border-bottom: 2px solid var(--line); }
+  .row .v { font-size: 28px; color: var(--mid); }
+  .sec { position: absolute; left: 40px; font-size: 28px; color: var(--mid); }
+  .body { position: absolute; left: 44px; right: 44px; font-size: 40px; line-height: 66px; text-align: justify; font-family: "Noto Serif SC", "Songti SC", "SimSun", serif; font-weight: 400; }
+  .key { position: absolute; background: var(--key); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 36px; }
+  .key.fn { background: #fff; border: 2px solid #000; font-size: 28px; }
+  .key.go { background: #000; color: #fff; font-size: 30px; font-weight: 700; }
+  .quote { position: absolute; left: 0; right: 0; text-align: center; font-size: 34px; }
+  .notes { margin-top: 34px; max-width: 940px; font-size: 14px; line-height: 1.7; }
+  .notes ul { margin: 0; padding-left: 20px; }
+  table { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  td, th { border: 1px solid #999; padding: 4px 8px; text-align: left; vertical-align: top; }
+  @media (max-width: 400px) { figure { width: 100%; } }
+</style>
+<style>
+  .img { position: absolute; border: 2px solid #000; overflow: hidden; }
+  .img .t { position: absolute; left: 10px; right: 10px; top: 14px; color: #fff; font-weight: 700; text-shadow: 0 0 5px #000; }
+  .g1 { background: linear-gradient(160deg, #2e2e2e 0%, #8a8a8a 40%, #d9d9d9 65%, #4a4a4a 100%); }
+  .g2 { background: linear-gradient(200deg, #1c1c1c 0%, #9a9a9a 45%, #e4e4e4 70%, #3c3c3c 100%); }
+  .g3 { background: linear-gradient(120deg, #555 0%, #bdbdbd 50%, #777 100%); }
+  .g4 { background: radial-gradient(circle at 30% 30%, #eee 0%, #999 40%, #333 100%); }
+  .wall { position: absolute; left: 0; top: 0; width: 684px; height: 1216px;
+    background: linear-gradient(180deg, #d8d8d8 0%, #f2f2f2 35%, #a8a8a8 60%, #4a4a4a 85%, #222 100%); }
+  .wall::before { content: ""; position: absolute; left: 120px; top: 260px; width: 440px; height: 440px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #fff 0%, #cfcfcf 45%, #7a7a7a 100%); }
+  .done { position: absolute; left: 0; right: 0; bottom: 0; background: #000; color: #fff; text-align: center; font-weight: 700; }
+  .seg { position: absolute; left: 40px; right: 40px; top: 160px; height: 64px; border: 2px solid #000; border-radius: 32px; display: flex; overflow: hidden; }
+  .seg span { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .seg span.on { background: #000; color: #fff; font-weight: 700; border-radius: 32px; }
+  .cats { position: absolute; left: 40px; right: 30px; display: flex; flex-wrap: wrap; gap: 14px 0; }
+  .cats .chip { height: 62px; font-size: 30px; padding: 0 22px; }
+  .rank { position: absolute; left: 40px; font-size: 44px; font-weight: 700; }
+  .intro { position: absolute; left: 40px; right: 40px; font-size: 30px; line-height: 48px; text-align: justify; }
+  .credit { position: absolute; left: 40px; font-size: 28px; }
+  .keys { margin-top: 30px; }
+</style>
+<style>
+  .t2 { position: absolute; font-weight: 700; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .t3 { position: absolute; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta { position: absolute; font-size: 24px; color: #6b6b6b; white-space: nowrap; }
+  .thumb { position: absolute; width: 150px; height: 100px; border: 2px solid #000; }
+  .seg4 { position: absolute; left: 40px; right: 40px; top: 160px; height: 64px; border: 2px solid #000; border-radius: 32px; display: flex; overflow: hidden; }
+  .seg4 span { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .seg4 span.on { background: #000; color: #fff; font-weight: 700; border-radius: 32px; }
+  .zone { position: absolute; width: 192px; height: 88px; border: 2px solid #000; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 28px; white-space: nowrap; }
+  .zone.on { background: #000; color: #fff; font-weight: 700; }
+  .ptext { position: absolute; left: 40px; right: 40px; font-size: 32px; line-height: 52px; text-align: justify; font-family: "Noto Serif SC", "Songti SC", "SimSun", serif; font-weight: 400; }
+  .quoteb { position: absolute; left: 40px; right: 40px; border-left: 6px solid #9a9a9a; padding-left: 16px; font-size: 24px; line-height: 34px; color: #555; }
+  .score { position: absolute; font-size: 40px; font-weight: 700; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 40 40"><path d="M6 19 20 7l14 12"/><path d="M10 16v17h20V16"/><path d="M17 33v-9h6v9"/></symbol>
+    <symbol id="i-books" viewBox="0 0 40 40"><path d="M7 8v25M13 8v25"/><path d="M19 9l7 24"/><path d="M27 8l6 25"/></symbol>
+    <symbol id="i-tomato" viewBox="0 0 40 40"><circle cx="20" cy="22" r="12"/><path d="M14 10l6 4 6-4M20 14V7"/></symbol>
+    <symbol id="i-set" viewBox="0 0 40 40"><path d="M7 12h26M7 28h26"/><circle cx="15" cy="12" r="4" fill="#fff"/><circle cx="26" cy="28" r="4" fill="#fff"/></symbol>
+    <symbol id="i-search" viewBox="0 0 40 40"><circle cx="17" cy="17" r="10"/><path d="M25 25l9 9"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 40 40"><path d="M32 18a12 12 0 0 0-22-5M8 22a12 12 0 0 0 22 5"/><path d="M10 6v7h7M30 34v-7h-7"/></symbol>
+    <symbol id="i-toc" viewBox="0 0 40 40"><path d="M14 10h20M14 20h20M14 30h20"/><circle cx="7" cy="10" r="1.5"/><circle cx="7" cy="20" r="1.5"/><circle cx="7" cy="30" r="1.5"/></symbol>
+    <symbol id="i-aa" viewBox="0 0 40 40"><path d="M5 32 13 10l8 22M8 25h10"/><path d="M24 32l5-13 5 13M26 28h6"/></symbol>
+    <symbol id="i-flash" viewBox="0 0 40 40"><rect x="7" y="7" width="26" height="26" rx="3"/><path d="M14 20h12M20 14v12"/></symbol>
+    <symbol id="i-mark" viewBox="0 0 40 40"><path d="M11 6h18v28l-9-7-9 7z"/></symbol>
+    <symbol id="i-import" viewBox="0 0 40 40"><path d="M20 6v20M12 18l8 8 8-8"/><path d="M7 28v5h26v-5"/></symbol>
+      <symbol id="i-ball" viewBox="0 0 40 40"><circle cx="20" cy="20" r="13"/><path d="M7 20h26M20 7v26"/><path d="M11 10c5 5 5 15 0 20M29 10c-5 5-5 15 0 20"/></symbol>
+  </defs>
+</svg>
+<h1>虎扑 · 界面预览</h1>
+<p class="lead">移植自安卓版虎扑 X（hupuX）的浏览部分。按小纸 Pico 的真实像素（684×1216）绘制，缩小一半显示；图片用灰色块示意。底部标签变成四个：书库、番茄、虎扑、设置。
+只读：不登录、不点亮、不回复、不发帖。所有内容设备直接从虎扑移动版取，不需要自建服务器。</p>
+
+<h2>第一期：推荐与帖子</h2>
+<div class="grid">
+<!-- ① 虎扑 · 推荐 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span class="on">推荐</span><span>关注</span><span>比分</span></div>
+  <div class="a l mid" style="top:240px;font-size:26px">首页推荐 · 30 条</div>
+  <div class="t2" style="left:40px;right:220px;top:294px;font-size:30px;line-height:40px">[流言板]BLG现身篮网主场，转播字幕展示世界冠军身份</div>
+  <div class="meta" style="left:40px;top:384px">英雄联盟 · 1095 回复</div>
+  <div class="thumb g1" style="left:494px;top:302px"></div>
+  <div class="hl soft" style="top:426px"></div>
+  <div class="t2" style="left:40px;right:220px;top:442px;font-size:30px;line-height:40px">[流言板]B站上单老祖发文向Bin致歉：今后不再夸大，不再标题党引流</div>
+  <div class="meta" style="left:40px;top:532px">英雄联盟 · 378 回复</div>
+  <div class="thumb g2" style="left:494px;top:450px"></div>
+  <div class="hl soft" style="top:574px"></div>
+  <div class="t2" style="left:40px;right:40px;top:590px;font-size:30px;line-height:40px">[DADE奖]经过JRs的评选，Gumayusi当选2026全球总决赛Dade奖</div>
+  <div class="meta" style="left:40px;top:680px">英雄联盟 · 660 回复</div>
+  <div class="hl soft" style="top:722px"></div>
+  <div class="t2" style="left:40px;right:220px;top:738px;font-size:30px;line-height:40px">[情报站]韩媒：Nuguri张夏权时隔4年试水重返现役赛场</div>
+  <div class="meta" style="left:40px;top:828px">英雄联盟 · 1022 回复</div>
+  <div class="thumb g3" style="left:494px;top:746px"></div>
+  <div class="hl soft" style="top:870px"></div>
+  <div class="t2" style="left:40px;right:220px;top:886px;font-size:30px;line-height:40px">[流言板]LOL官方更新赛区强度排名：LPL力压LCK，三年来首次登顶</div>
+  <div class="meta" style="left:40px;top:976px">英雄联盟 · 251 回复</div>
+  <div class="thumb g4" style="left:494px;top:894px"></div>
+  <div class="hl soft" style="top:1018px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>① 虎扑 · 推荐</b>虎扑首页推荐，每页 5 条。顶部分段切 推荐 / 关注 / 比分。标题最多两行，下面是专区和回复数；帖子带图的，右边显示第一张缩略图。点“刷新”才联网。列表先出文字，缩略图在后台一次取完，全部到齐后整页刷新一次（和书城封面网格一样）。翻页点“‹ ›”或滑一下。</figcaption></figure>
+<!-- ② 帖子 · 正文 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
+  <div class="seg" style="top:150px"><span class="on">正文</span><span>亮了 50</span><span>回复 1095</span></div>
+  <div class="t2" style="left:40px;right:40px;top:240px;font-size:38px;line-height:50px">[流言板]BLG现身篮网主场，转播字幕展示世界冠军身份</div>
+  <div class="meta" style="left:40px;top:350px">虎扑游戏电竞资讯 · 11-17 20:41 · 1095 回复</div>
+  <div class="hl soft" style="top:394px"></div>
+  <div class="ptext" style="top:412px">　　虎扑11月17日讯 今日BLG全员受邀来到篮网主场观赛，现场转播在镜头给到众人时，打出了“英雄联盟全球总决赛冠军”的字幕。</div>
+  <div class="img g1" style="left:40px;top:578px;width:604px;height:300px"></div>
+  <div class="a mid" style="left:0;right:0;top:886px;text-align:center;font-size:22px">图 1 / 3 · 点图看大图</div>
+  <div class="ptext" style="top:926px">　　队员们身穿主队球衣，赛前还在场边与球员合影，并获赠了签名球衣。</div>
+  <div class="a" style="left:0;right:0;top:1124px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
+
+</div></div>
+<figcaption><b>② 帖子 · 正文</b>正文转成文字分页显示，点左右两侧、滑一下或点底部“‹ ›”翻页。图片按屏幕宽度缩成 JPG 嵌在正文里：文字先出来，图片后台取完后这一页刷新一次；点图全屏看（④）。视频和动图只显示静态封面。顶部切“亮了”“回复”。</figcaption></figure>
+<!-- ③ 帖子 · 亮了 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 英雄联盟</div>
+  <div class="seg" style="top:150px"><span>正文</span><span class="on">亮了 50</span><span>回复 1095</span></div>
+  <div class="a b" style="left:40px;top:240px;font-size:26px">怀中有金</div>
+  <div class="a r b" style="top:240px;font-size:24px">亮 312</div>
+  <div class="t3" style="left:40px;right:40px;top:282px;font-size:30px;line-height:44px">电竞很方便的，电脑设备半天就搞定了，篮球复原也很简单呀，只要对齐就行</div>
+  <div class="hl soft" style="top:388px"></div>
+  <div class="a b" style="left:40px;top:408px;font-size:26px">theleego7</div>
+  <div class="a r b" style="top:408px;font-size:24px">亮 256</div>
+  <div class="t3" style="left:40px;right:40px;top:450px;font-size:30px;line-height:44px">有排面</div>
+  <div class="hl soft" style="top:512px"></div>
+  <div class="a b" style="left:40px;top:532px;font-size:26px">虎扑JR1392826315</div>
+  <div class="a r b" style="top:532px;font-size:24px">亮 198</div>
+  <div class="quoteb" style="top:574px">引用 晚秋笛声悠悠：哈哈截到了</div>
+  <div class="t3" style="left:40px;right:40px;top:620px;font-size:30px;line-height:44px">大师手里的估计是道哥的，这球衣尺码一看就不对</div>
+  <div class="hl soft" style="top:726px"></div>
+  <div class="a b" style="left:40px;top:746px;font-size:26px">晚秋笛声悠悠</div>
+  <div class="a r b" style="top:746px;font-size:24px">亮 143</div>
+  <div class="t3" style="left:40px;right:40px;top:788px;font-size:30px;line-height:44px">哈哈截到了，转播导播是懂流量的，这个镜头给了足足十秒</div>
+  <div class="hl soft" style="top:894px"></div>
+  <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 13　　›</div>
+
+</div></div>
+<figcaption><b>③ 帖子 · 亮了</b>“亮了”的热门回复，每页放得下几条就放几条，长回复最多三行，点开看全文。引用的楼层用灰色竖线标出。“回复”分段是全部回复，按时间排序，同样分页。不登录只能看，不能回复和点亮。</figcaption></figure>
+<!-- ④ 看大图 -->
+<figure><div class="frame"><div class="s">
+
+  <div class="img g2" style="left:0;top:0;width:684px;height:1216px;border:0"></div>
+  <div class="a" style="left:0;right:0;top:1120px;height:96px;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l b" style="top:1146px;font-size:30px">图 1 / 3</div>
+  <div class="a r" style="top:1146px;font-size:28px">左右翻图 · 点中间返回</div>
+
+</div></div>
+<figcaption><b>④ 看大图</b>点正文里的图全屏查看，抖动成 16 级灰度。左右切换这帖子里的图，点中间返回正文。</figcaption></figure>
+
+</div>
+
+<h2>第二期：关注与专区</h2>
+<div class="grid">
+<!-- ⑤ 虎扑 · 关注 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span>推荐</span><span class="on">关注</span><span>比分</span></div>
+  <div class="a l" style="top:240px;font-size:26px">来自 5 个专区：步行街、湖人、英雄联盟…</div>
+  <div class="a r b" style="top:240px;font-size:26px">管理 ›</div>
+  <div class="t2" style="left:40px;right:40px;top:294px;font-size:30px;line-height:40px">[步行街主干道]下班路上捡到一只橘猫，现在它已经是家里的老大了</div>
+  <div class="meta" style="left:40px;top:384px">步行街主干道 · 2310 回复</div>
+  <div class="hl soft" style="top:426px"></div>
+  <div class="t2" style="left:40px;right:40px;top:442px;font-size:30px;line-height:40px">[湖人专区]詹姆斯：我还没想过退役的事，身体感觉很好</div>
+  <div class="meta" style="left:40px;top:532px">湖人专区 · 856 回复</div>
+  <div class="hl soft" style="top:574px"></div>
+  <div class="t2" style="left:40px;right:40px;top:590px;font-size:30px;line-height:40px">[英雄联盟]Knight晒照：谢谢叔叔的商务舱，准备飞啦</div>
+  <div class="meta" style="left:40px;top:680px">英雄联盟 · 350 回复</div>
+  <div class="hl soft" style="top:722px"></div>
+  <div class="t2" style="left:40px;right:40px;top:738px;font-size:30px;line-height:40px">[数码]用了三个月墨水屏阅读器，说说真实感受</div>
+  <div class="meta" style="left:40px;top:828px">数码 · 421 回复</div>
+  <div class="hl soft" style="top:870px"></div>
+  <div class="t2" style="left:40px;right:40px;top:886px;font-size:30px;line-height:40px">[步行街主干道]大家每天花多少时间看手机？</div>
+  <div class="meta" style="left:40px;top:976px">步行街主干道 · 1288 回复</div>
+  <div class="hl soft" style="top:1018px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 4　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑤ 虎扑 · 关注</b>关注的专区只存在设备上（TF 卡），不用登录。这里把各专区第一页的帖子轮流混排（每个专区取 10 条，最多 12 个专区）。没关注时显示“去选专区”按钮。“管理”进全部专区网格（⑥）加减关注。</figcaption></figure>
+<!-- ⑥ 全部专区 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">全部专区</div>
+  <div class="a r" style="top:104px;font-size:28px">已关注 5</div>
+  <div class="pill out" style="left:40px;top:170px;width:110px;height:50px;font-size:26px">步行街</div>
+  <div class="pill blk" style="left:160px;top:170px;width:80px;height:50px;font-size:26px">NBA</div>
+  <div class="pill out" style="left:250px;top:170px;width:80px;height:50px;font-size:26px">CBA</div>
+  <div class="pill out" style="left:340px;top:170px;width:136px;height:50px;font-size:26px">国际足球</div>
+  <div class="pill out" style="left:486px;top:170px;width:136px;height:50px;font-size:26px">中国足球</div>
+  <div class="pill out" style="left:40px;top:230px;width:136px;height:50px;font-size:26px">综合体育</div>
+  <div class="pill out" style="left:186px;top:230px;width:136px;height:50px;font-size:26px">影视娱乐</div>
+  <div class="pill out" style="left:332px;top:230px;width:84px;height:50px;font-size:26px">游戏</div>
+  <div class="pill out" style="left:426px;top:230px;width:110px;height:50px;font-size:26px">二次元</div>
+  <div class="pill out" style="left:546px;top:230px;width:84px;height:50px;font-size:26px">装备</div>
+  <div class="pill out" style="left:40px;top:290px;width:84px;height:50px;font-size:26px">数码</div>
+  <div class="pill out" style="left:134px;top:290px;width:84px;height:50px;font-size:26px">汽车</div>
+  <div class="hl" style="top:358px"></div>
+  <div class="zone" style="left:40px;top:380px">火箭专区</div>
+  <div class="zone" style="left:246px;top:380px">勇士专区</div>
+  <div class="zone" style="left:452px;top:380px">骑士专区</div>
+  <div class="zone" style="left:40px;top:482px">马刺专区</div>
+  <div class="zone on" style="left:246px;top:482px">✓ 湖人专区</div>
+  <div class="zone" style="left:452px;top:482px">凯尔特人</div>
+  <div class="zone" style="left:40px;top:584px">篮网专区</div>
+  <div class="zone" style="left:246px;top:584px">雷霆专区</div>
+  <div class="zone" style="left:452px;top:584px">掘金专区</div>
+  <div class="zone" style="left:40px;top:686px">76人专区</div>
+  <div class="zone" style="left:246px;top:686px">快船专区</div>
+  <div class="zone" style="left:452px;top:686px">尼克斯</div>
+  <div class="zone" style="left:40px;top:788px">独行侠</div>
+  <div class="zone" style="left:246px;top:788px">国王专区</div>
+  <div class="zone" style="left:452px;top:788px">热火专区</div>
+  <div class="zone" style="left:40px;top:890px">公牛专区</div>
+  <div class="zone" style="left:246px;top:890px">老鹰专区</div>
+  <div class="zone" style="left:452px;top:890px">魔术专区</div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑥ 全部专区</b>约 240 个专区按分类分页，翻页不滚动。黑底带 ✓ 的是已关注；点专区名进它的帖子列表，在列表顶部关注或取消关注。专区列表缓存在 TF 卡，平时不用联网。</figcaption></figure>
+<!-- ⑦ 专区帖子 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:96px;font-size:40px">湖人专区</div>
+  <div class="pill out" style="right:40px;top:92px;width:160px;height:56px;font-size:28px">✓ 已关注</div>
+  <div class="pill blk" style="left:40px;top:176px;width:170px;height:54px;font-size:28px">最新回复</div>
+  <div class="pill out" style="left:222px;top:176px;width:170px;height:54px;font-size:28px">最新发布</div>
+  <div class="a r" style="top:186px;font-size:30px">刷新</div>
+  <div class="t2" style="left:40px;right:40px;top:258px;font-size:30px;line-height:40px">詹姆斯：我还没想过退役的事，身体感觉很好</div>
+  <div class="meta" style="left:40px;top:348px">紫金王朝 · 4小时前 · 856 回复</div>
+  <div class="hl soft" style="top:390px"></div>
+  <div class="t2" style="left:40px;right:40px;top:406px;font-size:30px;line-height:40px">赛后采访：东契奇谈最后两分钟的处理</div>
+  <div class="meta" style="left:40px;top:496px">湖人老球迷 · 5小时前 · 432 回复</div>
+  <div class="hl soft" style="top:538px"></div>
+  <div class="t2" style="left:40px;right:40px;top:554px;font-size:30px;line-height:40px">湖人今晚轮换：八村塁复出，替补阵容有调整</div>
+  <div class="meta" style="left:40px;top:644px">洛城之光 · 6小时前 · 298 回复</div>
+  <div class="hl soft" style="top:686px"></div>
+  <div class="t2" style="left:40px;right:40px;top:702px;font-size:30px;line-height:40px">数据流：詹姆斯 28 分 7 篮板 9 助攻</div>
+  <div class="meta" style="left:40px;top:792px">JR数据组 · 7小时前 · 177 回复</div>
+  <div class="hl soft" style="top:834px"></div>
+  <div class="t2" style="left:40px;right:40px;top:850px;font-size:30px;line-height:40px">有没有懂哥分析一下湖人现在的防守体系</div>
+  <div class="meta" style="left:40px;top:940px">虎扑JR123 · 8小时前 · 640 回复</div>
+  <div class="hl soft" style="top:982px"></div>
+  <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 20　　›</div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑦ 专区帖子</b>专区的帖子，每页 5 条，可按最新回复或最新发布排序；翻到还没取的一页时自动取下一批（最多缓存 200 条），右边“刷新”重新取第一页。右上角关注或取消关注（只记在设备上）。</figcaption></figure>
+
+</div>
+
+<h2>第三期：比分与评分</h2>
+<div class="grid">
+<!-- ⑧ 虎扑 · 比分 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">虎扑</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg4"><span>推荐</span><span>关注</span><span class="on">比分</span></div>
+  <div class="pill blk" style="left:40px;top:244px;width:118px;height:54px;font-size:28px">NBA</div>
+  <div class="pill out" style="left:170px;top:244px;width:118px;height:54px;font-size:28px">CBA</div>
+  <div class="pill out" style="left:300px;top:244px;width:108px;height:54px;font-size:28px">英超</div>
+  <div class="pill out" style="left:420px;top:244px;width:118px;height:54px;font-size:28px">LOL</div>
+  <div class="pill out" style="left:550px;top:244px;width:108px;height:54px;font-size:28px">网球</div>
+  <div class="a" style="left:0;right:0;top:320px;text-align:center;font-size:30px"><b>‹　　11 月 17 日 周一 · 今天　　›</b></div>
+  <div class="hl" style="top:378px"></div>
+  <div class="a b" style="left:40px;width:190px;top:416px;font-size:32px;text-align:center">湖人</div>
+  <div class="score" style="left:230px;width:224px;top:408px;text-align:center">112 : 108</div>
+  <div class="a b" style="left:454px;width:190px;top:416px;font-size:32px;text-align:center">勇士</div>
+  <div class="meta" style="left:0;right:0;top:470px;text-align:center">已结束 · 评分 ›</div>
+  <div class="hl soft" style="top:516px"></div>
+  <div class="a b" style="left:40px;width:190px;top:540px;font-size:32px;text-align:center">凯尔特人</div>
+  <div class="score" style="left:230px;width:224px;top:532px;text-align:center">98 : 101</div>
+  <div class="a b" style="left:454px;width:190px;top:540px;font-size:32px;text-align:center">尼克斯</div>
+  <div class="meta" style="left:0;right:0;top:594px;text-align:center">已结束 · 评分 ›</div>
+  <div class="hl soft" style="top:640px"></div>
+  <div class="a b" style="left:40px;width:190px;top:664px;font-size:32px;text-align:center">掘金</div>
+  <div class="score" style="left:230px;width:224px;top:656px;text-align:center">87 : 79</div>
+  <div class="a b" style="left:454px;width:190px;top:664px;font-size:32px;text-align:center">雷霆</div>
+  <div class="meta" style="left:0;right:0;top:718px;text-align:center">第三节 4:12</div>
+  <div class="hl soft" style="top:764px"></div>
+  <div class="a b" style="left:40px;width:190px;top:788px;font-size:32px;text-align:center">76人</div>
+  <div class="score" style="left:230px;width:224px;top:780px;text-align:center">— : —</div>
+  <div class="a b" style="left:454px;width:190px;top:788px;font-size:32px;text-align:center">热火</div>
+  <div class="meta" style="left:0;right:0;top:842px;text-align:center">11:30 开赛</div>
+  <div class="hl soft" style="top:888px"></div>
+  <div class="a b" style="left:40px;width:190px;top:912px;font-size:32px;text-align:center">快船</div>
+  <div class="score" style="left:230px;width:224px;top:904px;text-align:center">— : —</div>
+  <div class="a b" style="left:454px;width:190px;top:912px;font-size:32px;text-align:center">太阳</div>
+  <div class="meta" style="left:0;right:0;top:966px;text-align:center">12:00 开赛</div>
+  <div class="hl soft" style="top:1012px"></div>
+  <div class="tabs">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>⑧ 虎扑 · 比分</b>第三期。赛程按天看，进来自动定位到今天，点“‹ ›”换日期。联赛可选 NBA、CBA、英超、LOL、网球等。比分只在点“刷新”或换日期时更新，不自动刷新（省电，也避免墨水屏频繁闪）。已结束的比赛点进去看评分。</figcaption></figure>
+<!-- ⑨ 比赛评分 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 比分</div>
+  <div class="a r b" style="top:92px;font-size:30px">湖人 112 : 108 勇士</div>
+  <div class="seg" style="top:150px"><span class="on">湖人</span><span>勇士</span></div>
+  <div class="meta" style="left:40px;top:250px">球员</div><div class="meta" style="left:320px;width:100px;top:250px;text-align:center">评分</div><div class="meta" style="right:40px;top:250px">技术统计</div>
+  <div class="hl" style="top:288px"></div>
+  <div class="a b" style="left:40px;top:310px;font-size:30px">勒布朗·詹姆斯</div>
+  <div class="meta" style="left:40px;top:356px">出场 36:12</div>
+  <div class="score" style="left:320px;width:100px;top:316px;text-align:center">8.9</div>
+  <div class="a r" style="top:314px;font-size:24px">28 分 7 板 9 助</div>
+  <div class="meta" style="right:40px;top:356px">1.2 万 人评</div>
+  <div class="hl soft" style="top:406px"></div>
+  <div class="a b" style="left:40px;top:422px;font-size:30px">卢卡·东契奇</div>
+  <div class="meta" style="left:40px;top:468px">出场 38:04</div>
+  <div class="score" style="left:320px;width:100px;top:428px;text-align:center">8.4</div>
+  <div class="a r" style="top:426px;font-size:24px">31 分 8 板 6 助</div>
+  <div class="meta" style="right:40px;top:468px">9876 人评</div>
+  <div class="hl soft" style="top:518px"></div>
+  <div class="a b" style="left:40px;top:534px;font-size:30px">奥斯汀·里夫斯</div>
+  <div class="meta" style="left:40px;top:580px">出场 33:20</div>
+  <div class="score" style="left:320px;width:100px;top:540px;text-align:center">7.6</div>
+  <div class="a r" style="top:538px;font-size:24px">16 分 3 板 5 助</div>
+  <div class="meta" style="right:40px;top:580px">5432 人评</div>
+  <div class="hl soft" style="top:630px"></div>
+  <div class="a b" style="left:40px;top:646px;font-size:30px">八村塁</div>
+  <div class="meta" style="left:40px;top:692px">出场 22:41</div>
+  <div class="score" style="left:320px;width:100px;top:652px;text-align:center">7.1</div>
+  <div class="a r" style="top:650px;font-size:24px">12 分 5 板</div>
+  <div class="meta" style="right:40px;top:692px">3210 人评</div>
+  <div class="hl soft" style="top:742px"></div>
+  <div class="a b" style="left:40px;top:758px;font-size:30px">杰克逊·海斯</div>
+  <div class="meta" style="left:40px;top:804px">出场 18:09</div>
+  <div class="score" style="left:320px;width:100px;top:764px;text-align:center">6.2</div>
+  <div class="a r" style="top:762px;font-size:24px">6 分 9 板 2 帽</div>
+  <div class="meta" style="right:40px;top:804px">2108 人评</div>
+  <div class="hl soft" style="top:854px"></div>
+  <div class="a b" style="left:40px;top:870px;font-size:30px">马克西·克勒伯</div>
+  <div class="meta" style="left:40px;top:916px">出场 14:30</div>
+  <div class="score" style="left:320px;width:100px;top:876px;text-align:center">5.4</div>
+  <div class="a r" style="top:874px;font-size:24px">2 分 3 板</div>
+  <div class="meta" style="right:40px;top:916px">1890 人评</div>
+  <div class="hl soft" style="top:966px"></div>
+  <div class="a" style="left:0;right:0;top:1130px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
+
+</div></div>
+<figcaption><b>⑨ 比赛评分</b>全场球员评分榜：虎扑用户的平均分、评分人数和技术统计，按评分排序。只读，不能打分（打分要登录）。</figcaption></figure>
+
+</div>
+
+<div class="notes">
+<h2>规则</h2>
+<ul>
+<li>只在点的时候联网：进虎扑标签不自动刷新，显示上次缓存的内容；点“刷新”、翻到没缓存的页、打开帖子时才联网。</li>
+<li>停在虎扑页时 Wi-Fi 保持连接，空闲 1 分钟或离开虎扑页就断开，免得每点一次重连 3 秒。和番茄同步共用一个后台任务，不会同时联网。</li>
+<li>缓存放 TF 卡 <code>hupu/</code>，列表、帖子和图片各有上限，旧的自动清理。</li>
+<li>所有列表按页显示，点“‹ ›”或滑一下翻一整页，不滚动。中键（home）回书库，长按整屏刷新。</li>
+<li>虎扑改版导致取不到数据时，页面提示“虎扑页面结构变了”，不会崩溃；接口取法照 hupuX 的 doc/api 维护。</li>
+</ul>
+</div>
+</body>
+</html>

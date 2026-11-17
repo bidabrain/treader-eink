@@ -185,12 +185,13 @@ static void draw_list(uint8_t* fb) {
     }
     static const char* const SEG[2] = {"书架", "书城"};
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, 0);
-    char line[96];
+    char line[160];
     if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) snprintf(line, sizeof(line), "正在%s，可以先去看书", s_op == OP_CHECK ? "检查" : "更新");
     else if (s_status.phase == TOMATO_DONE || s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_status.message);
     else snprintf(line, sizeof(line), "%d 本 · %d 本有新章节", s_count, s_pending);
-    tr_fit(line, 28, TR_W - 2 * TR_MARGIN);
-    tr_text(fb, TR_MARGIN, 156 + SEG_SHIFT + 6, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    // 放不下（多半是带原因的失败提示）就两行：分段按钮下面到搜索框上面正好放得下。
+    // Too long (usually a failure with its cause): two lines fit between the segment and the search field.
+    tr_message(fb, TR_MARGIN, 156 + SEG_SHIFT + 6, 150 + SEG_SHIFT, TR_W - 2 * TR_MARGIN, 28, line, EPD_DRAW_ALIGN_LEFT, false);
 
     EpdRect field = {TR_MARGIN, 212 + SEG_SHIFT, TR_W - 2 * TR_MARGIN, 80};
     tr_pill(fb, field, "", false, 30);
@@ -314,13 +315,13 @@ static void format_meta(const tomato_hit_t* h, char* out, size_t cap) {
 
 static void draw_results(uint8_t* fb) {
     draw_field(fb, s_query, false);
-    char line[96];
+    char line[160];
     bool searching = tomato_sync_busy() && s_op == OP_SEARCH;
     if (searching) snprintf(line, sizeof(line), "%s", s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi…" : "正在搜索…");
     else if (s_status.phase == TOMATO_FAILED && s_last == OP_SEARCH) snprintf(line, sizeof(line), "%s", s_status.message);
     else if (!s_hit_count) snprintf(line, sizeof(line), "没有找到");
     else snprintf(line, sizeof(line), "%d 个结果", s_hit_count);
-    tr_text(fb, TR_MARGIN, 204, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_message(fb, TR_MARGIN, 204, 196, TR_W - 2 * TR_MARGIN, 28, line, EPD_DRAW_ALIGN_LEFT, false);
     for (int row = 0; row < RESULTS_PER_PAGE; row++) {
         int i = s_result_page * RESULTS_PER_PAGE + row;
         if (i >= s_hit_count) break;
@@ -371,7 +372,9 @@ static void draw_detail(uint8_t* fb) {
         tr_text(fb, cx, top + 16, 24, labels[i], EPD_DRAW_ALIGN_CENTER, false);
         tr_text(fb, cx, top + 52, 32, values[i], EPD_DRAW_ALIGN_CENTER, true);
     }
-    if (h->abstract[0]) tr_wrap(fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, 28, 44, h->abstract, 4);
+    // 下载失败时简介少显示两行，给两行的失败原因让位。/ On a failed download the synopsis gives two lines to the cause.
+    const bool failed = s_last == OP_DOWNLOAD && s_status.phase == TOMATO_FAILED && !(tomato_sync_busy() && s_op == OP_DOWNLOAD);
+    if (h->abstract[0]) tr_wrap(fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, 28, 44, h->abstract, failed ? 2 : 4);
 
     EpdRect btn = DETAIL_BTN;
     bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD;
@@ -386,9 +389,8 @@ static void draw_detail(uint8_t* fb) {
         tr_text(fb, TR_W - TR_MARGIN, btn.y + 38, 30, "取消", EPD_DRAW_ALIGN_RIGHT, false);
         return;
     }
-    if (s_last == OP_DOWNLOAD && s_status.phase == TOMATO_FAILED) {
-        tr_text(fb, TR_MARGIN, btn.y - 50, 28, s_status.message, EPD_DRAW_ALIGN_LEFT, false);
-    }
+    if (failed) tr_message(fb, TR_MARGIN, btn.y - 50, btn.y - 92, TR_W - 2 * TR_MARGIN, 28, s_status.message,
+                           EPD_DRAW_ALIGN_LEFT, false);
     bool owned = shelf_index_of(h->book_id) >= 0;
     tr_pill(fb, btn, owned ? "开始阅读" : "下载到书库", true, 32);
 }

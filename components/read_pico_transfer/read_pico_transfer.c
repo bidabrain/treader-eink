@@ -444,6 +444,7 @@ esp_err_t read_pico_transfer_scan_wifi(read_pico_transfer_network_t out[READ_PIC
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&init); if (err != ESP_OK) goto cleanup;
     initialized = true;
+    esp_wifi_set_country_code("CN", true);
     err = esp_wifi_set_storage(WIFI_STORAGE_RAM); if (err != ESP_OK) goto cleanup;
     err = esp_wifi_set_mode(WIFI_MODE_STA); if (err != ESP_OK) goto cleanup;
     // 仅驱动扫描，不创建STA网络接口或注册自动连接回调。/ Driver-only scan: no STA netif or automatic-connect callback.
@@ -969,6 +970,9 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&init); if (err != ESP_OK) goto fail;
     s_wifi = true;
+    // 按中国信道（1～13）：默认的“世界通用”只主动扫 1～11，路由器在 12、13 信道时可能连不上。
+    // Use the Chinese channel plan (1-13): the default world-safe plan actively scans only 1-11 and may miss APs on 12-13.
+    esp_wifi_set_country_code("CN", true);
     if (cfg->mode == READ_PICO_TRANSFER_MODE_AP) {
         uint8_t mac[6];
         err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP); if (err != ESP_OK) goto fail;
@@ -1031,6 +1035,13 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     return ESP_OK;
 fail:
     clear_secret(&wifi, sizeof(wifi)); clear_secret(&saved, sizeof(saved));
-    read_pico_transfer_stop(); set_error(err); return err;
+    // 启动失败：资源已全部释放，状态必须停在 STOPPED，只记下错误码。原来这里又把状态改成 ERROR，之后番茄、书城、
+    // 虎扑联网和设置里扫描 / 保存 Wi-Fi 都以为传书还占着 Wi-Fi，一直失败。传书页自己记启动错误，不看这里的状态。
+    // Failed start: everything is released, so the state must stay STOPPED with only the error code kept. It used to be
+    // overwritten with ERROR, after which Tomato, store and Hupu networking plus the settings scan/save all thought the
+    // transfer still held Wi-Fi and kept failing. The transfer page tracks its own start error and ignores this state.
+    read_pico_transfer_stop();
+    portENTER_CRITICAL(&s_lock); s_status.last_error = err; portEXIT_CRITICAL(&s_lock);
+    return err;
 }
 #endif

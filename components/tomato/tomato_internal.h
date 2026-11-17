@@ -13,6 +13,7 @@
 
 #include "cJSON.h"
 #include "esp_err.h"
+#include "esp_http_client.h"
 #include "tomato.h"
 
 #define TOMATO_REMOVED_MAX 64
@@ -21,6 +22,11 @@
 esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel);
 /// 断网并释放全部 Wi-Fi 资源；可重复调用。/ Disconnect and release all Wi-Fi resources; repeatable.
 void tomato_net_down(void);
+/// 改用公共 DNS；已经换过或没联网返回 false。/ Switch to public DNS; false if already switched or offline.
+bool tomato_net_use_public_dns(void);
+/// 打开 HTTP 连接；域名解析失败时换公共 DNS 再试一次，失败原因留给提示用。
+/// Open an HTTP connection, retrying once with public DNS on a lookup failure; the cause is kept for messages.
+esp_err_t tomato_http_open(esp_http_client_handle_t c, int len);
 
 /// 百分号编码。keep_slash 用于 /download/ 路径。/ Percent-encode; keep_slash for /download/ paths.
 void tomato_url_escape(const char* in, char* out, size_t cap, bool keep_slash);
@@ -28,6 +34,10 @@ void tomato_url_escape(const char* in, char* out, size_t cap, bool keep_slash);
 void tomato_copy_utf8(char* out, size_t cap, const char* in);
 /// 让 cJSON 用 PSRAM（只需调用一次）。/ Route cJSON allocations to PSRAM (call once).
 void tomato_json_use_psram(void);
+/// 联网失败原因：同步开始时清空，失败时接在提示后面。/ Network failure cause: cleared per sync, appended on failure.
+void tomato_http_clear_detail(void);
+const char* tomato_http_detail(void);
+void tomato_http_set_detail(const char* text);
 
 /// 发请求并把 JSON 响应解析到 *out（调用方 cJSON_Delete）。非 2xx 返回错误，HTTP 状态写入 *status。
 /// Send a request and parse the JSON reply into *out (caller deletes). Non-2xx is an error; status goes to *status.
@@ -42,11 +52,20 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
 /// GET 一个完整 URL 存到 dest（不超过 max 字节）。image 为真时只收 JPEG/PNG，否则不写文件。
 /// GET a full URL into dest (at most max bytes). With image set, only JPEG/PNG content is written.
 esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel);
+/// GET 到 PSRAM 缓冲（调用方 heap_caps_free），末尾补 0；image 时只收 JPEG/PNG。
+/// GET into a PSRAM buffer (caller frees) with a trailing NUL; image accepts JPEG/PNG only.
+esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out, size_t* out_len,
+                         const volatile bool* cancel);
 
 /* ---- 书城 / Bookstore ---- */
 
 /// 榜单站点根地址（去掉末尾斜杠和 /api/...）。/ Rank site root (no trailing slash or /api/...).
 void tomato_rank_base(char* out, size_t cap);
+/// 榜单地址候选数（github.io 站点有 jsDelivr 镜像）、当前用哪个、切换。/ Rank site candidates (github.io gets jsDelivr
+/// mirrors), the current one, and switching.
+int tomato_rank_mirror_count(void);
+int tomato_rank_mirror(void);
+void tomato_rank_use_mirror(int index);
 bool tomato_rank_index_url(char* out, size_t cap);
 bool tomato_rank_cat_url(const tomato_rank_cat_t* cat, char* out, size_t cap);
 const char* tomato_rank_index_path(void);
@@ -55,6 +74,16 @@ void tomato_rank_cat_path(const tomato_rank_cat_t* cat, char* out, size_t cap);
 bool tomato_rank_index_date(char* out, size_t cap);
 /// 删掉所有分类缓存（榜单换日期时）。/ Delete all category caches (when the rank date changes).
 void tomato_rank_drop_categories(void);
+typedef void (*tomato_hupu_progress_t)(int current, int total);
+/// 虎扑推荐和帖子，在同步任务里调用；msg 写给用户看的一句话。/ Hupu feed and post, run on the sync task.
+esp_err_t tomato_hupu_home(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
+esp_err_t tomato_hupu_post(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
+                           char* msg, size_t cap);
+esp_err_t tomato_hupu_zones(const volatile bool* cancel, char* msg, size_t cap);
+esp_err_t tomato_hupu_threads(const char* zone, int sort, bool more, const volatile bool* cancel, char* msg, size_t cap);
+esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
+esp_err_t tomato_hupu_schedule(const char* league, const volatile bool* cancel, char* msg, size_t cap);
+esp_err_t tomato_hupu_rating(const char* type, const char* no, const volatile bool* cancel, char* msg, size_t cap);
 /// 封面目录太大时，只留 keep 里这些书的封面和缩略图。/ When the cover dir grows too big, keep only these books' covers and thumbnails.
 void tomato_rank_prune_covers(const tomato_rank_book_t* keep, int n);
 

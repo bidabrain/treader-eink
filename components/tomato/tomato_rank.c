@@ -39,11 +39,53 @@ static void normalize(char* url) {
     while (n && url[n - 1] == '/') url[--n] = 0;
 }
 
-void tomato_rank_base(char* out, size_t cap) {
+// 国内直连 github.io 常常超时；地址是 https://用户.github.io/仓库 时，可以换 jsDelivr 的几个入口取同一仓库 main 分支的文件。
+// 0 是设置里的原地址，1 起是镜像；用通了的那个一直用到重启。
+// github.io often times out from China. For https://USER.github.io/REPO the same files on the repo's main branch can
+// come from jsDelivr's entry points. 0 is the configured site and 1+ are mirrors; the one that works is kept until reboot.
+static const char* const MIRRORS[] = {
+    "https://fastly.jsdelivr.net/gh", "https://gcore.jsdelivr.net/gh", "https://cdn.jsdelivr.net/gh",
+};
+#define MIRROR_COUNT ((int)(sizeof(MIRRORS) / sizeof(MIRRORS[0])))
+static int s_mirror;
+
+static void configured_base(char* out, size_t cap) {
     out[0] = 0;
     tomato_store_url_load(out, cap);
     if (!out[0]) snprintf(out, cap, "%s", tomato_store_url_default());
     normalize(out);
+}
+
+// https://OWNER.github.io/REPO → owner、repo。/ Split https://OWNER.github.io/REPO into owner and repo.
+static bool github_repo(const char* base, char* owner, size_t oc, char* repo, size_t rc) {
+    const char* p = strstr(base, "://");
+    if (!p) return false;
+    p += 3;
+    const char* dot = strstr(p, ".github.io/");
+    if (!dot || dot == p || strchr(dot + 11, '/')) return false;
+    const size_t on = (size_t)(dot - p), rn = strlen(dot + 11);
+    if (!rn || on >= oc || rn >= rc) return false;
+    memcpy(owner, p, on);
+    owner[on] = 0;
+    memcpy(repo, dot + 11, rn + 1);
+    return true;
+}
+
+int tomato_rank_mirror_count(void) {
+    char base[200], owner[64], repo[96];
+    configured_base(base, sizeof(base));
+    return github_repo(base, owner, sizeof(owner), repo, sizeof(repo)) ? 1 + MIRROR_COUNT : 1;
+}
+
+int tomato_rank_mirror(void) { return s_mirror < tomato_rank_mirror_count() ? s_mirror : 0; }
+void tomato_rank_use_mirror(int index) { s_mirror = index; }
+
+void tomato_rank_base(char* out, size_t cap) {
+    configured_base(out, cap);
+    char owner[64], repo[96];
+    const int m = tomato_rank_mirror();
+    if (m > 0 && github_repo(out, owner, sizeof(owner), repo, sizeof(repo)))
+        snprintf(out, cap, "%s/%s/%s@main", MIRRORS[m - 1], owner, repo);
 }
 
 const char* tomato_store_url_default(void) {

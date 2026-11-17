@@ -43,5 +43,18 @@ uint8_t app_settings_book_px(void);
 void app_settings_set_book_px(uint8_t px);
 /// 实验性晃动翻页，默认关闭。/ Experimental shake page turn, off by default.
 bool app_settings_book_shake(void);
+
+/// 阅读排版。/ Reading layout.
+typedef struct {
+    uint8_t line;      ///< 行距：0 紧凑 1 标准 2 宽松 / Line spacing: compact, standard, loose
+    uint8_t para;      ///< 段距：0 无 1 小 2 大 / Paragraph spacing: none, small, large
+    uint8_t margin;    ///< 页边距：0 窄 1 中 2 宽 / Page margins: narrow, medium, wide
+    bool indent;       ///< 首行自动缩进两字（否则按原文）/ Indent first lines by two characters (else as written)
+    bool underline;    ///< 每行下面画虚线 / Draw a dashed rule under each line
+} app_book_style_t;
+
+/// 读写阅读排版，存 NVS（一个字节）。/ Get or set the reading layout, stored in NVS as one byte.
+app_book_style_t app_settings_book_style(void);
+void app_settings_set_book_style(const app_book_style_t* style);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);

@@ -35,3 +35,9 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=1024
 # Treader：TF 卡升级后新固件起不来就退回旧版本。/ Roll back to the previous app if a TF-upgraded one fails to boot.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# 证书包支持交叉签名：Cloudflare 等站点发的链以“被 GlobalSign Root CA 交叉签名的 GTS Root R4”结尾，
+# 证书包里只有 GTS Root R4，不开这项握手会失败（约多用 700 字节堆）。
+# Cross-signed chains: Cloudflare-style chains end in GTS Root R4 cross-signed by GlobalSign Root CA, which the
+# bundle lacks; without this the handshake fails (~700 bytes of heap).
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y

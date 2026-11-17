@@ -12,14 +12,16 @@
 extern const app_desc_t app_book;
 extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
+extern const app_desc_t app_tr_hupu;
 extern const app_desc_t app_selftest;
 
-// 菜单只列三个主页面，和底部标签栏一致；传书、字体、睡眠等从“设置”进入。首页已并入书库（2026-11-17）。
-// The menu lists the three main pages, matching the tab bar; transfer, fonts, sleep etc. live under Settings.
+// 菜单只列四个主页面（书库、番茄、虎扑、设置），和底部标签栏一致；传书、字体、睡眠等从“设置”进入。首页已并入书库（2026-11-17）。
+// The menu lists the four main pages (library, Tomato, Hupu, settings), matching the tab bar; transfer, fonts, sleep etc. live under Settings.
 // Home was merged into the library (2026-11-17).
 static const app_desc_t* const s_apps[] = {
     &app_book,
     &app_tr_tomato,
+    &app_tr_hupu,
     &app_tr_settings,
 };
 

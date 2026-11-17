@@ -62,6 +62,11 @@
 - **缓存不越积越多**：删书时同时删它的封面缩略图（`.treader/covers/`）；番茄书还会删下载时存的封面原图。
   离开壁纸页时只保留当前壁纸的全屏缓存，预览过没选的都删掉。书城换榜单日期时清掉旧分类缓存和详情页封面。
   删除是真删除（FAT 没有回收站），阅读进度一起清掉。下载服务器那边的文件库不会被设备清理，需要时在它的 Web UI 里删。
+- **阅读排版**：工具条的“排版”（原“清残影”，整屏刷新改用长按中键）打开面板：行距 紧凑 / 标准 / 宽松（字号的 1.3 / 1.5 / 1.8 倍），
+  段距 无 / 小 / 大（行高的 0、1/3、2/3，标题固定半行），页边距 窄 / 中 / 宽（24 / 40 / 64 px），首行缩进 按原文 / 缩进两字
+  （去掉段首半角、全角和不换行空格，统一空两个“中”字宽，标题和空行不缩进），下划线 无 / 有（每行字下方、行间空白中间一条灰虚线）。
+  样式打包成一个字节存 NVS（`bk_style`），默认就是原来的排版。`book_layout_set_style` 统一给分页、绘制和图片命中用，
+  改了立即按当前页首的字节位置重排，失败退回原样式。
 - **列表只翻页**：书库、目录、番茄书架、搜索结果、书城榜单、壁纸列表都按页显示，点“‹ ›”或滑一下翻一整页，墨水屏不做滚动。
 - **首页并入书库**（2026-11-17）：原首页的继续阅读、最近翻过、番茄提示都和书库或番茄页重复，所以去掉首页，底部标签只剩书库、番茄、设置，
   开机进书库。书架顶部常驻“继续阅读”卡片（`book_progress_recent` 里最近一本，搜索时隐藏），代替原来进书库时的续读弹窗；
@@ -102,7 +107,47 @@
 - **榜单地址**：`local.properties` 里 `STORE_URL=` 设编译默认（不写就是 `https://bidabrain.github.io/FanqieRankTracker`）；
   设置 → 书城榜单 可以改成自定义地址，留空恢复默认，存在 `config.json` 的 `store_url`。填安卓版那种 `.../api/lastest/all.json`
   也可以，会自动截到网站根。这个地址不是秘密，固件里明文保存，界面正常显示。
+- **镜像**：国内直连 `*.github.io` 常超时。榜单地址是 `https://用户.github.io/仓库` 时，失败后依次改用
+  `https://{fastly,gcore,cdn}.jsdelivr.net/gh/用户/仓库@main`（仓库 main 分支里提交的 `api/lastest/`），用通的那个记到重启。
+  jsDelivr 对分支内容最多缓存 12 小时，所以经镜像看到的榜单可能晚半天。
 - 不做安卓版的轮播横幅和随机抽 10 本。
+
+## 虎扑（只读）
+
+底部第三个标签。移植安卓版 [hupuX](https://github.com/bidabrain/hupuX) 的浏览部分，界面见 [docs/design/hupu.html](design/hupu.html)。
+顶部分段 推荐 / 关注 / 比分；还有全部专区、专区帖子、帖子详情和比赛评分。
+
+- **数据**：设备直接用 HTTPS 取虎扑移动版页面，不需要自建服务器、不登录、不带 Cookie。
+  首页 `m.hupu.com/` 和帖子 `m.hupu.com/bbs/{tid}.html` 都从页面里的 `__NEXT_DATA__` 取（字段路径照 hupuX 的 `doc/api/mobile-api.md`）：
+  推荐列表 `props.pageProps.res[]`（`tid`、`title`、`label` 专区、`replies`、`source[]` 缩略图）；帖子 `threadData.data.moduleConfigList`
+  （`title`、`user`、`content.moduleContent.content` 正文 HTML）、`initialRepliesData.lightReplies` / `initialReplies`（亮了和前 20 条回复）。
+- **后台任务**：和番茄同步共用 `components/tomato` 的同步任务（`tomato_hupu.c`），不会两个同时联网。页面打开要 2～4 秒连 Wi-Fi。
+  第 1 步把精简 JSON 写进 TF 卡（`hupu/home.json`、`hupu/post/<tid>.json`），进度到 1 时页面先显示文字；之后下载图片。
+- **图片**：虎扑图床支持阿里云 OSS 参数，统一要 JPG（缩略图 300 宽、正文 600 宽，设备解不了 WEBP）。动图取静态的 `src`。
+  `main/book/hupu_img.c` 在页面 on_tick 里一次解一张，缩放成显示尺寸存成 `<图名>_<宽>x<高>.g`，绘制只读缓存、Bayer 抖动；
+  本页的图全部做好后整页刷新一次。图片尺寸从文件名里的 `_w_…_h_…_` 读，没下载前就能排好版。
+- **正文**：HTML 转成段落和图片块（引号里的 `>` 不算标签结尾），按 32 px 分页；标题两行内，页首不留段间距。
+  视频写成“[视频，请在虎扑 App 观看]”，嵌入卡片（比赛战报之类）写成提示一行。回复里的图写成“[图]”。
+- **只在点的时候联网**：点“刷新”取首页；打开没缓存的帖子时取帖子。缓存过的帖子直接打开不联网（不会自动更新回复数）。
+  返回列表会取消正在加载的帖子。
+- **关注**：关注的专区存在 `hupu/follow.json`（最多 30 个，不用登录）。关注流取前 12 个专区各自第一页（10 条），轮流混排存 `hupu/feed.json`；
+  关注变了就删掉旧的关注流，下次进“关注”重新取。全部专区来自 `m.hupu.com/zone`（`props.pageProps.data[].topicList[]`），
+  去掉和别的分类重复的“热门”和“站务管理”，按 hupuX 的做法把漏掉的英雄联盟主区（85）补到“游戏”第一个，存 `hupu/zones.json`。
+- **专区帖子**：最新回复走 `m.hupu.com/api/v2/bbs/topicThreads`，一次 10 条，翻页要带上一页的 `nextCursor`（不带只会重复第一页）；
+  最新发布走桌面版 `bbs.hupu.com/{id}-postdate[-页]` 里的 `window.$$data.topic.threads`，一次 50 条。翻到还没取的一页时取下一批并追加，
+  每个专区最多缓存 200 条，存 `hupu/zone/<id>_<排序>.json`，最多留 40 个文件。
+- **比分**：赛程接口 `match-api.hupu.com/…/getScheduleListByTagForH5?businessId=`（nba、cba、epl、lol、tennis），一次返回整季约 200 场、
+  NBA 约 420 KB。按天存 `hupu/sched_<赛事>.json`，记下“今天”那天（`dateBlock` 以“今天”开头，否则用 `anchorMatchId` 那天）。
+  开赛时间按毫秒时间戳加 8 小时显示，不依赖时区。已结束的比赛点进去看评分：赛程给的是条目键，先 `getSelfByBizKey` 找父比赛，
+  再 `getCurAndSubNodeByBizKey`（relation=CHILD）取全场条目，存 `hupu/rate/`（最多 20 个）。球员的 `teamId` 等于赛程里的 `memberId`，
+  能分开两队就按队显示，按评分从高到低排。
+- **缓存上限**：帖子最多 30 个；`hupu/img/` 超过 400 个文件时只留当前用到的图。整个 `hupu/` 可以随时删。
+- **内存**：页面的列表、专区、赛程、帖子缓冲进页时在 PSRAM 分配（约 300 KB），离页全部释放；图片内存缓存最多 2 MB，离页释放。
+  后台任务把响应读进 PSRAM、解析完立刻释放原文，cJSON 树精简写盘后马上删除。解析前检查 PSRAM 剩余不少于原文 3 倍
+  （NBA 赛程解析峰值约 1.5 MB），不够就提示“内存不足”而不是半路失败。
+- **不联网**：所有视图都先读 TF 卡缓存。没设置 Wi-Fi、连不上或虎扑取不到时，后台任务失败，页面留一句提示，缓存照常显示；
+  没缓存的地方提示“联网后点刷新”。自动联网只发生在打开没缓存的内容时，一次失败后不会反复重试，等用户再点。
+- **翻页**：列表、正文、回复都按页；点“‹ ›”、滑一下，正文页还可以点左右两侧。点回复看全文，点图全屏看，左键返回上一层。
 
 ## WebDAV 同步
 
@@ -178,6 +223,9 @@ Wi-Fi 沿用系统“传书”页里保存的网络，不需要另外设置。
 | `components/tomato/tomato_rank.c` | 书城榜单地址、TF 卡缓存和解析；联网在 `tomato_sync.c` 的 OP_RANK / OP_RANK_COVER。 |
 | `main/apps/app_tr_store.c` | 书城页：频道和分类、分类榜单、书籍详情。 |
 | `main/apps/app_tr_update.c` | 系统升级：扫描 TF 卡固件、分块写入另一个程序槽、校验后重启。 |
+| `main/apps/app_tr_hupu.c` | 虎扑页：推荐、关注、比分三个分段，全部专区、专区帖子、帖子正文分页、亮了与回复、看大图、比赛评分。 |
+| `components/tomato/tomato_hupu.c` | 虎扑数据：推荐、帖子、专区、专区帖子、关注流、赛程、评分；HTML 转文字、下载图片、缓存上限。 |
+| `main/book/hupu_img.c` | 虎扑图片：JPG 缩放成灰度缓存，抖动绘制。 |
 | `main/book/book_cover.c` | 封面提取、缩略图缓存（TF 卡）和绘制，只在主任务调用。 |
 | `components/read_pico_transfer/` | 官方传书组件；新增 `read_pico_transfer_load_wifi()` 供番茄同步读取凭据。 |
 | `tools/ime/build_pico_ime_dictionary.py` | 重新生成拼音词库。 |

@@ -32,6 +32,9 @@ extern "C" {
 #define TOMATO_COVER_DIR TOMATO_DIR "/covers"
 /// 书城榜单缓存目录。/ Bookstore rank cache.
 #define TOMATO_RANK_DIR TOMATO_DIR "/store"
+/// 虎扑缓存目录：home.json、post/<tid>.json、img/。/ Hupu cache: home.json, post/<tid>.json, img/.
+#define TOMATO_HUPU_DIR "/sdcard/hupu"
+#define TOMATO_HUPU_HOME_FILE TOMATO_HUPU_DIR "/home.json"
 #define TOMATO_RANK_CAT_MAX 48
 #define TOMATO_RANK_BOOK_MAX 20
 #define TOMATO_RANK_INTRO_LEN 900
@@ -167,7 +170,7 @@ typedef enum {
 typedef struct {
     tomato_phase_t phase;
     esp_err_t error;          ///< FAILED 时的原因 / Reason when FAILED
-    char message[64];         ///< 给用户看的一句话 / One-line user message
+    char message[96];         ///< 给用户看的一句话（可能带失败原因）/ One-line user message (may carry the cause)
     int current;              ///< 第几本 / Book index in progress (1-based)
     int total;                ///< 共几本 / Books in this run
     uint32_t bytes;           ///< 当前文件已收字节 / Bytes received for the current file
@@ -193,6 +196,42 @@ esp_err_t tomato_sync_start_rank(const tomato_rank_cat_t* cat);
 /// 一次联网下载这些榜单书缺的封面到 tomato_rank_cover_path()；目录太大先清理。
 /// Fetch these rank books' missing covers to tomato_rank_cover_path() in one session; prunes an oversized dir first.
 esp_err_t tomato_sync_start_rank_covers(const tomato_rank_book_t* books, int n);
+/// cJSON 节点改放 PSRAM（全局生效，可重复调用）。解析大 JSON 前调用。/ Put cJSON nodes in PSRAM (global,
+/// idempotent). Call before parsing large JSON.
+void tomato_json_use_psram(void);
+
+/// 虎扑后台任务种类。/ Hupu background jobs.
+typedef enum {
+    TOMATO_HUPU_HOME,       ///< 推荐和缩略图；列表写好时进度到 1 / Feed and thumbnails; progress 1 once the list is written
+    TOMATO_HUPU_POST,       ///< 一帖和正文图片；文字写好时进度到 1 / One post and its images; progress 1 once text is written
+    TOMATO_HUPU_ZONES,      ///< 全部专区 / All zones
+    TOMATO_HUPU_THREADS,    ///< 专区帖子：id 专区，sort 0 最新回复 1 最新发布，more 追加下一页 / Zone posts; more appends a page
+    TOMATO_HUPU_FOLLOW,     ///< 关注的专区混排 / Interleaved feed of followed zones
+    TOMATO_HUPU_SCHEDULE,   ///< 赛程：id 赛事（nba、cba…）/ Schedule; id is the league (nba, cba...)
+    TOMATO_HUPU_RATING,     ///< 比赛评分：id 条目类型，key 条目号 / Match ratings; id is the item type, key the item number
+} tomato_hupu_job_t;
+
+/// 虎扑请求。/ Hupu request.
+typedef struct {
+    tomato_hupu_job_t job;
+    char id[40];
+    char key[24];
+    int sort;
+    bool more;
+} tomato_hupu_req_t;
+
+/// 在后台任务里跑一件虎扑的事；只读，不需要番茄服务器。/ Run one Hupu job on the sync task; read only, no Tomato server.
+esp_err_t tomato_sync_start_hupu(const tomato_hupu_req_t* req);
+/// 帖子缓存文件。/ Cached post file.
+void tomato_hupu_post_path(const char* tid, char* out, size_t cap);
+/// 图片地址对应的本地 JPG（缩略图缓存同名加尺寸）。/ Local JPEG for an image URL (thumbnail caches share the name).
+void tomato_hupu_img_path(const char* url, char* out, size_t cap);
+/// 从虎扑图片文件名里读原图尺寸（…_w_1920_h_967_…）。/ Read the original size from a Hupu image name.
+bool tomato_hupu_img_size(const char* url, int* w, int* h);
+/// 专区帖子、赛程、评分的缓存文件。/ Cache files for zone posts, schedules and ratings.
+void tomato_hupu_zone_path(const char* zone, int sort, char* out, size_t cap);
+void tomato_hupu_schedule_path(const char* league, char* out, size_t cap);
+void tomato_hupu_rating_path(const char* type, const char* no, char* out, size_t cap);
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);
 /// 注册阅读进度的读写回调（进度存储在主程序里）。/ Register progress I/O callbacks (progress lives in the main app).

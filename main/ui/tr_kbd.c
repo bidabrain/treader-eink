@@ -30,7 +30,9 @@
 #define KEY_GRAY 0xE0
 
 enum {
-    K_FN_LEFT = 100, K_BACK, K_MODE, K_LANG, K_SPACE, K_GO, K_CLEAR,
+    // 功能键编号从 256 起，不能和字符键（ASCII）撞上：原来从 100 起，正好是字母 d～j。
+    // Function key ids start at 256 so they never collide with character keys; 100 used to equal letters d..j.
+    K_FN_LEFT = 256, K_BACK, K_MODE, K_LANG, K_SPACE, K_GO, K_CLEAR,
 };
 
 static const char* const ROWS_LETTERS[3] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
