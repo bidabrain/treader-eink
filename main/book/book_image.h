@@ -11,7 +11,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/// 解码到不超过648×1000灰度图；输入至多2MiB；基线JPEG至多16M像素，其余至多1M像素、解码堆至多4MiB。
-/// Decode at most 648x1000 grayscale pixels; input <=2MiB; baseline JPEG <=16M pixels, others <=1M pixels with a <=4MiB decoder heap.
+/// 解码到不超过 648×1000 的灰度图；输入至多 8 MiB。基线 JPEG 和非交错 PNG 边解边缩，多大都行（至多 16384 边长）；
+/// 渐进 JPEG、交错或 16 位 PNG 要整张解，按剩余 PSRAM 算上限（约 1～1.6 百万像素）。
+/// Decode to at most 648x1000 gray; input <= 8 MiB. Baseline JPEG and non-interlaced PNG scale while decoding at any
+/// size (sides up to 16384); progressive JPEG and interlaced or 16-bit PNG decode whole, capped by free PSRAM (~1-1.6 MP).
 bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
                        uint8_t** pixels, uint16_t* width, uint16_t* height);

@@ -28,6 +28,9 @@
 #define IO_CHUNK 4096
 #define TX_BUF 2048
 #define TIMEOUT_MS 15000
+// 图片超时短一些：网络卡住时取消（比如换去看别的帖子）能更快生效。/ A shorter image timeout so a cancel (say, opening
+// another post) takes effect sooner when the network stalls.
+#define IMG_TIMEOUT_MS 8000
 
 // 最近一次联网失败的具体原因，同步失败时接在提示后面，方便在真机上定位。
 // The last network failure's cause, appended to sync failure messages to help diagnose on the device.
@@ -258,7 +261,7 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
     *out_len = 0;
     esp_http_client_config_t hc = {
         .url = url,
-        .timeout_ms = TIMEOUT_MS,
+        .timeout_ms = image ? IMG_TIMEOUT_MS : TIMEOUT_MS,
         .buffer_size = IO_CHUNK,
         .buffer_size_tx = TX_BUF,
         .crt_bundle_attach = esp_crt_bundle_attach,

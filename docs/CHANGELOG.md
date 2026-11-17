@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-18 · Treader 0.4.1
+
+- 虎扑：打开新帖子、换专区或联赛时，立刻取消还在跑的旧任务，马上加载你正在看的内容；连点多次只执行最后一次。不再出现“正在加载”一直挂着、或联网时误报“还没有缓存”。
+  Hupu: opening another post, zone or league cancels the old job at once and loads what you are looking at; repeated taps run only the last one. No more stuck "loading" or false "not cached" while online.
+- 虎扑：再打开缓存过的帖子时，没下好的图在后台自动补下；图片下载超时从 15 秒缩到 8 秒，网络卡住时切换更快。
+  Hupu: reopening a cached post fills in the images still missing; the image timeout drops from 15 to 8 seconds so switching is quicker on a stalled network.
+- 图片解码：PNG 改成边解压边缩放，再大的 PNG 都能显示（漫画、EPUB 插图都受益）；渐进式 JPEG 按剩余内存放宽上限；CBZ 里单张图超过 4 MB 不再导致整个包打不开。
+  Image decoding: PNG now streams and scales while inflating, so any size displays (comics and EPUB illustrations alike); progressive JPEG gets a limit based on free memory; a single image over 4 MB no longer makes a whole CBZ unopenable.
+
 ## 2026-11-18 · Treader 0.4.0
 
 - 阅读和漫画新增定时自动翻页：工具条里调“自动翻页”，关或 3～30 秒（每档 3 秒），阅读和漫画各记一份；碰屏幕或按键重新计时，工具条开着暂停，翻到最后一页停下；自动翻页期间不空闲锁屏。

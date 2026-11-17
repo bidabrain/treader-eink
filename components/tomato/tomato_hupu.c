@@ -529,9 +529,35 @@ static void prune_posts(const char* keep) {
     tomato_hupu_cache_unlock();
 }
 
-esp_err_t tomato_hupu_post(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
-                           char* msg, size_t cap) {
+static cJSON* read_json(const char* file);
+
+// 只补图：读缓存里的帖子，下还没下的图。/ Images only: read the cached post and fetch the images still missing.
+static esp_err_t post_images_only(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
+                                  char* msg, size_t cap) {
+    char file[96];
+    tomato_hupu_post_path(tid, file, sizeof(file));
+    cJSON* post = read_json(file);
+    cJSON* images = cJSON_CreateArray();
+    const cJSON* blk;
+    cJSON_ArrayForEach(blk, cJSON_GetObjectItemCaseSensitive(post, "body")) {
+        const cJSON* i = cJSON_GetObjectItemCaseSensitive(blk, "i");
+        if (images && cJSON_IsString(i)) cJSON_AddItemToArray(images, cJSON_CreateString(i->valuestring));
+    }
+    cJSON_Delete(post);
+    if (!images) { snprintf(msg, cap, "内存不足"); return ESP_ERR_NO_MEM; }
+    progress(1, 1 + cJSON_GetArraySize(images));
+    const int got = fetch_images(images, cancel, progress, 1), want = cJSON_GetArraySize(images);
+    cJSON_Delete(images);
+    if (cancel && *cancel) return ESP_ERR_INVALID_STATE;
+    if (got < want) { snprintf(msg, cap, "有 %d 张图没下好，检查网络", want - got); return ESP_FAIL; }
+    snprintf(msg, cap, "已加载");
+    return ESP_OK;
+}
+
+esp_err_t tomato_hupu_post(const char* tid, bool images_only, const volatile bool* cancel,
+                           tomato_hupu_progress_t progress, char* msg, size_t cap) {
     make_dirs();
+    if (images_only) return post_images_only(tid, cancel, progress, msg, cap);
     char url[96];
     snprintf(url, sizeof(url), "https://m.hupu.com/bbs/%.20s.html", tid);
     cJSON* page = NULL;

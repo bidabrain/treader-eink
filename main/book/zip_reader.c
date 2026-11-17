@@ -156,7 +156,9 @@ esp_err_t zip_open(const char* path, zip_reader_t** out) {
         if ((entry->flags & ~UINT16_C(0x080e)) || u16(h + 34) ||
             (entry->method != 0 && entry->method != 8)) goto fail;
         err = ESP_ERR_INVALID_SIZE;
-        if (entry->packed > ZIP_INPUT_MAX || entry->unpacked > ZIP_OUTPUT_MAX) goto fail;
+        // 单张大图不该让整个包打不开；按条目解压时各自再查上限。/ One large image must not make the whole archive
+        // unopenable; extraction checks its own limit per entry.
+        if (entry->packed > ZIP_ENTRY_LIMIT || entry->unpacked > ZIP_ENTRY_LIMIT) goto fail;
         if (!name_len || name_len > NAME_MAX_BYTES || record_len > eocd_pos - pos ||
             entry->offset >= z->directory || z->directory - entry->offset < 30 ||
             entry->packed > z->directory - entry->offset - 30 ||

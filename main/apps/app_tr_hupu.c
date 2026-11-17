@@ -334,20 +334,19 @@ static bool exists(const char* path) {
 
 /* ---- 后台任务 / Background jobs ---- */
 
-static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, int sort, bool more) {
-    if (tomato_sync_busy()) {
-        snprintf(s_msg, sizeof(s_msg), "%s", s_job_active ? "正在加载，请稍候" : "后台正在同步，稍后再试");
-        return false;
-    }
-    tomato_hupu_req_t req = {.job = job, .sort = sort, .more = more};
-    if (id) snprintf(req.id, sizeof(req.id), "%s", id);
-    if (key) snprintf(req.key, sizeof(req.key), "%s", key);
-    esp_err_t err = tomato_sync_start_hupu(&req);
+// 还没开始的最新请求：后台在忙时先记下，忙完马上执行；再来新请求就替换掉它。
+// The latest request not yet started: kept while the worker is busy and run as soon as it is free; a newer one
+// replaces it.
+static tomato_hupu_req_t s_pending;
+static bool s_has_pending;
+
+static bool start_req(const tomato_hupu_req_t* r) {
+    esp_err_t err = tomato_sync_start_hupu(r);
     if (err != ESP_OK) {
         snprintf(s_msg, sizeof(s_msg), "%s", err == ESP_ERR_INVALID_STATE ? "后台正在同步，稍后再试" : "无法开始加载");
         return false;
     }
-    s_job = req;
+    s_job = *r;
     s_job_active = true;
     s_step_loaded = false;
     s_msg[0] = 0;
@@ -355,7 +354,33 @@ static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, in
     return true;
 }
 
-static bool job_running(tomato_hupu_job_t job) { return s_job_active && s_job.job == job && tomato_sync_busy(); }
+static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, int sort, bool more) {
+    tomato_hupu_req_t req = {.job = job, .sort = sort, .more = more};
+    if (id) snprintf(req.id, sizeof(req.id), "%s", id);
+    if (key) snprintf(req.key, sizeof(req.key), "%s", key);
+    if (tomato_sync_busy()) {
+        // 你正在看的优先：虎扑自己的旧任务立刻取消；番茄、同步这类别的任务不打断，等它结束。
+        // What you are looking at comes first: cancel our own old job at once; other work (Tomato, sync) is left to finish.
+        if (s_job_active) tomato_sync_cancel();
+        s_pending = req;
+        s_has_pending = true;
+        s_msg[0] = 0;
+        return true;
+    }
+    s_has_pending = false;
+    return start_req(&req);
+}
+
+// 不再需要某类请求（离开那一层）：取消正在跑的，丢掉还没开始的。/ A level is left: cancel its running job and drop a
+// pending one.
+static void drop_job(tomato_hupu_job_t job) {
+    if (s_has_pending && s_pending.job == job) s_has_pending = false;
+    if (s_job_active && s_job.job == job && tomato_sync_busy()) tomato_sync_cancel();
+}
+
+static bool job_running(tomato_hupu_job_t job) {
+    return (s_has_pending && s_pending.job == job) || (s_job_active && s_job.job == job && tomato_sync_busy());
+}
 
 static const char* loading_text(const char* what) {
     static char buf[48];
@@ -758,6 +783,13 @@ static bool load_post(const char* tid) {
     return true;
 }
 
+// 帖子里还有没下好的图吗。/ Whether the loaded post still has images not downloaded.
+static bool post_missing_images(void) {
+    for (int i = 0; i < s_block_count; i++)
+        if (s_blocks[i].image && !exists(s_blocks[i].jpg)) return true;
+    return false;
+}
+
 static int tab_pages(void) {
     if (s_tab == T_BODY) return s_body_page_count;
     return s_reply_page_count[s_tab == T_LIST];
@@ -1111,7 +1143,7 @@ static void draw_body(uint8_t* fb) {
                 hupu_img_draw(fb, x, y, b->w, b->h, px, true);
             } else {
                 epd_draw_rect((EpdRect){x, y, b->w, b->h}, UI_GRAY_BLACK, fb);
-                tr_text(fb, TR_W / 2, y + b->h / 2 - 14, 26, exists(b->jpg) ? "图片处理中" : "图片未下载",
+                tr_text(fb, TR_W / 2, y + b->h / 2 - 14, 26, exists(b->jpg) ? "图片处理中" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片未下载",
                         EPD_DRAW_ALIGN_CENTER, false);
             }
         }
@@ -1190,7 +1222,7 @@ static void draw_image(uint8_t* fb) {
         image_fit(b, &w, &h);
         const uint8_t* px = hupu_img_get(b->jpg, w, h);
         if (px) hupu_img_draw(fb, (TR_W - w) / 2, (TR_H - IMAGE_BAND - h) / 2, w, h, px, false);
-        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, 30, exists(b->jpg) ? "正在处理图片…" : "图片还没下载",
+        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, 30, exists(b->jpg) ? "正在处理图片…" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片还没下载",
                      EPD_DRAW_ALIGN_CENTER, false);
     }
     char label[48];
@@ -1239,10 +1271,10 @@ static app_redraw_t show_seg(seg_t seg) {
     hupu_img_drop_pending();
     if (seg == SEG_SCORE) {
         load_schedule();
-        if (!s_day_count && !tomato_sync_busy()) start_job(TOMATO_HUPU_SCHEDULE, LEAGUES[s_league].id, NULL, 0, false);
+        if (!s_day_count) start_job(TOMATO_HUPU_SCHEDULE, LEAGUES[s_league].id, NULL, 0, false);
     } else {
         load_current_list();
-        if (seg == SEG_FOLLOW && s_follow_count && !s_item_count && !tomato_sync_busy())
+        if (seg == SEG_FOLLOW && s_follow_count && !s_item_count)
             start_job(TOMATO_HUPU_FOLLOW, NULL, NULL, 0, false);
     }
     return APP_REDRAW_PAGE;
@@ -1263,8 +1295,12 @@ static app_redraw_t open_post(const char* tid, view_t back) {
     s_tab = T_BODY;
     s_page = 0;
     s_msg[0] = 0;
-    // 缓存里有就直接看，不联网。/ A cached post opens without network.
-    if (load_post(tid)) return APP_REDRAW_PAGE;
+    // 缓存里有就直接看；有图还没下好就在后台补。/ A cached post opens at once; missing images are filled in behind it.
+    if (load_post(tid)) {
+        snprintf(s_tid, sizeof(s_tid), "%s", tid);
+        if (post_missing_images()) start_job(TOMATO_HUPU_POST, tid, NULL, 0, true);
+        return APP_REDRAW_PAGE;
+    }
     snprintf(s_tid, sizeof(s_tid), "%s", tid);
     start_job(TOMATO_HUPU_POST, tid, NULL, 0, false);
     return APP_REDRAW_PAGE;
@@ -1275,7 +1311,7 @@ static app_redraw_t open_zones(void) {
     s_msg[0] = 0;
     s_zone_page = 0;
     load_zones();
-    if (!s_zone_count && !tomato_sync_busy()) start_job(TOMATO_HUPU_ZONES, NULL, NULL, 0, false);
+    if (!s_zone_count) start_job(TOMATO_HUPU_ZONES, NULL, NULL, 0, false);
     return APP_REDRAW_PAGE;
 }
 
@@ -1288,7 +1324,7 @@ static app_redraw_t open_zone(const zone_t* z, view_t back) {
     s_msg[0] = 0;
     hupu_img_drop_pending();
     load_zone_list();
-    if (!s_item_count && !tomato_sync_busy()) start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false);
+    if (!s_item_count) start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false);
     return APP_REDRAW_PAGE;
 }
 
@@ -1317,21 +1353,21 @@ static app_redraw_t go_back(void) {
     case V_IMAGE:
     case V_REPLY: s_view = V_POST; break;
     case V_POST:
-        if (job_running(TOMATO_HUPU_POST)) tomato_sync_cancel();
+        drop_job(TOMATO_HUPU_POST);
         free_post();
         s_view = s_post_back;
         if (s_view == V_ZONE) load_zone_list();
         else load_current_list();
         break;
     case V_ZONE:
-        if (job_running(TOMATO_HUPU_THREADS)) tomato_sync_cancel();
+        drop_job(TOMATO_HUPU_THREADS);
         s_view = s_zone_back;
         s_list_page = 0;
         if (s_view == V_HOME) load_current_list();
         break;
     case V_ZONES: s_view = V_HOME; load_current_list(); break;
     case V_RATE:
-        if (job_running(TOMATO_HUPU_RATING)) tomato_sync_cancel();
+        drop_job(TOMATO_HUPU_RATING);
         s_view = V_HOME;
         break;
     default: return APP_REDRAW_NONE;
@@ -1359,7 +1395,7 @@ static app_redraw_t turn(int dir) {
     hupu_img_drop_pending();
     s_msg[0] = 0;
     // 专区翻到还没取的一页：取下一批。/ A zone page not fetched yet: fetch the next batch.
-    if (s_view == V_ZONE && *page >= list_pages() && !s_list_end && !tomato_sync_busy())
+    if (s_view == V_ZONE && *page >= list_pages() && !s_list_end && !job_running(TOMATO_HUPU_THREADS))
         start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, true);
     return APP_REDRAW_PAGE;
 }
@@ -1436,7 +1472,7 @@ static app_redraw_t tap_zone(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (y >= 170 && y < 236) {
         if (x > TR_W - TR_MARGIN - 120) {
-            if (!tomato_sync_busy()) { s_list_page = 0; start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false); }
+            { s_list_page = 0; start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false); }
             return APP_REDRAW_PAGE;
         }
         const int sort = x < TR_MARGIN + 176 ? 0 : x < TR_MARGIN + 352 ? 1 : -1;
@@ -1445,7 +1481,7 @@ static app_redraw_t tap_zone(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         s_list_page = 0;
         s_msg[0] = 0;
         load_zone_list();
-        if (!s_item_count && !tomato_sync_busy()) start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false);
+        if (!s_item_count) start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false);
         return APP_REDRAW_PAGE;
     }
     const int pager = tr_pager_hit(PAGER_Y, x, y);
@@ -1620,6 +1656,13 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
     tr_time_poll();
+    // 记下的请求：后台一空就开始。/ A remembered request starts as soon as the worker is free.
+    if (s_has_pending && !tomato_sync_busy() && !s_job_active) {
+        s_has_pending = false;
+        const tomato_hupu_req_t r = s_pending;
+        start_req(&r);
+        return APP_REDRAW_PAGE;
+    }
     if (!s_job_active) return APP_REDRAW_NONE;
     // 先看是否还在忙，再取状态，免得拿到失败前的旧状态。/ Read busy first, then the status, so a failure is never missed.
     const bool busy = tomato_sync_busy();
@@ -1647,6 +1690,14 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (!ok) {
         if (s_status.error == ESP_ERR_INVALID_STATE) s_msg[0] = 0;
         else snprintf(s_msg, sizeof(s_msg), "%s", s_status.message);
+    }
+    // 旧任务被新请求顶掉了：不提示，马上开始新的。/ The old job gave way to a newer request: no message, start it now.
+    if (s_has_pending) {
+        if (ok) job_done(ok);
+        s_has_pending = false;
+        const tomato_hupu_req_t next = s_pending;
+        start_req(&next);
+        return APP_REDRAW_PAGE;
     }
     const app_redraw_t r = job_done(ok);
     return !ok && r == APP_REDRAW_NONE && s_view != V_IMAGE ? APP_REDRAW_PAGE : r;
@@ -1676,6 +1727,7 @@ static void on_media_lost(app_ctx_t* ctx) {
     (void)ctx;
     tomato_sync_cancel();
     s_job_active = false;
+    s_has_pending = false;
     free_all();
     alloc_all();
     s_view = V_HOME;

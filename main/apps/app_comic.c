@@ -68,7 +68,7 @@ extern const app_desc_t app_transfer;
 #define FULL_EVERY 8
 #define FLUSH_EVERY 10
 #define COVER_SLOTS 12
-#define PAGE_INPUT_MAX (2u * 1024u * 1024u)
+#define PAGE_INPUT_MAX (8u * 1024u * 1024u)
 
 static const int CELL_X[3] = {40, 267, 494};
 static const int CELL_Y[2] = {454, 748};
@@ -242,7 +242,9 @@ static int first_image(zip_reader_t* z) {
 // 解码 zip 里的一张图到灰度（不超过 648×1000）。/ Decode one zip image to gray (at most 648x1000).
 static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w, uint16_t* h) {
     const size_t len = zip_entry_size(z, entry);
+    // 大于 2 MB 的图要确认 PSRAM 放得下（原文件加解码还要的余量）。/ Images over 2 MB need room for the file plus decoding.
     if (!len || len > PAGE_INPUT_MAX) return false;
+    if (len > 2u * 1024u * 1024u && heap_caps_get_largest_free_block(PSRAM_CAPS) < len + 2u * 1024u * 1024u) return false;
     uint8_t* data = heap_caps_malloc(len, PSRAM_CAPS);
     if (!data) return false;
     bool ok = zip_extract(z, entry, data, len) == ESP_OK && book_image_decode(data, len, 648u * 1000u, gray, w, h);
@@ -778,7 +780,7 @@ static app_redraw_t turn_right(void) { return turn(s_rtl ? -1 : 1); }
 static void draw_reader(uint8_t* fb) {
     const pagebuf_t* b = &s_buf[0];
     if (b->px) hupu_img_draw(fb, (AREA_W - b->w) / 2, (AREA_H - b->h) / 2, b->w, b->h, b->px, false);
-    else tr_wrap(fb, TR_MARGIN, 520, TR_W - 2 * TR_MARGIN, 32, 48, "这一页显示不了（图片太大或格式不支持）。左右翻页继续。", 3);
+    else tr_wrap(fb, TR_MARGIN, 520, TR_W - 2 * TR_MARGIN, 32, 48, "这一页设备解不了（渐进式 JPEG 太大，或格式不支持）。用传书网页重新上传这部漫画会自动转换。左右翻页继续。", 4);
     char label[200];
     snprintf(label, sizeof(label), "%s", s_book_title);
     tr_fit(label, 24, TR_W - 2 * TR_MARGIN - 160);

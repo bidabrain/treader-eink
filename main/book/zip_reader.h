@@ -15,6 +15,9 @@
 #define ZIP_ENTRY_MAX 32768
 #define ZIP_OUTPUT_MAX (4U * 1024U * 1024U)
 #define ZIP_INPUT_MAX (ZIP_OUTPUT_MAX + 65536U)
+/// 打开时单个条目允许的大小（只做合理性检查；真正解压由调用方按自己的上限决定）。/ Per-entry size accepted when
+/// opening (a sanity check only; callers apply their own limit when extracting).
+#define ZIP_ENTRY_LIMIT (256U * 1024U * 1024U)
 
 /// 持有文件与 PSRAM 目录；由 zip_close 释放。/ Owns the file and PSRAM directory; released by zip_close.
 typedef struct zip_reader zip_reader_t;

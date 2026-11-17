@@ -77,7 +77,8 @@ void tomato_rank_drop_categories(void);
 typedef void (*tomato_hupu_progress_t)(int current, int total);
 /// 虎扑推荐和帖子，在同步任务里调用；msg 写给用户看的一句话。/ Hupu feed and post, run on the sync task.
 esp_err_t tomato_hupu_home(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
-esp_err_t tomato_hupu_post(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
+/// images_only：不重取正文，只补缓存帖子里缺的图。/ images_only: skip the page and fetch missing images of the cached post.
+esp_err_t tomato_hupu_post(const char* tid, bool images_only, const volatile bool* cancel, tomato_hupu_progress_t progress,
                            char* msg, size_t cap);
 esp_err_t tomato_hupu_zones(const volatile bool* cancel, char* msg, size_t cap);
 esp_err_t tomato_hupu_threads(const char* zone, int sort, bool more, const volatile bool* cancel, char* msg, size_t cap);

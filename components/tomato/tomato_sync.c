@@ -705,7 +705,7 @@ static void sync_task(void* arg) {
         const tomato_hupu_req_t* r = &s_hupu;
         switch (r->job) {
         case TOMATO_HUPU_HOME: err = tomato_hupu_home(&s_cancel, set_progress, msg, sizeof(msg)); break;
-        case TOMATO_HUPU_POST: err = tomato_hupu_post(r->id, &s_cancel, set_progress, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_POST: err = tomato_hupu_post(r->id, r->more, &s_cancel, set_progress, msg, sizeof(msg)); break;
         case TOMATO_HUPU_ZONES: err = tomato_hupu_zones(&s_cancel, msg, sizeof(msg)); break;
         case TOMATO_HUPU_THREADS: err = tomato_hupu_threads(r->id, r->sort, r->more, &s_cancel, msg, sizeof(msg)); break;
         case TOMATO_HUPU_FOLLOW: err = tomato_hupu_follow(&s_cancel, set_progress, msg, sizeof(msg)); break;

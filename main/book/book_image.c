@@ -12,14 +12,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include "vendor/tjpgd.h"
+#include "miniz.h"
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #endif
 
-#define IMAGE_HEAP_MAX (4u * 1024u * 1024u)
+#define IMAGE_HEAP_MIN (4u * 1024u * 1024u)
+#define IMAGE_HEAP_TOP (8u * 1024u * 1024u)
+#define IMAGE_HEAP_MARGIN (1536u * 1024u)
+#define IMAGE_INPUT_MAX (8u * 1024u * 1024u)
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+// stb_image 的分配上限：按当时剩余 PSRAM 留 1.5 MB 余量，最少 4 MB、最多 8 MB。/ stb_image allocation cap: free PSRAM
+// minus a 1.5 MB margin, between 4 MB and 8 MB.
+static size_t IMAGE_HEAP_MAX = IMAGE_HEAP_MIN;
 typedef union { size_t size; max_align_t align; } allocation_t;
 static size_t allocated;
 
@@ -69,98 +76,172 @@ static uint8_t png_paeth(int a, int b, int c) {
     return (uint8_t)(pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
 }
 
-// 常见8位非交错PNG在解压缓冲内逐行还原，避免再分配一份完整RGB图。
-// Unfilter common 8-bit noninterlaced PNG in place, avoiding a second full RGB image allocation.
-static bool png_decode(const uint8_t* data, size_t len, size_t budget,
-                       uint8_t** pixels, uint16_t* width, uint16_t* height) {
-    if (len < 33 || memcmp(data,"\x89PNG\r\n\x1a\n",8) || png_u32(data+8)!=13 || memcmp(data+12,"IHDR",4)) return false;
-    unsigned w=png_u32(data+16), h=png_u32(data+20), type=data[25];
-    unsigned channels=type==0 ? 1 : type==2 ? 3 : type==3 ? 1 : type==4 ? 2 : type==6 ? 4 : 0;
-    if (!w || !h || w>4096 || h>4096 || (uint64_t)w*h>1024u*1024u || !channels ||
-        data[24]!=8 || data[26] || data[27] || data[28]) return false;
-    const uint8_t *palette=NULL,*trans=NULL; size_t palette_n=0,trans_n=0,packed_n=0;
-    bool idat=false,ended=false;
-    for (size_t at=33;at<len;) {
-        if (len-at<12) return false;
-        size_t n=png_u32(data+at);
-        if (n>len-at-12) return false;
-        const uint8_t* tag=data+at+4;
-        if (!memcmp(tag,"IDAT",4)) { packed_n+=n; idat=true; }
-        else if (!memcmp(tag,"PLTE",4)) {
-            if (idat || palette || !n || n%3 || n>768) return false;
-            palette=data+at+8;palette_n=n/3;
-        } else if (!memcmp(tag,"tRNS",4)) {
-            if (idat || trans || (type==0 ? n!=2 : type==2 ? n!=6 : type==3 ? !n || n>256 : true)) return false;
-            trans=data+at+8;trans_n=n;
-        } else if (!memcmp(tag,"IEND",4)) { if(n)return false; ended=true;break; }
-        else if (!(tag[0]&32)) return false;
-        at+=n+12;
-    }
-    if (!ended || !packed_n || (type==3 && (!palette || trans_n>palette_n))) return false;
-    unsigned dw=w,dh=h;
-    if (dw>648) { dh=dh*648/dw;dw=648; }
-    if (dh>1000) { dw=dw*1000/dh;dh=1000; }
-    if(!dw)dw=1;
-    if(!dh)dh=1;
-    if((size_t)dw*dh>budget)return false;
-    size_t row_n=(size_t)w*channels, raw_n=(row_n+1)*h;
-    uint8_t* packed=image_alloc(packed_n);
-    uint8_t* raw=image_alloc(raw_n);
-    uint8_t* out=NULL;
-    bool ok=false;
-    if(!packed || !raw)goto done;
-    size_t pos=0;
-    for(size_t at=33;at+12<=len;) {
-        size_t n=png_u32(data+at);
-        if(!memcmp(data+at+4,"IDAT",4)){memcpy(packed+pos,data+at+8,n);pos+=n;}
-        if(!memcmp(data+at+4,"IEND",4))break;
-        at+=n+12;
-    }
-    if(stbi_zlib_decode_buffer((char*)raw,(int)raw_n,(const char*)packed,(int)packed_n)!=(int)raw_n)goto done;
-    image_free(packed);packed=NULL;
-    out=heap_caps_malloc((size_t)dw*dh,PSRAM_CAPS);
-    if(!out)goto done;
-    unsigned dy=0;
-    for(unsigned y=0;y<h;++y) {
-        uint8_t* row=raw+(row_n+1)*y+1;
-        const uint8_t* prev=y ? row-row_n-1 : NULL;
-        unsigned filter=row[-1];
-        if(filter>4)goto done;
-        for(size_t x=0;x<row_n;++x) {
-            unsigned a=x>=channels ? row[x-channels] : 0,b=prev ? prev[x] : 0,c=prev && x>=channels ? prev[x-channels] : 0;
-            unsigned add=filter==0 ? 0 : filter==1 ? a : filter==2 ? b : filter==3 ? (a+b)/2 : png_paeth(a,b,c);
-            row[x]=(uint8_t)(row[x]+add);
+// 非交错 PNG 边解压边还原：每次只留两行，按目标尺寸取样，大图也只占几十 KB；交错或 16 位的交给 stb_image。
+// Stream non-interlaced PNG: inflate and unfilter one row at a time, sampling straight into the target size, so even
+// large images need only tens of KB; interlaced or 16-bit images fall back to stb_image.
+typedef struct {
+    unsigned w, h, type, bits, channels, dw, dh, dy, y;
+    size_t row_n, filled, bpp;
+    uint8_t *cur, *prev, *out;
+    const uint8_t *palette, *trans;
+    size_t palette_n, trans_n;
+    bool bad;
+} png_rows_t;
+
+static unsigned png_sample(const png_rows_t* s, const uint8_t* row, unsigned x, unsigned c) {
+    if (s->bits == 8) return row[(size_t)x * s->channels + c];
+    const unsigned per = 8 / s->bits, mask = (1u << s->bits) - 1;
+    const uint8_t byte = row[x / per];
+    return (byte >> (8 - s->bits - (x % per) * s->bits)) & mask;
+}
+
+// 一行还原好以后，落到输出图的对应行。/ Once a row is unfiltered, write it into its output row.
+static void png_emit_row(png_rows_t* s, const uint8_t* row) {
+    if (s->dy >= s->dh || (uint64_t)s->dy * s->h / s->dh != s->y) return;
+    const unsigned mask = (1u << s->bits) - 1;
+    for (unsigned x = 0; x < s->dw; ++x) {
+        const unsigned sx = (unsigned)((uint64_t)x * s->w / s->dw);
+        unsigned gray = 0, alpha = 255;
+        if (s->type == 0 || s->type == 4) {
+            const unsigned v = png_sample(s, row, sx, 0);
+            gray = s->bits == 8 ? v : v * 255u / mask;
+            if (s->type == 4) alpha = png_sample(s, row, sx, 1);
+            else if (s->trans && v == png_u16(s->trans)) alpha = 0;
+        } else if (s->type == 3) {
+            const unsigned index = png_sample(s, row, sx, 0);
+            if (index >= s->palette_n) { s->bad = true; return; }
+            const uint8_t* color = s->palette + index * 3;
+            gray = (77u * color[0] + 150u * color[1] + 29u * color[2]) >> 8;
+            if (index < s->trans_n) alpha = s->trans[index];
+        } else {
+            const uint8_t* p = row + (size_t)sx * s->channels;
+            gray = (77u * p[0] + 150u * p[1] + 29u * p[2]) >> 8;
+            if (s->type == 6) alpha = p[3];
+            else if (s->trans && p[0] == png_u16(s->trans) && p[1] == png_u16(s->trans + 2) && p[2] == png_u16(s->trans + 4))
+                alpha = 0;
         }
-        if(dy>=dh || (uint64_t)dy*h/dh!=y)continue;
-        for(unsigned x=0;x<dw;++x) {
-            const uint8_t* p=row+(size_t)((uint64_t)x*w/dw)*channels;
-            unsigned gray=0,alpha=255;
-            if(type==0 || type==4) {
-                gray=p[0];
-                if(type==4)alpha=p[1];
-                else if(trans && p[0]==png_u16(trans))alpha=0;
-            } else if(type==3) {
-                unsigned index=p[0];
-                if(index>=palette_n)goto done;
-                const uint8_t* color=palette+index*3;
-                gray=(77u*color[0]+150u*color[1]+29u*color[2])>>8;
-                if(index<trans_n)alpha=trans[index];
-            } else {
-                gray=(77u*p[0]+150u*p[1]+29u*p[2])>>8;
-                if(type==6)alpha=p[3];
-                else if(trans && p[0]==png_u16(trans) && p[1]==png_u16(trans+2) && p[2]==png_u16(trans+4))alpha=0;
-            }
-            out[(size_t)dy*dw+x]=(uint8_t)((gray*alpha+255u*(255u-alpha)+127u)/255u);
+        s->out[(size_t)s->dy * s->dw + x] = (uint8_t)((gray * alpha + 255u * (255u - alpha) + 127u) / 255u);
+    }
+    ++s->dy;
+}
+
+// 收下解压出来的一段字节，凑满一行就还原。/ Take a run of inflated bytes and unfilter each completed row.
+static void png_feed(png_rows_t* s, const uint8_t* data, size_t n) {
+    while (n && !s->bad && s->y < s->h) {
+        const size_t want = s->row_n + 1 - s->filled, take = n < want ? n : want;
+        memcpy(s->cur + s->filled, data, take);
+        s->filled += take;
+        data += take;
+        n -= take;
+        if (s->filled < s->row_n + 1) break;
+        const unsigned filter = s->cur[0];
+        uint8_t* row = s->cur + 1;
+        const uint8_t* prev = s->y ? s->prev + 1 : NULL;
+        if (filter > 4) { s->bad = true; return; }
+        for (size_t x = 0; x < s->row_n; ++x) {
+            const unsigned a = x >= s->bpp ? row[x - s->bpp] : 0, b = prev ? prev[x] : 0;
+            const unsigned c = prev && x >= s->bpp ? prev[x - s->bpp] : 0;
+            const unsigned add = filter == 0 ? 0 : filter == 1 ? a : filter == 2 ? b : filter == 3 ? (a + b) / 2 : png_paeth(a, b, c);
+            row[x] = (uint8_t)(row[x] + add);
         }
-        ++dy;
+        png_emit_row(s, row);
+        uint8_t* t = s->prev;
+        s->prev = s->cur;
+        s->cur = t;
+        s->filled = 0;
+        ++s->y;
 #ifdef ESP_PLATFORM
-        if(!(y%32))vTaskDelay(1);
+        if (!(s->y % 32)) vTaskDelay(1);
 #endif
     }
-    if(dy!=dh)goto done;
-    *pixels=out;*width=(uint16_t)dw;*height=(uint16_t)dh;out=NULL;ok=true;
-done:
-    image_free(packed);image_free(raw);free(out);return ok;
+}
+
+static bool png_decode(const uint8_t* data, size_t len, size_t budget,
+                       uint8_t** pixels, uint16_t* width, uint16_t* height) {
+    if (len < 33 || memcmp(data, "\x89PNG\r\n\x1a\n", 8) || png_u32(data + 8) != 13 || memcmp(data + 12, "IHDR", 4)) return false;
+    png_rows_t s = {.w = png_u32(data + 16), .h = png_u32(data + 20), .type = data[25], .bits = data[24]};
+    s.channels = s.type == 0 ? 1 : s.type == 2 ? 3 : s.type == 3 ? 1 : s.type == 4 ? 2 : s.type == 6 ? 4 : 0;
+    // 8 位都支持；1、2、4 位只用于灰度和调色板。/ 8-bit for every type; 1, 2 and 4 bits only for gray and palette.
+    const bool bits_ok = s.bits == 8 || ((s.type == 0 || s.type == 3) && (s.bits == 1 || s.bits == 2 || s.bits == 4));
+    if (!s.w || !s.h || s.w > 16384 || s.h > 16384 || !s.channels || !bits_ok || data[26] || data[27] || data[28]) return false;
+    bool idat = false, ended = false;
+    for (size_t at = 33; at < len;) {
+        if (len - at < 12) return false;
+        size_t n = png_u32(data + at);
+        if (n > len - at - 12) return false;
+        const uint8_t* tag = data + at + 4;
+        if (!memcmp(tag, "IDAT", 4)) idat = true;
+        else if (!memcmp(tag, "PLTE", 4)) {
+            if (idat || s.palette || !n || n % 3 || n > 768) return false;
+            s.palette = data + at + 8;
+            s.palette_n = n / 3;
+        } else if (!memcmp(tag, "tRNS", 4)) {
+            if (idat || s.trans || (s.type == 0 ? n != 2 : s.type == 2 ? n != 6 : s.type == 3 ? !n || n > 256 : true)) return false;
+            s.trans = data + at + 8;
+            s.trans_n = n;
+        } else if (!memcmp(tag, "IEND", 4)) { if (n) return false; ended = true; break; }
+        else if (!(tag[0] & 32)) return false;
+        at += n + 12;
+    }
+    if (!ended || !idat || (s.type == 3 && (!s.palette || s.trans_n > s.palette_n))) return false;
+    s.dw = s.w;
+    s.dh = s.h;
+    if (s.dw > 648) { s.dh = (unsigned)((uint64_t)s.dh * 648 / s.dw); s.dw = 648; }
+    if (s.dh > 1000) { s.dw = (unsigned)((uint64_t)s.dw * 1000 / s.dh); s.dh = 1000; }
+    if (!s.dw) s.dw = 1;
+    if (!s.dh) s.dh = 1;
+    if ((size_t)s.dw * s.dh > budget) return false;
+    s.row_n = ((size_t)s.w * s.channels * s.bits + 7) / 8;
+    s.bpp = s.channels * s.bits / 8 ? s.channels * s.bits / 8 : 1;
+    s.cur = heap_caps_malloc(s.row_n + 1, PSRAM_CAPS);
+    s.prev = heap_caps_malloc(s.row_n + 1, PSRAM_CAPS);
+    uint8_t* dict = heap_caps_malloc(TINFL_LZ_DICT_SIZE, PSRAM_CAPS);
+    tinfl_decompressor* inf = heap_caps_malloc(sizeof(*inf), PSRAM_CAPS);
+    s.out = heap_caps_malloc((size_t)s.dw * s.dh, PSRAM_CAPS);
+    bool ok = false, done = false;
+    if (!s.cur || !s.prev || !dict || !inf || !s.out) goto out;
+    tinfl_init(inf);
+    size_t dict_ofs = 0;
+    for (size_t at = 33; at + 12 <= len && !done && !s.bad;) {
+        size_t n = png_u32(data + at);
+        const uint8_t* tag = data + at + 4;
+        if (!memcmp(tag, "IEND", 4)) break;
+        if (memcmp(tag, "IDAT", 4)) { at += n + 12; continue; }
+        const uint8_t* in = data + at + 8;
+        at += n + 12;
+        // 后面还有 IDAT 就告诉解压器还有输入。/ Tell the inflater more input follows when another IDAT does.
+        bool more = false;
+        for (size_t k = at; k + 12 <= len; k += png_u32(data + k) + 12) {
+            if (!memcmp(data + k + 4, "IDAT", 4)) { more = true; break; }
+            if (!memcmp(data + k + 4, "IEND", 4)) break;
+        }
+        for (;;) {
+            size_t in_n = n, out_n = TINFL_LZ_DICT_SIZE - dict_ofs;
+            const tinfl_status st = tinfl_decompress(inf, in, &in_n, dict, dict + dict_ofs, &out_n,
+                                                     TINFL_FLAG_PARSE_ZLIB_HEADER | (more ? TINFL_FLAG_HAS_MORE_INPUT : 0));
+            in += in_n;
+            n -= in_n;
+            png_feed(&s, dict + dict_ofs, out_n);
+            dict_ofs = (dict_ofs + out_n) & (TINFL_LZ_DICT_SIZE - 1);
+            if (s.bad || st < TINFL_STATUS_DONE) { s.bad = true; break; }
+            if (st == TINFL_STATUS_DONE) { done = true; break; }
+            if (st == TINFL_STATUS_NEEDS_MORE_INPUT) { if (!more) s.bad = true; break; }
+        }
+    }
+    if (!s.bad && s.y == s.h && s.dy == s.dh) {
+        *pixels = s.out;
+        *width = (uint16_t)s.dw;
+        *height = (uint16_t)s.dh;
+        s.out = NULL;
+        ok = true;
+    }
+out:
+    heap_caps_free(s.cur);
+    heap_caps_free(s.prev);
+    heap_caps_free(dict);
+    heap_caps_free(inf);
+    free(s.out);
+    return ok;
 }
 
 typedef struct {
@@ -255,14 +336,21 @@ static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
                           uint8_t** pixels, uint16_t* width, uint16_t* height) {
     if (!pixels || !width || !height) return false;
     *pixels = NULL; *width = *height = 0;
-    if (!data || !len || len > 2u * 1024u * 1024u || allocated) return false;
+    if (!data || !len || len > IMAGE_INPUT_MAX || allocated) return false;
     if (png_decode(data,len,budget,pixels,width,height)) return true;
     // 基线 JPEG 优先使用 MCU 分块缩小；小型渐进 JPEG 仍可走有界完整解码。
     // Prefer MCU-scaled baseline JPEG; bounded full decoding still handles small progressive JPEGs.
     if (len >= 2 && data[0] == 0xff && data[1] == 0xd8 && jpeg_decode(data, len, budget, pixels, width, height)) return true;
     int w, h, channels;
+#ifdef ESP_PLATFORM
+    const size_t free_psram = heap_caps_get_free_size(PSRAM_CAPS);
+    IMAGE_HEAP_MAX = free_psram > IMAGE_HEAP_MIN + IMAGE_HEAP_MARGIN ? free_psram - IMAGE_HEAP_MARGIN : IMAGE_HEAP_MIN;
+    if (IMAGE_HEAP_MAX > IMAGE_HEAP_TOP) IMAGE_HEAP_MAX = IMAGE_HEAP_TOP;
+#endif
+    // 渐进 JPEG、交错或 16 位 PNG 要整张解：每像素约 5 字节，按上限算能解多大。
+    // Progressive JPEG and interlaced or 16-bit PNG decode whole: about 5 bytes per pixel, so size them to the cap.
     if (!stbi_info_from_memory(data, (int)len, &w, &h, &channels) ||
-        w <= 0 || h <= 0 || (uint64_t)w * h > 1024u * 1024u) return false;
+        w <= 0 || h <= 0 || (uint64_t)w * h * 5u > IMAGE_HEAP_MAX) return false;
     int dw = w, dh = h;
     if (dw > 648) { dh = (int)((int64_t)dh * 648 / dw); dw = 648; }
     if (dh > 1000) { dw = (int)((int64_t)dw * 1000 / dh); dh = 1000; }
