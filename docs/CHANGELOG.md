@@ -3,12 +3,22 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-18 · Treader 0.5.0
 
-- 新增 `rednote/`：小红书内容服务器。Docker 一键部署，网页面板扫码登录、添加博主、定时拉取图文笔记（跳过视频），图片在服务器上处理成墨水屏用的灰度 JPEG，内置 Cloudflare Tunnel 给设备外网访问。设备端还在开发中。
-  New `rednote/`: a Xiaohongshu content server. One-command Docker deployment with a web panel for QR login and creators, scheduled fetching of image notes (videos skipped), server-side grayscale JPEGs for e-ink, and a built-in Cloudflare Tunnel for devices away from home. The device side is still in progress.
-- rednote 推荐：设备点刷新时服务器才代拉一次首页（只留图文），点开哪篇才拉哪篇；面板可设开关、列表篇数、缓存时间、每日次数和请求间隔。浏览器桌面不再接受从隧道来的连接。
-  rednote recommendations: the server reads the home feed only when the device refreshes (image notes only) and fetches a note only when it is opened; the panel sets the switch, list size, cache window, daily cap and gap. The browser desktop no longer accepts tunnel connections.
+- 新增小红书标签：经自建 rednote 服务器（仓库 `rednote/`）看关注博主和首页推荐的图文，一屏一张看图，再看正文和评论。推荐只在点“刷新推荐”时由服务器去读小红书。缓存按篇数和总大小封顶。
+  New Xiaohongshu tab: browse followed creators and home recommendations through the self-hosted rednote server (repo `rednote/`), one image per screen, then text and comments. The server reads Xiaohongshu for recommendations only when you tap refresh. The cache is capped by count and total size.
+- 小红书服务器地址和令牌可以用手机网页填写，不用在设备上打长令牌。
+  The Xiaohongshu server address and token can be entered from a phone web page instead of typing the long token on the device.
+- 新增 USB 传书：用数据线连电脑，TF 卡当 U 盘直接拷文件；传输期间设备只显示传输页，结束后重启恢复。平时插线仍是串口，刷机照常。
+  New USB transfer: connect a cable and the TF card becomes a USB drive; only the transfer page shows meanwhile, and the device restarts to recover. Normally the port stays a serial port, so flashing works as before.
+- 设置改版：首页六个分类，点进去是二级页。“隐藏虎扑”换成“底部标签”，番茄、漫画、小红书、虎扑都可以关，书库和设置固定；原来隐藏了虎扑的升级后照旧。
+  Settings redesign: six categories on the home, each with its own page. "Hide Hupu" becomes "Tab bar", where Tomato, comics, Xiaohongshu and Hupu can be turned off (library and settings stay); an old hidden Hupu carries over.
+- 联网任务前台优先：别的页留下的浏览类任务（虎扑、小红书、书城、搜索）会立刻让给你正在操作的页面；下载和同步不打断，前台请求排在后面自动开始。
+  Foreground first: browsing jobs left by other pages (Hupu, Xiaohongshu, bookstore, search) yield at once to the page you are using; downloads and sync are not interrupted and the new request starts after them.
+- rednote 服务器：设备按需拉推荐（面板可设开关、篇数、缓存、每日次数和间隔）；浏览器桌面不再接受从隧道来的连接。
+  rednote server: on-demand recommendations for the device (switch, list size, cache, daily cap and gap in the panel); the browser desktop no longer accepts tunnel connections.
+- 新增 `rednote/`：小红书内容服务器。Docker 一键部署，网页面板扫码登录、添加博主、定时拉取图文笔记（跳过视频），图片在服务器上处理成墨水屏用的灰度 JPEG，内置 Cloudflare Tunnel 给设备外网访问。
+  New `rednote/`: a Xiaohongshu content server. One-command Docker deployment with a web panel for QR login and creators, scheduled fetching of image notes (videos skipped), server-side grayscale JPEGs for e-ink, and a built-in Cloudflare Tunnel for devices away from home.
 
 ## 2026-11-18 · Treader 0.4.1
 

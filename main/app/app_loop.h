@@ -28,6 +28,10 @@ typedef struct {
 /// 不返回。/ Does not return.
 void app_loop_run(const app_loop_config_t* config);
 
+/// 页面临时要求不自动锁屏（比如设置页开着网页填写）；离页前要放开。/ A page temporarily blocks the idle lock
+/// (say, while settings serves its web form); release it before leaving.
+void app_loop_hold_awake(bool on);
+
 #ifdef __cplusplus
 }
 #endif

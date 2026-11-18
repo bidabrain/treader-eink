@@ -125,12 +125,18 @@ static void file_hook(const char* path, uint32_t old_size, uint32_t new_size) {
     if (old_size && old_size != new_size) book_progress_resize(path, old_size, new_size);
 }
 
+// 本页任务的序号；序号对不上就是别的页的任务。/ Our job's sequence; a mismatch means another page's job.
+static uint32_t s_op_seq;
+// 后台在停时记下的搜索词，停下后马上搜。/ A search queued while the worker stops, run as soon as it is free.
+static char s_pending_query[96];
+
 static bool start_op(op_t op, esp_err_t err) {
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "start op %d: %s", op, esp_err_to_name(err));
         return false;
     }
     s_op = op;
+    s_op_seq = tomato_sync_seq();
     s_last = OP_NONE;
     s_seen_revision = 0;
     return true;
@@ -295,7 +301,14 @@ static int recent_hit(uint16_t x, uint16_t y) {
 
 // 只有真正开始搜索了才清掉旧结果。/ Clear old results only once a search actually starts.
 static bool submit_search(const char* q) {
-    if (!q[0] || tomato_sync_busy()) return false;
+    // 前台优先：浏览任务让路；在下载或检查更新就不搜。/ Foreground first: browsing jobs yield; not while downloading.
+    if (!q[0]) return false;
+    const tomato_preempt_t room = tomato_sync_preempt();
+    if (room == TOMATO_PREEMPT_STOPPING) {
+        snprintf(s_pending_query, sizeof(s_pending_query), "%s", q);
+        return false;
+    }
+    if (room != TOMATO_PREEMPT_FREE) return false;
     if (!start_op(OP_SEARCH, tomato_sync_start_search(q))) return false;
     snprintf(s_query, sizeof(s_query), "%s", q);
     remember_query(q);
@@ -438,7 +451,10 @@ static void on_enter(app_ctx_t* ctx) {
     tomato_sync_get_status(&s_status);
     s_seen_revision = s_status.revision;
     // 后台还在跑的话保持原来的视图，否则回到书架。/ Keep the view if work is still running; otherwise show the shelf.
-    if (!tomato_sync_busy() && s_view != V_DETAIL && s_view != V_RESULTS) s_view = V_LIST;
+    const bool ours = tomato_sync_busy() && tomato_sync_seq() == s_op_seq;
+    if (!ours) s_op = OP_NONE;
+    if (!ours && s_view != V_DETAIL && s_view != V_RESULTS) s_view = V_LIST;
+    s_pending_query[0] = 0;
     if (s_view == V_SEARCH) s_view = V_LIST;
     s_page = 0;
     s_du_count = 0;
@@ -513,7 +529,7 @@ static app_redraw_t touch_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     tr_kbd_result_t res = tr_kbd_touch(&s_kbd, x, y);
     if (res == TR_KBD_SUBMIT) {
-        if (!s_kbd.text[0] || tomato_sync_busy()) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
+        if (!s_kbd.text[0]) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
         char q[TR_KBD_TEXT_MAX];
         snprintf(q, sizeof(q), "%s", s_kbd.text);
         return submit_search(q) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
@@ -604,7 +620,19 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     tr_time_poll();
     s_poll_ms = ctx->now_ms;
+    if (s_pending_query[0] && !tomato_sync_busy()) {
+        char q[sizeof(s_pending_query)];
+        snprintf(q, sizeof(q), "%s", s_pending_query);
+        s_pending_query[0] = 0;
+        if (s_view == V_SEARCH && submit_search(q)) return APP_REDRAW_PAGE;
+    }
     if (s_op == OP_NONE) return APP_REDRAW_NONE;
+    // 序号变了：本页的任务早结束了，后台在跑别人的。/ The sequence moved on: our job ended, another runs.
+    if (tomato_sync_seq() != s_op_seq) {
+        s_op = OP_NONE;
+        load_shelf();
+        return s_view == V_SEARCH ? APP_REDRAW_NONE : APP_REDRAW_PAGE;
+    }
     bool busy = tomato_sync_busy();
     tomato_sync_get_status(&s_status);
     if (!busy) {

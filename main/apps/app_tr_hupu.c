@@ -173,6 +173,7 @@ static int64_t s_poll_ms;
 
 // 后台任务：s_job 有值表示本页发起的任务还没处理完。/ Background job: set while a job this page started is pending.
 static bool s_job_active;
+static uint32_t s_job_seq;            // 本页任务的序号，用来认出“是不是自己的”/ Our job's sequence number
 static tomato_hupu_req_t s_job;
 static tomato_status_t s_status;
 static bool s_step_loaded;
@@ -347,6 +348,7 @@ static bool start_req(const tomato_hupu_req_t* r) {
         return false;
     }
     s_job = *r;
+    s_job_seq = tomato_sync_seq();
     s_job_active = true;
     s_step_loaded = false;
     s_msg[0] = 0;
@@ -354,17 +356,25 @@ static bool start_req(const tomato_hupu_req_t* r) {
     return true;
 }
 
+// 后台正在跑的是不是本页发起的任务。/ Whether the running job is the one this page started.
+static bool ours_running(void) {
+    return s_job_active && tomato_sync_busy() && tomato_sync_seq() == s_job_seq;
+}
+
 static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, int sort, bool more) {
     tomato_hupu_req_t req = {.job = job, .sort = sort, .more = more};
     if (id) snprintf(req.id, sizeof(req.id), "%s", id);
     if (key) snprintf(req.key, sizeof(req.key), "%s", key);
     if (tomato_sync_busy()) {
-        // 你正在看的优先：虎扑自己的旧任务立刻取消；番茄、同步这类别的任务不打断，等它结束。
-        // What you are looking at comes first: cancel our own old job at once; other work (Tomato, sync) is left to finish.
-        if (s_job_active) tomato_sync_cancel();
+        // 前台优先：自己的旧任务和别的页留下的浏览任务立刻取消；下载和同步不打断，排在它后面。
+        // Foreground first: cancel our old job and browsing jobs left by other pages at once; downloads and sync are
+        // left to finish and this request waits behind them.
+        const bool yields = ours_running() || tomato_sync_preemptible();
+        if (yields) tomato_sync_cancel();
         s_pending = req;
         s_has_pending = true;
-        s_msg[0] = 0;
+        if (yields) s_msg[0] = 0;
+        else snprintf(s_msg, sizeof(s_msg), "后台正在下载或同步，完成后自动开始");
         return true;
     }
     s_has_pending = false;
@@ -375,11 +385,11 @@ static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, in
 // pending one.
 static void drop_job(tomato_hupu_job_t job) {
     if (s_has_pending && s_pending.job == job) s_has_pending = false;
-    if (s_job_active && s_job.job == job && tomato_sync_busy()) tomato_sync_cancel();
+    if (s_job.job == job && ours_running()) tomato_sync_cancel();
 }
 
 static bool job_running(tomato_hupu_job_t job) {
-    return (s_has_pending && s_pending.job == job) || (s_job_active && s_job.job == job && tomato_sync_busy());
+    return (s_has_pending && s_pending.job == job) || (s_job.job == job && ours_running());
 }
 
 static const char* loading_text(const char* what) {
@@ -1663,7 +1673,10 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         start_req(&r);
         return APP_REDRAW_PAGE;
     }
+    if (s_has_pending && !s_job_active && tomato_sync_preemptible()) tomato_sync_cancel();
     if (!s_job_active) return APP_REDRAW_NONE;
+    // 序号变了：自己的任务早结束了，后台在跑别人的；不再跟踪。/ The sequence moved on: stop tracking.
+    if (tomato_sync_seq() != s_job_seq) { s_job_active = false; return APP_REDRAW_NONE; }
     // 先看是否还在忙，再取状态，免得拿到失败前的旧状态。/ Read busy first, then the status, so a failure is never missed.
     const bool busy = tomato_sync_busy();
     tomato_sync_get_status(&s_status);
@@ -1715,11 +1728,12 @@ static void on_enter(app_ctx_t* ctx) {
     if (s_seg == SEG_SCORE) load_schedule();
     else load_current_list();
     // 后台任务还在跑就继续跟踪，结束时把结果读进来。/ Keep tracking a running job and load its result when it ends.
-    if (s_job_active && !tomato_sync_busy()) s_job_active = false;
+    if (s_job_active && !ours_running()) s_job_active = false;
 }
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    s_has_pending = false;   // 回来时从首页开始，旧请求不再需要 / We come back at home; the old request is moot
     free_all();
 }
 

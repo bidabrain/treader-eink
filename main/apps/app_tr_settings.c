@@ -2,12 +2,19 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 设置：分组清单，入口指向官方的字体、睡眠、传书（含 Wi-Fi）、概览页；“关于 Treader”在本页显示版本与开源致谢；
- * 番茄服务器和 WebDAV 的地址、账号在本页用键盘编辑；“立即同步”触发 WebDAV 同步。
+ * 设置：首页六个大分类（显示与阅读、底部标签、Wi-Fi 与传书、内容来源、同步、电源与设备），点进去是二级页。
+ * 二级页里：字体、壁纸、睡眠、传书、TF 卡、概览等跳到各自页面；底部标签开关、番茄与 WebDAV 与小红书的地址
+ * 在本页用键盘编辑；小红书还能打开“手机网页填写”，用传书的网页服务收地址和令牌；“关于 Treader”在本页显示。
  *
- * Settings: a grouped list linking to the official font, sleep, transfer (incl. Wi-Fi) and overview pages;
- * "About Treader" shows the version and open-source credits on this page;
- * Tomato server and WebDAV credentials are edited here with the keyboard; "Sync now" runs WebDAV sync.
+ * English: Settings. The home lists six categories (display and reading, tab bar, Wi-Fi and transfer, content sources,
+ * sync, power and device); each opens a second-level page. There: font, wallpaper, sleep, transfer, TF card and
+ * overview jump to their own pages; tab switches and the Tomato, WebDAV and Xiaohongshu addresses are edited here with
+ * the keyboard; Xiaohongshu can also serve a phone web form (through the transfer web service) for the address and
+ * token; "About Treader" shows here.
+ *
+ * 冻结：书库和设置两个标签不能隐藏；网页填写只收小红书地址和令牌，离开本页或关掉开关就停；令牌从不显示原值。
+ * Frozen: the library and settings tabs cannot be hidden; the web form takes only the Xiaohongshu address and token
+ * and stops when the page is left or the switch is turned off; the token is never shown.
  */
 
 #include <stdio.h>
@@ -15,7 +22,9 @@
 #include <sys/stat.h>
 
 #include "app.h"
+#include "app_loop.h"
 #include "book_progress.h"
+#include "cJSON.h"
 #include "esp_app_desc.h"
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
@@ -31,49 +40,83 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
+#include "ui_wifi_qr.h"
 
-#define ROW_H 66
 #define POLL_MS 500
+#define CAT_TOP 170
+#define CAT_H 136
+#define ROW_H 72
+#define BACK_RECT (EpdRect){0, 70, 320, 90}
 
 extern const app_desc_t app_font_pick;
 extern const app_desc_t app_sleep;
 extern const app_desc_t app_transfer;
+extern const app_desc_t app_usb;
 extern const app_desc_t app_home;
 extern const app_desc_t app_selftest;
 extern const app_desc_t app_tr_wall;
 extern const app_desc_t app_tr_card;
 extern const app_desc_t app_tr_update;
 
-typedef enum {
-    R_FONT, R_HUPU, R_SLEEP, R_WALL, R_WIFI, R_SERVER, R_STORE, R_DAV, R_DAV_SYNC, R_CARD, R_ABOUT, R_COUNT
-} row_id_t;
+extern const char rednote_form_start[] asm("_binary_rednote_form_html_start");
+extern const char rednote_form_end[] asm("_binary_rednote_form_html_end");
 
+typedef enum { P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SYNC, P_POWER, P_ABOUT } page_t;
+
+// 首页分类。/ Home categories.
+typedef enum { C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
+
+// 二级页的行：y 是行顶；section 非空时在上方画分组名。/ Sub-page rows: y is the row top; section draws a group name.
 typedef struct {
-    const char* section;   // 非空时在这一行上方画分组标题 / Section title above this row when set
+    int id;
+    const char* section;
     const char* label;
     int y;
 } row_t;
 
-static const row_t ROWS[R_COUNT] = {
-    [R_FONT] = {"阅读与显示", "字体", 190},
-    [R_HUPU] = {NULL, "隐藏虎扑", 256},
-    [R_SLEEP] = {"电源", "睡眠与锁屏", 362},
-    [R_WALL] = {NULL, "锁屏壁纸", 428},
-    [R_WIFI] = {"连接", "Wi-Fi 与传书", 534},
-    [R_SERVER] = {NULL, "番茄服务器", 600},
-    [R_STORE] = {NULL, "书城榜单", 666},
-    [R_DAV] = {"同步", "WebDAV", 772},
-    [R_DAV_SYNC] = {NULL, "立即同步", 838},
-    [R_CARD] = {"设备", "TF 卡", 944},
-    [R_ABOUT] = {NULL, "关于 Treader", 1010},
+enum {
+    R_FONT, R_WALL,
+    R_SRV, R_STORE, R_RED_WEB, R_RED_URL, R_RED_TOKEN, R_RED_TEST,
+    R_DAV, R_DAV_SYNC,
+    R_SLEEP, R_CARD, R_ABOUT,
 };
 
-// 编辑步骤：番茄（地址→密码）、WebDAV（地址→用户名→密码）。
-// Edit steps: Tomato (URL, password) and WebDAV (URL, user, password).
-// 正在看“关于 Treader”。/ The About view is open.
-static bool s_about;
+static const row_t DISPLAY_ROWS[] = {
+    {R_FONT, NULL, "字体", 190},
+    {R_WALL, NULL, "锁屏壁纸", 262},
+};
+static const row_t SOURCE_ROWS[] = {
+    {R_SRV, "番茄小说", "番茄服务器", 212},
+    {R_STORE, NULL, "书城榜单", 284},
+    {R_RED_WEB, "小红书", "手机网页填写", 422},
+    {R_RED_URL, NULL, "服务器地址", 506},
+    {R_RED_TOKEN, NULL, "设备令牌", 578},
+    {R_RED_TEST, NULL, "测试连接", 650},
+};
+static const row_t SYNC_ROWS[] = {
+    {R_DAV, NULL, "WebDAV", 190},
+    {R_DAV_SYNC, NULL, "立即同步", 262},
+};
+static const row_t POWER_ROWS[] = {
+    {R_SLEEP, NULL, "睡眠与锁屏", 190},
+    {R_CARD, NULL, "TF 卡", 262},
+    {R_ABOUT, NULL, "关于 Treader", 334},
+};
+#define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
+#define WEB_ROW_H 84
+#define WEB_BOX (EpdRect){TR_MARGIN, 516, TR_W - 2 * TR_MARGIN, 480}
 
-typedef enum { E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL } edit_t;
+// 底部标签页：每个标签一行。/ Tab page: one row per tab.
+#define TAB_TOP 270
+#define TAB_H 100
+
+static page_t s_page;
+static bool s_open_sources;   // 别的页要求直接打开“内容来源”/ Another page asked to open "Content sources"
+static bool s_open_transfer;  // 书库的传书按钮要求打开“传书”/ The library's transfer button asked for "Transfer"
+
+// 键盘编辑：番茄（地址→密码）、WebDAV（地址→用户名→密码）、榜单、小红书地址、小红书令牌。
+// Keyboard edits: Tomato (URL, password), WebDAV (URL, user, password), rank site, Xiaohongshu URL and token.
+typedef enum { E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL, E_RED_URL, E_RED_TOKEN } edit_t;
 
 static const struct { const char* title; const char* hint; const char* go; } EDIT[] = {
     [E_NONE] = {"", "", ""},
@@ -83,19 +126,30 @@ static const struct { const char* title; const char* hint; const char* go; } EDI
     [E_DAV_USER] = {"WebDAV 用户名", "坚果云填登录邮箱", "下一步"},
     [E_DAV_PASS] = {"WebDAV 密码", "坚果云填“应用密码”，不是登录密码", "保存"},
     [E_STORE_URL] = {"书城榜单地址", "留空使用默认榜单；填 FanqieRankTracker 网站地址", "保存"},
+    [E_RED_URL] = {"小红书服务器地址", "rednote 面板“设备与外网”里的地址，如 http://192.168.1.20:8091", "保存"},
+    [E_RED_TOKEN] = {"小红书设备令牌", "令牌很长，建议用“手机网页填写”；留空表示不改", "保存"},
 };
 
 static edit_t s_edit;
 static char s_wifi[33];
 static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
-static bool s_has_cfg, s_has_dav;
+static tomato_red_config_t s_red;
+static bool s_has_cfg, s_has_dav, s_has_red;
 static char s_message[112];
 EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 static char s_step1[160], s_step2[64];
 static bool s_syncing;
 static int64_t s_poll_ms;
 static uint32_t s_seen_revision;
+
+// 小红书：测试连接的结果和网页填写的状态。/ Xiaohongshu: test result and web-form state.
+static bool s_red_testing;
+static char s_red_result[96];
+static bool s_web_on;
+static uint32_t s_web_revision;
+static read_pico_transfer_status_t s_web_status;
+static char s_web_note[96];
 
 /* ---- WebDAV 进度读写 / Progress I/O for WebDAV ---- */
 
@@ -146,6 +200,7 @@ static void load(void) {
         memset(s_cfg.password, 0, sizeof(s_cfg.password));
     }
     s_has_dav = tomato_webdav_config_load(&s_dav) == ESP_OK;
+    s_has_red = tomato_red_config_load(&s_red) == ESP_OK;
 }
 
 // 去掉 http:// 只显示主机。/ Drop the scheme and show the host only.
@@ -154,18 +209,41 @@ static const char* host_of(const char* url) {
     return p ? p + 3 : url;
 }
 
-static void row_value(row_id_t id, char* out, size_t cap) {
+static void font_name(char* out, size_t cap) {
+    snprintf(out, cap, "%s", ttf_font_is_builtin() ? "内置字体" : ttf_font_display_name());
+}
+
+static void wall_name(char* out, size_t cap) {
+    char path[288];
+    const char* base = tr_lock_wallpaper_get(path, sizeof(path)) ? strrchr(path, '/') : NULL;
+    snprintf(out, cap, "%.100s", base ? base + 1 : "书卡样式");
+}
+
+static void card_value(char* out, size_t cap) {
+    read_pico_sd_info_t info = {0};
+    esp_err_t err = read_pico_sd_get_info(&info);
+    if (err == ESP_OK && info.mounted) snprintf(out, cap, "可用 %.1f GB", info.free_bytes / 1073741824.0);
+    else snprintf(out, cap, !info.present ? "没有插卡" : "需要处理");
+}
+
+static void row_value(int id, char* out, size_t cap) {
+    char tmp[120];
     switch (id) {
-    case R_FONT: snprintf(out, cap, "%s ›", ttf_font_is_builtin() ? "内置字体" : ttf_font_display_name()); break;
-    case R_SLEEP: snprintf(out, cap, "›"); break;
-    case R_HUPU: snprintf(out, cap, app_settings_hide_hupu() ? "已开启（四个标签）" : "关闭"); break;
-    case R_WIFI: snprintf(out, cap, "%s ›", s_wifi[0] ? s_wifi : "未设置"); break;
-    case R_SERVER: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
+    case R_FONT: font_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
+    case R_WALL: wall_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
+    case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
         char url[160];
         snprintf(out, cap, "%.150s ›", tomato_store_url_load(url, sizeof(url)) == ESP_OK ? host_of(url) : "默认榜单");
         break;
     }
+    case R_RED_URL: snprintf(out, cap, "%.150s ›", s_has_red ? host_of(s_red.url) : "未设置"); break;
+    case R_RED_TOKEN: snprintf(out, cap, "%s ›", s_red.token[0] ? "已填写" : "未填写"); break;
+    case R_RED_TEST:
+        if (s_red_testing) snprintf(out, cap, "测试中…");
+        else if (s_red_result[0]) snprintf(out, cap, "%.90s ›", s_red_result);
+        else snprintf(out, cap, s_has_red ? "点一下测试 ›" : "先填地址");
+        break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -174,43 +252,297 @@ static void row_value(row_id_t id, char* out, size_t cap) {
         else snprintf(out, cap, s_has_dav ? "进度和番茄书架 ›" : "先设置 WebDAV");
         break;
     }
+    case R_SLEEP: snprintf(out, cap, "›"); break;
+    case R_CARD: card_value(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_ABOUT: snprintf(out, cap, "版本、开源致谢 ›"); break;
-    case R_CARD: {
-        read_pico_sd_info_t info = {0};
-        esp_err_t err = read_pico_sd_get_info(&info);
-        if (err == ESP_OK && info.mounted) snprintf(out, cap, "可用 %.1f GB ›", info.free_bytes / 1073741824.0);
-        else snprintf(out, cap, !info.present ? "没有插卡 ›" : "需要处理 ›");
-        break;
-    }
-    case R_WALL: {
-        char path[288];
-        const char* base = tr_lock_wallpaper_get(path, sizeof(path)) ? strrchr(path, '/') : NULL;
-        snprintf(out, cap, "%.100s ›", base ? base + 1 : "书卡样式");
-        break;
-    }
     default: out[0] = 0; break;
+    }
+}
+
+/* ---- 网页填写 / Web form ---- */
+
+// HTTP 任务里调用：GET 返回地址和“有没有令牌”，POST 保存。令牌从不返回。
+// Runs on the HTTP task: GET returns the address and whether a token exists; POST saves. The token never goes out.
+static int web_form(const char* body, size_t len, char* reply, size_t cap) {
+    tomato_red_config_t cur;
+    const bool has = tomato_red_config_load(&cur) == ESP_OK;
+    if (!body) {
+        cJSON* j = cJSON_CreateObject();
+        cJSON_AddStringToObject(j, "url", has ? cur.url : "");
+        cJSON_AddBoolToObject(j, "has_token", cur.token[0] != 0);
+        memset(&cur, 0, sizeof(cur));
+        char* text = cJSON_PrintUnformatted(j);
+        cJSON_Delete(j);
+        snprintf(reply, cap, "%s", text ? text : "{}");
+        cJSON_free(text);
+        return 200;
+    }
+    cJSON* j = cJSON_ParseWithLength(body, len);
+    const cJSON* url = cJSON_GetObjectItemCaseSensitive(j, "url");
+    const cJSON* token = cJSON_GetObjectItemCaseSensitive(j, "token");
+    int status = 400;
+    if (!cJSON_IsString(url) || (strncmp(url->valuestring, "http://", 7) && strncmp(url->valuestring, "https://", 8)) ||
+        strlen(url->valuestring) >= sizeof(cur.url) - 1) {
+        snprintf(reply, cap, "{\"error\":\"地址要以 http:// 或 https:// 开头\"}");
+    } else if (cJSON_IsString(token) && strlen(token->valuestring) >= sizeof(cur.token) - 1) {
+        snprintf(reply, cap, "{\"error\":\"令牌太长\"}");
+    } else if (!(cJSON_IsString(token) && token->valuestring[0]) && !cur.token[0]) {
+        snprintf(reply, cap, "{\"error\":\"请粘贴设备令牌\"}");
+    } else {
+        tomato_red_config_t next = {0};
+        snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
+        snprintf(next.token, sizeof(next.token), "%s",
+                 cJSON_IsString(token) && token->valuestring[0] ? token->valuestring : cur.token);
+        const esp_err_t err = tomato_red_config_save(&next);
+        memset(&next, 0, sizeof(next));
+        status = err == ESP_OK ? 200 : 500;
+        snprintf(reply, cap, err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存失败\"}");
+    }
+    if (cJSON_IsString(token)) memset(token->valuestring, 0, strlen(token->valuestring));
+    cJSON_Delete(j);
+    memset(&cur, 0, sizeof(cur));
+    return status;
+}
+
+// 前台优先：能用就返回真；否则在 s_message 写原因。/ Foreground first: true when the worker is free; otherwise
+// s_message says why.
+static bool make_room(void) {
+    const tomato_preempt_t r = tomato_sync_preempt();
+    if (r == TOMATO_PREEMPT_FREE) return true;
+    snprintf(s_message, sizeof(s_message), r == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次"
+                                                                         : "后台正在下载或同步，完成后再试");
+    return false;
+}
+
+static void web_stop(void) {
+    if (!s_web_on) return;
+    read_pico_transfer_stop();
+    ui_wifi_qr_clear();
+    s_web_on = false;
+    app_loop_hold_awake(false);
+}
+
+static void web_start(void) {
+    if (!make_room()) return;
+    bool configured = false;
+    char ssid[33];
+    read_pico_transfer_get_saved_wifi(ssid, &configured);
+    const read_pico_transfer_cfg_t cfg = {
+        .mode = configured ? READ_PICO_TRANSFER_MODE_STA : READ_PICO_TRANSFER_MODE_AP,
+        .form_html = rednote_form_start,
+        .form_html_len = (size_t)(rednote_form_end - rednote_form_start - 1),
+        .form_cb = web_form,
+    };
+    const esp_err_t err = read_pico_transfer_start(&cfg);
+    if (err != ESP_OK) {
+        snprintf(s_message, sizeof(s_message), "打不开网页服务（%s）", esp_err_to_name(err));
+        return;
+    }
+    s_web_on = true;
+    s_web_revision = tomato_red_config_revision();
+    s_web_note[0] = 0;
+    memset(&s_web_status, 0, sizeof(s_web_status));
+    read_pico_transfer_get_status(&s_web_status);
+    app_loop_hold_awake(true);
+}
+
+static void web_prepare_qr(void) {
+    if (!s_web_status.network_ready) return;
+    if (s_web_status.mode == READ_PICO_TRANSFER_MODE_AP)
+        ui_wifi_qr_prepare(s_web_status.ssid, READ_PICO_TRANSFER_PASSWORD);
+    else
+        ui_wifi_qr_prepare_url(s_web_status.url);
+}
+
+static void start_red_test(void) {
+    if (!s_has_red || s_web_on || tomato_sync_preempt() != TOMATO_PREEMPT_FREE) return;
+    const tomato_red_req_t req = {.job = TOMATO_RED_TEST};
+    if (tomato_sync_start_red(&req) == ESP_OK) {
+        s_red_testing = true;
+        s_red_result[0] = 0;
     }
 }
 
 /* ---- 绘制 / Drawing ---- */
 
-static void draw_list(uint8_t* fb) {
+static void draw_back_title(uint8_t* fb, const char* title) {
+    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, 96, 100, 36, title, EPD_DRAW_ALIGN_LEFT, true);
+}
+
+static void draw_message(uint8_t* fb) {
+    if (s_message[0]) tr_message(fb, TR_W - TR_MARGIN, 104, 92, 360, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
+}
+
+static void draw_cat(uint8_t* fb, int y, tr_icon_t icon, const char* name, const char* summary, bool last);
+
+static void cat_summary(cat_t c, char* out, size_t cap) {
+    char a[120], b[120];
+    switch (c) {
+    case C_DISPLAY:
+        font_name(a, sizeof(a));
+        wall_name(b, sizeof(b));
+        snprintf(out, cap, "%.60s · 锁屏壁纸 %.50s", a, b);
+        break;
+    case C_TABS: {
+        int n = 0, len = 0;
+        len = snprintf(out, cap, "显示 %d 个：", tr_tab_count());
+        for (int t = 0; t < TR_TAB_MAX && len < (int)cap; t++) {
+            if (!tr_tab_shown((tr_tab_t)t)) continue;
+            len += snprintf(out + len, cap - (size_t)len, "%s%s", n++ ? "、" : "", tr_tab_label((tr_tab_t)t));
+        }
+        break;
+    }
+    case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
+    case C_SOURCES:
+        snprintf(out, cap, "番茄：%.40s · 小红书：%.60s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url),
+                 s_has_red ? host_of(s_red.url) : "未设置");
+        break;
+    case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
+    case C_POWER:
+        card_value(a, sizeof(a));
+        snprintf(out, cap, "睡眠与锁屏 · TF 卡%s · 关于", a);
+        break;
+    default: out[0] = 0; break;
+    }
+}
+
+static void draw_home(uint8_t* fb) {
+    static const char* const NAMES[C_COUNT] = {"显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
+    static const tr_icon_t ICONS[C_COUNT] = {TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_SYNC,
+                                             TR_ICON_POWER};
     tr_title(fb, "设置");
-    if (s_message[0]) {
-        tr_message(fb, TR_W - TR_MARGIN, 104, 92, 420, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
+    draw_message(fb);
+    for (int i = 0; i < C_COUNT; i++) {
+        char sum[200];
+        cat_summary((cat_t)i, sum, sizeof(sum));
+        draw_cat(fb, CAT_TOP + i * CAT_H, ICONS[i], NAMES[i], sum, i + 1 == C_COUNT);
     }
-    for (int i = 0; i < R_COUNT; i++) {
-        const row_t* r = &ROWS[i];
+    const esp_app_desc_t* app = esp_app_get_description();
+    char ver[48];
+    snprintf(ver, sizeof(ver), "Treader %.20s", app->version);
+    tr_text(fb, TR_W / 2, 1030, 24, ver, EPD_DRAW_ALIGN_CENTER, false);
+}
+
+// 一行大分类（首页和传书页共用）。/ One large category row (home and the transfer page share it).
+static void draw_cat(uint8_t* fb, int y, tr_icon_t icon, const char* name, const char* summary, bool last) {
+    const EpdRect box = {TR_MARGIN, y + 30, 76, 76};
+    ui_draw_round_rect(fb, box, 18, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(box, 1), 17, UI_GRAY_BLACK);
+    tr_icon(fb, icon, box.x + 38, box.y + 38, false);
+    tr_text(fb, TR_MARGIN + 104, y + 24, 34, name, EPD_DRAW_ALIGN_LEFT, true);
+    char sum[200];
+    snprintf(sum, sizeof(sum), "%s", summary);
+    tr_fit(sum, 26, TR_W - 2 * TR_MARGIN - 104 - 40);
+    tr_text(fb, TR_MARGIN + 104, y + 78, 26, sum, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W - TR_MARGIN, y + 46, 34, "›", EPD_DRAW_ALIGN_RIGHT, false);
+    if (!last) tr_hline(fb, y + CAT_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+}
+
+static void draw_transfer(uint8_t* fb) {
+    draw_back_title(fb, "传书");
+    draw_message(fb);
+    char wifi[80];
+    snprintf(wifi, sizeof(wifi), "手机或电脑浏览器上传%s%s", s_wifi[0] ? " · " : "", s_wifi);
+    draw_cat(fb, CAT_TOP, TR_ICON_WIFI, "Wi-Fi 传书", wifi, false);
+    draw_cat(fb, CAT_TOP + CAT_H, TR_ICON_USB, "USB 传书",
+             tomato_sync_busy() && !tomato_sync_preemptible() ? "后台正在下载或同步，完成后再用" : "连电脑当 U 盘，拷大文件更方便", true);
+    tr_wrap(fb, TR_MARGIN, CAT_TOP + 2 * CAT_H + 28, TR_W - 2 * TR_MARGIN, 24, 36,
+            "Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。", 3);
+}
+
+static void draw_switch(uint8_t* fb, int right, int y, bool on) {
+    const EpdRect r = {right - 100, y, 100, 54};
+    if (on) ui_fill_round_rect(fb, r, 27, UI_GRAY_BLACK);
+    else {
+        ui_draw_round_rect(fb, r, 27, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 2), 25, UI_GRAY_BLACK);
+    }
+    const int kx = on ? r.x + r.width - 27 : r.x + 27;
+    epd_fill_circle(kx, y + 27, 18, UI_GRAY_WHITE, fb);
+    if (!on) for (int d = 0; d < 3; d++) epd_draw_circle(kx, y + 27, 18 - d, UI_GRAY_BLACK, fb);
+}
+
+static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
+    for (int i = 0; i < n; i++) {
+        const row_t* r = &rows[i];
         if (r->section) tr_text(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT, false);
-        tr_text(fb, TR_MARGIN, r->y + 22, 32, r->label, EPD_DRAW_ALIGN_LEFT, false);
-        char value[160];
-        row_value((row_id_t)i, value, sizeof(value));
-        tr_fit(value, 28, TR_W - 2 * TR_MARGIN - 200);
-        tr_text(fb, TR_W - TR_MARGIN, r->y + 26, 28, value, EPD_DRAW_ALIGN_RIGHT, false);
-        bool last_in_group = i + 1 == R_COUNT || ROWS[i + 1].section;
-        if (!last_in_group) tr_hline(fb, r->y + ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        const int h = r->id == R_RED_WEB ? WEB_ROW_H : ROW_H;
+        tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_RED_WEB && s_web_on);
+        if (r->id == R_RED_WEB) {
+            draw_switch(fb, TR_W - TR_MARGIN, r->y + 15, s_web_on);
+        } else {
+            char value[160];
+            row_value(r->id, value, sizeof(value));
+            tr_fit(value, 28, TR_W - 2 * TR_MARGIN - 220);
+            tr_text(fb, TR_W - TR_MARGIN, r->y + (h - 28) / 2, 28, value, EPD_DRAW_ALIGN_RIGHT, false);
+        }
+        const bool last = i + 1 == n || rows[i + 1].section;
+        if (!last && !(r->id == R_RED_WEB && s_web_on)) tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
-    tr_tab_bar(fb, TR_TAB_SETTINGS);
+}
+
+static void draw_web_box(uint8_t* fb) {
+    const EpdRect b = WEB_BOX;
+    ui_draw_round_rect(fb, b, 18, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(b, 1), 17, UI_GRAY_BLACK);
+    const int tx = b.x + 268, tw = b.x + b.width - 32 - tx;
+    char line[160];
+    if (!s_web_status.network_ready) {
+        tr_wrap(fb, b.x + 32, b.y + 40, b.width - 64, 28, 42,
+                s_web_status.state == READ_PICO_TRANSFER_ERROR ? "连不上 Wi-Fi。检查“Wi-Fi 与传书”里保存的网络，或关掉开关再试。"
+                                                               : "正在打开网页服务…", 3);
+    } else {
+        ui_wifi_qr_draw(fb, (EpdRect){b.x + 28, b.y + 28, 220, 220});
+        if (s_web_status.mode == READ_PICO_TRANSFER_MODE_STA) {
+            snprintf(line, sizeof(line), "手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：", s_web_status.wifi_ssid);
+            tr_wrap(fb, tx, b.y + 36, tw, 26, 38, line, 3);
+            tr_text(fb, tx, b.y + 168, 32, host_of(s_web_status.url), EPD_DRAW_ALIGN_LEFT, true);
+        } else {
+            snprintf(line, sizeof(line), "扫码连上设备热点 %s（口令 %s），再在浏览器打开：", s_web_status.ssid,
+                     READ_PICO_TRANSFER_PASSWORD);
+            tr_wrap(fb, tx, b.y + 36, tw, 26, 38, line, 4);
+            tr_text(fb, tx, b.y + 196, 32, host_of(READ_PICO_TRANSFER_URL), EPD_DRAW_ALIGN_LEFT, true);
+        }
+    }
+    tr_hline(fb, b.y + 270, b.x + 32, b.width - 64, true);
+    tr_text(fb, b.x + 32, b.y + 290, 28, s_web_note[0] ? s_web_note : "等待网页提交…", EPD_DRAW_ALIGN_LEFT, false);
+    tr_wrap(fb, b.x + 32, b.y + 342, b.width - 64, 24, 36,
+            s_web_status.mode == READ_PICO_TRANSFER_MODE_AP
+                ? "设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。"
+                : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。", 3);
+}
+
+static void draw_tabs(uint8_t* fb) {
+    draw_back_title(fb, "底部标签");
+    tr_wrap(fb, TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 26, 38,
+            "关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。", 2);
+    for (int t = 0; t < TR_TAB_MAX; t++) {
+        const int y = TAB_TOP + t * TAB_H;
+        tr_icon(fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + TAB_H / 2, false);
+        tr_text(fb, TR_MARGIN + 62, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
+        if (TR_TABS_FIXED & (1u << t))
+            tr_text(fb, TR_W - TR_MARGIN, y + (TAB_H - 28) / 2, 28, "固定", EPD_DRAW_ALIGN_RIGHT, false);
+        else
+            draw_switch(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2, tr_tab_shown((tr_tab_t)t));
+        if (t + 1 < TR_TAB_MAX) tr_hline(fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    tr_text(fb, TR_MARGIN, TAB_TOP + TR_TAB_MAX * TAB_H + 30, 26, "下面的标签栏就是效果，开关一下整屏刷新一次。",
+            EPD_DRAW_ALIGN_LEFT, false);
+}
+
+static void draw_sources(uint8_t* fb) {
+    draw_back_title(fb, "内容来源");
+    draw_message(fb);
+    if (s_web_on) {
+        draw_rows(fb, SOURCE_ROWS, 3);
+        draw_web_box(fb);
+        return;
+    }
+    draw_rows(fb, SOURCE_ROWS, COUNT(SOURCE_ROWS));
+    tr_wrap(fb, TR_MARGIN, 740, TR_W - 2 * TR_MARGIN, 24, 36,
+            "地址和令牌在 rednote 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。", 3);
 }
 
 static void draw_edit(uint8_t* fb) {
@@ -219,7 +551,7 @@ static void draw_edit(uint8_t* fb) {
     EpdRect f = {TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 84};
     ui_draw_round_rect(fb, f, 14, UI_GRAY_BLACK);
     ui_draw_round_rect(fb, ui_inset_rect(f, 1), 13, UI_GRAY_BLACK);
-    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS;
+    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_RED_TOKEN;
     char shown[TR_KBD_TEXT_MAX];
     if (secret) {
         // 密码只露最后一个字符。/ Passwords show only the last character.
@@ -235,7 +567,8 @@ static void draw_edit(uint8_t* fb) {
     epd_fill_rect((EpdRect){f.x + 22 + ttf_text_width_px(32, tail), f.y + 18, 3, 46}, UI_GRAY_BLACK, fb);
     const char* hint = EDIT[s_edit].hint;
     if (s_edit == E_SRV_URL && tomato_config_has_builtin()) hint = "留空使用内置服务器；自建的填 http://地址:端口";
-    tr_text(fb, TR_MARGIN, 286, 26, hint, EPD_DRAW_ALIGN_LEFT, false);
+    if (s_message[0]) hint = s_message;   // 输入不对时的提示 / Why the input was refused
+    tr_wrap(fb, TR_MARGIN, 286, TR_W - 2 * TR_MARGIN, 26, 36, hint, 2);
     tr_kbd_draw(fb, &s_kbd);
 }
 
@@ -265,8 +598,7 @@ static void about_row(uint8_t* fb, int y, const char* label, const char* value) 
 static void draw_about(uint8_t* fb) {
     const esp_app_desc_t* app = esp_app_get_description();
     char line[64];
-    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, "关于 Treader", EPD_DRAW_ALIGN_LEFT, true);
+    draw_back_title(fb, "关于 Treader");
     tr_text(fb, TR_MARGIN, 184, 60, "Treader", EPD_DRAW_ALIGN_LEFT, true);
     // 一行放不下（约 730 px），折成两行。/ Too wide for one line (~730 px); wrap to two.
     tr_wrap(fb, TR_MARGIN, 256, TR_W - 2 * TR_MARGIN, 28, 34, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", 2);
@@ -299,9 +631,18 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     (void)ctx;
     ui_clear_page(fb);
     tr_status_bar(fb);
-    if (s_about) draw_about(fb);
-    else if (s_edit == E_NONE) draw_list(fb);
-    else draw_edit(fb);
+    if (s_edit != E_NONE) { draw_edit(fb); return; }
+    switch (s_page) {
+    case P_HOME: draw_home(fb); break;
+    case P_DISPLAY: draw_back_title(fb, "显示与阅读"); draw_rows(fb, DISPLAY_ROWS, COUNT(DISPLAY_ROWS)); break;
+    case P_TABS: draw_tabs(fb); break;
+    case P_TRANSFER: draw_transfer(fb); break;
+    case P_SOURCES: draw_sources(fb); break;
+    case P_SYNC: draw_back_title(fb, "同步"); draw_message(fb); draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS)); break;
+    case P_POWER: draw_back_title(fb, "电源与设备"); draw_rows(fb, POWER_ROWS, COUNT(POWER_ROWS)); break;
+    case P_ABOUT: draw_about(fb); return;
+    }
+    tr_tab_bar(fb, TR_TAB_SETTINGS);
 }
 
 /* ---- 编辑 / Editing ---- */
@@ -323,6 +664,23 @@ static app_redraw_t finish_edit(void) {
         snprintf(next.password, sizeof(next.password), "%.63s", s_kbd.text);
         err = tomato_config_save(&next);
         memset(&next, 0, sizeof(next));
+    } else if (s_edit == E_RED_URL || s_edit == E_RED_TOKEN) {
+        tomato_red_config_t next;
+        tomato_red_config_load(&next);
+        if (s_edit == E_RED_URL) {
+            if (s_kbd.text[0] && strncmp(s_kbd.text, "http://", 7) && strncmp(s_kbd.text, "https://", 8)) {
+                memset(&next, 0, sizeof(next));
+                snprintf(s_message, sizeof(s_message), "地址要以 http:// 或 https:// 开头");
+                return APP_REDRAW_PAGE;   // 留在键盘里改 / Stay in the keyboard to fix it
+            }
+            snprintf(next.url, sizeof(next.url), "%.150s", s_kbd.text);
+            if (!strcmp(next.url, "http://") || !strcmp(next.url, "https://")) next.url[0] = 0;
+        } else if (s_kbd.text[0]) {
+            snprintf(next.token, sizeof(next.token), "%.90s", s_kbd.text);
+        }
+        err = tomato_red_config_save(&next);
+        memset(&next, 0, sizeof(next));
+        s_red_result[0] = 0;
     } else {
         tomato_webdav_config_t next = {0};
         snprintf(next.url, sizeof(next.url), "%.159s", s_step1);
@@ -333,14 +691,14 @@ static app_redraw_t finish_edit(void) {
     }
     memset(&s_kbd, 0, sizeof(s_kbd));
     memset(s_step2, 0, sizeof(s_step2));
-    snprintf(s_message, sizeof(s_message), err == ESP_OK ? "已保存" : "保存失败，检查 TF 卡");
+    snprintf(s_message, sizeof(s_message), err == ESP_OK ? "已保存" : "保存失败");
     load();
     s_edit = E_NONE;
     return APP_REDRAW_PAGE;
 }
 
 static app_redraw_t touch_edit(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (y < 160 && x < 120) { s_edit = E_NONE; return APP_REDRAW_PAGE; }
+    if (y < 160 && x < 120) { s_edit = E_NONE; memset(&s_kbd, 0, sizeof(s_kbd)); return APP_REDRAW_PAGE; }
     tr_kbd_result_t res = tr_kbd_touch(&s_kbd, x, y);
     if (res == TR_KBD_CHANGED) {
         render(ctx, ctx->fb);
@@ -373,125 +731,226 @@ static app_redraw_t touch_edit(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
 }
 
-static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    (void)x;
-    for (int i = 0; i < R_COUNT; i++) {
-        if (y < ROWS[i].y || y >= ROWS[i].y + ROW_H) continue;
-        s_message[0] = 0;
-        switch ((row_id_t)i) {
-        case R_FONT: ctx->request_app = &app_font_pick; break;
-        case R_SLEEP: ctx->request_app = &app_sleep; break;
-        case R_WIFI:
-            if (!tomato_sync_busy()) ctx->request_app = &app_transfer;
-            break;
-        case R_STORE: {
-            char url[160];
-            begin_edit(E_STORE_URL, tomato_store_url_load(url, sizeof(url)) == ESP_OK ? url : "");
-            return APP_REDRAW_PAGE;
-        }
-        case R_SERVER:
-            // 地址只用英文和符号。/ Addresses take English letters and symbols only.
-            // 内置服务器不回显；有内置时默认留空。/ Never echo the built-in server; start empty when one exists.
-            begin_edit(E_SRV_URL, s_has_cfg && !s_cfg.builtin ? s_cfg.url : tomato_config_has_builtin() ? "" : "http://");
-            return APP_REDRAW_PAGE;
-        case R_DAV:
-            begin_edit(E_DAV_URL, s_has_dav ? s_dav.url : "https://");
-            return APP_REDRAW_PAGE;
-        case R_DAV_SYNC:
-            if (!s_has_dav || tomato_sync_busy()) return APP_REDRAW_NONE;
-            tomato_sync_set_progress_io(export_progress, import_progress);
-            if (tomato_sync_start_webdav() == ESP_OK) s_syncing = true;
-            return APP_REDRAW_PAGE;
-        case R_ABOUT: s_about = true; return APP_REDRAW_PAGE;
-        case R_HUPU: {
-            // 标签栏整条变了，整屏刷新。/ The whole tab bar changes, so refresh the full screen.
-            const bool hide = !app_settings_hide_hupu();
-            app_settings_set_hide_hupu(hide);
-            tr_tabs_set_hupu_hidden(hide);
-            snprintf(s_message, sizeof(s_message), hide ? "虎扑已隐藏" : "虎扑已显示");
-            return APP_REDRAW_FULL;
-        }
-        case R_WALL: ctx->request_app = &app_tr_wall; break;
-        case R_CARD: ctx->request_app = &app_tr_card; break;
-        default: break;
-        }
+/* ---- 触摸 / Touch ---- */
+
+static app_redraw_t open_page(page_t p) {
+    s_page = p;
+    s_message[0] = 0;
+    return APP_REDRAW_PAGE;
+}
+
+static app_redraw_t go_back(void) {
+    s_message[0] = 0;
+    if (s_page == P_SOURCES) web_stop();
+    s_page = s_page == P_ABOUT ? P_POWER : P_HOME;
+    return APP_REDRAW_PAGE;
+}
+
+static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
+    if (y < CAT_TOP || y >= CAT_TOP + C_COUNT * CAT_H) return APP_REDRAW_NONE;
+    switch ((cat_t)((y - CAT_TOP) / CAT_H)) {
+    case C_DISPLAY: return open_page(P_DISPLAY);
+    case C_TABS: return open_page(P_TABS);
+    case C_WIFI: return open_page(P_TRANSFER);
+    case C_SOURCES: return open_page(P_SOURCES);
+    case C_SYNC: return open_page(P_SYNC);
+    case C_POWER: return open_page(P_POWER);
+    default: return APP_REDRAW_NONE;
+    }
+}
+
+static int row_hit(const row_t* rows, int n, uint16_t y) {
+    for (int i = 0; i < n; i++) {
+        const int h = rows[i].id == R_RED_WEB ? WEB_ROW_H : ROW_H;
+        if (y >= rows[i].y && y < rows[i].y + h) return rows[i].id;
+    }
+    return -1;
+}
+
+static app_redraw_t touch_transfer(app_ctx_t* ctx, uint16_t y) {
+    if (y < CAT_TOP || y >= CAT_TOP + 2 * CAT_H) return APP_REDRAW_NONE;
+    // USB 传书页自己在“开始”时才让后台让路；只是进去看看不取消任何东西。/ The USB page makes room only on
+    // "Start"; merely opening it cancels nothing.
+    if (y >= CAT_TOP + CAT_H) { ctx->request_app = &app_usb; return APP_REDRAW_NONE; }
+    if (!make_room()) return APP_REDRAW_PAGE;
+    ctx->request_app = &app_transfer;
+    return APP_REDRAW_NONE;
+}
+
+static app_redraw_t touch_tabs(uint16_t y) {
+    if (y < TAB_TOP || y >= TAB_TOP + TR_TAB_MAX * TAB_H) return APP_REDRAW_NONE;
+    const int t = (y - TAB_TOP) / TAB_H;
+    if (TR_TABS_FIXED & (1u << t)) return APP_REDRAW_NONE;
+    const uint8_t mask = app_settings_hidden_tabs() ^ (uint8_t)(1u << t);
+    app_settings_set_hidden_tabs(mask);
+    tr_tabs_set_hidden(mask);
+    // 标签栏整条变了，整屏刷新。/ The whole tab bar changes, so refresh the full screen.
+    return APP_REDRAW_FULL;
+}
+
+static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
+    s_message[0] = 0;
+    switch (id) {
+    case R_FONT: ctx->request_app = &app_font_pick; return APP_REDRAW_NONE;
+    case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
+    case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
+    case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
+    case R_ABOUT: return open_page(P_ABOUT);
+    case R_STORE: {
+        char url[160];
+        begin_edit(E_STORE_URL, tomato_store_url_load(url, sizeof(url)) == ESP_OK ? url : "");
+        return APP_REDRAW_PAGE;
+    }
+    case R_SRV:
+        // 地址只用英文和符号。/ Addresses take English letters and symbols only.
+        // 内置服务器不回显；有内置时默认留空。/ Never echo the built-in server; start empty when one exists.
+        begin_edit(E_SRV_URL, s_has_cfg && !s_cfg.builtin ? s_cfg.url : tomato_config_has_builtin() ? "" : "http://");
+        return APP_REDRAW_PAGE;
+    case R_RED_WEB:
+        if (s_web_on) web_stop();
+        else web_start();
+        if (s_web_on) web_prepare_qr();
+        return APP_REDRAW_PAGE;
+    case R_RED_URL: begin_edit(E_RED_URL, s_has_red ? s_red.url : "http://"); return APP_REDRAW_PAGE;
+    case R_RED_TOKEN: begin_edit(E_RED_TOKEN, ""); return APP_REDRAW_PAGE;
+    case R_RED_TEST:
+        if (!make_room()) return APP_REDRAW_PAGE;
+        start_red_test();
+        return APP_REDRAW_PAGE;
+    case R_DAV: begin_edit(E_DAV_URL, s_has_dav ? s_dav.url : "https://"); return APP_REDRAW_PAGE;
+    case R_DAV_SYNC:
+        if (!s_has_dav) return APP_REDRAW_NONE;
+        if (!make_room()) return APP_REDRAW_PAGE;
+        tomato_sync_set_progress_io(export_progress, import_progress);
+        if (tomato_sync_start_webdav() == ESP_OK) s_syncing = true;
+        return APP_REDRAW_PAGE;
+    default: return APP_REDRAW_NONE;
+    }
+}
+
+static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
+    const uint16_t x = touch->x, y = touch->y;
+    if (s_edit != E_NONE) return touch_edit(ctx, x, y);
+    if (s_page == P_ABOUT) {
+        if (ui_rect_hit(BACK_RECT, x, y)) return go_back();
+        if (y >= 320 && y < 392) { ctx->request_app = &app_tr_update; return APP_REDRAW_NONE; }
+        if (y >= ABOUT_DEVICE_Y - 20 && y < ABOUT_TEST_Y) ctx->request_app = &app_home;
+        else if (y >= ABOUT_TEST_Y && y < ABOUT_TEST_Y + 80) ctx->request_app = &app_selftest;
         return APP_REDRAW_NONE;
     }
-    return APP_REDRAW_NONE;
+    if (tr_nav_touch(ctx, x, y, TR_TAB_SETTINGS)) return APP_REDRAW_NONE;
+    if (s_page == P_HOME) return touch_home(ctx, y);
+    if (ui_rect_hit(BACK_RECT, x, y)) return go_back();
+    int id = -1;
+    switch (s_page) {
+    case P_TABS: return touch_tabs(y);
+    case P_TRANSFER: return touch_transfer(ctx, y);
+    case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
+    case P_SOURCES: id = row_hit(SOURCE_ROWS, s_web_on ? 3 : COUNT(SOURCE_ROWS), y); break;
+    case P_SYNC: id = row_hit(SYNC_ROWS, COUNT(SYNC_ROWS), y); break;
+    case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
+    default: break;
+    }
+    return id >= 0 ? touch_row(ctx, id) : APP_REDRAW_NONE;
+}
+
+static app_redraw_t on_key(app_ctx_t* ctx, int key) {
+    (void)ctx;
+    if (key != UI_KEY_1) return APP_REDRAW_NONE;
+    if (s_edit != E_NONE) { s_edit = E_NONE; memset(&s_kbd, 0, sizeof(s_kbd)); return APP_REDRAW_PAGE; }
+    return s_page == P_HOME ? APP_REDRAW_NONE : go_back();
 }
 
 /* ---- 生命周期 / Lifecycle ---- */
 
+void app_tr_settings_request_sources(void) { s_open_sources = true; }
+void app_tr_settings_request_transfer(void) { s_open_transfer = true; }
+
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     s_edit = E_NONE;
-    s_about = false;
+    s_page = s_open_sources ? P_SOURCES : s_open_transfer ? P_TRANSFER : P_HOME;
+    s_open_sources = s_open_transfer = false;
     s_message[0] = 0;
     // 离开期间同步可能已结束。/ The sync may have finished while away.
     if (s_syncing && !tomato_sync_busy()) s_syncing = false;
+    if (s_red_testing && !tomato_sync_busy()) s_red_testing = false;
     load();
 }
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    web_stop();
     memset(&s_cfg, 0, sizeof(s_cfg));
     memset(&s_dav, 0, sizeof(s_dav));
+    memset(&s_red, 0, sizeof(s_red));
     memset(&s_kbd, 0, sizeof(s_kbd));
     s_edit = E_NONE;
 }
 
 static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
-    if (s_edit == E_NONE) return (EpdRect){0, ROWS[R_DAV_SYNC].y, TR_W, ROW_H};
+    if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, SYNC_ROWS[1].y, TR_W, ROW_H};
+    if (s_edit == E_NONE && s_page == P_SOURCES) return (EpdRect){0, SOURCE_ROWS[5].y, TR_W, ROW_H};
     return (EpdRect){0, 160, TR_W, TR_H - 160};
 }
 
-static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
-    if (s_about) {
-        if (touch->y < 160 && touch->x < 120) { s_about = false; return APP_REDRAW_PAGE; }
-        if (touch->y >= 320 && touch->y < 392) { ctx->request_app = &app_tr_update; return APP_REDRAW_NONE; }
-        if (touch->y >= ABOUT_DEVICE_Y - 20 && touch->y < ABOUT_TEST_Y) ctx->request_app = &app_home;
-        else if (touch->y >= ABOUT_TEST_Y && touch->y < ABOUT_TEST_Y + 80) ctx->request_app = &app_selftest;
-        return APP_REDRAW_NONE;
+// 网页填写：等联网、等提交；提交后停服并测试连接。/ Web form: wait for the network and a submission; then stop
+// serving and test the connection.
+static app_redraw_t tick_web(void) {
+    read_pico_transfer_service_poll();
+    read_pico_transfer_status_t next;
+    read_pico_transfer_get_status(&next);
+    const bool net_changed = next.network_ready != s_web_status.network_ready || strcmp(next.url, s_web_status.url) ||
+                             next.state != s_web_status.state;
+    s_web_status = next;
+    if (tomato_red_config_revision() != s_web_revision) {
+        if (!read_pico_transfer_try_stop_if_idle()) return APP_REDRAW_NONE;
+        s_web_on = false;
+        ui_wifi_qr_clear();
+        app_loop_hold_awake(false);
+        load();
+        snprintf(s_message, sizeof(s_message), "已收到网页填写的设置");
+        start_red_test();
+        return APP_REDRAW_PAGE;
     }
-    if (s_edit == E_NONE) {
-        if (tr_nav_touch(ctx, touch->x, touch->y, TR_TAB_SETTINGS)) return APP_REDRAW_NONE;
-        return touch_list(ctx, touch->x, touch->y);
+    if (net_changed) {
+        web_prepare_qr();
+        return APP_REDRAW_PAGE;
     }
-    return touch_edit(ctx, touch->x, touch->y);
+    return APP_REDRAW_NONE;
 }
 
-static app_redraw_t on_key(app_ctx_t* ctx, int key) {
-    (void)ctx;
-    if (key == UI_KEY_1 && s_about) { s_about = false; return APP_REDRAW_PAGE; }
-    if (key != UI_KEY_1 || s_edit == E_NONE) return APP_REDRAW_NONE;
-    s_edit = E_NONE;
-    return APP_REDRAW_PAGE;
-}
-
-// 同步进行中只刷新“立即同步”这一行；结束后整页显示结果。
-// While syncing, refresh only the "Sync now" row; when done, show the result with a page refresh.
+// 同步或测试进行中只刷新那一行；结束后整页显示结果。/ While syncing or testing, refresh only that row; when done,
+// show the result with a page refresh.
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     tr_time_poll();
-    if (!s_syncing || s_edit != E_NONE || s_about || ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
+    if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
+    if (s_web_on) {
+        const app_redraw_t r = tick_web();
+        return s_page == P_SOURCES && s_edit == E_NONE ? r : APP_REDRAW_NONE;
+    }
+    if (!s_syncing && !s_red_testing) return APP_REDRAW_NONE;
     tomato_status_t st;
     tomato_sync_get_status(&st);
     if (!tomato_sync_busy()) {
-        s_syncing = false;
-        snprintf(s_message, sizeof(s_message), "%s", st.message);
+        if (s_syncing) snprintf(s_message, sizeof(s_message), "%s", st.message);
+        if (s_red_testing) snprintf(s_red_result, sizeof(s_red_result), "%s", st.message[0] ? st.message : "失败");
+        s_syncing = s_red_testing = false;
         load();
-        return APP_REDRAW_PAGE;
+        return s_edit == E_NONE ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
     }
-    if (st.revision == s_seen_revision) return APP_REDRAW_NONE;
+    if (st.revision == s_seen_revision || s_edit != E_NONE || s_page == P_ABOUT) return APP_REDRAW_NONE;
     s_seen_revision = st.revision;
+    if (!(s_syncing && s_page == P_SYNC)) return APP_REDRAW_NONE;
     render(ctx, ctx->fb);
     return APP_REDRAW_AREA;
 }
 
 const app_desc_t app_tr_settings = {
     .title = "设置",
-    .detail = "字体、睡眠、Wi-Fi、服务器与同步",
+    .detail = "显示、标签、Wi-Fi、内容来源、同步与设备",
     .enter_full = true,
     .tab_nav = true,
     .render = render,

@@ -65,6 +65,11 @@
 #define FONT_RETRY_INTERVAL_MS 3000
 #define MEDIA_POLL_INTERVAL_MS 500
 
+// 页面要求的“保持唤醒”。/ Keep-awake requested by a page.
+static bool s_hold_awake;
+
+void app_loop_hold_awake(bool on) { s_hold_awake = on; }
+
 static int64_t s_lock_ignore_until_ms;
 
 void app_lock_ignore_for(int64_t ms) {
@@ -521,9 +526,9 @@ void app_loop_run(const app_loop_config_t* config) {
                     key2_pending = false;
                     last_input_ms = ctx.now_ms;
                 }
-            } else if (tomato_sync_busy() || auto_turn_active()) {
-                // Treader：后台同步在跑、或正在定时自动翻页时不自动锁屏。/ Treader: no idle lock while background sync
-                // runs or pages are turning automatically.
+            } else if (tomato_sync_busy() || auto_turn_active() || s_hold_awake) {
+                // Treader：后台同步在跑、正在定时自动翻页、或页面要求保持唤醒时不自动锁屏。/ Treader: no idle lock while
+                // background sync runs, pages turn automatically, or a page holds the device awake.
                 last_input_ms = ctx.now_ms;
             } else if (ctx.now_ms >= s_lock_ignore_until_ms
                        && ctx.now_ms - last_input_ms >= APP_AUTO_SLEEP_MS) {

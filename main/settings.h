@@ -57,9 +57,12 @@ typedef struct {
 app_book_style_t app_settings_book_style(void);
 void app_settings_set_book_style(const app_book_style_t* style);
 
-/// 隐藏虎扑：底部标签和菜单都不再列出虎扑。/ Hide Hupu: neither the tab bar nor the menu lists it.
-bool app_settings_hide_hupu(void);
-void app_settings_set_hide_hupu(bool on);
+/// 隐藏的底部标签，按 tr_tab_t 位号的掩码；隐藏的标签底栏和菜单都不列出。书库和设置的位总是 0。
+/// 旧版“隐藏虎扑”开着时，第一次读取换算成只隐藏虎扑。
+/// Hidden tabs as a mask by tr_tab_t bit; hidden tabs leave the tab bar and the menu. The library and settings bits
+/// are always 0. The old "hide Hupu" switch migrates to a mask hiding Hupu only.
+uint8_t app_settings_hidden_tabs(void);
+void app_settings_set_hidden_tabs(uint8_t mask);
 
 /// 自动翻页档位（0 关，1～10 对应 3～30 秒），阅读和漫画各存一份。/ Auto-turn level (0 off, 1-10 = 3-30 s), kept
 /// separately for the reader and comics.

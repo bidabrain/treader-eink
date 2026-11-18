@@ -87,26 +87,32 @@ static void ensure_font_dirs(void) {
     }
 }
 
-static esp_err_t mount_card(bool format_if_failed) {
-    if (card != NULL) return ESP_OK;
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+static void host_slot(sdmmc_host_t* host, sdmmc_slot_config_t* slot) {
+    *host = (sdmmc_host_t)SDMMC_HOST_DEFAULT();
     // 1-bit 只能靠提时钟换带宽。20MHz 默认对随机小读太慢，40MHz 多数卡能稳住。
     // / 1-bit only buys bandwidth by raising the clock. 20 MHz is too slow for
     // random small reads; 40 MHz holds on most cards.
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    host->max_freq_khz = SDMMC_FREQ_HIGHSPEED;
 
-    sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot.width = 1;
-    slot.clk = SD_PIN_CLK;
-    slot.cmd = SD_PIN_CMD;
-    slot.d0 = SD_PIN_D0;
-    slot.d1 = GPIO_NUM_NC;
-    slot.d2 = GPIO_NUM_NC;
-    slot.d3 = GPIO_NUM_NC;
-    slot.cd = GPIO_NUM_NC;
-    slot.wp = GPIO_NUM_NC;
-    slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+    *slot = (sdmmc_slot_config_t)SDMMC_SLOT_CONFIG_DEFAULT();
+    slot->width = 1;
+    slot->clk = SD_PIN_CLK;
+    slot->cmd = SD_PIN_CMD;
+    slot->d0 = SD_PIN_D0;
+    slot->d1 = GPIO_NUM_NC;
+    slot->d2 = GPIO_NUM_NC;
+    slot->d3 = GPIO_NUM_NC;
+    slot->cd = GPIO_NUM_NC;
+    slot->wp = GPIO_NUM_NC;
+    slot->flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+}
+
+static esp_err_t mount_card(bool format_if_failed) {
+    if (card != NULL) return ESP_OK;
+
+    sdmmc_host_t host;
+    sdmmc_slot_config_t slot;
+    host_slot(&host, &slot);
 
     const esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = format_if_failed,
@@ -238,6 +244,37 @@ esp_err_t read_pico_sd_remount(void) {
     probe_state = 0;
     portEXIT_CRITICAL(&state_lock);
     return read_pico_sd_start_probe();
+}
+
+// 交给 USB：卸掉文件系统，只初始化卡本身。忙状态一直留着，之后挂载、格式化、重挂一律拒绝，直到重启。
+// Hand over to USB: unmount the filesystem and initialize the bare card. The busy state stays, so mount, format and
+// remount are refused until a restart.
+esp_err_t read_pico_sd_take_for_usb(void** out) {
+    static sdmmc_card_t raw;
+    if (!out) return ESP_ERR_INVALID_ARG;
+    if (!read_pico_sd_present()) return ESP_ERR_NOT_FOUND;
+    if (!begin_operation()) return ESP_ERR_NOT_FINISHED;
+    close_card();
+    sdmmc_host_t host;
+    sdmmc_slot_config_t slot;
+    host_slot(&host, &slot);
+    esp_err_t err = host.init();
+    if (err == ESP_OK) err = sdmmc_host_init_slot(host.slot, &slot);
+    if (err == ESP_OK) {
+        memset(&raw, 0, sizeof(raw));
+        err = sdmmc_card_init(&host, &raw);
+        if (err == ESP_ERR_TIMEOUT) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            err = sdmmc_card_init(&host, &raw);
+        }
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "usb take: %s", esp_err_to_name(err));
+        return err;   // 卡已卸载，调用方重启恢复 / The card is unmounted; the caller restarts to recover
+    }
+    *out = &raw;
+    ESP_LOGI(TAG, "card handed to usb");
+    return ESP_OK;
 }
 
 esp_err_t read_pico_sd_sync(void) {

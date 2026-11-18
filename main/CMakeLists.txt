@@ -1,6 +1,7 @@
 set(main_requires
     read_pico
     read_pico_transfer
+    read_pico_usb
     read_pico_search
     tomato
     pinyin_ime
@@ -46,10 +47,12 @@ idf_component_register(
         "apps/app_tr_store.c"
         "apps/app_tr_update.c"
         "apps/app_tr_hupu.c"
+        "apps/app_tr_xhs.c"
         "apps/tr_lock.c"
         "apps/app_home.c"
         "apps/app_book.c"
         "apps/app_transfer.c"
+        "apps/app_usb.c"
         "apps/app_comic.c"
         "book/book_store.c"
         "book/comic_store.c"
@@ -77,6 +80,8 @@ idf_component_register(
         "assets/lock_4bpp.bin"
         "assets/loading_4bpp.bin"
         "assets/builtin.ttf"
+    EMBED_TXTFILES
+        "apps/rednote_form.html"
 )
 
 # 静态分析构建：idf.py -B build-analyze -DTREADER_ANALYZE=1 build

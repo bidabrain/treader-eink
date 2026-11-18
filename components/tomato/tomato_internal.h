@@ -85,6 +85,9 @@ esp_err_t tomato_hupu_threads(const char* zone, int sort, bool more, const volat
 esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
 esp_err_t tomato_hupu_schedule(const char* league, const volatile bool* cancel, char* msg, size_t cap);
 esp_err_t tomato_hupu_rating(const char* type, const char* no, const volatile bool* cancel, char* msg, size_t cap);
+/// 小红书（rednote 服务器）任务，在同步任务里调用。/ Xiaohongshu (rednote server) job, run on the sync task.
+esp_err_t tomato_red_run(const tomato_red_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
+                         char* msg, size_t cap);
 /// 封面目录太大时，只留 keep 里这些书的封面和缩略图。/ When the cover dir grows too big, keep only these books' covers and thumbnails.
 void tomato_rank_prune_covers(const tomato_rank_book_t* keep, int n);
 

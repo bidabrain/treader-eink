@@ -126,12 +126,16 @@ static int shelf_index_of(const char* book_id) {
     return -1;
 }
 
+// 本页任务的序号；序号对不上就是别的页的任务。/ Our job's sequence; a mismatch means another page's job.
+static uint32_t s_op_seq;
+
 static bool start_op(op_t op, esp_err_t err) {
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "start op %d: %s", op, esp_err_to_name(err));
         return false;
     }
     s_op = op;
+    s_op_seq = tomato_sync_seq();
     s_last = OP_NONE;
     s_seen_revision = 0;
     tomato_sync_get_status(&s_status);
@@ -174,8 +178,14 @@ static bool claim_sync(queued_t q) {
     if (s_op == OP_COVER) {
         s_queued = q;
         tomato_sync_cancel();
+        return false;
     }
-    return false;
+    // 别的页留下的浏览任务：取消；还没停下就记下 q，停了马上做。/ A browsing job from another page: cancel it; if it
+    // has not stopped yet, queue q and run it once the worker is free.
+    if (s_op != OP_NONE) return false;
+    const tomato_preempt_t room = tomato_sync_preempt();
+    if (room == TOMATO_PREEMPT_STOPPING) s_queued = q;
+    return room == TOMATO_PREEMPT_FREE;
 }
 
 /* ---- 分类胶囊排版 / Category chip layout ---- */
@@ -483,7 +493,18 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
     tr_time_poll();
-    if (s_op == OP_NONE) return APP_REDRAW_NONE;
+    if (s_op != OP_NONE && tomato_sync_seq() != s_op_seq) {
+        // 序号变了：本页的任务早结束了，后台在跑别人的。/ The sequence moved on: our job ended, another runs.
+        s_op = OP_NONE;
+        load_shelf();
+        return APP_REDRAW_PAGE;
+    }
+    if (s_op == OP_NONE) {
+        // 等别的页的任务停下后，做排着的事。/ Once another page's job stops, run what was queued.
+        if (s_queued == Q_NONE || tomato_sync_busy()) return APP_REDRAW_NONE;
+        s_op = OP_COVER;   // 借用下面“操作结束”的分支处理队列 / Reuse the "done" branch below to run the queue
+        s_op_seq = tomato_sync_seq();
+    }
     tomato_sync_get_status(&s_status);
     if (!tomato_sync_busy()) {
         // 操作结束：重读缓存和书架，整页刷新一次。/ Done: reload caches and the shelf, refresh the page once.
@@ -543,7 +564,7 @@ static void on_enter(app_ctx_t* ctx) {
     load_index();
     tomato_sync_get_status(&s_status);
     // 后台还在跑就保留原视图，否则回到书城首页。/ Keep the view while work runs; otherwise start at the store home.
-    if (!tomato_sync_busy() || s_op == OP_NONE) { s_view = V_HOME; s_op = OP_NONE; }
+    if (!(tomato_sync_busy() && tomato_sync_seq() == s_op_seq) || s_op == OP_NONE) { s_view = V_HOME; s_op = OP_NONE; }
     if (s_view != V_HOME) load_books();
     if (s_view == V_DETAIL && s_detail >= s_book_count) s_view = V_HOME;
 }

@@ -35,6 +35,9 @@ extern "C" {
 /// 虎扑缓存目录：home.json、post/<tid>.json、img/。/ Hupu cache: home.json, post/<tid>.json, img/.
 #define TOMATO_HUPU_DIR "/sdcard/hupu"
 #define TOMATO_HUPU_HOME_FILE TOMATO_HUPU_DIR "/home.json"
+#define TOMATO_RED_DIR "/sdcard/rednote"
+#define TOMATO_RED_FEED_FILE TOMATO_RED_DIR "/feed.json"
+#define TOMATO_RED_REC_FILE TOMATO_RED_DIR "/rec.json"
 #define TOMATO_RANK_CAT_MAX 48
 #define TOMATO_RANK_BOOK_MAX 20
 #define TOMATO_RANK_INTRO_LEN 900
@@ -235,6 +238,49 @@ bool tomato_hupu_img_size(const char* url, int* w, int* h);
 void tomato_hupu_zone_path(const char* zone, int sort, char* out, size_t cap);
 void tomato_hupu_schedule_path(const char* league, char* out, size_t cap);
 void tomato_hupu_rating_path(const char* type, const char* no, char* out, size_t cap);
+/* ---- 小红书（经自建 rednote 服务器）/ Xiaohongshu via the self-hosted rednote server ---- */
+
+/// rednote 服务器地址和设备令牌，存在 NVS。/ rednote server address and device token, kept in NVS.
+typedef struct {
+    char url[160];
+    char token[96];
+} tomato_red_config_t;
+
+/// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
+esp_err_t tomato_red_config_load(tomato_red_config_t* out);
+esp_err_t tomato_red_config_save(const tomato_red_config_t* cfg);
+/// 每保存一次加一（设置页据此发现网页填写已提交）。/ Bumped on every save (settings notices a web submission).
+uint32_t tomato_red_config_revision(void);
+
+/// 小红书后台任务种类。/ Xiaohongshu background jobs.
+typedef enum {
+    TOMATO_RED_FEED,   ///< 关注列表和缩略图；列表写好时进度到 1 / Following list and thumbnails; progress 1 once written
+    TOMATO_RED_REC,    ///< 推荐列表和封面；refresh 时服务器才读小红书 / Recommendations; the server reads Xiaohongshu on refresh
+    TOMATO_RED_NOTE,   ///< 一篇笔记和图片；正文写好时进度到 1 / One note and its images; progress 1 once text is written
+    TOMATO_RED_TEST,   ///< 测试连接 / Connection test
+} tomato_red_job_t;
+
+typedef struct {
+    tomato_red_job_t job;
+    char id[28];
+    bool rec;           ///< 笔记来自推荐（服务器可能要现拉）/ Note comes from recommendations (server may fetch live)
+    bool refresh;       ///< 推荐：让服务器重新读首页 / Recommendations: ask the server to re-read the home feed
+    bool images_only;   ///< 笔记已缓存，只补缺的图 / Note cached; fetch missing images only
+} tomato_red_req_t;
+
+esp_err_t tomato_sync_start_red(const tomato_red_req_t* req);
+/// 最近一次启动的任务序号（启动成功后马上读就是自己的）。忙且序号相同，才是自己的任务在跑；不忙且序号相同，状态就是它的结果。
+/// Sequence number of the most recently started job (read right after a successful start to get your own). Busy with
+/// the same number means your job runs; idle with the same number means the status is its result.
+uint32_t tomato_sync_seq(void);
+/// 笔记目录、第 n 张图（n 为 0 是缩略图）、推荐封面。/ Note folder, image n (0 = thumbnail), recommendation cover.
+void tomato_red_note_dir(const char* id, char* out, size_t cap);
+void tomato_red_img_path(const char* id, int n, char* out, size_t cap);
+void tomato_red_cover_path(const char* id, char* out, size_t cap);
+/// 关注列表里标记看过；调用方保证此时没有关注列表任务在写。/ Mark a following note as seen; the caller makes sure no
+/// following-list job is writing at the time.
+void tomato_red_mark_seen(const char* id);
+
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);
 /// 注册阅读进度的读写回调（进度存储在主程序里）。/ Register progress I/O callbacks (progress lives in the main app).
@@ -257,6 +303,19 @@ void tomato_sync_set_open_check(tomato_open_check_t check);
 bool tomato_sync_stop(int timeout_ms);
 /// 请求取消；任务在下一个安全点退出。/ Request cancel; the task exits at its next safe point.
 void tomato_sync_cancel(void);
+/// 前台优先：后台在跑的是浏览类任务（虎扑、小红书、书城、搜索）时为真，前台可以取消它。下载、检查更新、WebDAV 同步为假。
+/// Foreground first: true while a browsing job (Hupu, Xiaohongshu, bookstore, search) runs, which the foreground may
+/// cancel. False for downloads, update checks and WebDAV sync.
+bool tomato_sync_preemptible(void);
+typedef enum {
+    TOMATO_PREEMPT_FREE,       ///< 后台空了，可以马上开始 / The worker is free now
+    TOMATO_PREEMPT_STOPPING,   ///< 浏览任务已取消、还没停下，稍后再开始 / A browsing job was cancelled and is stopping
+    TOMATO_PREEMPT_BLOCKED,    ///< 在下载或同步，不打断 / A download or sync runs and is not interrupted
+} tomato_preempt_t;
+/// 给前台腾出后台：浏览类任务就取消（最多等 0.3 秒），下载和同步不打断。不会长时间阻塞界面。
+/// Make room for the foreground: cancel a browsing job (waiting at most 0.3 s); downloads and sync are left alone.
+/// Never blocks the UI for long.
+tomato_preempt_t tomato_sync_preempt(void);
 /// 后台任务是否在跑。/ Whether the task is running.
 bool tomato_sync_busy(void);
 void tomato_sync_get_status(tomato_status_t* out);

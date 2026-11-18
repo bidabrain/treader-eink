@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小纸 Pico · 小红书设置</title>
+<style>
+  body { margin: 0; background: #faf9f5; color: #222; font: 17px/1.6 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 12px 20px 40px; }
+  h1 { font-size: 24px; margin: 10px 0 2px; }
+  h2 { font-size: 19px; margin: 18px 0 4px; }
+  .hint { color: #555; font-size: 15px; line-height: 1.5; margin: 4px 0; }
+  input { width: 100%; box-sizing: border-box; font: inherit; padding: 9px 12px; border: 1px solid #cfccc2; border-radius: 8px; background: #fff; }
+  button { margin-top: 16px; font: inherit; padding: 8px 18px; border-radius: 6px; border: 1px solid #222; background: #222; color: #fff; }
+  button:disabled { opacity: .5; }
+  .box { border: 1px solid #cfccc2; border-radius: 8px; background: #fff; padding: 10px 12px; margin-top: 14px; }
+  .err { color: #b3261e; }
+</style>
+</head>
+<body>
+<main>
+  <h1>小纸 Pico · 小红书设置</h1>
+  <p class="hint">地址和令牌在 rednote 面板 → 设备与外网，复制后粘贴到这里。</p>
+  <form id="f">
+    <h2>服务器地址</h2>
+    <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:8091" required maxlength="150">
+    <p class="hint">在外面用隧道的话填 https://你的域名</p>
+    <h2>设备令牌</h2>
+    <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="粘贴设备令牌">
+    <p class="hint" id="tokenHint">粘贴面板里显示的设备令牌。</p>
+    <button id="go">保存</button>
+  </form>
+  <div class="box" id="out" hidden></div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+let hasToken = false;
+fetch('/form').then((r) => r.json()).then((d) => {
+  if (d.url) $('#url').value = d.url;
+  hasToken = !!d.has_token;
+  if (hasToken) $('#tokenHint').textContent = '已经填过令牌，不显示原值；留空表示不改。';
+}).catch(() => {});
+$('#f').onsubmit = async (e) => {
+  e.preventDefault();
+  const url = $('#url').value.trim();
+  const token = $('#token').value.trim();
+  const out = $('#out');
+  out.hidden = false;
+  if (!/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">地址要以 http:// 或 https:// 开头</span>'; return; }
+  if (!token && !hasToken) { out.innerHTML = '<span class="err">请粘贴设备令牌</span>'; return; }
+  $('#go').disabled = true;
+  out.textContent = '正在保存…';
+  try {
+    const r = await fetch('/form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, token }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    $('#token').value = '';
+    out.innerHTML = '✓ 已保存。设备会自动测试连接，结果显示在设备屏幕上。<br><span class="hint">可以关掉这个网页了。</span>';
+  } catch (err) {
+    out.innerHTML = '<span class="err">保存失败：' + String(err.message).replace(/[<>&]/g, '') + '</span>';
+    $('#go').disabled = false;
+  }
+};
+</script>
+</body>
+</html>

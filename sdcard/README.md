@@ -16,10 +16,15 @@ TF 卡根目录/
     └── config.example.json   可选：改名为 config.json 并填写服务器、WebDAV、榜单地址；也可以在设备“设置”里填
 ```
 
-- 设备运行时会自己生成 `tomato/shelf.json`、`tomato/store/`、`tomato/covers/` 和 `.treader/`（封面、壁纸缓存，可以整个删掉）。
+- 设备运行时会自己生成这些，不用复制，都可以整个删掉（删了会重新生成或重新下载）：
+  - `tomato/shelf.json`、`tomato/store/`、`tomato/covers/`：番茄书架、书城和封面；
+  - `.treader/`：书库封面和壁纸缓存；`comics/.treader/`：漫画进度和封面；
+  - `hupu/`：虎扑缓存；
+  - `rednote/`：小红书缓存（关注和推荐列表、笔记图片），总大小有上限。
+- 小红书的服务器地址和令牌存在设备里（设置 → 内容来源），不在 TF 卡上。
 - 各文件夹里的 `.gitkeep` 只是为了让 git 保留空文件夹，设备会忽略它，复制过去也没关系。
 - 放进本文件夹 `books/`、`comics/`、`wallpapers/`、`update/` 的文件不会被 git 提交；`update/` 里的固件可能带着你的内置服务器，不要公开。
-- 已经刷好 Treader 的话，也可以在 设置 → TF 卡 里格式化，设备会建好同样的文件夹，然后再从这里复制 `fonts/` 和 `ime/`。
+- 已经刷好 Treader 的话，也可以在 设置 → 电源与设备 → TF 卡 里格式化，设备会建好同样的文件夹，然后再从这里复制 `fonts/` 和 `ime/`。
 
 ## 字体部署 / Font deployment
 

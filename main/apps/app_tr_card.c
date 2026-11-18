@@ -48,6 +48,7 @@ static esp_err_t s_info_err;
 // Treader 在卡上用到的文件夹。/ Folders Treader uses on the card.
 static const char* const DIRS[] = {
     "/sdcard/books", "/sdcard/comics", "/sdcard/fonts", "/sdcard/ime", "/sdcard/wallpapers", "/sdcard/tomato",
+    "/sdcard/update",
 };
 
 static void refresh(void) {
@@ -140,7 +141,9 @@ static bool make_dirs(void) {
               "fonts/       Chinese TTF font (copy sdcard/fonts from the repo)\n"
               "ime/         pinyin lexicon (copy sdcard/ime from the repo)\n"
               "wallpapers/  lock-screen wallpapers, JPG or PNG\n"
-              "tomato/      Tomato shelf, covers and settings (managed by the device)\n", f);
+              "tomato/      Tomato shelf, covers and settings (managed by the device)\n"
+              "update/      firmware for TF-card updates (Read_Pico.bin or treader-full.bin)\n"
+              "hupu/, rednote/, .treader/  caches made by the device; safe to delete\n", f);
         fclose(f);
     }
     return ok;

@@ -1699,7 +1699,9 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         if (ui_rect_hit(search_icon_rect(), x, y)) { search_begin(); return APP_REDRAW_PAGE; }
         if (ui_rect_hit(import_icon_rect(), x, y)) {
-            if (!tomato_sync_busy()) ctx->request_app = &app_transfer;
+            // 先到“设置 › 传书”选 Wi-Fi 还是 USB。/ Go to Settings > Transfer to pick Wi-Fi or USB.
+            app_tr_settings_request_transfer();
+            ctx->request_app = tr_nav_tab_app(TR_TAB_SETTINGS);
             return APP_REDRAW_NONE;
         }
         if (s_view == SHELF && s_save_failed && ui_rect_hit(save_retry_rect(), x, y)) {

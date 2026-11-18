@@ -308,6 +308,69 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         epd_draw_line(x + 16, y + 13, x + 14, y + 15, c, fb);
         epd_draw_line(x + 17, y + 13, x + 15, y + 15, c, fb);
         break;
+    case TR_ICON_XHS:
+        // 小红书：圆角卡片里一颗心。/ Xiaohongshu: a heart on a rounded card.
+        ui_draw_round_rect(fb, (EpdRect){x + 7, y + 5, 26, 30}, 5, c);
+        ui_draw_round_rect(fb, (EpdRect){x + 8, y + 6, 24, 28}, 4, c);
+        epd_fill_circle(x + 16, y + 18, 4, c, fb);
+        epd_fill_circle(x + 24, y + 18, 4, c, fb);
+        epd_fill_triangle(x + 12, y + 20, x + 28, y + 20, x + 20, y + 28, c, fb);
+        break;
+    case TR_ICON_FONT:
+        // “Aa”：大 A 和小 a 的笔画。/ "Aa": strokes of a large and a small A.
+        thick_line(fb, x + 5, y + 32, x + 13, y + 10, c);
+        thick_line(fb, x + 13, y + 10, x + 21, y + 32, c);
+        thick_line(fb, x + 8, y + 25, x + 18, y + 25, c);
+        thick_line(fb, x + 24, y + 32, x + 29, y + 19, c);
+        thick_line(fb, x + 29, y + 19, x + 34, y + 32, c);
+        thick_line(fb, x + 26, y + 28, x + 32, y + 28, c);
+        break;
+    case TR_ICON_TABS:
+        // 底部一排三格，上面两行字。/ A three-cell bar at the bottom with two text lines above.
+        ui_draw_round_rect(fb, (EpdRect){x + 5, y + 22, 30, 12}, 3, c);
+        ui_draw_round_rect(fb, (EpdRect){x + 6, y + 23, 28, 10}, 2, c);
+        thick_line(fb, x + 15, y + 22, x + 15, y + 34, c);
+        thick_line(fb, x + 25, y + 22, x + 25, y + 34, c);
+        thick_line(fb, x + 9, y + 8, x + 31, y + 8, c);
+        thick_line(fb, x + 9, y + 14, x + 23, y + 14, c);
+        break;
+    case TR_ICON_WIFI:
+        // 三道弧：画整圆再把下半边涂掉。/ Three arcs: full circles with the lower half painted over.
+        thick_circle(fb, cx, y + 33, 26, c);
+        thick_circle(fb, cx, y + 33, 18, c);
+        thick_circle(fb, cx, y + 33, 10, c);
+        epd_fill_rect((EpdRect){x - 8, y + 24, 56, 24}, bg, fb);
+        epd_fill_rect((EpdRect){x - 8, y - 2, 6, 30}, bg, fb);
+        epd_fill_rect((EpdRect){x + 42, y - 2, 6, 30}, bg, fb);
+        epd_fill_circle(cx, y + 31, 3, c, fb);
+        break;
+    case TR_ICON_SOURCE:
+        // 两层服务器。/ A two-unit server.
+        for (int k = 0; k < 2; k++) {
+            ui_draw_round_rect(fb, (EpdRect){x + 7, y + 6 + k * 17, 26, 11}, 3, c);
+            ui_draw_round_rect(fb, (EpdRect){x + 8, y + 7 + k * 17, 24, 9}, 2, c);
+            thick_line(fb, x + 12, y + 11 + k * 17, x + 14, y + 11 + k * 17, c);
+        }
+        break;
+    case TR_ICON_USB:
+        // USB 标志：竖杆、顶上箭头、左右分叉（左圆右方）、底下圆点。/ USB mark: shaft, arrow, forks, base dot.
+        thick_line(fb, cx, y + 4, cx, y + 30, c);
+        thick_line(fb, cx - 5, y + 9, cx, y + 4, c);
+        thick_line(fb, cx + 5, y + 9, cx, y + 4, c);
+        thick_line(fb, cx, y + 22, x + 12, y + 17, c);
+        thick_line(fb, x + 12, y + 17, x + 12, y + 13, c);
+        thick_line(fb, cx, y + 26, x + 28, y + 21, c);
+        thick_line(fb, x + 28, y + 21, x + 28, y + 17, c);
+        epd_fill_circle(x + 12, y + 11, 3, c, fb);
+        epd_fill_rect((EpdRect){x + 25, y + 13, 6, 5}, c, fb);
+        epd_fill_circle(cx, y + 33, 4, c, fb);
+        break;
+    case TR_ICON_POWER:
+        // 电源键：开口的圆和一竖。/ Power symbol: an open circle and a bar.
+        thick_circle(fb, cx, y + 21, 12, c);
+        epd_fill_rect((EpdRect){cx - 6, y + 4, 12, 12}, bg, fb);
+        thick_line(fb, cx, y + 5, cx, y + 19, c);
+        break;
     case TR_ICON_IMPORT:
         thick_line(fb, x + 20, y + 6, x + 20, y + 26, c);
         thick_line(fb, x + 12, y + 18, x + 20, y + 26, c);
@@ -323,33 +386,43 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
 
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
-static bool s_hide_hupu;
+static uint8_t s_hidden;
 
-void tr_tabs_set_hupu_hidden(bool hidden) { s_hide_hupu = hidden; }
-bool tr_tabs_hupu_hidden(void) { return s_hide_hupu; }
+static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "设置"};
+static const tr_icon_t TAB_ICONS[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS,
+                                                TR_ICON_BALL, TR_ICON_SETTINGS};
+
+void tr_tabs_set_hidden(uint8_t mask) { s_hidden = mask & (uint8_t)~TR_TABS_FIXED; }
+bool tr_tab_shown(tr_tab_t tab) { return tab < TR_TAB_MAX && !(s_hidden & (1u << tab)); }
+const char* tr_tab_label(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_LABELS[tab] : ""; }
+tr_icon_t tr_tab_icon(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_ICONS[tab] : TR_ICON_MENU; }
 
 // 当前显示的标签，按从左到右的顺序。/ Visible tabs, left to right.
 static int visible_tabs(tr_tab_t out[TR_TAB_MAX]) {
     int n = 0;
     for (int t = 0; t < TR_TAB_MAX; t++)
-        if (t != TR_TAB_HUPU || !s_hide_hupu) out[n++] = (tr_tab_t)t;
+        if (tr_tab_shown((tr_tab_t)t)) out[n++] = (tr_tab_t)t;
     return n;
 }
 
+int tr_tab_count(void) {
+    tr_tab_t tabs[TR_TAB_MAX];
+    return visible_tabs(tabs);
+}
+
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    static const char* const labels[TR_TAB_MAX] = {"书库", "漫画", "番茄", "虎扑", "设置"};
-    static const tr_icon_t icons[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_BALL,
-                                                TR_ICON_SETTINGS};
     epd_fill_rect(tr_tab_area(), UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
     tr_tab_t tabs[TR_TAB_MAX];
     const int n = visible_tabs(tabs);
+    // 六个全开时每格约 114 像素，字小一号、高亮块窄一点。/ With all six each cell is ~114 px: smaller text, narrower pill.
+    const int px = n >= 6 ? 26 : 28, pill = n >= 6 ? 84 : 92;
     for (int i = 0; i < n; i++) {
         int cx = (2 * i + 1) * TR_W / (2 * n);
         bool on = tabs[i] == active;
-        if (on) ui_fill_round_rect(fb, (EpdRect){cx - 46, TAB_ICON_Y - 26, 92, 52}, 26, UI_GRAY_BLACK);
-        tr_icon(fb, icons[tabs[i]], cx, TAB_ICON_Y, on);
-        tr_text(fb, cx, TAB_LABEL_Y, 28, labels[tabs[i]], EPD_DRAW_ALIGN_CENTER, on);
+        if (on) ui_fill_round_rect(fb, (EpdRect){cx - pill / 2, TAB_ICON_Y - 26, pill, 52}, 26, UI_GRAY_BLACK);
+        tr_icon(fb, TAB_ICONS[tabs[i]], cx, TAB_ICON_Y, on);
+        tr_text(fb, cx, TAB_LABEL_Y, px, TAB_LABELS[tabs[i]], EPD_DRAW_ALIGN_CENTER, on);
     }
 }
 

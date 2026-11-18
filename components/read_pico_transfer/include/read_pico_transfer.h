@@ -43,6 +43,15 @@ typedef struct {
     void *free_bytes_ctx; ///< 回调上下文，stop 前有效 / Callback context valid until stop
     uint64_t (*reserve_bytes_cb)(void *ctx); ///< 可选：给系统预留的字节数，只用于网页显示 / Optional reserved bytes, shown on the page only
     esp_err_t (*file_changed_cb)(const char *path); ///< 文件提交或删除后清除进度；失败不回滚文件 / Clear progress after commit or deletion; failure never rolls back the file
+    /// 可选：网页表单模式。非空时首页换成 form_html，只收 /form 的 JSON，不收文件、不改 Wi-Fi，也不需要 root_dir。
+    /// Optional web-form mode. When set, the index becomes form_html and only /form JSON is accepted: no files, no
+    /// Wi-Fi changes, and root_dir is not needed.
+    const char *form_html;
+    size_t form_html_len; ///< form_html 字节数 / Bytes in form_html
+    /// GET 时 body 为 NULL，返回当前值；POST 时收到请求体。回复写进 reply（JSON），返回 HTTP 状态码。在 HTTP 任务里调用。
+    /// GET passes body NULL for current values; POST passes the request body. Write a JSON reply; return the HTTP
+    /// status. Runs on the HTTP task.
+    int (*form_cb)(const char *body, size_t len, char *reply, size_t cap);
 } read_pico_transfer_cfg_t;
 
 typedef struct {

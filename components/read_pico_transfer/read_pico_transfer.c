@@ -626,6 +626,7 @@ static esp_err_t respond_error(httpd_req_t *req, int code) {
 
 static esp_err_t index_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
+    if (s_cfg.form_html) return httpd_resp_send(req, s_cfg.form_html, (ssize_t)s_cfg.form_html_len);
     return httpd_resp_send(req, upload_start, upload_end - upload_start - 1);
 }
 
@@ -729,6 +730,32 @@ static esp_err_t wifi_handler(httpd_req_t *req) {
     clear_secret(&next, sizeof(next));
     return wifi_response(req, err == ESP_OK ? "200 OK" : "500 Internal Server Error",
         err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存网络失败，原配置未主动清除，请重试\"}");
+}
+
+// 网页表单：GET 取当前值，POST 提交；POST 要同源（和配网一样防别的网页代填）。
+// Web form: GET reads current values, POST submits; POST must be same-origin (like provisioning) so other pages
+// cannot submit on the user's behalf.
+static esp_err_t form_handler(httpd_req_t *req) {
+    char reply[256] = "{}";
+    int status = 200;
+    if (req->method == HTTP_GET) {
+        status = s_cfg.form_cb(NULL, 0, reply, sizeof(reply));
+    } else {
+        if (!management_request(req)) return wifi_response(req, "403 Forbidden", "{\"error\":\"请从设备显示的地址打开网页\"}");
+        if (!req->content_len || req->content_len > 1024)
+            return wifi_response(req, "400 Bad Request", "{\"error\":\"内容长度不对\"}");
+        char body[1025] = {0};
+        if (!receive_credentials_body(body, req->content_len, receive_body, receive_stopped, receive_now, req)) {
+            clear_secret(body, sizeof(body));
+            return wifi_response(req, "408 Request Timeout", "{\"error\":\"接收超时，请重试\"}");
+        }
+        status = s_cfg.form_cb(body, req->content_len, reply, sizeof(reply));
+        clear_secret(body, sizeof(body));
+    }
+    httpd_resp_set_type(req, "application/json; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_status(req, status == 200 ? "200 OK" : status == 400 ? "400 Bad Request" : "500 Internal Server Error");
+    return httpd_resp_sendstr(req, reply);
 }
 
 static int receive_http(void *ctx, char *buf, size_t n) {
@@ -1012,15 +1039,20 @@ void read_pico_transfer_stop(void) {
 }
 
 esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
-    if (!cfg || !cfg->root_dir || !cfg->free_bytes_cb || strlen(cfg->root_dir) >= sizeof(s_root) ||
+    const bool form = cfg && cfg->form_cb && cfg->form_html;
+    if (form && (cfg->mode != READ_PICO_TRANSFER_MODE_AP && cfg->mode != READ_PICO_TRANSFER_MODE_STA)) return ESP_ERR_INVALID_ARG;
+    if (!form && (!cfg || !cfg->root_dir || !cfg->free_bytes_cb || strlen(cfg->root_dir) >= sizeof(s_root) ||
         (cfg->font_dir && (cfg->is_flash || !cfg->font_dir[0] || strlen(cfg->font_dir) >= sizeof(s_font_root))) ||
         (cfg->comic_dir && (cfg->is_flash || !cfg->comic_dir[0] || strlen(cfg->comic_dir) >= sizeof(s_comic_root))) ||
-        (cfg->mode != READ_PICO_TRANSFER_MODE_AP && cfg->mode != READ_PICO_TRANSFER_MODE_STA)) return ESP_ERR_INVALID_ARG;
+        (cfg->mode != READ_PICO_TRANSFER_MODE_AP && cfg->mode != READ_PICO_TRANSFER_MODE_STA))) return ESP_ERR_INVALID_ARG;
     if (s_wifi || s_netif || s_http) return ESP_ERR_INVALID_STATE;
-    s_cfg = *cfg; strcpy(s_root, cfg->root_dir); s_cfg.root_dir = s_root;
-    snprintf(s_font_root, sizeof(s_font_root), "%s", cfg->font_dir ? cfg->font_dir : "");
+    s_cfg = *cfg;
+    // 表单模式不碰存储：没有根目录、字体和漫画目录。/ Form mode never touches storage: no root, font or comic dirs.
+    snprintf(s_root, sizeof(s_root), "%s", form ? "" : cfg->root_dir);
+    s_cfg.root_dir = s_root;
+    snprintf(s_font_root, sizeof(s_font_root), "%s", !form && cfg->font_dir ? cfg->font_dir : "");
     s_cfg.font_dir = s_font_root[0] ? s_font_root : NULL;
-    snprintf(s_comic_root, sizeof(s_comic_root), "%s", cfg->comic_dir ? cfg->comic_dir : "");
+    snprintf(s_comic_root, sizeof(s_comic_root), "%s", !form && cfg->comic_dir ? cfg->comic_dir : "");
     s_cfg.comic_dir = s_comic_root[0] ? s_comic_root : NULL;
     portENTER_CRITICAL(&s_lock);
     memset(&s_status, 0, sizeof(s_status)); s_status.state = READ_PICO_TRANSFER_STARTING;
@@ -1034,9 +1066,9 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     publish_credentials(&saved);
     if (cfg->mode == READ_PICO_TRANSFER_MODE_STA && saved.version != 1) { err = ESP_ERR_NOT_FOUND; goto fail; }
     struct stat st;
-    if (stat(cfg->root_dir, &st) || !S_ISDIR(st.st_mode)) { err = ESP_ERR_NOT_FOUND; goto fail; }
     unsigned removed = 0, restored = 0;
-    if (cleanup_interrupted(cfg->root_dir, &removed, &restored)) {
+    if (!form && (stat(cfg->root_dir, &st) || !S_ISDIR(st.st_mode))) { err = ESP_ERR_NOT_FOUND; goto fail; }
+    if (!form && cleanup_interrupted(cfg->root_dir, &removed, &restored)) {
         ESP_LOGW("transfer", "cleanup failed removed=%u restored=%u", removed, restored);
         err = ESP_FAIL; goto fail;
     }
@@ -1095,6 +1127,11 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     http.stack_size = 12288; http.max_uri_handlers = 12; http.recv_wait_timeout = 5;
     http.lru_purge_enable = true;
     err = httpd_start(&s_http, &http); if (err != ESP_OK) goto fail;
+    const httpd_uri_t form_routes[] = {
+        { .uri = "/", .method = HTTP_GET, .handler = index_handler },
+        { .uri = "/form", .method = HTTP_GET, .handler = form_handler },
+        { .uri = "/form", .method = HTTP_POST, .handler = form_handler },
+    };
     const httpd_uri_t routes[] = {
         { .uri = "/", .method = HTTP_GET, .handler = index_handler },
         { .uri = "/info", .method = HTTP_GET, .handler = info_handler },
@@ -1108,8 +1145,10 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
         { .uri = "/wifi", .method = HTTP_POST, .handler = wifi_handler },
         { .uri = "/wifi", .method = HTTP_DELETE, .handler = wifi_handler },
     };
-    for (size_t i = 0; i < sizeof(routes)/sizeof(*routes); ++i) {
-        err = httpd_register_uri_handler(s_http, &routes[i]); if (err != ESP_OK) goto fail;
+    const httpd_uri_t *route_list = form ? form_routes : routes;
+    const size_t route_count = form ? sizeof(form_routes) / sizeof(*form_routes) : sizeof(routes) / sizeof(*routes);
+    for (size_t i = 0; i < route_count; ++i) {
+        err = httpd_register_uri_handler(s_http, &route_list[i]); if (err != ESP_OK) goto fail;
     }
     if (cfg->mode == READ_PICO_TRANSFER_MODE_AP) {
         portENTER_CRITICAL(&s_lock);

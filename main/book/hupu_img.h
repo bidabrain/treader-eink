@@ -19,6 +19,9 @@
 /// Get jpg scaled to w x h in gray; returns it from memory or the TF cache, else queues a build and returns NULL.
 const uint8_t* hupu_img_get(const char* jpg, int w, int h);
 
+/// 这张图解码失败过（不会再试）。/ Whether this image failed to decode (it will not be retried).
+bool hupu_img_failed(const char* jpg, int w, int h);
+
 /// 页面 on_tick 调用：生成一张排队的图。队列刚清空且有新图时返回 true，页面整页重画一次。
 /// Call from on_tick: build one queued image. Returns true when the queue just emptied with a new image.
 bool hupu_img_tick(void);

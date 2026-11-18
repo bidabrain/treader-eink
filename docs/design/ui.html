@@ -135,6 +135,39 @@
   .phone li.now span:last-child { color: #222; }
   .phone .fold { color: #777; font-size: 15px; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 12px; }
 </style>
+<style>
+  .cat { position: absolute; left: 40px; right: 40px; height: 136px; border-bottom: 2px solid var(--line); }
+  .cat .ico { position: absolute; left: 0; top: 30px; width: 76px; height: 76px; border: 2px solid #000; border-radius: 18px; display: flex; align-items: center; justify-content: center; }
+  .cat .ico svg { width: 44px; height: 44px; }
+  .cat .tt { position: absolute; left: 104px; top: 24px; font-size: 34px; font-weight: 700; }
+  .cat .sm { position: absolute; left: 104px; right: 40px; top: 78px; font-size: 26px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cat .go { position: absolute; right: 0; top: 46px; font-size: 34px; }
+  .sw { position: absolute; right: 40px; width: 100px; height: 54px; border-radius: 27px; border: 3px solid #000; }
+  .sw::after { content: ""; position: absolute; top: 5px; left: 6px; width: 38px; height: 38px; border-radius: 50%; background: #fff; border: 3px solid #000; box-sizing: border-box; }
+  .sw.on { background: #000; }
+  .sw.on::after { left: auto; right: 6px; border-color: #fff; }
+  .fixed { position: absolute; right: 40px; font-size: 28px; color: var(--mid); }
+  .tabrow { position: absolute; left: 40px; right: 40px; height: 100px; border-bottom: 2px solid var(--line); display: flex; align-items: center; gap: 22px; font-size: 32px; }
+  .tabrow svg { width: 40px; height: 40px; }
+  .tabrow .mid { font-size: 26px; }
+  .xrow { position: absolute; left: 40px; right: 40px; height: 184px; border-bottom: 2px solid var(--line); }
+  .xrow .th { position: absolute; left: 0; top: 12px; width: 120px; height: 160px; border: 2px solid #000; }
+  .xrow .t2 { left: 144px; right: 0; top: 16px; font-size: 30px; line-height: 42px; }
+  .xrow .meta { left: 144px; top: 120px; }
+  .xrow .tag { margin-left: 0; margin-right: 10px; vertical-align: 2px; }
+  .tabs.six .tab { font-size: 26px; }
+  .tabs.six .tab .ic { width: 84px; }
+  .dlg { position: absolute; left: 92px; right: 92px; top: 500px; height: 220px; background: #fff; border: 3px solid #000; border-radius: 22px; }
+</style>
+<style>
+  .big { position: absolute; left: 0; right: 0; text-align: center; }
+  .warnbox { position: absolute; left: 40px; right: 40px; border: 3px solid #000; border-radius: 18px; padding: 22px 26px; font-size: 28px; line-height: 42px; }
+  .steps { position: absolute; left: 40px; right: 40px; font-size: 28px; line-height: 46px; }
+  .steps b { display: inline-block; width: 42px; height: 42px; border-radius: 50%; background: #000; color: #fff; text-align: center; line-height: 42px; font-size: 24px; margin-right: 16px; }
+  .meter { position: absolute; left: 40px; right: 40px; display: flex; justify-content: space-between; font-size: 30px; border-bottom: 2px solid var(--line); padding: 18px 0; }
+  .meter span:last-child { font-weight: 700; }
+  .dim { position: absolute; inset: 0; background: rgba(255,255,255,.65); }
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
@@ -155,9 +188,20 @@
   </defs>
 </svg>
 
-<h1>Treader 界面与功能（0.4.1）</h1>
-<p class="lead">这是 Treader 当前版本（0.4.1）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
-底部五个标签页：书库、漫画、番茄、虎扑、设置。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-xhs" viewBox="0 0 40 40"><rect x="7" y="5" width="26" height="30" rx="5"/><path d="M20 28l-6.2-6.2a3.9 3.9 0 0 1 6.2-4.6 3.9 3.9 0 0 1 6.2 4.6z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 40 40"><rect x="5" y="22" width="30" height="12" rx="3"/><path d="M15 22v12M25 22v12"/><path d="M9 8h22M9 14h14"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 40 40"><path d="M5 16a21 21 0 0 1 30 0M10 22a14 14 0 0 1 20 0M15 28a7 7 0 0 1 10 0"/><circle cx="20" cy="33" r="1.6"/></symbol>
+    <symbol id="i-source" viewBox="0 0 40 40"><rect x="7" y="6" width="26" height="11" rx="3"/><rect x="7" y="23" width="26" height="11" rx="3"/><path d="M12 11.5h2M12 28.5h2"/></symbol>
+    <symbol id="i-usb" viewBox="0 0 40 40"><path d="M20 4v26"/><path d="M15 9l5-5 5 5"/><path d="M20 22l-8-5v-5"/><path d="M20 26l8-5v-4"/><rect x="25" y="13" width="6" height="5"/><circle cx="12" cy="11" r="2.5"/><circle cx="20" cy="33" r="3.5"/></symbol>
+    <symbol id="i-power" viewBox="0 0 40 40"><path d="M13 11a12 12 0 1 0 14 0"/><path d="M20 5v14"/></symbol>
+  </defs>
+</svg>
+
+<h1>Treader 界面与功能（0.5.0）</h1>
+<p class="lead">这是 Treader 当前版本（0.5.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
+底部最多六个标签页：书库、漫画、番茄、小红书、虎扑、设置（设置 › 底部标签里可以关掉中间四个，㉟）。设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
 
 <h2>书库、阅读与锁屏</h2>
 <div class="grid">
@@ -200,10 +244,11 @@
   <div class="pbar" style="left:136px;right:130px;top:954px"><i style="width:8%"></i></div><div class="a r" style="top:942px;font-size:26px">8%</div>
   <div class="hl soft" style="top:988px"></div>
   <div class="a" style="left:0;right:0;top:1010px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -334,10 +379,11 @@
   <div class="a b" style="left:494px;top:956px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">猫与灯塔</div>
   <div class="a b" style="left:494px;top:994px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">单本 · 看完</div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 1　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -363,10 +409,11 @@
   <div class="row" style="top:734px;height:66px"><span>第 011 话</span><span class="v">未看</span></div>
   <div class="row" style="top:800px;height:66px"><span>第 012 话</span><span class="v">未看</span></div>
   <div class="a" style="left:0;right:0;top:1030px;text-align:center;font-size:30px">‹　　2 / 2　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -426,7 +473,7 @@
 
 </div>
 
-<h2>Wi-Fi 与传书</h2>
+<h2>Wi-Fi 传书</h2>
 <div class="grid">
 
 <!-- ⑪ 传书 -->
@@ -454,7 +501,7 @@
   <div style="position:absolute;left:40px;top:1096px;width:512px;height:96px;border:2px solid #000;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:34px;box-sizing:border-box">停止并返回</div>
   <div style="position:absolute;left:564px;top:1096px;width:96px;height:96px;border:2px solid #000;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px"><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i><i style="width:40px;height:3px;background:#000"></i></div>
 </div></div>
-<figcaption><b>⑪ 传书</b>（设备屏幕，对应的手机网页是 ⑬⑭）设置 → Wi-Fi 与传书，或书库右上角的传书图标进入。上面选接入方式：“设备热点”是设备自己开热点（名称 ReadPico-xxxx，口令 readpico），手机连上后扫码打开网页；“已有 WiFi”连保存过的路由器，手机在同一网络下打开屏幕上的地址。热点模式的二维码可以在“WiFi 码”（扫了直接连热点）和“网页码”之间切换。中间是还能上传多少：TF 卡剩余空间减去给系统的预留（100 MB 和卡容量 5% 取大的），预留的部分留给阅读进度、缓存和番茄下载，传书不会把卡写满；下面是正在接收的文件、进度和已完成个数，只局部刷新。停留在这页时不自动睡眠；“停止并返回”或离开页面就关网络，回到进来之前的页面。做漫画时副标题会加上“漫画”。</figcaption></figure>
+<figcaption><b>⑪ 传书</b>（设备屏幕，对应的手机网页是 ⑬⑭）设置 → 传书 → Wi-Fi 传书，或书库右上角的传书图标再选 Wi-Fi 传书进入。上面选接入方式：“设备热点”是设备自己开热点（名称 ReadPico-xxxx，口令 readpico），手机连上后扫码打开网页；“已有 WiFi”连保存过的路由器，手机在同一网络下打开屏幕上的地址。热点模式的二维码可以在“WiFi 码”（扫了直接连热点）和“网页码”之间切换。中间是还能上传多少：TF 卡剩余空间减去给系统的预留（100 MB 和卡容量 5% 取大的），预留的部分留给阅读进度、缓存和番茄下载，传书不会把卡写满；下面是正在接收的文件、进度和已完成个数，只局部刷新。停留在这页时不自动睡眠；“停止并返回”或离开页面就关网络，回到进来之前的页面。做漫画时副标题会加上“漫画”。</figcaption></figure>
 
 <!-- ⑫ 选择 WiFi -->
 <figure><div class="frame"><div class="s">
@@ -580,7 +627,7 @@
   <span class="btn pri">开始转换并上传</span>
   </div>
 </div></div>
-<figcaption><b>⑯ 传书网页 · 上传漫画</b>（手机浏览器，对应设备上的 ⑮）设备在“Wi-Fi 与传书”页时，手机或电脑扫屏幕上的二维码打开的网页（设备自己提供，不用另装软件，热点模式下也能离线用）。上传漫画是在现有传书网页（⑬⑭）的“上传字体”下面新加的一节（示意图省略了上面两节）：选几个 CBZ，或选一个文件夹（一部漫画的多话）；“放进系列”默认用文件夹名，单个文件留空就是单本。所有 CBZ 一律先转换再上传，没有开关：图片在手机浏览器里解码、转灰度、缩到 684 宽，再存成 JPEG，WebP、PNG、JPEG 都一样处理。这样设备只需要解一种格式，翻页速度也一致。</figcaption></figure>
+<figcaption><b>⑯ 传书网页 · 上传漫画</b>（手机浏览器，对应设备上的 ⑮）设备在 Wi-Fi 传书页时，手机或电脑扫屏幕上的二维码打开的网页（设备自己提供，不用另装软件，热点模式下也能离线用）。上传漫画是在现有传书网页（⑬⑭）的“上传字体”下面新加的一节（示意图省略了上面两节）：选几个 CBZ，或选一个文件夹（一部漫画的多话）；“放进系列”默认用文件夹名，单个文件留空就是单本。所有 CBZ 一律先转换再上传，没有开关：图片在手机浏览器里解码、转灰度、缩到 684 宽，再存成 JPEG，WebP、PNG、JPEG 都一样处理。这样设备只需要解一种格式，翻页速度也一致。</figcaption></figure>
 
 <!-- ⑰ 传书网页 · 转换上传中 -->
 <figure><div class="phone"><div class="web">
@@ -607,6 +654,79 @@
 
 </div>
 
+<h2>USB 传书</h2>
+<p class="lead">用数据线连电脑，TF 卡整张交给电脑当 U 盘。传输期间设备只显示传输页，结束一律重启恢复。平时插线还是调试串口（刷机照常），只有点了“开始”才变成 U 盘。</p>
+<div class="grid">
+<!-- U1 设置 › 传书 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">传书</div>
+  <div class="cat" style="top:170px"><span class="ico"><svg class="icon"><use href="#i-wifi"/></svg></span><span class="tt">Wi-Fi 传书</span><span class="sm">手机或电脑浏览器上传 · HomeNet</span><span class="go">›</span></div>
+  <div class="cat" style="top:306px;border:0"><span class="ico"><svg class="icon"><use href="#i-usb"/></svg></span><span class="tt">USB 传书</span><span class="sm">连电脑当 U 盘，拷大文件更快</span><span class="go">›</span></div>
+  <div class="a l mid" style="top:470px;right:40px;font-size:24px;line-height:36px">Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停。</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>U1 设置 › 传书</b>设置首页的“Wi-Fi 与传书”改名“传书”，点进去两种方式各一行。书库右上角的传书按钮也先到这一页。后台在下载或同步时，USB 传书那一行写“后台正在下载，完成后再用”，点了没反应。</figcaption></figure>
+
+<!-- U2 开始前 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">USB 传书</div>
+  <div class="big" style="top:190px"><svg class="icon" style="width:120px;height:120px;stroke-width:2"><use href="#i-usb"/></svg></div>
+  <div class="steps" style="top:350px"><b>1</b>用数据线连上电脑<br><b>2</b>点“开始”，电脑上出现 U 盘<br><b>3</b>拷完在电脑上“弹出”这个 U 盘<br><b>4</b>回到设备点“结束传输”</div>
+  <div class="warnbox" style="top:580px">开始后：<br>· 设备其他功能全部暂停，只显示传输页<br>· 换成内置字体，正在看的书先存好进度<br>· Wi-Fi 和后台下载都会停掉</div>
+  <div class="a mid" style="left:40px;right:40px;top:836px;font-size:24px;line-height:36px">TF 卡可用 41.2 GB。书放 books/，漫画放 comics/（一部一个文件夹），字体放 fonts/，壁纸放 wallpapers/。</div>
+  <div class="pill blk" style="left:40px;right:40px;top:960px;height:96px;font-size:34px">开始</div>
+</div></div>
+<figcaption><b>U2 USB 传书 · 开始前</b>说明四步和开始后会发生什么。没插 TF 卡时“开始”变灰，写“没有 TF 卡”。没接电脑也能点开始，等连上线电脑会自动认出。左上角返回或 KEY1 退出，什么都不改。这一页没有底部标签栏。</figcaption></figure>
+<!-- U3 传输中 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:31</span><span class="batt">83% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">USB 传书中</div>
+  <div class="big" style="top:200px"><svg class="icon" style="width:140px;height:140px;stroke-width:2"><use href="#i-usb"/></svg></div>
+  <div class="big b" style="top:370px;font-size:40px">已连接电脑</div>
+  <div class="big mid" style="top:430px;font-size:28px">在电脑上打开 新出现的 U 盘</div>
+  <div class="meter" style="top:520px"><span>电脑写入</span><span>286 MB</span></div>
+  <div class="meter" style="top:600px"><span>电脑读取</span><span>12 MB</span></div>
+  <div class="meter" style="top:680px"><span>状态</span><span>正在写入…</span></div>
+  <div class="a mid" style="left:40px;right:40px;top:800px;font-size:26px;line-height:40px">拷完先在电脑上“弹出”U 盘（Windows 右下角“安全删除硬件”，Mac 拖到废纸篓或点 ⏏），再点下面的按钮。</div>
+  <div class="pill out" style="left:40px;right:40px;top:960px;height:96px;font-size:34px;font-weight:700">结束传输</div>
+</div></div>
+<figcaption><b>U3 传输中</b>设备只剩这一页：标签栏、菜单、KEY3、锁屏都不响应，不自动睡眠。电源键短按不锁屏（避免断开 U 盘）。读写量每秒刷新一次（只刷数字那几行）。没连电脑时大字写“等待连接电脑…”；电脑弹出后写“电脑已弹出，可以结束”，按钮变黑底。</figcaption></figure>
+
+<!-- U4 没弹出就结束 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:33</span><span class="batt">83% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px">USB 传书中</div>
+  <div class="big" style="top:200px"><svg class="icon" style="width:140px;height:140px;stroke-width:2"><use href="#i-usb"/></svg></div>
+  <div class="big b" style="top:370px;font-size:40px">已连接电脑</div>
+  <div class="dim"></div>
+  <div class="dlg" style="top:420px;height:400px">
+    <div class="big b" style="top:40px;font-size:36px">电脑还没弹出 U 盘</div>
+    <div class="a" style="left:36px;right:36px;top:108px;font-size:28px;line-height:42px">现在结束，电脑上还没写完的文件可能会坏掉。建议先在电脑上弹出。</div>
+    <div class="pill out" style="left:36px;width:230px;top:278px;height:84px;font-size:30px">返回</div>
+    <div class="pill blk" style="right:36px;width:230px;top:278px;height:84px;font-size:30px">仍然结束</div>
+  </div>
+</div></div>
+<figcaption><b>U4 没弹出就点结束</b>电脑弹出（或拔掉数据线）以后点“结束传输”不弹这个框。电脑还挂着 U 盘时先确认。拔线也算结束的一种：设备发现 USB 断开 3 秒后自动走结束流程。</figcaption></figure>
+
+<!-- U5 恢复中 -->
+<figure><div class="frame"><div class="s">
+  <div class="big b" style="top:470px;font-size:44px">正在恢复…</div>
+  <div class="big mid" style="top:550px;font-size:28px;line-height:44px">重启后检查 TF 卡、重新扫描书库和漫画<br>约 5 秒</div>
+</div></div>
+<figcaption><b>U5 结束 · 恢复</b>点结束后设备停止 U 盘、重启，开机后回到书库；书库和漫画按新文件重新扫描，保存的字体自动换回。重启是最稳的恢复方式：USB 口换回调试串口、卡重新挂载、所有缓存从卡上重读。</figcaption></figure>
+</div>
+
 <h2>番茄小说与书城</h2>
 <div class="grid">
 
@@ -629,10 +749,11 @@
   <div class="hl soft" style="top:862px"></div>
   <div class="a" style="left:40px;top:874px;font-size:34px">斗破苍穹</div><div class="a" style="left:40px;top:918px;font-size:26px">天蚕土豆 · 1648 章</div><div class="a r" style="top:890px;font-size:28px">未读</div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -678,10 +799,11 @@
   <div class="a" style="left:136px;top:618px;font-size:26px">连载 · 302 章 · 88 万字</div>
   <div class="hl soft" style="top:654px"></div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 2　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -724,10 +846,11 @@
     <span class="chip">抗战谍战</span><span class="chip">游戏体育</span><span class="chip">动漫衍生</span>
     <span class="chip">男频衍生</span>
   </div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -769,10 +892,11 @@
   <div class="a b" style="left:494px;top:962px;width:150px;font-size:24px;line-height:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">9 重生之商海浮沉</div>
   <div class="a" style="left:494px;top:1000px;width:150px;font-size:22px;line-height:26px;white-space:nowrap">在读 9.1万</div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -796,6 +920,94 @@
 </div></div>
 <figcaption><b>㉔ 书城详情</b>封面多半在榜单页已经取好；还缺才单取这一本。“下载到书库”直接用榜单里的 book_id，和搜索下载走同一条路；已在书架的书按钮变成“开始阅读”。</figcaption></figure>
 
+</div>
+
+<h2>小红书（经自建 rednote 服务器，只读）</h2>
+<div class="grid">
+<!-- ㊻ 关注 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">小红书</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新</div>
+  <div class="seg"><span class="on">关注</span><span>推荐</span></div>
+  <div class="a l mid" style="top:240px;font-size:26px">关注的博主 · 23 篇 · 更新于 21:05</div>
+  <div class="xrow" style="top:284px"><span class="th g1"></span><span class="t2"><span class="tag">新</span>秋天的第一顿火锅，自己在家调的蘸料配方</span><span class="meta">别小乔我~ · 6 页 · 赞 1.2万</span></div>
+  <div class="xrow" style="top:468px"><span class="th g4"></span><span class="t2"><span class="tag">新</span>首尔三天两夜路线｜不排队的小众咖啡店</span><span class="meta">권태이 KWON TAEI · 9 页 · 赞 3088</span></div>
+  <div class="xrow" style="top:652px"><span class="th g2"></span><span class="t2">墨水屏阅读器折腾记：字体、排版和续航</span><span class="meta">别小乔我~ · 4 页 · 赞 512</span></div>
+  <div class="xrow" style="top:836px"><span class="th g3"></span><span class="t2">一周通勤穿搭，五套都不超过三百块</span><span class="meta">别小乔我~ · 7 页 · 赞 2.4万</span></div>
+  <div class="a" style="left:0;right:0;top:1036px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㊻ 小红书 · 关注</b>服务器定时拉好的关注博主笔记，每页四篇。左边是封面缩略图，右边标题最多两行，下面是作者、页数（图片切屏后的张数）、赞数。没看过的标“新”。点“刷新”只问自己的服务器有没有新的，不碰小红书，一两秒就好。列表和封面都缓存在 TF 卡上，没网也能看已经下好的。</figcaption></figure>
+<!-- ㊼ 推荐 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">小红书</div>
+  <div class="a r" style="top:98px;font-size:30px;display:flex;align-items:center;gap:8px"><svg class="icon" style="width:34px;height:34px"><use href="#i-sync"/></svg>刷新推荐</div>
+  <div class="seg"><span>关注</span><span class="on">推荐</span></div>
+  <div class="a l mid" style="top:240px;font-size:26px">首页推荐 · 21:12 · 今天还能拉 52 次</div>
+  <div class="xrow" style="top:284px"><span class="th g2"></span><span class="t2">62 岁奥斯卡影帝，刚把 1.5 亿片酬捐了</span><span class="meta">电影情报局 · 已下载 · 3 页</span></div>
+  <div class="xrow" style="top:468px"><span class="th g1"></span><span class="t2">十分钟早餐｜一周不重样的三明治</span><span class="meta">厨房小白 · 点开后下载</span></div>
+  <div class="xrow" style="top:652px"><span class="th g4"></span><span class="t2">把阳台改成小书房，花了不到两千</span><span class="meta">住进光里 · 点开后下载</span></div>
+  <div class="xrow" style="top:836px"><span class="th g3"></span><span class="t2">秋冬护手霜横评，这三支最好用</span><span class="meta">成分党阿青 · 点开后下载</span></div>
+  <div class="a" style="left:0;right:0;top:1036px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㊼ 小红书 · 推荐</b>只有图文，视频服务器已经滤掉。点“刷新推荐”服务器才去读一次首页（约 5～15 秒，期间右上角显示“拉取中…”）；10 分钟内再点直接给上次的列表。点开没下载过的那篇，服务器现拉（㊽ 的等待框），拉过的写“已下载”。灰字里是今天剩余次数，用完了显示“今天的推荐次数用完了”。</figcaption></figure>
+<!-- ㊽ 打开推荐笔记时的等待 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l b" style="top:88px;font-size:52px;line-height:60px">小红书</div>
+  <div class="seg"><span>关注</span><span class="on">推荐</span></div>
+  <div class="a l mid" style="top:240px;font-size:26px">首页推荐 · 21:12 · 今天还能拉 52 次</div>
+  <div class="xrow" style="top:284px;opacity:.35"><span class="th g2"></span><span class="t2">62 岁奥斯卡影帝，刚把 1.5 亿片酬捐了</span><span class="meta">电影情报局 · 已下载 · 3 页</span></div>
+  <div class="xrow" style="top:468px;opacity:.35"><span class="th g1"></span><span class="t2">十分钟早餐｜一周不重样的三明治</span><span class="meta">厨房小白 · 点开后下载</span></div>
+  <div class="xrow" style="top:652px;opacity:.35"><span class="th g4"></span><span class="t2">把阳台改成小书房，花了不到两千</span><span class="meta">住进光里 · 点开后下载</span></div>
+  <div class="dlg"><div class="a b" style="left:0;right:0;top:44px;text-align:center;font-size:34px">正在拉取这篇笔记…</div>
+    <div class="a mid" style="left:0;right:0;top:104px;text-align:center;font-size:26px">服务器要打开小红书，约 10～20 秒</div>
+    <div class="a" style="left:0;right:0;top:156px;text-align:center;font-size:26px">点空白处取消</div></div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㊽ 推荐 · 拉取中</b>点开推荐里还没下载的笔记时弹出等待框（真机上背景不变淡，这里只是示意）。拉好后直接进入 ㊾。取消只是设备不等了，服务器那边照样拉完存好，下次点开就是“已下载”。出错时框里写原因（暂停验证、次数用完、服务器连不上）。</figcaption></figure>
+<!-- ㊾ 看图 -->
+<figure><div class="frame"><div class="s">
+  <div class="img g1" style="left:18px;top:0;width:648px;height:1000px;border:0"></div>
+  <div class="a" style="left:0;right:0;top:1120px;height:96px;background:#fff;border-top:2px solid #000"></div>
+  <div class="a l" style="top:1146px;font-size:30px">‹ 返回</div>
+  <div class="a b" style="left:0;right:0;top:1146px;text-align:center;font-size:30px">2 / 6</div>
+  <div class="a r" style="top:1146px;font-size:30px">正文 ›</div>
+</div></div>
+<figcaption><b>㊾ 笔记 · 看图</b>打开笔记先看图，和小红书一样。图片已经在服务器上处理成灰度、宽 648 以内，一屏一张，太长的图服务器已切成几屏。点左右两侧或滑动翻图，最后一张再往后就是正文（㊿）。图片按需下载、缓存在卡上，同时预取下一张。底栏的“正文 ›”直接跳正文。</figcaption></figure>
+<!-- ㊿ 正文与评论 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:92px;font-size:30px">‹ 别小乔我~</div>
+  <div class="seg" style="top:150px"><span>图片 6</span><span class="on">正文</span><span>评论 20</span></div>
+  <div class="t2" style="left:40px;right:40px;top:240px;font-size:38px;line-height:50px">秋天的第一顿火锅，自己在家调的蘸料配方</div>
+  <div class="meta" style="left:40px;top:350px">别小乔我~ · 11-18 · 赞 1.2万 · 评论 320</div>
+  <div class="hl soft" style="top:394px"></div>
+  <div class="ptext" style="top:412px">降温了就想吃火锅！试了好几次终于调出最喜欢的蘸料比例，分享给大家～<br>　　1. 麻酱两勺，用温水一点点澥开，不要一次倒太多水。<br>　　2. 蒜末、香菜、小米辣各一小把。<br>　　3. 蚝油一勺、香油半勺，最后撒点芝麻。<br>　　#火锅 #蘸料 #在家做饭</div>
+  <div class="a" style="left:0;right:0;top:1124px;text-align:center;font-size:30px">‹　　1 / 1　　›</div>
+</div></div>
+<figcaption><b>㊿ 笔记 · 正文 / 评论</b>顶部切“图片 / 正文 / 评论”。正文分页显示，话题标签照原样留着。“评论”是服务器存下的前 20 条热门评论，样式同虎扑“亮了”。只能看，不能点赞、评论、收藏。</figcaption></figure>
 </div>
 
 <h2>虎扑（只读）</h2>
@@ -827,10 +1039,11 @@
   <div class="thumb g4" style="left:494px;top:894px"></div>
   <div class="hl soft" style="top:1018px"></div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 6　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -912,10 +1125,11 @@
   <div class="meta" style="left:40px;top:976px">步行街主干道 · 1288 回复</div>
   <div class="hl soft" style="top:1018px"></div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 4　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -959,10 +1173,11 @@
   <div class="zone" style="left:246px;top:890px">老鹰专区</div>
   <div class="zone" style="left:452px;top:890px">魔术专区</div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 3　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -993,10 +1208,11 @@
   <div class="meta" style="left:40px;top:940px">虎扑JR123 · 8小时前 · 640 回复</div>
   <div class="hl soft" style="top:982px"></div>
   <div class="a" style="left:0;right:0;top:1040px;text-align:center;font-size:30px">‹　　1 / 20　　›</div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -1040,10 +1256,11 @@
   <div class="a b" style="left:454px;width:190px;top:912px;font-size:32px;text-align:center">太阳</div>
   <div class="meta" style="left:0;right:0;top:966px;text-align:center">12:00 开赛</div>
   <div class="hl soft" style="top:1012px"></div>
-  <div class="tabs">
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
@@ -1102,64 +1319,118 @@
 <h2>设置</h2>
 <div class="grid">
 
-<!-- ㉞ 设置 -->
+<!-- ㉞ 设置首页 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l b" style="top:88px;font-size:52px">设置</div>
-  <div class="sec" style="top:154px;font-size:26px">阅读与显示</div>
-  <div class="row" style="top:190px;height:66px"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
-  <div class="row" style="top:256px;height:66px;border:0"><span>隐藏虎扑</span><span class="v">关闭</span></div>
-  <div class="sec" style="top:326px;font-size:26px">电源</div>
-  <div class="row" style="top:362px;height:66px"><span>睡眠与锁屏</span><span class="v">›</span></div>
-  <div class="row" style="top:428px;height:66px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
-  <div class="sec" style="top:498px;font-size:26px">连接</div>
-  <div class="row" style="top:534px;height:66px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
-  <div class="row" style="top:600px;height:66px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
-  <div class="row" style="top:666px;height:66px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
-  <div class="sec" style="top:736px;font-size:26px">同步</div>
-  <div class="row" style="top:772px;height:66px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
-  <div class="row" style="top:838px;height:66px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
-  <div class="sec" style="top:908px;font-size:26px">设备</div>
-  <div class="row" style="top:944px;height:66px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
-  <div class="row" style="top:1010px;height:66px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
-  <div class="tabs">
+  <div class="cat" style="top:170px"><span class="ico"><svg class="icon"><use href="#i-aa"/></svg></span><span class="tt">显示与阅读</span><span class="sm">寒蝉端黑体 · 锁屏壁纸 lake.jpg</span><span class="go">›</span></div>
+  <div class="cat" style="top:306px"><span class="ico"><svg class="icon"><use href="#i-grid"/></svg></span><span class="tt">底部标签</span><span class="sm">显示 5 个：书库、漫画、番茄、小红书、设置</span><span class="go">›</span></div>
+  <div class="cat" style="top:442px"><span class="ico"><svg class="icon"><use href="#i-wifi"/></svg></span><span class="tt">传书</span><span class="sm">Wi-Fi 传书：HomeNet · USB 传书</span><span class="go">›</span></div>
+  <div class="cat" style="top:578px"><span class="ico"><svg class="icon"><use href="#i-source"/></svg></span><span class="tt">内容来源</span><span class="sm">番茄：内置服务器 · 小红书：192.168.1.20</span><span class="go">›</span></div>
+  <div class="cat" style="top:714px"><span class="ico"><svg class="icon"><use href="#i-sync"/></svg></span><span class="tt">同步</span><span class="sm">WebDAV · 上次同步 11-18 20:40</span><span class="go">›</span></div>
+  <div class="cat" style="top:850px;border:0"><span class="ico"><svg class="icon"><use href="#i-power"/></svg></span><span class="tt">电源与设备</span><span class="sm">睡眠与锁屏 · TF 卡可用 41.2 GB · 关于</span><span class="go">›</span></div>
+  <div class="a mid" style="left:0;right:0;top:1030px;text-align:center;font-size:24px">Treader 0.5.0</div>
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
-    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-ball"/></svg></span>虎扑</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>㉞ 设置</b>五组十一项。“隐藏虎扑”点一下就切换，整屏刷新，底部变成四个标签、菜单里也不再有虎扑（㉟）；再点一次恢复。内置服务器只显示“内置服务器”，不露地址和密码。服务器、WebDAV、榜单地址在本页用键盘编辑。</figcaption></figure>
+<figcaption><b>㉞ 设置首页</b>六个大分类，每行一个线条图标、粗体名称和一行灰字摘要（当前值）。一屏放完不用翻页，点哪行进哪一类。“传书”里是 Wi-Fi 传书和 USB 传书两种（U1）。底部是当前显示的标签（这里隐藏了虎扑，所以五个）。</figcaption></figure>
 
-<!-- ㉟ 设置 · 隐藏虎扑后 -->
+<!-- ㉟ 底部标签 -->
 <figure><div class="frame"><div class="s">
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
-  <div class="a l b" style="top:88px;font-size:52px">设置</div>
-  <div class="sec" style="top:154px;font-size:26px">阅读与显示</div>
-  <div class="row" style="top:190px;height:66px"><span>字体</span><span class="v">寒蝉端黑体 ›</span></div>
-  <div class="row" style="top:256px;height:66px;border:0"><span>隐藏虎扑</span><span class="v">已开启（四个标签）</span></div>
-  <div class="sec" style="top:326px;font-size:26px">电源</div>
-  <div class="row" style="top:362px;height:66px"><span>睡眠与锁屏</span><span class="v">›</span></div>
-  <div class="row" style="top:428px;height:66px;border:0"><span>锁屏壁纸</span><span class="v">lake.jpg ›</span></div>
-  <div class="sec" style="top:498px;font-size:26px">连接</div>
-  <div class="row" style="top:534px;height:66px"><span>Wi-Fi 与传书</span><span class="v">HomeNet ›</span></div>
-  <div class="row" style="top:600px;height:66px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
-  <div class="row" style="top:666px;height:66px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
-  <div class="sec" style="top:736px;font-size:26px">同步</div>
-  <div class="row" style="top:772px;height:66px"><span>WebDAV</span><span class="v">dav.jianguoyun.com/dav/treader ›</span></div>
-  <div class="row" style="top:838px;height:66px;border:0"><span>立即同步</span><span class="v">进度和番茄书架 ›</span></div>
-  <div class="sec" style="top:908px;font-size:26px">设备</div>
-  <div class="row" style="top:944px;height:66px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
-  <div class="row" style="top:1010px;height:66px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
-  <div class="tabs">
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">底部标签</div>
+  <div class="a l mid" style="top:176px;right:40px;font-size:26px;line-height:38px">关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。</div>
+  <div class="tabrow" style="top:270px"><svg class="icon"><use href="#i-books"/></svg>书库<span class="fixed" style="top:34px">固定</span></div>
+  <div class="tabrow" style="top:370px"><svg class="icon"><use href="#i-comic"/></svg>漫画<span class="sw on" style="top:21px"></span></div>
+  <div class="tabrow" style="top:470px"><svg class="icon"><use href="#i-tomato"/></svg>番茄<span class="sw on" style="top:21px"></span></div>
+  <div class="tabrow" style="top:570px"><svg class="icon"><use href="#i-xhs"/></svg>小红书<span class="sw on" style="top:21px"></span></div>
+  <div class="tabrow" style="top:670px"><svg class="icon"><use href="#i-ball"/></svg>虎扑<span class="sw" style="top:21px"></span></div>
+  <div class="tabrow" style="top:770px;border:0"><svg class="icon"><use href="#i-set"/></svg>设置<span class="fixed" style="top:34px">固定</span></div>
+  <div class="a l mid" style="top:900px;right:40px;font-size:26px;line-height:38px">下面的标签栏就是效果，开关一下整屏刷新一次。</div>
+  <div class="tabs six">
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
     <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
     <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
   </div>
 </div></div>
-<figcaption><b>㉟ 设置 · 隐藏虎扑后</b>“隐藏虎扑”打开后底部只剩书库、漫画、番茄、设置四个标签，平分宽度；虎扑的缓存和关注都还在，关掉开关就回来。设置存在设备里，重启后保持。</figcaption></figure>
+<figcaption><b>㉟ 设置 › 底部标签</b>代替原来的“隐藏虎扑”。每个标签一行，开关是黑底（显示）或白底（隐藏）；书库和设置写着“固定”，点了没反应。升级后沿用旧设置：原来隐藏了虎扑的，这里虎扑就是关的。中键短按仍回书库。</figcaption></figure>
+
+<!-- ㊸ 内容来源 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">内容来源</div>
+  <div class="sec" style="top:176px;font-size:26px">番茄小说</div>
+  <div class="row" style="top:212px;height:72px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
+  <div class="row" style="top:284px;height:72px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
+  <div class="sec" style="top:386px;font-size:26px">小红书</div>
+  <div class="row" style="top:422px;height:84px"><span>手机网页填写</span><span class="sw" style="top:13px;right:0"></span></div>
+  <div class="row" style="top:506px;height:72px"><span>服务器地址</span><span class="v">192.168.1.20:8091 ›</span></div>
+  <div class="row" style="top:578px;height:72px"><span>设备令牌</span><span class="v">已填写 ›</span></div>
+  <div class="row" style="top:650px;height:72px;border:0"><span>测试连接</span><span class="v">正常 · 关注 23 篇 ›</span></div>
+  <div class="a l mid" style="top:740px;right:40px;font-size:24px;line-height:36px">地址和令牌在 rednote 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㊸ 设置 › 内容来源</b>按来源分组。番茄两项照旧。小红书第一行是“手机网页填写”开关（㊹）；也可以点“服务器地址”“设备令牌”用键盘填（令牌只露最后一位）。“测试连接”联网请求一次服务器，显示正常或出错原因。对应标签隐藏时，这一组照样能改。虎扑不用配置，不在这里。</figcaption></figure>
+
+<!-- ㊹ 手机网页填写打开后 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">内容来源</div>
+  <div class="sec" style="top:176px;font-size:26px">番茄小说</div>
+  <div class="row" style="top:212px;height:72px"><span>番茄服务器</span><span class="v">内置服务器 ›</span></div>
+  <div class="row" style="top:284px;height:72px;border:0"><span>书城榜单</span><span class="v">默认榜单 ›</span></div>
+  <div class="sec" style="top:386px;font-size:26px">小红书</div>
+  <div class="row" style="top:422px;height:84px;border:0"><span class="b">手机网页填写</span><span class="sw on" style="top:13px;right:0"></span></div>
+  <div class="a" style="left:40px;right:40px;top:516px;height:480px;border:2px solid #000;border-radius:18px"></div>
+  <div class="a" style="left:72px;top:548px;width:200px;height:200px;background:repeating-conic-gradient(#000 0 25%, #fff 0 50%) 0 0/25px 25px;border:10px solid #fff;outline:2px solid #000"></div>
+  <div class="a" style="left:300px;right:72px;top:552px;font-size:26px;line-height:38px">手机连上<b>同一个 Wi-Fi</b>（HomeNet），扫码或在浏览器打开：</div>
+  <div class="a b" style="left:300px;right:60px;top:676px;font-size:32px">192.168.1.37</div>
+  <div class="hl soft" style="left:72px;right:72px;top:786px"></div>
+  <div class="a" style="left:72px;right:72px;top:806px;font-size:28px;line-height:42px">等待网页提交…</div>
+  <div class="a mid" style="left:72px;right:72px;top:858px;font-size:24px;line-height:36px">提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>㊹ 内容来源 · 手机网页填写</b>打开开关后，设备连上已保存的 Wi-Fi（没有就开自己的热点，和传书一样），在这一页显示二维码和地址。网页提交后开关自动关掉、网页停止，设备接着测试连接，结果写在“测试连接”那一行。期间不自动休眠。网页只收地址和令牌，不能传书、改 Wi-Fi。</figcaption></figure>
+
+<!-- ㊺ 手机网页 -->
+<figure><div class="phone"><div class="web">
+  <div class="bar"><span>192.168.1.37</span></div>
+  <div class="pg">
+    <h1>小纸 Pico · 小红书设置</h1>
+    <p class="hint">地址和令牌在 rednote 面板 → 设备与外网，复制后粘贴到这里。</p>
+    <h2>服务器地址</h2>
+    <div class="box">http://192.168.1.20:8091</div>
+    <p class="hint">在外面用隧道的话填 https://pico.你的域名</p>
+    <h2>设备令牌</h2>
+    <div class="box">••••••••••••••••••••••••••••••••</div>
+    <p class="hint">已填写过的不显示原值，留空表示不改。</p>
+    <span class="btn pri">保存</span>
+    <div class="box" style="margin-top:14px">✓ 已保存。设备会自动测试连接，结果显示在设备屏幕上。<br><span class="hint">可以关掉这个网页了。</span></div>
+  </div>
+</div></div>
+<figcaption><b>㊺ 手机网页</b>手机上打开的页面。两个输入框，粘贴后点“保存”：设备保存后停掉网页服务，自动用新设置请求一次 rednote 服务器，结果显示在设备上。令牌不回显，留空表示保留原来的。</figcaption></figure>
 
 <!-- ㊱ 关于 Treader -->
 <figure><div class="frame"><div class="s">
@@ -1168,7 +1439,7 @@
   <div class="a b" style="left:96px;top:100px;font-size:36px">关于 Treader</div>
   <div class="a l b" style="top:184px;font-size:60px">Treader</div>
   <div class="a" style="left:40px;right:40px;top:256px;font-size:28px;line-height:34px">小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步</div>
-  <div class="row" style="top:322px;height:68px"><span style="font-size:30px">版本</span><span class="v">0.4.1 · TF 卡升级 ›</span></div>
+  <div class="row" style="top:322px;height:68px"><span style="font-size:30px">版本</span><span class="v">0.5.0 · TF 卡升级 ›</span></div>
   <div class="row" style="top:396px;height:68px"><span style="font-size:30px">构建时间</span><span class="v">Nov 17 2026 09:00:58 UTC</span></div>
   <div class="row" style="top:470px;height:68px;border:0"><span style="font-size:30px">项目主页</span><span class="v">github.com/bidabrain/treader-eink</span></div>
   <div class="sec" style="top:584px;font-size:26px">开源致谢</div>
@@ -1257,7 +1528,7 @@
   <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
   <div class="a l" style="top:96px;font-size:44px">‹</div>
   <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
-  <div class="row" style="top:176px;height:68px"><span style="font-size:30px">当前版本</span><span class="v">0.4.1（Nov 18 2026 23:00:00）</span></div>
+  <div class="row" style="top:176px;height:68px"><span style="font-size:30px">当前版本</span><span class="v">0.5.0（Nov 18 2026 23:00:00）</span></div>
   <div class="row" style="top:252px;height:68px"><span style="font-size:30px">运行位置</span><span class="v">ota_0</span></div>
   <div class="row" style="top:328px;height:68px"><span style="font-size:30px">电量</span><span class="v">82%</span></div>
   <div class="a b" style="left:40px;top:482px;font-size:32px">Read_Pico.bin</div>

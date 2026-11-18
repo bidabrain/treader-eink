@@ -41,6 +41,10 @@ esp_err_t read_pico_sd_format(void);
 /// 已挂载则卸载落盘。探测未完成返回 ESP_ERR_NOT_FINISHED。
 /// / Unmount if mounted so writes land. ESP_ERR_NOT_FINISHED while probing.
 esp_err_t read_pico_sd_sync(void);
+/// USB 传书用：卸掉文件系统、只初始化卡，*out 得到 sdmmc_card_t*。之后卡不再归设备，只能重启恢复；调用前关闭所有卡上句柄。
+/// For USB transfer: unmount the filesystem and initialize the bare card; *out receives an sdmmc_card_t*. The card no
+/// longer belongs to the device and only a restart recovers; close every card handle first.
+esp_err_t read_pico_sd_take_for_usb(void** out);
 
 #ifdef __cplusplus
 }

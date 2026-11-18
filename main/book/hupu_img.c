@@ -105,6 +105,10 @@ static bool failed(uint32_t key) {
     return false;
 }
 
+bool hupu_img_failed(const char* jpg, int w, int h) {
+    return jpg && jpg[0] && w > 0 && h > 0 && failed(key_of(jpg, w, h));
+}
+
 const uint8_t* hupu_img_get(const char* jpg, int w, int h) {
     if (!jpg || !jpg[0] || w <= 0 || h <= 0) return NULL;
     const uint32_t key = key_of(jpg, w, h);
