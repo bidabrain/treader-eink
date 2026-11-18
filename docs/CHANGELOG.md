@@ -5,6 +5,9 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 新增微博内容服务器（仓库 `weibo/`，独立 Docker 镜像）：不登录微博，在面板里管理关注，定时拉取关注的人和热门的图文微博，带视频的不收，长微博补全文，图片在服务器上转成墨水屏灰度图；WebDAV 备份和 weiboX 互通。设备端标签还没做。
+  New Weibo content server (repo `weibo/`, its own Docker image): no Weibo sign-in, follows managed in the panel, scheduled fetching of followed users' and hot image posts, video posts skipped, long posts completed, images converted to e-ink grayscale on the server; WebDAV backups interoperate with weiboX. The device tab is not built yet.
+
 - rednote 服务器：点开推荐笔记更快。正文拉到就先返回，图片在后台同时处理 4 张（取到还没做好的那页时服务器等它）；推荐请求间隔默认从 8 秒改成 3 秒（之前没改过的配置自动改过来）。
   rednote server: opening a recommended note is faster. The text returns first while images process four at a time in the background (a request for an unfinished page waits for it); the default recommendation gap drops from 8 s to 3 s (untouched configs move over automatically).
 

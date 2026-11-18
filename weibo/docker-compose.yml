@@ -1,0 +1,16 @@
+# weibo：不登录微博，定时拉取关注的人和热门的图文微博、处理成墨水屏用的灰度图，给小纸 Pico 来取。
+# weibo: without signing in, fetch followed users' and hot Weibo posts on a schedule, turn images into e-ink
+# grayscale, and serve them to the Read Pico.
+#
+# 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:8092
+services:
+  hub:
+    image: ghcr.io/bidabrain/treader-weibo:latest
+    container_name: weibo-hub
+    restart: unless-stopped
+    # 浏览器（访客身份、验证码）需要较大的共享内存。/ The browser needs a larger /dev/shm.
+    shm_size: 1gb
+    ports:
+      - "${WEIBO_BIND:-0.0.0.0}:${WEIBO_PORT:-8092}:8092"
+    volumes:
+      - ./data:/data

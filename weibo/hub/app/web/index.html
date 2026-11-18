@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>weibo 面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="card narrow">
+    <h1>weibo 面板</h1>
+    <p id="gateHint" class="muted"></p>
+    <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
+    <button type="submit">进入</button>
+    <p id="gateMsg" class="err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <b>weibo 面板</b><span id="ver" class="muted"></span>
+    <nav>
+      <a data-tab="home" class="on">概览</a><a data-tab="users">关注</a><a data-tab="posts">内容</a>
+      <a data-tab="captcha">验证</a><a data-tab="device">设备与外网</a><a data-tab="settings">设置</a><a data-tab="logs">日志</a>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <main>
+    <section data-panel="home">
+      <div class="grid" id="stats"></div>
+      <div class="card">
+        <h2>拉取</h2>
+        <p id="fetchState"></p>
+        <button id="runNow">立即拉一轮</button>
+      </div>
+    </section>
+
+    <section data-panel="users" hidden>
+      <div class="card">
+        <h2>添加关注</h2>
+        <p class="muted">填 UID，或粘贴主页链接（weibo.com/u/…、m.weibo.cn/u/…）。不用登录微博。</p>
+        <form id="addForm" class="row"><input id="addLink" placeholder="UID 或主页链接" required><button>添加</button></form>
+        <p id="addMsg" class="err"></p>
+        <form id="searchForm" class="row"><input id="searchQ" placeholder="按昵称搜索" required><button class="ghost">搜索</button></form>
+        <ul id="searchList" class="list"></ul>
+      </div>
+      <div class="card"><h2>关注的人 <span id="userCount" class="muted"></span></h2><ul id="userList" class="list"></ul></div>
+    </section>
+
+    <section data-panel="posts" hidden>
+      <div class="card"><h2>已拉到的微博</h2><p class="muted">带视频的不收；图片已经转成设备用的灰度 JPEG。</p><div id="postGrid" class="notes"></div></div>
+    </section>
+
+    <section data-panel="captcha" hidden>
+      <div class="card">
+        <h2>验证</h2>
+        <p class="muted">微博要求验证时拉取会暂停，在这里直接操作服务器上的浏览器（点击、拖动滑块）。做完点“完成”。</p>
+        <p id="capState">连接中…</p>
+        <div id="capBox" hidden><img id="capImg" alt="验证页面" draggable="false"></div>
+        <p><button id="capDone">完成</button> <button id="capReload" class="ghost">刷新页面</button> <button id="capCancel" class="ghost">放弃</button></p>
+      </div>
+    </section>
+
+    <section data-panel="device" hidden>
+      <div class="card">
+        <h2>设备</h2>
+        <p>设备上要填的地址和令牌：</p>
+        <p>地址：<code id="devUrl"></code>（局域网）<span id="devTunnelUrl"></span></p>
+        <p>令牌：<code id="devToken"></code> <button id="rotate" class="ghost">换一个</button></p>
+        <p class="muted">换令牌后，设备上要重新填。</p>
+      </div>
+      <div class="card">
+        <h2>外网访问（Cloudflare Tunnel）</h2>
+        <p class="muted">隧道只转发设备接口（/api/device/），面板不会出现在外网。</p>
+        <label><input type="radio" name="tmode" value="off"> 关闭</label>
+        <label><input type="radio" name="tmode" value="quick"> 快速隧道（随机 trycloudflare.com 地址，重启会变）</label>
+        <label><input type="radio" name="tmode" value="token"> 隧道令牌（固定域名）</label>
+        <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌（服务填 http://localhost:8092）">
+        <button id="tApply">保存并应用</button>
+        <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="settings" hidden>
+      <form id="setForm" class="card">
+        <h2>拉取设置</h2>
+        <label>每轮间隔（分钟） <input name="interval_min" type="number" min="30"></label>
+        <label>两个人之间隔几秒（随机取这两者之间） <input name="delay_min" type="number" min="5"> ～ <input name="delay_max" type="number" min="5"></label>
+        <label>每人每轮读最近几条 <input name="posts_per_user" type="number" min="1"></label>
+        <label>同一人至少隔几分钟再读 <input name="min_check_min" type="number" min="0"></label>
+        <label>长微博全文每天最多取几次 <input name="long_daily_cap" type="number" min="0"></label>
+        <label>两次取全文至少隔几秒 <input name="long_gap_s" type="number" min="1"></label>
+        <label>每条最多几张图 <input name="max_images" type="number" min="1"></label>
+        <h2>热门</h2>
+        <label><input name="hot_enabled" type="checkbox"> 每轮读一次热门</label>
+        <label>频道 <select name="hot_channel"></select></label>
+        <p class="muted">访客身份下“热门”频道几乎全是视频（会被跳过），默认用“榜单”。</p>
+        <label>热门读几条 <input name="hot_count" type="number" min="1"></label>
+        <h2>缓存</h2>
+        <label>保留天数 <input name="keep_days" type="number" min="1"></label>
+        <label>总大小上限（MB） <input name="max_mb" type="number" min="100"></label>
+        <h2>Cookie（可选）</h2>
+        <p class="muted">不填就用自动生成的访客身份。填了登录过的 Cookie 会更稳，也能看更多评论。<span id="cookieState"></span></p>
+        <textarea name="cookie" placeholder="留空表示不改"></textarea>
+        <label><input name="clear_cookie" type="checkbox"> 清除已保存的 Cookie</label>
+        <button>保存</button> <span id="setMsg"></span>
+      </form>
+      <form id="davForm" class="card">
+        <h2>WebDAV 备份</h2>
+        <p class="muted">和 weiboX 安卓版、weiboX-server 用同一个文件 weibox_backup.json（关注名单、特别关注、Cookie），可以互相恢复。恢复会用备份里的名单替换这里的。</p>
+        <label>地址 <input name="webdav_url" placeholder="https://dav.example.com/weibo" size="40"></label>
+        <label>用户名 <input name="webdav_user" autocomplete="off"></label>
+        <label>密码 <input name="webdav_pass" type="password" autocomplete="new-password" placeholder="留空表示不改"></label>
+        <button>保存</button> <button type="button" id="davBackup" class="ghost">立即备份</button> <button type="button" id="davRestore" class="ghost">从备份恢复</button>
+        <span id="davMsg"></span>
+      </form>
+      <form id="pwForm" class="card">
+        <h2>面板密码</h2>
+        <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
+        <button>修改</button> <span id="pwMsg"></span>
+      </form>
+    </section>
+
+    <section data-panel="logs" hidden>
+      <div class="card"><h2>日志</h2><pre id="logBox"></pre></div>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

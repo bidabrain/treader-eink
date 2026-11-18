@@ -49,6 +49,7 @@ idf.py build
 | `docs/CHANGELOG.md` | 按版本简述对用户可见的功能变化与修复。/ Brief user-visible changes and fixes by version. |
 | `rednote/` | 小红书内容服务器（Docker：Python 面板 hub + xiaohongshu-mcp），独立于固件，部署说明在其 README。/ Xiaohongshu content server (Docker: Python hub + xiaohongshu-mcp), separate from the firmware; see its README. |
 | `rednote/android/` | 小红书安卓客户端（Kotlin + Compose），功能和界面照固件小红书标签，独立版本号；tag `rednote-android-v*` 发布，签名用 Secret 里的 debug keystore。/ Xiaohongshu Android client (Kotlin + Compose) mirroring the firmware tab, with its own version; released on `rednote-android-v*` tags, signed with the debug keystore from a secret. |
+| `weibo/` | 微博内容服务器（Docker：Python hub + Playwright Chromium 访客身份），不登录，关注 / 热门两类，图片在服务器转灰度；关注管理与 WebDAV 备份照 weiboX-server，部署说明在其 README。/ Weibo content server (Docker: Python hub + Playwright Chromium visitor identity), no sign-in, following and hot feeds, images converted on the server; follow management and WebDAV backup match weiboX-server; see its README. |
 
 功能操作见 README 和 [docs/TREADER.md](docs/TREADER.md)；页面契约以本文及 `main/app/app.h` 为准。/ See the README and docs/TREADER.md for feature usage; this file and `main/app/app.h` define the page contract.
 
