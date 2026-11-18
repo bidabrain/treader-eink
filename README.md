@@ -65,6 +65,34 @@
 - 联网失败时提示具体原因（Wi-Fi、DNS、HTTPS、超时、HTTP 状态），见[联网排查](#联网排查)
 - 传书和上传漫画给 TF 卡留出预留空间（100 MB 和卡容量 5% 取大的），不会把卡写满
 
+## 界面预览
+
+按设备真实像素（684×1216）绘制的设计稿截图，图片封面和壁纸用灰度渐变示意。
+
+**书库与阅读**
+
+![书库与阅读](docs/images/screens-reading.png)
+
+**漫画与传书**
+
+![漫画与传书](docs/images/screens-comics.png)
+
+**番茄小说与书城**
+
+![番茄小说与书城](docs/images/screens-tomato.png)
+
+**小红书**
+
+![小红书](docs/images/screens-xhs.png)
+
+**虎扑**
+
+![虎扑](docs/images/screens-hupu.png)
+
+**设置**
+
+![设置](docs/images/screens-settings.png)
+
 全部界面和每个页面的功能：[docs/design/ui.html](docs/design/ui.html)（下载后用浏览器打开）。
 
 ## 硬件
