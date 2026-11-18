@@ -115,6 +115,16 @@
   .notes li { margin: 8px 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
   .notes li b { color: var(--ink); }
   code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .9em; background: var(--chip); border-radius: 5px; padding: 1px 5px; }
+  .dl { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 22px; margin-bottom: 20px; }
+  .dl h3 { margin-bottom: 8px; }
+  .dl p { margin: 0 0 14px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .dl-ic { width: 22px; height: 22px; margin-right: 8px; color: var(--ink); }
+  .dl-ver { font-weight: 500; color: var(--mid); font-size: 14px; margin-left: 8px; }
+  .dl-more { color: var(--mid); font-size: 14px; }
+  .dl-note { border-left: 3px solid var(--ink); padding-left: 16px; }
+  .dl-note b { display: block; margin-bottom: 4px; }
+  .dl-note p { margin: 0; }
+  a.tag { text-decoration: none; }
   .unsupported { display: none; border-color: var(--bad); color: var(--bad); }
   .safe { display: flex; gap: 12px; align-items: flex-start; background: var(--paper); }
   .safe svg { width: 24px; height: 24px; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
@@ -124,7 +134,7 @@
 
   @media (max-width: 900px) {
     .grid { grid-template-columns: repeat(2, 1fr); }
-    .flash, .eco { grid-template-columns: 1fr; }
+    .flash, .eco, .dl { grid-template-columns: 1fr; }
     .facts { grid-template-columns: repeat(2, 1fr); }
     .facts div:nth-child(2) { border-right: 0; }
     .facts div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -151,6 +161,7 @@
     <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.4-1.6M5 16a7.5 7.5 0 0 0 13.4 1.6"/><path d="M19 3v5h-5M5 21v-5h5"/></symbol>
     <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6 0-.6 0-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1 2.8.8.1-.6.3-1 .6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.7v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   </defs>
 </svg>
@@ -173,6 +184,7 @@
     <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
     <div class="cta">
       <a class="btn solid" href="#flash">在线刷机</a>
+      <a class="btn" href="#download"><svg><use href="#i-down"/></svg>下载固件</a>
       <a class="btn" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>查看源码</a>
     </div>
   </div>
@@ -195,7 +207,7 @@
     <div class="grid">
       <div class="feat"><div class="ic"><svg><use href="#i-book"/></svg></div><h3>书库与阅读</h3><p>TXT、EPUB 书架和封面，拼音首字母搜索；行距、段距、页边距都能调，逐书记住进度，定时自动翻页。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-comic"/></svg></div><h3>漫画</h3><p>CBZ 按系列整理，一屏一页，一话看完自动接下一话；网页上传时先转成灰度，翻页更快。</p></div>
-      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。</p><span class="tag">需要自建下载服务器</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。</p><a class="tag" href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">需要自建下载服务器 ›</a></div>
       <div class="feat"><div class="ic"><svg><use href="#i-xhs"/></svg></div><h3>小红书</h3><p>关注博主和首页推荐，两列封面卡片；看图一屏一张，再看正文和评论，大图还能存成锁屏壁纸。</p><span class="tag">经自建 rednote 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-weibo"/></svg></div><h3>微博</h3><p>关注的人和热门，卡片排版、转发灰框、图片宫格；长微博补全文，评论按需取。不用登录微博。</p><span class="tag">经自建 weibo 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
@@ -258,6 +270,22 @@
       <p>用电脑上的 Chrome 或 Edge，USB-C 数据线连上小纸 Pico，三步完成。小纸 Pico 没有 BOOT 键，网页会自动让它进入下载模式。</p>
     </div>
 
+    <div class="card dl" id="download">
+      <div class="dl-main">
+        <h3><svg class="dl-ic"><use href="#i-down"/></svg>下载最新固件 <span class="dl-ver" id="dlVer"></span></h3>
+        <p>GitHub Actions 在固件每次改动后自动编译发布，用和真机一样的配置，可以直接刷进小纸 Pico。下载后拖到下面第 1 步。</p>
+        <div class="row">
+          <a class="btn solid small" id="dlFull" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">完整镜像（第一次刷）</a>
+          <a class="btn small" id="dlUp" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">升级包</a>
+          <a class="dl-more" href="https://github.com/bidabrain/treader-eink/releases">全部版本 ›</a>
+        </div>
+      </div>
+      <div class="dl-note">
+        <b>番茄小说需要自建服务器</b>
+        <p>下载的固件不带番茄下载服务器。阅读、漫画、虎扑、书城榜单、传书都能直接用；要搜索和下载番茄小说，先按 <a href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">部署说明</a> 用 Docker 跑一个 <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> 网页服务，再在设备“设置 › 内容来源 › 番茄小说”填地址和密码。小红书、微博也各需要自建服务器（见上面“服务器与 App”）。</p>
+      </div>
+    </div>
+
     <div class="card unsupported" id="unsupported">
       这个浏览器不支持网页串口（Web Serial）。请用电脑上的 <b>Chrome</b> 或 <b>Edge</b> 打开本页；手机和 Safari、Firefox 都不行。
     </div>
@@ -309,7 +337,7 @@
             <li>写入约 1～2 分钟，<b>完成前不要拔线</b>。完成后设备会自动重启。</li>
             <li>小纸 Pico <b>没有 BOOT 键</b>，不用按任何键。设备要先开机（锁屏选“关机”时 USB 不工作）。</li>
             <li>连接不上：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。</li>
-            <li>固件来自你自己编译的 <code>build/treader-full.bin</code>（或 <code>build/Read_Pico.bin</code>），编译方法见 <a href="https://github.com/bidabrain/treader-eink#快速开始">项目说明</a>。</li>
+            <li>固件用上面下载的，或者自己编译的 <code>build/treader-full.bin</code>（<code>build/Read_Pico.bin</code>）。自己编译时可以把番茄服务器内置进去，见 <a href="https://github.com/bidabrain/treader-eink#内置默认服务器可选">项目说明</a>；这样编出的固件不要公开。</li>
             <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库）。</li>
           </ul>
         </div>
@@ -340,6 +368,20 @@ fetch("https://api.github.com/repos/bidabrain/treader-eink/releases?per_page=30"
     a.href = rel.html_url;
     a.textContent = "安卓 App " + rel.tag_name.slice(a.dataset.release.length);
   }))
+  .catch(() => {});
+// 最新构建的两个文件直接给下载链接，并写上版本和日期。/ Link the latest build's two files directly, with version and date.
+fetch("https://api.github.com/repos/bidabrain/treader-eink/releases/tags/treader-latest")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((rel) => {
+    if (!rel) return;
+    const full = rel.assets.find((a) => a.name.endsWith("-full.bin"));
+    const up = rel.assets.find((a) => a.name.endsWith("-upgrade.bin"));
+    if (full) document.getElementById("dlFull").href = full.browser_download_url;
+    if (up) document.getElementById("dlUp").href = up.browser_download_url;
+    const ver = (full || up || {}).name?.match(/treader-(.+?)-(full|upgrade)\.bin/);
+    const day = (rel.published_at || "").slice(0, 10);
+    document.getElementById("dlVer").textContent = (ver ? ver[1] : "") + (day ? " · " + day : "");
+  })
   .catch(() => {});
 </script>
 

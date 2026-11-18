@@ -5,6 +5,9 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- CI 用产品配置编译固件（不带内置番茄服务器，书城默认 FanqieRankTracker），固件一改动就自动发布到 Release，可以直接刷；项目主页改版，刷机网页上能直接下载最新固件，并说明番茄小说需要自建服务器。
+  CI builds the firmware with the product configuration (no built-in Tomato server, FanqieRankTracker as the default bookstore) and publishes a Release after every firmware change, ready to flash; the project homepage was redesigned, and the flasher page offers the latest firmware with a note that Tomato novels need a self-hosted server.
+
 - 微博改成卡片排版（设备和安卓 App 1.1.0）：头像圆、名字和时间来源、转发原文的灰框、图片放在正文下面（设备一排小图，安卓按微博的宫格排）、转评赞三栏带图标；点哪张图从哪张看。weibo 服务器 0.1.3 给每张原图做方形小图。
   Weibo moves to a card layout (device and Android app 1.1.0): avatar circle, name with time and source, a gray box for reposts, images under the text (a strip on the device, Weibo-style grids on Android), and a three-column count bar with icons; tapping an image opens that one. The weibo server 0.1.3 makes a square small image for each source image.
 - rednote 服务器 0.2.2：拉取进行中点“立即拉一轮”不再被丢掉，按钮会说明结果（比如今天的请求次数已用满）。

@@ -148,6 +148,8 @@ idf.py build
 
 想把自己的番茄服务器编进固件（类似安卓版的 `local.properties`），见[内置默认服务器](#内置默认服务器可选)。
 
+**不想自己编译**：GitHub Actions 在固件每次改动后自动编译并发布到 [Releases](https://github.com/bidabrain/treader-eink/releases)：“最新构建”（`treader-latest`）随时是最新的，每个新版本号另有一个 `treader-v版本号`。用的是和真机一样的配置，可以直接刷；`treader-版本号-full.bin` 第一次刷或分区表有变化时用，`treader-版本号-upgrade.bin` 用来升级。这些固件**不带内置番茄服务器**，要用番茄小说先[自建下载服务器](#自建番茄下载服务器)，再在设备“设置 › 内容来源 › 番茄小说”填地址和密码；书城默认用 FanqieRankTracker 榜单。刷机网页上也有下载按钮。
+
 ### 3. 刷机
 
 **方式 A：网页刷机（不用装工具）**

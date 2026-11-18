@@ -20,7 +20,7 @@ idf.py build
 ```
 
 - `sdkconfig.defaults`：真机 120 MHz flash / PSRAM 时序，依赖板上 Zbit 型号。/ Board timing for 120 MHz flash / PSRAM; depends on the Zbit part.
-- `sdkconfig.ci`：默认时序，只验证能否编过。/ Default timing; compile-only CI check.
+- `sdkconfig.ci`：默认时序，只用来在没有这块 flash 的机器上检查能否编过。CI 编的是产品配置（`sdkconfig.defaults`），不带内置番茄服务器，固件改动后自动发布到 Release（`treader-latest` 和每个新版本号的 `treader-v*`）。/ Default timing for compile checks without the board's flash. CI builds the product configuration (`sdkconfig.defaults`) without a built-in Tomato server and publishes Releases after firmware changes (`treader-latest`, plus `treader-v*` for each new version).
 
 不要在没有对应 flash 的机器上把 CI 配置当产品默认。/ Do not ship the CI timing as the product default.
 
