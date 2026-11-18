@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 未发布 / Unreleased
+
+- 新增 `rednote/`：小红书内容服务器。Docker 一键部署，网页面板扫码登录、添加博主、定时拉取图文笔记（跳过视频），图片在服务器上处理成墨水屏用的灰度 JPEG，内置 Cloudflare Tunnel 给设备外网访问。设备端还在开发中。
+  New `rednote/`: a Xiaohongshu content server. One-command Docker deployment with a web panel for QR login and creators, scheduled fetching of image notes (videos skipped), server-side grayscale JPEGs for e-ink, and a built-in Cloudflare Tunnel for devices away from home. The device side is still in progress.
+
 ## 2026-11-18 · Treader 0.4.1
 
 - 虎扑：打开新帖子、换专区或联赛时，立刻取消还在跑的旧任务，马上加载你正在看的内容；连点多次只执行最后一次。不再出现“正在加载”一直挂着、或联网时误报“还没有缓存”。

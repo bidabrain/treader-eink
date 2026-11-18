@@ -317,6 +317,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | --- | --- |
 | [docs/design/ui.html](docs/design/ui.html) | 全部界面示意图和每个页面的功能（唯一的设计稿） |
 | [docs/TREADER.md](docs/TREADER.md) | Treader 的行为细节、TF 卡目录、各模块职责、已知限制 |
+| [rednote/README.md](rednote/README.md) | 小红书内容服务器：Docker 部署、网页面板、Cloudflare Tunnel（设备端开发中） |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
 | [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |
 | [docs/official/](docs/official/README.zh-CN.md) | 官方示例固件的原版说明：硬件表、引脚、底层组件 |

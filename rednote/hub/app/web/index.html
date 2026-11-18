@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>rednote 面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="card narrow">
+    <h1>rednote 面板</h1>
+    <p id="gateHint" class="muted"></p>
+    <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
+    <button type="submit">进入</button>
+    <p id="gateMsg" class="err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <b>rednote 面板</b><span id="ver" class="muted"></span>
+    <nav>
+      <a data-tab="home" class="on">概览</a><a data-tab="account">小红书账号</a><a data-tab="creators">博主</a>
+      <a data-tab="notes">内容</a><a data-tab="device">设备与外网</a><a data-tab="settings">设置</a><a data-tab="logs">日志</a>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <main>
+    <section data-panel="home">
+      <div class="grid" id="stats"></div>
+      <div class="card">
+        <h2>拉取</h2>
+        <p id="fetchState"></p>
+        <button id="runNow">立即拉一轮</button>
+      </div>
+    </section>
+
+    <section data-panel="account" hidden>
+      <div class="card">
+        <h2>小红书账号</h2>
+        <p class="muted">建议用实名过的小号。登录到这里以后，不要再在其他电脑浏览器里登录这个号，否则这里会被踢下线；手机 App 不受影响。</p>
+        <p id="xhsState">还没查询</p>
+        <button id="xhsCheck" class="ghost">查询登录状态</button>
+        <button id="xhsQr">获取登录二维码</button>
+        <div id="qrBox" hidden><img id="qrImg" alt="登录二维码"><p id="qrHint" class="muted"></p></div>
+      </div>
+      <div class="card">
+        <h2>浏览器桌面</h2>
+        <p class="muted">碰到滑块验证、或者二维码一直出不来（服务器出口在海外时小红书会跳到 rednote 海外版，需要手动点“登录”），在这里直接操作服务器上的浏览器。操作时别同时让它拉取。</p>
+        <a class="button" href="/desk/vnc.html?autoconnect=true&resize=scale&path=desk/websockify" target="_blank">打开浏览器桌面</a>
+      </div>
+    </section>
+
+    <section data-panel="creators" hidden>
+      <div class="card">
+        <h2>添加博主</h2>
+        <p class="muted">在小红书网页版打开博主主页，复制地址栏里的完整链接（要带 xsec_token），粘贴到这里。</p>
+        <form id="addForm" class="row"><input id="addLink" placeholder="https://www.xiaohongshu.com/user/profile/…?xsec_token=…" required><button>添加</button></form>
+        <p id="addMsg" class="err"></p>
+        <button id="discover" class="ghost">从首页推荐里挑（会请求一次小红书）</button>
+        <ul id="discoverList" class="list"></ul>
+      </div>
+      <div class="card"><h2>关注的博主</h2><ul id="creatorList" class="list"></ul></div>
+    </section>
+
+    <section data-panel="notes" hidden>
+      <div class="card"><h2>已拉到的笔记</h2><p class="muted">只保留图文，图片已经转成设备用的灰度 JPEG。</p><div id="noteGrid" class="notes"></div></div>
+    </section>
+
+    <section data-panel="device" hidden>
+      <div class="card">
+        <h2>设备</h2>
+        <p>设备上要填的地址和令牌（小纸 Pico 固件的小红书功能还在开发中）：</p>
+        <p>地址：<code id="devUrl"></code>（局域网）<span id="devTunnelUrl"></span></p>
+        <p>令牌：<code id="devToken"></code> <button id="rotate" class="ghost">换一个</button></p>
+        <p class="muted">换令牌后，设备上要重新填。</p>
+      </div>
+      <div class="card">
+        <h2>外网访问（Cloudflare Tunnel）</h2>
+        <p class="muted">隧道只转发设备接口（/api/device/），面板不会出现在外网。</p>
+        <label><input type="radio" name="tmode" value="off"> 关闭</label>
+        <label><input type="radio" name="tmode" value="quick"> 快速隧道（随机 trycloudflare.com 地址，重启会变）</label>
+        <label><input type="radio" name="tmode" value="token"> 隧道令牌（固定域名）</label>
+        <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌（服务填 http://localhost:8091）">
+        <button id="tApply">保存并应用</button>
+        <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="settings" hidden>
+      <form id="setForm" class="card">
+        <h2>拉取设置</h2>
+        <label>每轮间隔（分钟） <input name="interval_min" type="number" min="30"></label>
+        <label>请求间隔（秒，随机取这两者之间） <input name="delay_min" type="number" min="5"> ～ <input name="delay_max" type="number" min="5"></label>
+        <label>每个博主每轮最多新拉几篇 <input name="per_creator" type="number" min="1"></label>
+        <label>每天最多请求小红书几次 <input name="daily_cap" type="number" min="1"></label>
+        <label>每篇最多几张图 <input name="max_images" type="number" min="1"></label>
+        <label>缓存保留天数 <input name="keep_days" type="number" min="1"></label>
+        <label>缓存总大小上限（MB） <input name="max_mb" type="number" min="100"></label>
+        <button>保存</button> <span id="setMsg"></span>
+      </form>
+      <form id="pwForm" class="card">
+        <h2>面板密码</h2>
+        <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
+        <button>修改</button> <span id="pwMsg"></span>
+      </form>
+    </section>
+
+    <section data-panel="logs" hidden>
+      <div class="card"><h2>日志</h2><pre id="logBox"></pre></div>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     # 只改文档或刷机网页时不用编固件。/ Skip the firmware build for doc-only or web-flasher-only pushes.
-    paths-ignore: ["**.md", "docs/**", "site/**", ".github/workflows/pages.yml"]
+    paths-ignore: ["**.md", "docs/**", "site/**", "rednote/**", ".github/workflows/pages.yml", ".github/workflows/rednote-image.yml"]
   pull_request:
   workflow_dispatch:
 

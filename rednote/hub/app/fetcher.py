@@ -1,0 +1,165 @@
+"""定时拉取：逐个博主读主页 → 跳过视频 → 新的图文笔记拉详情 → 处理图片。请求之间随机等待，有每日上限，
+碰到验证或登录失效就暂停，等面板处理。
+
+Scheduled fetching: read each creator's profile, skip videos, fetch details of new image notes, process images.
+Requests are spaced randomly with a daily cap; verification or an expired login pauses until the panel handles it.
+"""
+from __future__ import annotations
+
+import asyncio
+import random
+import time
+from collections import deque
+from typing import Any
+
+from . import config, images, mcp, store
+
+log: deque[str] = deque(maxlen=200)
+
+
+def note(msg: str) -> None:
+    log.appendleft(time.strftime("%m-%d %H:%M:%S ") + msg)
+
+
+class State:
+    running = False
+    paused = ""          # 非空时暂停，写着原因 / Paused with this reason when not empty
+    last_round = 0.0
+    next_round = 0.0
+    current = ""
+    new_notes = 0
+
+
+state = State()
+_wake = asyncio.Event()
+
+PAUSE_WORDS = ("验证", "captcha", "未登录", "登录", "login", "频繁", "安全")
+
+
+def wake() -> None:
+    _wake.set()
+
+
+def resume() -> None:
+    state.paused = ""
+    wake()
+
+
+async def _pause_if_blocked(err: str) -> bool:
+    if any(w in err for w in PAUSE_WORDS):
+        state.paused = f"小红书要求验证或登录：{err[:80]}"
+        note("已暂停：" + state.paused)
+        return True
+    return False
+
+
+async def _gap(cfg: dict[str, Any]) -> None:
+    lo, hi = int(cfg["delay_min"]), int(cfg["delay_max"])
+    await asyncio.sleep(random.uniform(lo, max(lo, hi)))
+
+
+def _budget(cfg: dict[str, Any]) -> bool:
+    return store.requests_today() < int(cfg["daily_cap"])
+
+
+async def _fetch_note(item: dict[str, Any], cfg: dict[str, Any]) -> bool:
+    note_id, token = item["id"], item.get("xsecToken") or ""
+    store.count_request()
+    data = await mcp.detail(note_id, token)
+    n = data.get("note") or {}
+    if (n.get("type") or "normal") != "normal":
+        return False
+    urls = [i.get("urlDefault") or i.get("url") for i in (n.get("imageList") or [])][: int(cfg["max_images"])]
+    pages = await images.process(note_id, [u for u in urls if u])
+    comments = []
+    for c in ((data.get("comments") or {}).get("list") or [])[:20]:
+        comments.append({
+            "user": (c.get("userInfo") or {}).get("nickname") or "",
+            "text": c.get("content") or "",
+            "likes": c.get("likeCount") or "",
+        })
+    user = n.get("user") or {}
+    store.save_note({
+        "id": note_id, "user_id": user.get("userId") or "", "author": user.get("nickname") or "",
+        "title": n.get("title") or "", "body": n.get("desc") or "", "time": int(n.get("time") or 0),
+        "likes": (n.get("interactInfo") or {}).get("likedCount") or "",
+        "comment_count": (n.get("interactInfo") or {}).get("commentCount") or "",
+        "comments": comments, "images": pages,
+    })
+    return True
+
+
+async def run_round() -> None:
+    cfg = config.load()
+    state.running = True
+    state.new_notes = 0
+    note("开始一轮拉取")
+    try:
+        for c in store.creators():
+            if state.paused or not _budget(cfg):
+                break
+            state.current = c["nickname"] or c["user_id"]
+            try:
+                store.count_request()
+                prof = await mcp.profile(c["user_id"], c["xsec_token"])
+            except mcp.McpError as e:
+                store.mark_creator(c["user_id"], None, str(e))
+                note(f"{state.current}：主页读取失败 {e}")
+                if await _pause_if_blocked(str(e)):
+                    break
+                await _gap(cfg)
+                continue
+            nickname = (prof.get("userBasicInfo") or {}).get("nickname")
+            feeds = prof.get("feeds") or []
+            # 列表阶段就跳过视频。/ Skip videos at the list stage.
+            fresh = [f for f in feeds if (f.get("noteCard") or {}).get("type") == "normal" and not store.has_note(f["id"])]
+            fresh = fresh[: int(cfg["per_creator"])]
+            # 记下最新一篇的令牌，主页令牌过期时可以用它。/ Keep a recent token in case the profile token expires.
+            store.mark_creator(c["user_id"], nickname, "", feeds[0].get("xsecToken") if feeds else None)
+            note(f"{nickname or state.current}：{len(feeds)} 篇，其中 {len(fresh)} 篇新图文")
+            for item in fresh:
+                if state.paused or not _budget(cfg):
+                    break
+                await _gap(cfg)
+                try:
+                    if await _fetch_note(item, cfg):
+                        state.new_notes += 1
+                except mcp.McpError as e:
+                    note(f"笔记 {item['id']} 失败：{e}")
+                    if await _pause_if_blocked(str(e)):
+                        break
+            await _gap(cfg)
+        cleanup(cfg)
+    finally:
+        state.running = False
+        state.current = ""
+        state.last_round = time.time()
+        note(f"本轮结束，新增 {state.new_notes} 篇" + ("（已到今日上限）" if not _budget(cfg) else ""))
+
+
+def cleanup(cfg: dict[str, Any]) -> None:
+    """按天数和总大小清理旧笔记。/ Drop old notes by age and total size."""
+    for note_id in store.old_notes(time.time() - int(cfg["keep_days"]) * 86400):
+        images.remove(note_id)
+        store.delete_note(note_id)
+    while images.total_mb() > int(cfg["max_mb"]) and store.note_count():
+        for note_id in store.oldest_notes(10):
+            images.remove(note_id)
+            store.delete_note(note_id)
+
+
+async def loop() -> None:
+    while True:
+        cfg = config.load()
+        state.next_round = time.time() + int(cfg["interval_min"]) * 60
+        if not state.paused and store.creators():
+            try:
+                await run_round()
+            except Exception as e:  # 一轮出错不影响下一轮 / One failed round must not stop the loop
+                note(f"本轮异常：{type(e).__name__}: {e}")
+            state.next_round = time.time() + int(cfg["interval_min"]) * 60
+        _wake.clear()
+        try:
+            await asyncio.wait_for(_wake.wait(), timeout=max(5.0, state.next_round - time.time()))
+        except asyncio.TimeoutError:
+            pass

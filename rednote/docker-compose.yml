@@ -1,0 +1,40 @@
+# rednote：在服务器上登录小红书网页版、定时拉取关注博主的图文笔记、处理成墨水屏用的灰度图，给小纸 Pico 来取。
+# rednote: log in to Xiaohongshu on a server, fetch followed creators' image notes on a schedule, turn them into
+# e-ink grayscale images, and serve them to the Read Pico.
+#
+# 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:8091
+services:
+  hub:
+    image: ghcr.io/bidabrain/treader-rednote:latest
+    container_name: rednote-hub
+    restart: unless-stopped
+    ports:
+      - "${REDNOTE_BIND:-0.0.0.0}:${REDNOTE_PORT:-8091}:8091"
+    volumes:
+      - ./data:/data
+    environment:
+      MCP_URL: http://mcp:18060
+      NOVNC_URL: http://mcp:6080
+    depends_on:
+      - mcp
+
+  mcp:
+    # 现成的 xiaohongshu-mcp（带浏览器桌面的版本），固定版本号，验证过再升级。
+    # The ready-made xiaohongshu-mcp (browser-desktop build), pinned; upgrade only after checking.
+    image: xpzouying/xiaohongshu-mcp:${MCP_VERSION:-v2.7.4}-novnc
+    container_name: rednote-mcp
+    restart: unless-stopped
+    shm_size: 1gb
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      COOKIES_PATH: /app/data/cookies.json
+      XHS_PROXY: ${XHS_PROXY:-}
+      NOVNC_ALLOWED_ORIGINS: http://mcp:6080
+    volumes:
+      - ./data/mcp:/app/data
+    # 不对外开端口：只给 hub 用。/ No published ports: only the hub talks to it.
