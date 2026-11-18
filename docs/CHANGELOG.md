@@ -8,6 +8,9 @@ User-visible changes by date and author; Git retains implementation history. See
 - rednote 服务器：点开推荐笔记更快。正文拉到就先返回，图片在后台同时处理 4 张（取到还没做好的那页时服务器等它）；推荐请求间隔默认从 8 秒改成 3 秒（之前没改过的配置自动改过来）。
   rednote server: opening a recommended note is faster. The text returns first while images process four at a time in the background (a request for an unfinished page waits for it); the default recommendation gap drops from 8 s to 3 s (untouched configs move over automatically).
 
+- 小红书列表改成两列封面卡片：设备上每页 2×2、按页翻；安卓 App 1.1.0 改成上下滑动的瀑布流，封面按原图比例。服务器的封面改成宽 300、保留原图比例（高宽比 3:4～4:3），接口多了 `ratio`。
+  Xiaohongshu lists become two-column cover cards: 2x2 pages on the device; the Android app 1.1.0 uses a scrolling waterfall with covers in their original ratio. Server covers are now 300 wide keeping the original ratio (3:4 to 4:3), and the API adds `ratio`.
+
 ## 2026-11-18 · Treader 0.5.0
 
 - 新增小红书标签：经自建 rednote 服务器（仓库 `rednote/`）看关注博主和首页推荐的图文，一屏一张看图，再看正文和评论。推荐只在点“刷新推荐”时由服务器去读小红书。缓存按篇数和总大小封顶。

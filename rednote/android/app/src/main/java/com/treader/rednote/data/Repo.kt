@@ -16,6 +16,8 @@ data class Item(
     val images: Int,
     val seen: Boolean,
     val thumb: Boolean = true,
+    /** 封面高宽比（服务器给，夹在 0.75～1.333）。/ Cover height/width from the server, clamped to 0.75..1.333. */
+    val ratio: Float = 4f / 3,
 )
 
 data class Comment(val user: String, val text: String, val likes: String)
@@ -67,7 +69,8 @@ class Repo(context: Context, private val api: Api) {
             val id = str(o, "id")
             if (id.isEmpty()) continue
             add(Item(id, str(o, "title"), str(o, "author"), str(o, "likes"), o.optInt("images"),
-                rec || o.optBoolean("seen"), if (rec) o.optBoolean("thumb") else true))
+                rec || o.optBoolean("seen"), if (rec) o.optBoolean("thumb") else true,
+                o.optDouble("ratio", 4.0 / 3).toFloat().coerceIn(0.75f, 4f / 3)))
         }
     }
 
@@ -108,6 +111,7 @@ class Repo(context: Context, private val api: Api) {
                 if (id.isEmpty()) continue
                 out.put(JSONObject().put("id", id).put("title", str(n, "title")).put("author", str(n, "author"))
                     .put("likes", str(n, "likes")).put("images", n.optInt("images"))
+                    .put("ratio", n.optDouble("ratio", 4.0 / 3))
                     .put("seen", old == null || id in seen))
             }
             write(feedFile, JSONObject().put("items", out))
@@ -123,7 +127,8 @@ class Repo(context: Context, private val api: Api) {
             for (i in 0 until notes.length()) {
                 val n = notes.optJSONObject(i) ?: continue
                 out.put(JSONObject().put("id", str(n, "id")).put("title", str(n, "title"))
-                    .put("author", str(n, "author")).put("likes", str(n, "likes")).put("thumb", n.optBoolean("thumb")))
+                    .put("author", str(n, "author")).put("likes", str(n, "likes")).put("thumb", n.optBoolean("thumb"))
+                    .put("ratio", n.optDouble("ratio", 4.0 / 3)))
             }
             write(recFile, JSONObject().put("items", out).put("fetched_at", j.optDouble("fetched_at", 0.0))
                 .put("left", j.optInt("left_today", -1)))

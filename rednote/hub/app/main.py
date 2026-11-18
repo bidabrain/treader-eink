@@ -300,6 +300,7 @@ def _device(request: Request) -> None:
 def _brief(n: dict) -> dict:
     return {"id": n["id"], "title": n["title"], "author": n["author"], "time": n["time"], "images": n["images"],
             "likes": n["likes"], "comments": n["comment_count"], "fetched_at": n["fetched_at"],
+            "ratio": n.get("ratio") or 1.333,
             "source": n.get("source") or "follow"}
 
 

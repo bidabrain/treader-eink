@@ -5,7 +5,7 @@
 - **一个 compose 文件部署**：`docker compose up -d`，然后打开网页面板完成所有设置。
 - **网页面板**：扫码登录小红书、添加博主、查看拉到的内容、设置拉取频率、生成设备令牌、开外网访问。
 - **外网访问**：内置 Cloudflare Tunnel（快速隧道或隧道令牌），设备在外面也能取；面板始终只在局域网。
-- **省设备的事**：视频笔记直接跳过；图片在服务器上转灰度、缩到不超过 648×1000、太长的按屏切开，存成普通 JPEG（每张约 30～70 KB），另附 150×200 缩略图。
+- **省设备的事**：视频笔记直接跳过；图片在服务器上转灰度、缩到不超过 648×1000、太长的按屏切开，存成普通 JPEG（每张约 30～70 KB），另附一张宽 300、保留原图比例的封面。
 - **只读**：只拉内容，不发帖、不点赞、不评论。
 
 取数据用的是开源项目 [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)（Apache-2.0）：它在容器里用真实浏览器登录和浏览，不逆向签名。本目录只是在它外面加了一层面板、定时拉取和图片处理。
@@ -127,13 +127,13 @@ docker compose up -d
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/feed?since=时间戳&limit=50` | 关注博主的笔记：`{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的 |
-| `GET /api/device/v1/rec?refresh=1` | 推荐列表 `{fetched_at, refresh_after, left_today, notes:[{id, title, author, likes, thumb, ready}]}`。`refresh=1` 且过了缓存期才去读首页，否则返回上次的；`ready` 表示已经拉过详情 |
-| `GET /api/device/v1/rec/cover/{id}.jpg` | 推荐列表里的 150×200 封面 |
+| `GET /api/device/v1/feed?since=时间戳&limit=50` | 关注博主的笔记：`{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source, ratio}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的 |
+| `GET /api/device/v1/rec?refresh=1` | 推荐列表 `{fetched_at, refresh_after, left_today, notes:[{id, title, author, likes, ratio, thumb, ready}]}`。`refresh=1` 且过了缓存期才去读首页，否则返回上次的；`ready` 表示已经拉过详情 |
+| `GET /api/device/v1/rec/cover/{id}.jpg` | 推荐列表里的封面，规格和下面的 `thumb.jpg` 一样 |
 | `GET /api/device/v1/rec/note/{id}` | 点开推荐里的一篇：没拉过就现拉（视频返回 415），返回和 `note/{id}` 一样；之后图片用下面的 `img` 接口。次数用完 429，暂停中 503，不在近期列表里 404 |
 | `GET /api/device/v1/note/{id}` | 上面的字段加 `body`（正文）和 `comment_list`（前 20 条：`user`、`text`、`likes`） |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
-| `GET /api/device/v1/img/{id}/thumb.jpg` | 150×200 缩略图 |
+| `GET /api/device/v1/img/{id}/thumb.jpg` | 封面：宽 300，保留原图比例（高宽比夹在 3:4～4:3，即接口里的 `ratio`） |
 
 ## 日常维护
 

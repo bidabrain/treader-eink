@@ -25,7 +25,10 @@ from PIL import Image, ImageOps
 from . import config
 
 MAX_W, MAX_H = 648, 1000
-THUMB = (150, 200)
+THUMB_W = 300
+# 封面高宽比夹在 3:4（横）和 4:3（竖）之间，和小红书首页卡片一样。/ Cover height/width clamped between 3:4 (wide)
+# and 4:3 (tall), like Xiaohongshu home cards.
+RATIO_MIN, RATIO_MAX = 0.75, 4 / 3
 # 屏幕可用区域的高宽比；比它高 1.5 倍以上的图按屏切开。/ Screen aspect; images 1.5x taller are split per screen.
 SCREEN_RATIO = 1160 / 684
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.xiaohongshu.com/"}
@@ -44,6 +47,21 @@ def _save(img: Image.Image, path: Path) -> None:
     tmp = path.with_suffix(".tmp")
     img.save(tmp, "JPEG", quality=80, optimize=True, progressive=False)
     tmp.replace(path)
+
+
+def cover_ratio(w: int, h: int) -> float:
+    """封面高宽比（按原图，夹在 3:4～4:3）；不知道宽高就当 4:3 竖图。/ Cover height/width from the original, clamped
+    to 3:4..4:3; unknown sizes count as a 4:3 portrait."""
+    if not w or not h:
+        return RATIO_MAX
+    return round(min(RATIO_MAX, max(RATIO_MIN, h / w)), 3)
+
+
+def cover(img: Image.Image) -> Image.Image:
+    """宽 300、保留原图比例（夹在 3:4～4:3）的灰度封面。/ A 300-wide gray cover keeping the original ratio
+    (clamped to 3:4..4:3)."""
+    r = cover_ratio(*img.size)
+    return ImageOps.fit(img, (THUMB_W, round(THUMB_W * r)), Image.Resampling.LANCZOS)
 
 
 def split_count(w: int, h: int) -> int:
@@ -89,7 +107,7 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> Image.Image | None:
 
 def _write_pages(out: Path, img: Image.Image, first: int, n: int, thumb: bool) -> None:
     if thumb:
-        _save(ImageOps.fit(img, THUMB, Image.Resampling.LANCZOS), out / "thumb.jpg")
+        _save(cover(img), out / "thumb.jpg")
     for k, page in enumerate(_pages(img, n)):
         page.thumbnail((MAX_W, MAX_H), Image.Resampling.LANCZOS)
         _save(page, out / f"{first + k}.jpg")

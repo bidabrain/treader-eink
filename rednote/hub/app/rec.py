@@ -92,7 +92,7 @@ async def _covers(items: list[dict[str, Any]], urls: dict[str, str]) -> None:
             resp = await client.get(url)
             resp.raise_for_status()
             img = ImageOps.exif_transpose(Image.open(io.BytesIO(resp.content))).convert("L")
-            thumb = ImageOps.fit(img, images.THUMB, Image.Resampling.LANCZOS)
+            thumb = images.cover(img)
             tmp = path.with_suffix(".tmp")
             thumb.save(tmp, "JPEG", quality=80, optimize=True, progressive=False)
             tmp.replace(path)
@@ -137,10 +137,13 @@ async def refresh(force: bool) -> dict[str, Any]:
             if card.get("type") != "normal" or not f.get("id"):
                 continue
             user = card.get("user") or {}
+            cov = card.get("cover") or {}
             items.append({
                 "id": f["id"], "title": card.get("displayTitle") or "",
                 "author": user.get("nickname") or user.get("nickName") or "",
                 "likes": (card.get("interactInfo") or {}).get("likedCount") or "",
+                # 封面高宽比，给瀑布流排版用。/ Cover height/width for waterfall layouts.
+                "ratio": images.cover_ratio(int(cov.get("width") or 0), int(cov.get("height") or 0)),
                 "thumb": False, "ready": False,
             })
             _tokens[f["id"]] = f.get("xsecToken") or ""

@@ -45,12 +45,14 @@
 // 列表 / Lists
 #define LIST_MAX 100
 #define LIST_TOP 284
-#define ROW_H 184
-#define ROWS 4
 #define PAGER_Y 1036
-#define THUMB_W 120
-#define THUMB_H 160
-#define TEXT_X (TR_MARGIN + THUMB_W + 24)
+// 两列卡片，每页 2×2。/ Two-column cards, 2x2 per page.
+#define COLS 2
+#define PER_PAGE 4
+#define CELL_GAP 20
+#define CELL_W ((TR_W - 2 * TR_MARGIN - CELL_GAP) / COLS)
+#define CELL_H 376
+#define COVER_H 262
 #define STATUS_Y 240
 #define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - 240, 70, 240, 80}
 #define SETUP_RECT (EpdRect){TR_MARGIN, 420, 240, 72}
@@ -316,7 +318,7 @@ static const char* loading_text(const char* what) {
 
 /* ---- 列表数据 / List data ---- */
 
-static int list_pages(void) { return s_item_count ? (s_item_count + ROWS - 1) / ROWS : 1; }
+static int list_pages(void) { return s_item_count ? (s_item_count + PER_PAGE - 1) / PER_PAGE : 1; }
 
 static void load_list(void) {
     s_item_count = 0;
@@ -510,46 +512,36 @@ static void draw_header(uint8_t* fb) {
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, (int)s_seg);
 }
 
-static void draw_rows(uint8_t* fb) {
+// 两列封面卡片：封面（铺满裁切）、标题两行、作者 · 赞；没看过的封面左上角黑底“新”，推荐里下好的右下角“已下载”。
+// Two-column cover cards: cover (fill-cropped), two-line title, author · likes; unseen notes get a black "new" tag
+// at the cover's top-left, and downloaded recommendations a "downloaded" tag at its bottom-right.
+static void draw_cards(uint8_t* fb) {
     char line[200];
-    for (int row = 0; row < ROWS; row++) {
-        const int i = s_list_page * ROWS + row;
+    for (int k = 0; k < PER_PAGE; k++) {
+        const int i = s_list_page * PER_PAGE + k;
         if (i >= s_item_count) break;
         const item_t* x = &s_items[i];
-        const int y = LIST_TOP + row * ROW_H;
+        const int cx = TR_MARGIN + (k % COLS) * (CELL_W + CELL_GAP);
+        const int cy = LIST_TOP + (k / COLS) * CELL_H;
         char thumb[96];
         thumb_path(x, thumb, sizeof(thumb));
-        const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, THUMB_W, THUMB_H) : NULL;
-        if (px) hupu_img_draw(fb, TR_MARGIN, y + 12, THUMB_W, THUMB_H, px, true);
-        else epd_draw_rect((EpdRect){TR_MARGIN, y + 12, THUMB_W, THUMB_H}, TR_GRAY_LINE, fb);
-        const int tw = TR_W - TR_MARGIN - TEXT_X;
-        int tx = TEXT_X;
+        const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, CELL_W, COVER_H) : NULL;
+        if (px) hupu_img_draw(fb, cx, cy, CELL_W, COVER_H, px, true);
+        else epd_draw_rect((EpdRect){cx, cy, CELL_W, COVER_H}, TR_GRAY_LINE, fb);
         if (!x->seen) {
-            // “新”角标：黑框小字，标题从它右边开始。/ A boxed "new" tag; the title starts after it.
-            epd_draw_rect((EpdRect){TEXT_X, y + 22, 44, 32}, UI_GRAY_BLACK, fb);
-            epd_draw_rect((EpdRect){TEXT_X + 1, y + 23, 42, 30}, UI_GRAY_BLACK, fb);
-            tr_text(fb, TEXT_X + 22, y + 24, 22, "新", EPD_DRAW_ALIGN_CENTER, true);
-            tx += 56;
+            epd_fill_rect((EpdRect){cx + 10, cy + 10, 48, 34}, UI_GRAY_BLACK, fb);
+            tr_text_inv(fb, cx + 34, cy + 13, 22, "新", EPD_DRAW_ALIGN_CENTER, true);
         }
-        // 第一行让出角标，第二行从头开始：分两次画。/ Line one leaves room for the tag; line two starts at the edge.
-        const char* t = x->title[0] ? x->title : "（无标题）";
-        size_t n1 = tr_line_bytes(t, 30, tw - (tx - TEXT_X));
-        snprintf(line, sizeof(line), "%.*s", (int)n1, t);
-        tr_text(fb, tx, y + 16, 30, line, EPD_DRAW_ALIGN_LEFT, true);
-        const char* rest = t + n1;
-        if (*rest == '\n') rest++;
-        if (*rest) {
-            snprintf(line, sizeof(line), "%s", rest);
-            tr_fit(line, 30, tw);
-            tr_text(fb, TEXT_X, y + 58, 30, line, EPD_DRAW_ALIGN_LEFT, true);
+        if (s_seg == SEG_REC && note_cached(x->id)) {
+            const EpdRect r = {cx + CELL_W - 98, cy + COVER_H - 44, 88, 34};
+            epd_fill_rect(r, UI_GRAY_WHITE, fb);
+            epd_draw_rect(r, UI_GRAY_BLACK, fb);
+            tr_text(fb, r.x + r.width / 2, r.y + 4, 20, "已下载", EPD_DRAW_ALIGN_CENTER, true);
         }
-        if (s_seg == SEG_FOLLOW)
-            snprintf(line, sizeof(line), "%s · %d 页%s%s", x->author, x->images, x->likes[0] ? " · 赞 " : "", x->likes);
-        else
-            snprintf(line, sizeof(line), "%s · %s", x->author, note_cached(x->id) ? "已下载" : "点开后下载");
-        tr_fit(line, 24, tw);
-        tr_text(fb, TEXT_X, y + 124, 24, line, EPD_DRAW_ALIGN_LEFT, false);
-        tr_hline(fb, y + ROW_H - 2, TR_MARGIN, CW, true);
+        tr_wrap(fb, cx, cy + COVER_H + 10, CELL_W, 26, 34, x->title[0] ? x->title : "（无标题）", 2);
+        snprintf(line, sizeof(line), "%s%s%s", x->author, x->likes[0] ? " · 赞 " : "", x->likes);
+        tr_fit(line, 22, CELL_W);
+        tr_text(fb, cx, cy + COVER_H + 84, 22, line, EPD_DRAW_ALIGN_LEFT, false);
     }
 }
 
@@ -588,7 +580,7 @@ static void draw_list(uint8_t* fb) {
                    "还没有推荐。点右上角“刷新推荐”，服务器会去读一次小红书首页（只留图文）。");
         return;
     }
-    draw_rows(fb);
+    draw_cards(fb);
     tr_pager(fb, PAGER_Y, s_list_page, list_pages());
 }
 
@@ -838,8 +830,10 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (seg >= 0) return seg == (int)s_seg ? APP_REDRAW_NONE : show_seg((seg_t)seg);
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
-    if (y < LIST_TOP || y >= LIST_TOP + ROWS * ROW_H) return APP_REDRAW_NONE;
-    const int i = s_list_page * ROWS + (y - LIST_TOP) / ROW_H;
+    if (y < LIST_TOP || y >= LIST_TOP + (PER_PAGE / COLS) * CELL_H || x < TR_MARGIN || x >= TR_W - TR_MARGIN)
+        return APP_REDRAW_NONE;
+    const int col = (x - TR_MARGIN) >= CELL_W + CELL_GAP / 2 ? 1 : 0;
+    const int i = s_list_page * PER_PAGE + ((y - LIST_TOP) / CELL_H) * COLS + col;
     return i < s_item_count ? open_item(i) : APP_REDRAW_NONE;
 }
 
@@ -905,12 +899,12 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 static void queue_visible_images(void) {
     if (s_view == V_LIST) {
-        for (int row = 0; row < ROWS; row++) {
-            const int i = s_list_page * ROWS + row;
+        for (int k = 0; k < PER_PAGE; k++) {
+            const int i = s_list_page * PER_PAGE + k;
             if (i >= s_item_count) break;
             char thumb[96];
             thumb_path(&s_items[i], thumb, sizeof(thumb));
-            if (exists(thumb)) hupu_img_get(thumb, THUMB_W, THUMB_H);
+            if (exists(thumb)) hupu_img_get(thumb, CELL_W, COVER_H);
         }
     } else if (s_view == V_IMAGE && s_note_loaded) {
         // 当前一张和下一张（预取）。/ The current image and the next one (prefetch).

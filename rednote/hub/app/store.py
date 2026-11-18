@@ -38,6 +38,10 @@ def db() -> sqlite3.Connection:
         if "source" not in cols:
             _db.execute("ALTER TABLE notes ADD COLUMN source TEXT NOT NULL DEFAULT 'follow'")
             _db.commit()
+        # 封面高宽比（瀑布流用）；旧笔记当 4:3 竖图。/ Cover height/width for waterfalls; old notes count as 4:3.
+        if "ratio" not in cols:
+            _db.execute("ALTER TABLE notes ADD COLUMN ratio REAL NOT NULL DEFAULT 1.333")
+            _db.commit()
     return _db
 
 
@@ -100,10 +104,10 @@ def set_source(note_id: str, source: str) -> None:
 def save_note(note: dict[str, Any], source: str = "follow") -> None:
     _exec(
         "INSERT OR REPLACE INTO notes(id, user_id, author, title, body, time, likes, comment_count, comments, "
-        "images, fetched_at, source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "images, fetched_at, source, ratio) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (note["id"], note["user_id"], note["author"], note["title"], note["body"], note["time"], note["likes"],
          note["comment_count"], json.dumps(note["comments"], ensure_ascii=False), note["images"], time.time(),
-         source),
+         source, note.get("ratio", 1.333)),
     )
 
 

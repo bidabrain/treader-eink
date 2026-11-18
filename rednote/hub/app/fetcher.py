@@ -94,6 +94,8 @@ async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str 
         "likes": (n.get("interactInfo") or {}).get("likedCount") or "",
         "comment_count": (n.get("interactInfo") or {}).get("commentCount") or "",
         "comments": comments, "images": pages,
+        "ratio": images.cover_ratio(int((shots[0] if shots else {}).get("width") or 0),
+                                    int((shots[0] if shots else {}).get("height") or 0)),
     }, source)
     return True
 
