@@ -12,6 +12,8 @@
 
 > **设备端**：小纸 Pico 的 Treader 固件里有“小红书”标签（0.5.0 起）。在设备的“设置 → 内容来源 → 小红书”打开“手机网页填写”，用手机把下面第 6 步里的地址和令牌粘贴进去即可。
 
+手机上也能看：[rednote/android](android/README.md) 是和固件小红书标签功能一样的独立安卓 App，读同一台服务器、用同一个设备令牌。
+
 ```
 小纸 Pico ──HTTPS(令牌)──> rednote-hub :8091 ──> rednote-mcp（浏览器登录小红书）──> 小红书
                               │ 面板（只在局域网）
@@ -167,3 +169,4 @@ docker compose down                           # 停止（数据保留在 data/�
 | `hub/app/mcp.py` | xiaohongshu-mcp 接口客户端 |
 | `hub/app/tunnel.py` | cloudflared 子进程 |
 | `hub/app/web/` | 面板页面 |
+| `android/` | 安卓客户端（和固件小红书标签功能一样），有自己的版本号和发布流程 |
