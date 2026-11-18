@@ -132,6 +132,8 @@ static view_t s_view;
 static seg_t s_seg;
 static char s_msg[96];
 static int64_t s_poll_ms;
+// 上次点当前分段的时间（双击回第一页）。/ Last tap on the current segment (a double tap goes to the first page).
+static int64_t s_seg_tap_ms;
 static bool s_has_cfg;
 
 // 后台任务 / Background job
@@ -1157,7 +1159,16 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (ui_rect_hit(REFRESH_RECT, x, y) && !tomato_sync_busy()) return refresh();
     const int seg = tr_segment_hit(TR_SEGMENT_RECT, 2, x, y);
-    if (seg >= 0) return seg == (int)s_seg ? APP_REDRAW_NONE : show_seg((seg_t)seg);
+    if (seg >= 0 && seg != (int)s_seg) return show_seg((seg_t)seg);
+    if (seg >= 0) {
+        // 双击当前分段：回到第一页（最新的）。/ Double tap on the current segment: back to the first (newest) page.
+        const bool twice = ctx->now_ms - s_seg_tap_ms < 600;
+        s_seg_tap_ms = twice ? 0 : ctx->now_ms;
+        if (!twice || s_list_page == 0) return APP_REDRAW_NONE;
+        s_list_page = 0;
+        hupu_img_drop_pending();
+        return APP_REDRAW_PAGE;
+    }
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
     if (y < LIST_TOP || y >= LIST_BOTTOM) return APP_REDRAW_NONE;

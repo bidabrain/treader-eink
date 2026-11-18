@@ -17,10 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
-import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +57,7 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
                     }
                     Box(Modifier.padding(start = 16.dp).noRippleClick(onSettings)) { SettingsIcon() }
                 }
-                Segment(listOf("关注", "推荐"), vm.seg.ordinal, { vm.showSeg(Seg.entries[it]) })
+                Segment(listOf("关注", "推荐"), vm.seg.ordinal, { vm.tapSeg(Seg.entries[it]) })
                 if (!vm.configured) {
                     Spacer(Modifier.height(24.dp))
                     T("还没连接 rednote 服务器。先在电脑或 NAS 上部署 rednote（见项目 rednote/ 目录），再到“设置”填服务器地址和设备令牌。",
@@ -79,12 +77,11 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
                     15.sp, lineHeight = 23.sp, modifier = Modifier.padding(16.dp))
                 return@Column
             }
-            // 换分段或刷新后回到顶部。/ Back to the top after switching segments or refreshing.
-            val state = rememberLazyStaggeredGridState()
-            LaunchedEffect(vm.seg, items.firstOrNull()?.id) { state.scrollToItem(0) }
+            // 滚动位置每个分段各存一份（在 AppVm 里），看完笔记回来还在原处。/ Each segment keeps its own scroll
+            // position (in AppVm), so coming back from a note lands where you were.
             LazyVerticalStaggeredGrid(
                 columns = StaggeredGridCells.Fixed(2),
-                state = state,
+                state = vm.scroll.getValue(vm.seg),
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

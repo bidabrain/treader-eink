@@ -16,10 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,7 +53,7 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
                     }
                     Box(Modifier.padding(start = 16.dp).noRippleClick(onSettings)) { SettingsIcon() }
                 }
-                Segment(listOf("关注", "热门"), vm.seg.ordinal, { vm.showSeg(Seg.entries[it]) })
+                Segment(listOf("关注", "热门"), vm.seg.ordinal, { vm.tapSeg(Seg.entries[it]) })
                 if (!vm.configured) {
                     Spacer(Modifier.height(24.dp))
                     T("还没连接 weibo 服务器。先在电脑或 NAS 上部署 weibo（见项目 weibo/ 目录），再到“设置”填服务器地址和设备令牌。",
@@ -75,11 +73,10 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
                     15.sp, lineHeight = 23.sp, modifier = Modifier.padding(16.dp))
                 return@Column
             }
-            // 换分段或刷新后回到顶部。/ Back to the top after switching segments or refreshing.
-            val state = rememberLazyListState()
-            LaunchedEffect(vm.seg, items.firstOrNull()?.id) { state.scrollToItem(0) }
+            // 滚动位置每个分段各存一份（在 AppVm 里），看完微博回来还在原处。/ Each segment keeps its own scroll
+            // position (in AppVm), so coming back from a post lands where you were.
             LazyColumn(
-                state = state,
+                state = vm.scroll.getValue(vm.seg),
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
             ) {

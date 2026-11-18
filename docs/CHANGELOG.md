@@ -5,6 +5,9 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 小红书、微博：双击顶部当前分段（关注 / 推荐 / 热门）回到最新的第一页（设备和安卓 App）；安卓 App（小红书 1.2.0、微博 1.1.1）看完一篇返回时停在原来的位置，不再跳回最上面。
+  Xiaohongshu and Weibo: double-tap the current segment (Following / Recommended / Hot) to jump to the newest first page (device and Android apps); the Android apps (Xiaohongshu 1.2.0, Weibo 1.1.1) return to the same scroll position after a post instead of jumping to the top.
+
 - CI 用产品配置编译固件（不带内置番茄服务器，书城默认 FanqieRankTracker），固件一改动就自动发布到 Release，可以直接刷；项目主页改版，刷机网页上能直接下载最新固件，并说明番茄小说需要自建服务器。
   CI builds the firmware with the product configuration (no built-in Tomato server, FanqieRankTracker as the default bookstore) and publishes a Release after every firmware change, ready to flash; the project homepage was redesigned, and the flasher page offers the latest firmware with a note that Tomato novels need a self-hosted server.
 

@@ -1,6 +1,7 @@
 package com.treader.weibo
 
 import android.app.Application
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -69,6 +70,19 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     private var job: Job? = null
     private var commentsJob: Job? = null
 
+    /** 每个分段自己的滚动位置，放在这里所以看完微博回来还在原处。/ Each segment's own scroll position; kept here so
+     *  coming back from a post lands where you were. */
+    val scroll: Map<Seg, LazyListState> = Seg.entries.associateWith { LazyListState() }
+    private var lastSegTap = 0L
+
+    /** 点分段：换分段；双击当前分段回到最上面（最新的）。/ Tap a segment: switch; a double tap on the current one
+     *  scrolls back to the top (newest). */
+    fun tapSeg(s: Seg) {
+        if (s != seg) { showSeg(s); return }
+        val now = System.currentTimeMillis()
+        if (now - lastSegTap < 500) { scroll.getValue(s).requestScrollToItem(0); lastSegTap = 0 } else lastSegTap = now
+    }
+
     val feed: Feed? get() = if (seg == Seg.FOLLOW) follow else hot
     val items: List<Item> get() = feed?.items.orEmpty()
 
@@ -82,7 +96,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun refresh() {
         val wantHot = seg == Seg.HOT
-        launchJob { repo.refresh(wantHot).also { if (wantHot) hot = it else follow = it } }
+        // 刷新后回到最上面看新的。/ After a refresh, go back to the top for the new posts.
+        launchJob {
+            repo.refresh(wantHot).also { if (wantHot) hot = it else follow = it }
+            scroll.getValue(if (wantHot) Seg.HOT else Seg.FOLLOW).requestScrollToItem(0)
+        }
     }
 
     private fun launchJob(block: suspend () -> Unit) {

@@ -1,6 +1,7 @@
 package com.treader.rednote
 
 import android.app.Application
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -60,7 +61,20 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     private var job: Job? = null
 
+    /** 每个分段自己的滚动位置，放在这里所以看完笔记回来还在原处。/ Each segment's own scroll position; kept here so
+     *  coming back from a note lands where you were. */
+    val scroll: Map<Seg, LazyStaggeredGridState> = Seg.entries.associateWith { LazyStaggeredGridState() }
+    private var lastSegTap = 0L
+
     val items: List<Item> get() = if (seg == Seg.FOLLOW) feed else rec?.items.orEmpty()
+
+    /** 点分段：换分段；双击当前分段回到最上面（最新的）。/ Tap a segment: switch; a double tap on the current one
+     *  scrolls back to the top (newest). */
+    fun tapSeg(s: Seg) {
+        if (s != seg) { showSeg(s); return }
+        val now = System.currentTimeMillis()
+        if (now - lastSegTap < 500) { scroll.getValue(s).requestScrollToItem(0); lastSegTap = 0 } else lastSegTap = now
+    }
 
     fun showSeg(s: Seg) {
         if (s == seg) return
@@ -73,8 +87,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() {
-        if (seg == Seg.FOLLOW) launchJob { feed = repo.refreshFeed(); page = 0 }
-        else launchJob { rec = repo.refreshRec(true); page = 0 }
+        // 刷新后回到最上面看新的。/ After a refresh, go back to the top for the new items.
+        val which = seg
+        launchJob {
+            if (which == Seg.FOLLOW) feed = repo.refreshFeed() else rec = repo.refreshRec(true)
+            page = 0
+            scroll.getValue(which).requestScrollToItem(0)
+        }
     }
 
     private fun launchJob(block: suspend () -> Unit) {
