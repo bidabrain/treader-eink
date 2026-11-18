@@ -13,14 +13,13 @@ val versionProps = Properties().apply { rootProject.file("version.properties").i
 val baseCode = versionProps.getProperty("versionCode").toInt()
 val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
 
-// 发布版签名用的 keystore：CI 用环境变量 WEIBO_KEYSTORE 指过来（从 Secret 还原），本机默认 ~/.android/debug.keystore。
-// 明确写出路径，不靠构建工具找“默认 debug keystore”：那个位置在 CI 上不一定是 ~/.android，找不到就会每次新生成一把，
-// 发出去的 APK 签名各不相同、互相装不上。
-// Keystore for release signing: CI points WEIBO_KEYSTORE at the one restored from a secret; locally it defaults to
-// ~/.android/debug.keystore. The path is explicit instead of relying on the build tool's "default debug keystore",
-// whose location on CI is not necessarily ~/.android; when missing it silently generates a new key each run and the
-// released APKs cannot install over each other.
-val releaseKeystore = file(System.getenv("WEIBO_KEYSTORE") ?: "${System.getProperty("user.home")}/.android/debug.keystore")
+// 发布版签名用微博 App 自己的 keystore（别名 weibo，和小红书 App 的不是同一把）：CI 用环境变量 WEIBO_KEYSTORE 指过来
+// （从 Secret WEIBO_KEYSTORE_BASE64 还原），本机默认 ~/.android/weibo.keystore。路径写明，找不到就编译失败，不会悄悄换钥匙。
+// Release signing uses the Weibo app's own keystore (alias weibo, not the Xiaohongshu app's key): CI points
+// WEIBO_KEYSTORE at the one restored from the WEIBO_KEYSTORE_BASE64 secret; locally it defaults to
+// ~/.android/weibo.keystore. The path is explicit, so a missing file fails the build instead of silently using
+// another key.
+val releaseKeystore = file(System.getenv("WEIBO_KEYSTORE") ?: "${System.getProperty("user.home")}/.android/weibo.keystore")
 
 android {
     namespace = "com.treader.weibo"
@@ -38,16 +37,15 @@ android {
         create("fixed") {
             storeFile = releaseKeystore
             storePassword = "android"
-            keyAlias = "androiddebugkey"
+            keyAlias = "weibo"
             keyPassword = "android"
         }
     }
 
     buildTypes {
         release {
-            // 发布版也用 debug 签名：本机是 ~/.android/debug.keystore，CI 从 Secret 还原同一个文件，所以每次都能覆盖安装。
-            // Release builds use the debug key: ~/.android/debug.keystore locally, restored from a Secret on CI, so
-            // every release installs over the previous one.
+            // 本机和 CI 用同一把微博 keystore，所以每次发布都能覆盖安装。/ Local and CI builds share the same Weibo
+            // keystore, so every release installs over the previous one.
             signingConfig = signingConfigs.getByName("fixed")
             isMinifyEnabled = false
         }

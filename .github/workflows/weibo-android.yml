@@ -1,11 +1,11 @@
 # 微博安卓客户端：打 tag weibo-android-v* 时编译 APK 并发布 GitHub Release。
 # Weibo Android client: build the APK and publish a GitHub Release on a weibo-android-v* tag.
 #
-# 签名：发布版也用固定的 debug keystore，这样每次发布都能覆盖安装。keystore 不进仓库，来自 Secret
-# DEBUG_KEYSTORE_BASE64（base64 编码的 ~/.android/debug.keystore，别名 androiddebugkey，口令 android）。
-# Signing: releases use a fixed debug keystore so each one installs over the last. The keystore is not in the repo; it
-# comes from the DEBUG_KEYSTORE_BASE64 secret (base64 of ~/.android/debug.keystore, alias androiddebugkey,
-# password android).
+# 签名：微博 App 自己的固定 keystore（和小红书 App 不同），这样每次发布都能覆盖安装。keystore 不进仓库，来自 Secret
+# WEIBO_KEYSTORE_BASE64（base64 编码的 ~/.android/weibo.keystore，别名 weibo，口令 android）。
+# Signing: the Weibo app's own fixed keystore (not the Xiaohongshu app's) so each release installs over the last. The
+# keystore is not in the repo; it comes from the WEIBO_KEYSTORE_BASE64 secret (base64 of ~/.android/weibo.keystore,
+# alias weibo, password android).
 name: weibo android
 
 on:
@@ -31,21 +31,21 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      # 还原固定的 debug keystore；没设 Secret 就直接失败，免得发出签名不一样、装不上的 APK。
-      # Restore the fixed debug keystore; fail without the secret rather than ship an APK with a different signature.
-      - name: Restore debug keystore
+      # 还原固定的微博 keystore；没设 Secret 就直接失败，免得发出签名不一样、装不上的 APK。
+      # Restore the fixed Weibo keystore; fail without the secret rather than ship an APK with a different signature.
+      - name: Restore Weibo keystore
         env:
-          KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          KEYSTORE_B64: ${{ secrets.WEIBO_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::缺少 Secret DEBUG_KEYSTORE_BASE64 / missing secret DEBUG_KEYSTORE_BASE64"
+            echo "::error::缺少 Secret WEIBO_KEYSTORE_BASE64 / missing secret WEIBO_KEYSTORE_BASE64"
             exit 1
           fi
-          ks="$RUNNER_TEMP/debug.keystore"
+          ks="$RUNNER_TEMP/weibo.keystore"
           echo "$KEYSTORE_B64" | base64 -d > "$ks"
           # 明确告诉 Gradle 用这个文件签名，并打印指纹方便核对。/ Point Gradle at this file and print its fingerprint.
           echo "WEIBO_KEYSTORE=$ks" >> "$GITHUB_ENV"
-          keytool -list -v -keystore "$ks" -storepass android -alias androiddebugkey | grep -E 'SHA256:'
+          keytool -list -v -keystore "$ks" -storepass android -alias weibo | grep -E 'SHA256:'
 
       - name: Build release APK
         run: |
@@ -55,7 +55,7 @@ jobs:
       # 核对 APK 真是用这把钥匙签的，不对就失败，不发布。/ Check the APK is signed with that key; fail otherwise.
       - name: Verify signature
         run: |
-          want=$(keytool -list -v -keystore "$WEIBO_KEYSTORE" -storepass android -alias androiddebugkey \
+          want=$(keytool -list -v -keystore "$WEIBO_KEYSTORE" -storepass android -alias weibo \
                  | grep -E 'SHA256:' | head -1 | sed 's/.*SHA256: //; s/://g' | tr 'A-F' 'a-f')
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           got=$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk \

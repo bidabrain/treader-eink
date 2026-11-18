@@ -26,7 +26,16 @@
 
 ## 签名
 
-和小红书 App 一样，发布版也用固定的 debug keystore 签名，每次发布、包括你本机编的版本，都能互相覆盖安装。keystore 不进仓库：本机用 `~/.android/debug.keystore`；CI 从仓库 Secret `DEBUG_KEYSTORE_BASE64`（和小红书 App 共用）还原，用环境变量 `WEIBO_KEYSTORE` 明确告诉 Gradle 用它签名，编完核对 APK 签名和这把钥匙一致。设置 Secret 的方法见 [rednote/android/README.md](../../rednote/android/README.md#签名)。
+发布版用微博 App 自己的固定 keystore 签名（和小红书 App 不是同一把），每次发布、包括你本机编的版本，都能互相覆盖安装。keystore 不进仓库：
+
+- 本机：`~/.android/weibo.keystore`（别名 `weibo`，口令 `android`）。没有这个文件编译会失败。**请另外备份它**，丢了就发不出能覆盖安装的新版本。
+- CI：从仓库 Secret `WEIBO_KEYSTORE_BASE64` 还原，用环境变量 `WEIBO_KEYSTORE` 告诉 Gradle 用它签名，编完核对 APK 签名和这把钥匙一致，没设 Secret 或对不上都直接失败。
+
+设置 Secret：在 **PowerShell** 里运行下面这条（直接复制到剪贴板，不在屏幕上显示），粘贴到 GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret，名字 `WEIBO_KEYSTORE_BASE64`：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\weibo.keystore")) | Set-Clipboard
+```
 
 ## 本机编译
 
