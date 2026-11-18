@@ -128,9 +128,10 @@ esp_err_t read_pico_usb_start(void* card) {
     const tinyusb_msc_driver_config_t drv = {.callback = storage_event};
     esp_err_t err = tinyusb_msc_install_driver(&drv);
     if (err != ESP_OK) return err;
+    static char base_path[] = "/usbmsc";   // 结构体成员不是 const / The struct field is not const
     const tinyusb_msc_storage_config_t cfg = {
         .medium.card = (sdmmc_card_t*)card,
-        .fat_fs = {.base_path = "/usbmsc", .do_not_format = true},
+        .fat_fs = {.base_path = base_path, .do_not_format = true},
         .mount_point = TINYUSB_MSC_STORAGE_MOUNT_USB,
     };
     err = tinyusb_msc_new_storage_sdmmc(&cfg, &s_storage);
