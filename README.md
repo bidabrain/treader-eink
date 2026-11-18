@@ -4,11 +4,11 @@
 ![Target](https://img.shields.io/badge/target-ESP32--S3-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge)](LICENSE)
 
-**Treader 是给小纸 Pico（Read Pico）用的墨水屏阅读固件**：本地 TXT / EPUB 阅读、CBZ 漫画、番茄小说搜索下载与更新、番茄榜单书城、虎扑浏览、WebDAV 进度同步，全部为 4.7 寸 16 级灰度墨水屏和 ESP32-S3 的性能重新设计。
+**Treader 是给小纸 Pico（Read Pico）用的墨水屏阅读固件**：本地 TXT / EPUB 阅读、CBZ 漫画、番茄小说搜索下载与更新、番茄榜单书城、虎扑浏览、经自建服务器的小红书和微博浏览、WebDAV 进度同步，全部为 4.7 寸 16 级灰度墨水屏和 ESP32-S3 的性能重新设计。
 
 它基于 MindReset 官方的 [Read Pico 示例固件](https://github.com/MindReset/read_pico_firmware)，把演示页换成了一套完整的阅读系统，并移植了安卓版 [番茄阅读器 Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（不含 TTS）和 [虎扑 X](https://github.com/bidabrain/hupuX) 的浏览部分。
 
-> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore, read-only Hupu browsing and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
+> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore, read-only Hupu browsing, Xiaohongshu and Weibo through self-hosted servers, and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
 
 > ⚠️ 非官方固件，与 MindReset、番茄小说没有隶属关系。刷机前请备份原固件。
 
@@ -48,6 +48,7 @@
 - 推荐：点“刷新推荐”时服务器才去读一次首页，视频已滤掉；次数和间隔在服务器面板里限制
 - 笔记：先一屏一张看图（服务器已转成灰度、缩到屏幕大小），再看正文和前 20 条评论
 - 服务器地址和令牌用手机网页填写（设置 → 内容来源 → 小红书 → 手机网页填写）
+- 服务器面板里关注的博主可以用 WebDAV 备份和恢复
 - 另有一个和固件小红书标签功能相同的独立安卓 App，见 [rednote/android](rednote/android/README.md)
 
 **微博**（只读，需要自建 [weibo 服务器](weibo/README.md)，不用登录微博，设备不直接访问微博）
@@ -64,7 +65,7 @@
 **系统**
 - 设置分六类：显示与阅读、底部标签、传书、内容来源、同步、电源与设备
 - 拼音输入法：全拼、九键、英文、符号，离线词库在 TF 卡上
-- 锁屏：书卡样式（在读的书和进度）或 TF 卡 `wallpapers/` 里的壁纸，在设置里选图、全屏预览
+- 锁屏：书卡样式（在读的书和进度）或 TF 卡 `wallpapers/` 里的壁纸，在设置里选图、全屏预览、删除；小红书和微博看大图时可以直接“存为壁纸”
 - WebDAV：同步阅读进度和番茄书架（坚果云、Nextcloud 等），只在点“立即同步”时运行
 - TF 卡管理：状态、重新挂载、两步确认的格式化（格式化后自动建好文件夹）
 - 拔卡不崩，重新插卡自动挂载；**书、图片和缓存只存 TF 卡**，系统 flash 只放固件和设置
