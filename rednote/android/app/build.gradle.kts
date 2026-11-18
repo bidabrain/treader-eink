@@ -13,6 +13,15 @@ val versionProps = Properties().apply { rootProject.file("version.properties").i
 val baseCode = versionProps.getProperty("versionCode").toInt()
 val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
 
+// 发布版签名用的 keystore：CI 用环境变量 REDNOTE_KEYSTORE 指过来（从 Secret 还原），本机默认 ~/.android/debug.keystore。
+// 明确写出路径，不靠构建工具找“默认 debug keystore”：那个位置在 CI 上不一定是 ~/.android，找不到就会每次新生成一把，
+// 发出去的 APK 签名各不相同、互相装不上。
+// Keystore for release signing: CI points REDNOTE_KEYSTORE at the one restored from a secret; locally it defaults to
+// ~/.android/debug.keystore. The path is explicit instead of relying on the build tool's "default debug keystore",
+// whose location on CI is not necessarily ~/.android; when missing it silently generates a new key each run and the
+// released APKs cannot install over each other.
+val releaseKeystore = file(System.getenv("REDNOTE_KEYSTORE") ?: "${System.getProperty("user.home")}/.android/debug.keystore")
+
 android {
     namespace = "com.treader.rednote"
     compileSdk = 35
@@ -25,12 +34,21 @@ android {
         versionName = versionProps.getProperty("versionName")
     }
 
+    signingConfigs {
+        create("fixed") {
+            storeFile = releaseKeystore
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             // 发布版也用 debug 签名：本机是 ~/.android/debug.keystore，CI 从 Secret 还原同一个文件，所以每次都能覆盖安装。
             // Release builds use the debug key: ~/.android/debug.keystore locally, restored from a Secret on CI, so
             // every release installs over the previous one.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("fixed")
             isMinifyEnabled = false
         }
     }

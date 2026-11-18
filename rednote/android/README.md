@@ -29,7 +29,8 @@
 发布版也用固定的 debug keystore 签名，所以每次发布、包括你本机编的版本，都能互相覆盖安装。keystore 不进仓库：
 
 - 本机：Android SDK 自动生成的 `~/.android/debug.keystore`（别名 `androiddebugkey`，口令 `android`）。
-- CI：从仓库 Secret `DEBUG_KEYSTORE_BASE64` 还原到同一个位置。没设这个 Secret，CI 会直接失败，不会发出签名不一样、装不上的 APK。
+- CI：从仓库 Secret `DEBUG_KEYSTORE_BASE64` 还原成一个文件，用环境变量 `REDNOTE_KEYSTORE` 明确告诉 Gradle 用它签名（不依赖“默认 debug keystore”的位置），编完核对 APK 签名和这把钥匙一致，并在日志里打印指纹。没设 Secret 或签名对不上，CI 都会直接失败，不会发出装不上的 APK。
+- 1.0.0 和 1.1.0 两个早期发布因为这个问题签名不固定，装过它们的需要先卸载一次，从 1.1.1 起都能覆盖安装。
 
 设置 Secret（和 Tomato-Novel 用的是同一个 keystore 的话，值也一样）：
 

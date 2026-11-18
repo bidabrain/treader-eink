@@ -41,13 +41,28 @@ jobs:
             echo "::error::缺少 Secret DEBUG_KEYSTORE_BASE64 / missing secret DEBUG_KEYSTORE_BASE64"
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          echo "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          ks="$RUNNER_TEMP/debug.keystore"
+          echo "$KEYSTORE_B64" | base64 -d > "$ks"
+          # 明确告诉 Gradle 用这个文件签名，并打印指纹方便核对。/ Point Gradle at this file and print its fingerprint.
+          echo "REDNOTE_KEYSTORE=$ks" >> "$GITHUB_ENV"
+          keytool -list -v -keystore "$ks" -storepass android -alias androiddebugkey | grep -E 'SHA256:'
 
       - name: Build release APK
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --console=plain
+
+      # 核对 APK 真是用这把钥匙签的，不对就失败，不发布。/ Check the APK is signed with that key; fail otherwise.
+      - name: Verify signature
+        run: |
+          want=$(keytool -list -v -keystore "$REDNOTE_KEYSTORE" -storepass android -alias androiddebugkey \
+                 | grep -E 'SHA256:' | head -1 | sed 's/.*SHA256: //; s/://g' | tr 'A-F' 'a-f')
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          got=$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+                | grep 'SHA-256 digest' | head -1 | sed 's/.*: //')
+          echo "keystore $want"
+          echo "apk      $got"
+          if [ "$want" != "$got" ]; then echo "::error::APK 签名和 Secret 里的 keystore 不一致 / APK signer does not match the keystore"; exit 1; fi
 
       - name: Name the APK
         id: apk
