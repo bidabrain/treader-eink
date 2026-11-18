@@ -8,7 +8,7 @@
 </head>
 <body>
 <div id="gate" class="gate" hidden>
-  <form id="gateForm" class="card narrow">
+  <form id="gateForm" method="post" action="#" onsubmit="return false" class="card narrow">
     <h1>weibo 面板</h1>
     <p id="gateHint" class="muted"></p>
     <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
@@ -41,9 +41,9 @@
       <div class="card">
         <h2>添加关注</h2>
         <p class="muted">填 UID，或粘贴主页链接（weibo.com/u/…、m.weibo.cn/u/…）。不用登录微博。</p>
-        <form id="addForm" class="row"><input id="addLink" placeholder="UID 或主页链接" required><button>添加</button></form>
+        <form id="addForm" method="post" action="#" onsubmit="return false" class="row"><input id="addLink" placeholder="UID 或主页链接" required><button>添加</button></form>
         <p id="addMsg" class="err"></p>
-        <form id="searchForm" class="row"><input id="searchQ" placeholder="按昵称搜索" required><button class="ghost">搜索</button></form>
+        <form id="searchForm" method="post" action="#" onsubmit="return false" class="row"><input id="searchQ" placeholder="按昵称搜索" required><button class="ghost">搜索</button></form>
         <ul id="searchList" class="list"></ul>
       </div>
       <div class="card"><h2>关注的人 <span id="userCount" class="muted"></span></h2><ul id="userList" class="list"></ul></div>
@@ -84,7 +84,7 @@
     </section>
 
     <section data-panel="settings" hidden>
-      <form id="setForm" class="card">
+      <form id="setForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>拉取设置</h2>
         <label>每轮间隔（分钟） <input name="interval_min" type="number" min="30"></label>
         <label>两个人之间隔几秒（随机取这两者之间） <input name="delay_min" type="number" min="5"> ～ <input name="delay_max" type="number" min="5"></label>
@@ -107,7 +107,7 @@
         <label><input name="clear_cookie" type="checkbox"> 清除已保存的 Cookie</label>
         <button>保存</button> <span id="setMsg"></span>
       </form>
-      <form id="davForm" class="card">
+      <form id="davForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>WebDAV 备份</h2>
         <p class="muted">和 weiboX 安卓版、weiboX-server 用同一个文件 weibox_backup.json（关注名单、特别关注、Cookie），可以互相恢复。恢复会用备份里的名单替换这里的。</p>
         <label>地址 <input name="webdav_url" placeholder="https://dav.example.com/weibo" size="40"></label>
@@ -116,7 +116,7 @@
         <button>保存</button> <button type="button" id="davBackup" class="ghost">立即备份</button> <button type="button" id="davRestore" class="ghost">从备份恢复</button>
         <span id="davMsg"></span>
       </form>
-      <form id="pwForm" class="card">
+      <form id="pwForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>面板密码</h2>
         <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
         <button>修改</button> <span id="pwMsg"></span>

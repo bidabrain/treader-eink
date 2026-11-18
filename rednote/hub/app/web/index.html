@@ -8,7 +8,7 @@
 </head>
 <body>
 <div id="gate" class="gate" hidden>
-  <form id="gateForm" class="card narrow">
+  <form id="gateForm" method="post" action="#" onsubmit="return false" class="card narrow">
     <h1>rednote 面板</h1>
     <p id="gateHint" class="muted"></p>
     <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
@@ -57,7 +57,7 @@
       <div class="card">
         <h2>添加博主</h2>
         <p class="muted">在小红书网页版打开博主主页，复制地址栏里的完整链接（要带 xsec_token），粘贴到这里。</p>
-        <form id="addForm" class="row"><input id="addLink" placeholder="https://www.xiaohongshu.com/user/profile/…?xsec_token=…" required><button>添加</button></form>
+        <form id="addForm" method="post" action="#" onsubmit="return false" class="row"><input id="addLink" placeholder="https://www.xiaohongshu.com/user/profile/…?xsec_token=…" required><button>添加</button></form>
         <p id="addMsg" class="err"></p>
         <button id="discover" class="ghost">从首页推荐里挑（会请求一次小红书）</button>
         <ul id="discoverList" class="list"></ul>
@@ -90,7 +90,7 @@
     </section>
 
     <section data-panel="settings" hidden>
-      <form id="setForm" class="card">
+      <form id="setForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>拉取设置</h2>
         <label>每轮间隔（分钟） <input name="interval_min" type="number" min="30"></label>
         <label>请求间隔（秒，随机取这两者之间） <input name="delay_min" type="number" min="5"> ～ <input name="delay_max" type="number" min="5"></label>
@@ -108,7 +108,7 @@
         <label>两次推荐请求至少隔几秒（另加 0～3 秒随机） <input name="rec_gap_s" type="number" min="3"></label>
         <button>保存</button> <span id="setMsg"></span>
       </form>
-      <form id="davForm" class="card">
+      <form id="davForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>WebDAV 备份</h2>
         <p class="muted">把关注的博主名单（含添加时需要的 xsec_token）存成 WebDAV 上的 rednote_backup.json，换机器或重装后一键恢复。小红书登录状态不备份，恢复后重新扫码。恢复会用备份里的名单替换现在的。</p>
         <label>地址 <input name="webdav_url" placeholder="https://dav.example.com/rednote" size="40"></label>
@@ -117,7 +117,7 @@
         <button>保存</button> <button type="button" id="davBackup" class="ghost">立即备份</button> <button type="button" id="davRestore" class="ghost">从备份恢复</button>
         <span id="davMsg"></span>
       </form>
-      <form id="pwForm" class="card">
+      <form id="pwForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>面板密码</h2>
         <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
         <button>修改</button> <span id="pwMsg"></span>

@@ -54,7 +54,12 @@ async def guard(request: Request, call_next):
     if path.startswith("/api/panel/") and path not in ("/api/panel/state", "/api/panel/setup", "/api/panel/login"):
         if not auth.session_ok(request.cookies.get(auth.SESSION_COOKIE)):
             return JSONResponse({"error": "请先登录面板"}, status_code=401)
-    return await call_next(request)
+    response = await call_next(request)
+    # 面板页面和脚本每次都向服务器确认（升级后浏览器不会还用旧脚本）。/ Make the browser revalidate the panel page and
+    # scripts every time, so an upgrade never leaves an old script running.
+    if path == "/" or path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 # ---- 面板：登录 / Panel: sign-in ----
