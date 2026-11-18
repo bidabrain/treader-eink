@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - 新增 `rednote/`：小红书内容服务器。Docker 一键部署，网页面板扫码登录、添加博主、定时拉取图文笔记（跳过视频），图片在服务器上处理成墨水屏用的灰度 JPEG，内置 Cloudflare Tunnel 给设备外网访问。设备端还在开发中。
   New `rednote/`: a Xiaohongshu content server. One-command Docker deployment with a web panel for QR login and creators, scheduled fetching of image notes (videos skipped), server-side grayscale JPEGs for e-ink, and a built-in Cloudflare Tunnel for devices away from home. The device side is still in progress.
+- rednote 推荐：设备点刷新时服务器才代拉一次首页（只留图文），点开哪篇才拉哪篇；面板可设开关、列表篇数、缓存时间、每日次数和请求间隔。浏览器桌面不再接受从隧道来的连接。
+  rednote recommendations: the server reads the home feed only when the device refreshes (image notes only) and fetches a note only when it is opened; the panel sets the switch, list size, cache window, daily cap and gap. The browser desktop no longer accepts tunnel connections.
 
 ## 2026-11-18 · Treader 0.4.1
 

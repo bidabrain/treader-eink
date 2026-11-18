@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, fetcher, images, mcp, store, tunnel
+from . import auth, config, fetcher, images, mcp, rec, store, tunnel
 
 WEB = Path(__file__).parent / "web"
 ID_RE = re.compile(r"^[0-9a-f]{24}$")
@@ -118,6 +118,7 @@ async def panel_status():
         "fetch": {"running": s.running, "paused": s.paused, "current": s.current, "last_round": s.last_round,
                   "next_round": s.next_round, "new_notes": s.new_notes},
         "requests_today": store.requests_today(), "daily_cap": cfg["daily_cap"],
+        "rec_today": store.requests_today("rec"), "rec_daily_cap": cfg["rec_daily_cap"], "rec_enabled": cfg["rec_enabled"],
         "creators": len(store.creators()), "notes": store.note_count(), "cache_mb": round(images.total_mb(), 1),
         "tunnel": tunnel.state,
     }
@@ -239,8 +240,11 @@ async def settings_get():
 
 @app.post("/api/panel/settings")
 async def settings_set(body: dict):
-    ints = ("interval_min", "delay_min", "delay_max", "per_creator", "daily_cap", "max_images", "keep_days", "max_mb")
+    ints = ("interval_min", "delay_min", "delay_max", "per_creator", "daily_cap", "max_images", "keep_days", "max_mb",
+            "rec_max", "rec_cache_min", "rec_daily_cap", "rec_gap_s")
     update = {}
+    if "rec_enabled" in body:
+        update["rec_enabled"] = bool(body["rec_enabled"])
     for key in ints:
         if key in body:
             try:
@@ -251,6 +255,12 @@ async def settings_set(body: dict):
         raise HTTPException(400, "请求间隔至少 5 秒，太快容易被风控")
     if "interval_min" in update and update["interval_min"] < 30:
         raise HTTPException(400, "每轮间隔至少 30 分钟")
+    if "rec_cache_min" in update and update["rec_cache_min"] < 5:
+        raise HTTPException(400, "推荐列表至少缓存 5 分钟")
+    if "rec_gap_s" in update and update["rec_gap_s"] < 3:
+        raise HTTPException(400, "推荐请求间隔至少 3 秒")
+    if "rec_max" in update:
+        update["rec_max"] = min(update["rec_max"], 30)
     cfg = config.save(update)
     fetcher.wake()
     return cfg
@@ -289,13 +299,14 @@ def _device(request: Request) -> None:
 
 def _brief(n: dict) -> dict:
     return {"id": n["id"], "title": n["title"], "author": n["author"], "time": n["time"], "images": n["images"],
-            "likes": n["likes"], "comments": n["comment_count"], "fetched_at": n["fetched_at"]}
+            "likes": n["likes"], "comments": n["comment_count"], "fetched_at": n["fetched_at"],
+            "source": n.get("source") or "follow"}
 
 
 @app.get("/api/device/v1/feed")
 async def device_feed(request: Request, since: float = 0, limit: int = 50):
     _device(request)
-    rows = store.notes(since, min(max(limit, 1), 100))
+    rows = store.notes(since, min(max(limit, 1), 100), source="follow")
     return {"now": time.time(), "notes": [_brief(n) for n in rows]}
 
 
@@ -323,11 +334,49 @@ async def device_img(request: Request, note_id: str, name: str):
     return _image(note_id, name)
 
 
+# ---- 设备接口：推荐（按需代拉） / Device API: recommendations (fetched on demand) ----
+
+@app.get("/api/device/v1/rec")
+async def device_rec(request: Request, refresh: int = 0):
+    _device(request)
+    try:
+        return await rec.refresh(bool(refresh))
+    except rec.RecError as e:
+        raise HTTPException(e.status, str(e))
+
+
+@app.get("/api/device/v1/rec/cover/{note_id}.jpg")
+async def device_rec_cover(request: Request, note_id: str):
+    _device(request)
+    if not ID_RE.match(note_id):
+        raise HTTPException(400, "路径不对")
+    path = rec.cover_path(note_id)
+    if not path.exists():
+        raise HTTPException(404, "没有这张封面")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@app.get("/api/device/v1/rec/note/{note_id}")
+async def device_rec_note(request: Request, note_id: str):
+    _device(request)
+    if not ID_RE.match(note_id):
+        raise HTTPException(400, "路径不对")
+    try:
+        n = await rec.open_note(note_id)
+    except rec.RecError as e:
+        raise HTTPException(e.status, str(e))
+    if not n:
+        raise HTTPException(404, "没有这篇")
+    return {**_brief(n), "body": n["body"], "comment_list": n["comments"]}
+
+
 # ---- 浏览器桌面（noVNC），只在面板里用 / Browser desktop (noVNC), panel only ----
 
 @app.websocket("/desk/websockify")
 async def desk_ws(ws: WebSocket):
-    if not auth.session_ok(ws.cookies.get(auth.SESSION_COOKIE)):
+    # http 中间件不管 WebSocket，这里同样拒绝从隧道进来的连接。
+    # The http middleware does not see WebSockets, so reject tunnel connections here too.
+    if ws.headers.get("cf-connecting-ip") or not auth.session_ok(ws.cookies.get(auth.SESSION_COOKIE)):
         await ws.close(code=4401)
         return
     await ws.accept(subprotocol="binary" if "binary" in (ws.scope.get("subprotocols") or []) else None)

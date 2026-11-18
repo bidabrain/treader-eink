@@ -66,7 +66,7 @@
     </section>
 
     <section data-panel="notes" hidden>
-      <div class="card"><h2>已拉到的笔记</h2><p class="muted">只保留图文，图片已经转成设备用的灰度 JPEG。</p><div id="noteGrid" class="notes"></div></div>
+      <div class="card"><h2>已拉到的笔记</h2><p class="muted">只保留图文，图片已经转成设备用的灰度 JPEG。标“推荐”的是设备从推荐里点开过的。</p><div id="noteGrid" class="notes"></div></div>
     </section>
 
     <section data-panel="device" hidden>
@@ -99,6 +99,13 @@
         <label>每篇最多几张图 <input name="max_images" type="number" min="1"></label>
         <label>缓存保留天数 <input name="keep_days" type="number" min="1"></label>
         <label>缓存总大小上限（MB） <input name="max_mb" type="number" min="100"></label>
+        <h2>推荐（设备按需拉取）</h2>
+        <p class="muted">设备上点“刷新推荐”时才读一次小红书首页，点开哪篇才拉哪篇；视频一律跳过。这些请求同时计入上面的每日总上限。</p>
+        <label><input name="rec_enabled" type="checkbox"> 允许设备拉推荐</label>
+        <label>一次列表最多几篇图文 <input name="rec_max" type="number" min="1" max="30"></label>
+        <label>列表缓存（分钟，期间再刷新直接给上次的） <input name="rec_cache_min" type="number" min="5"></label>
+        <label>推荐每天最多请求几次（刷新和点开都算） <input name="rec_daily_cap" type="number" min="1"></label>
+        <label>两次推荐请求至少隔几秒（另加 0～3 秒随机） <input name="rec_gap_s" type="number" min="3"></label>
         <button>保存</button> <span id="setMsg"></span>
       </form>
       <form id="pwForm" class="card">

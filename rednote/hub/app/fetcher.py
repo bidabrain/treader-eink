@@ -62,9 +62,9 @@ def _budget(cfg: dict[str, Any]) -> bool:
     return store.requests_today() < int(cfg["daily_cap"])
 
 
-async def _fetch_note(item: dict[str, Any], cfg: dict[str, Any]) -> bool:
-    note_id, token = item["id"], item.get("xsecToken") or ""
-    store.count_request()
+async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str = "follow") -> bool:
+    """拉一篇详情、处理图片并入库；视频返回 False。/ Fetch one detail, process images and save; False for videos."""
+    store.count_request("rec" if source == "rec" else "")
     data = await mcp.detail(note_id, token)
     n = data.get("note") or {}
     if (n.get("type") or "normal") != "normal":
@@ -85,7 +85,7 @@ async def _fetch_note(item: dict[str, Any], cfg: dict[str, Any]) -> bool:
         "likes": (n.get("interactInfo") or {}).get("likedCount") or "",
         "comment_count": (n.get("interactInfo") or {}).get("commentCount") or "",
         "comments": comments, "images": pages,
-    })
+    }, source)
     return True
 
 
@@ -112,7 +112,11 @@ async def run_round() -> None:
             nickname = (prof.get("userBasicInfo") or {}).get("nickname")
             feeds = prof.get("feeds") or []
             # 列表阶段就跳过视频。/ Skip videos at the list stage.
-            fresh = [f for f in feeds if (f.get("noteCard") or {}).get("type") == "normal" and not store.has_note(f["id"])]
+            images_only = [f for f in feeds if (f.get("noteCard") or {}).get("type") == "normal"]
+            for f in images_only:
+                if store.note_source(f["id"]) == "rec":
+                    store.set_source(f["id"], "follow")
+            fresh = [f for f in images_only if not store.has_note(f["id"])]
             fresh = fresh[: int(cfg["per_creator"])]
             # 记下最新一篇的令牌，主页令牌过期时可以用它。/ Keep a recent token in case the profile token expires.
             store.mark_creator(c["user_id"], nickname, "", feeds[0].get("xsecToken") if feeds else None)
@@ -122,7 +126,7 @@ async def run_round() -> None:
                     break
                 await _gap(cfg)
                 try:
-                    if await _fetch_note(item, cfg):
+                    if await fetch_note(item["id"], item.get("xsecToken") or "", cfg):
                         state.new_notes += 1
                 except mcp.McpError as e:
                     note(f"笔记 {item['id']} 失败：{e}")

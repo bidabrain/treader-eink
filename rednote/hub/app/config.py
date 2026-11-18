@@ -36,6 +36,19 @@ DEFAULTS: dict[str, Any] = {
     # 缓存保留天数和总大小上限（MB）。/ Cache retention in days and size cap in MB.
     "keep_days": 30,
     "max_mb": 2000,
+    # 推荐：设备点“刷新”时才由服务器代拉首页，点开哪篇才拉哪篇详情。视频一律跳过。
+    # Recommendations: the server reads the home feed only when the device asks, and a note's detail only when opened.
+    # Videos are always skipped.
+    "rec_enabled": True,
+    # 一次推荐列表最多几篇图文。/ Most image notes in one recommendation list.
+    "rec_max": 12,
+    # 这么多分钟内再刷新，直接返回上次的列表。/ Refreshing within this many minutes returns the previous list.
+    "rec_cache_min": 10,
+    # 推荐每天最多请求小红书几次（刷新和点开都算，同时也计入总上限）。
+    # Daily cap on recommendation requests (refreshes and opens; they also count toward daily_cap).
+    "rec_daily_cap": 60,
+    # 两次推荐请求之间至少隔几秒（另加 0～3 秒随机）。/ Minimum seconds between recommendation requests (plus 0-3 s jitter).
+    "rec_gap_s": 8,
     # 设备访问令牌。/ Device access token.
     "device_token": "",
     # 外网访问：off / quick / token。/ Public access: off / quick / token.

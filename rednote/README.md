@@ -85,8 +85,12 @@ docker compose up -d
 - **在家里**：地址填 `http://服务器局域网IP:8091`。
 - **在外面**：选一种外网方式，保存后显示外网地址：
   - **快速隧道**：什么都不用准备，得到一个随机的 `https://xxx.trycloudflare.com`，**每次重启都会变**，适合临时用。
-  - **隧道令牌**（长期用）：在 [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → 网络 → 隧道里新建隧道，复制令牌；在隧道的“已发布的应用程序 / 公共主机名”里加一个域名，服务填 `http://localhost:8091`（是 http，不是 https；是 localhost，因为 cloudflared 跑在面板容器里）。把令牌粘贴到面板，选“隧道令牌”，保存并应用。
-- 隧道只转发设备接口 `/api/device/`；从隧道进来的请求访问面板一律 403。**不要在路由器上把 8091 端口映射到公网**。
+  - **隧道令牌**（长期用，域名要托管在 Cloudflare）：
+    1. [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → 网络 → 隧道 → 创建隧道，类型选 Cloudflared。页面给出的安装命令不用执行，只复制其中 `eyJ` 开头的令牌。
+    2. 在隧道的“已发布的应用程序路由 / 公共主机名”里加一条：子域随意（如 `pico`），域选你的域名，**路径填 `^/api/device/`**，服务类型 **HTTP**，URL **`localhost:8091`**（是 localhost，因为 cloudflared 跑在面板容器里）。路径填了以后，面板相关的请求在 Cloudflare 就被挡掉，到不了你的服务器。
+    3. 不要在 Access → 应用程序里给它加登录验证，设备过不了那个登录页。
+    4. 把令牌粘贴到面板，选“隧道令牌”，保存并应用。设备外网地址就是 `https://pico.你的域名`。
+- 面板程序（hub）自己也会检查：从隧道进来的请求（带 `CF-Connecting-IP` 头）只能访问 `/api/device/`，其余一律 403，浏览器桌面也连不上。所以快速隧道（不能填路径）同样安全。**不要在路由器上把 8091 端口映射到公网**。
 
 ## 拉取规则（防风控）
 
@@ -101,6 +105,18 @@ docker compose up -d
 | 每篇图片 | 18 张 | 太长的图切屏后会多出几页 |
 | 缓存 | 30 天 / 2000 MB | 超过就删最旧的 |
 
+### 推荐（设备按需拉取）
+
+除了关注的博主，设备还可以看这个账号的首页推荐。服务器**不会定时刷首页**：只有设备上点“刷新推荐”时才读一次首页（视频直接过滤掉），点开哪篇才拉哪篇的详情和图片，和人拿手机刷的节奏差不多，推荐也会按你真正点开的内容调整。等待时间：刷新约 5～15 秒，点开一篇约 10～20 秒。
+
+| 设置 | 默认 | 说明 |
+| --- | --- | --- |
+| 允许设备拉推荐 | 开 | 关掉后设备的推荐接口返回 403 |
+| 一次列表最多 | 12 篇图文 | 最多 30 |
+| 列表缓存 | 10 分钟 | 期间再刷新直接给上次的列表，防止连点；最少 5 分钟 |
+| 推荐每天上限 | 60 次 | 刷新和点开都算，同时计入上面的每日总上限 |
+| 两次推荐请求间隔 | 8 秒 + 0～3 秒随机 | 和定时拉取共用一个浏览器，会排队；最少 3 秒 |
+
 小红书要求验证（滑块）或登录失效时，拉取会**自动暂停**，概览页写着原因。去 **浏览器桌面** 处理好（或重新扫码）后，点“立即拉一轮”继续。
 
 ## 设备接口
@@ -109,7 +125,10 @@ docker compose up -d
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/feed?since=时间戳&limit=50` | `{now, notes:[{id, title, author, time, images, likes, comments, fetched_at}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的 |
+| `GET /api/device/v1/feed?since=时间戳&limit=50` | 关注博主的笔记：`{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的 |
+| `GET /api/device/v1/rec?refresh=1` | 推荐列表 `{fetched_at, refresh_after, left_today, notes:[{id, title, author, likes, thumb, ready}]}`。`refresh=1` 且过了缓存期才去读首页，否则返回上次的；`ready` 表示已经拉过详情 |
+| `GET /api/device/v1/rec/cover/{id}.jpg` | 推荐列表里的 150×200 封面 |
+| `GET /api/device/v1/rec/note/{id}` | 点开推荐里的一篇：没拉过就现拉（视频返回 415），返回和 `note/{id}` 一样；之后图片用下面的 `img` 接口。次数用完 429，暂停中 503，不在近期列表里 404 |
 | `GET /api/device/v1/note/{id}` | 上面的字段加 `body`（正文）和 `comment_list`（前 20 条：`user`、`text`、`likes`） |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
 | `GET /api/device/v1/img/{id}/thumb.jpg` | 150×200 缩略图 |
@@ -143,6 +162,7 @@ docker compose down                           # 停止（数据保留在 data/�
 | `.env.example` | 端口、mcp 版本、代理 |
 | `hub/app/main.py` | 路由：面板、设备接口、隧道限制、浏览器桌面转发 |
 | `hub/app/fetcher.py` | 定时拉取和清理 |
+| `hub/app/rec.py` | 推荐：设备按需刷新首页、点开现拉 |
 | `hub/app/images.py` | 图片转灰度、缩放、切屏、缩略图 |
 | `hub/app/mcp.py` | xiaohongshu-mcp 接口客户端 |
 | `hub/app/tunnel.py` | cloudflared 子进程 |

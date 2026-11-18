@@ -53,7 +53,8 @@ loaders.home = async () => {
   const s = await api('/api/panel/status');
   const items = [
     ['小红书服务', s.mcp_up ? '在线' : '离线'], ['关注博主', s.creators], ['笔记', s.notes],
-    ['缓存', s.cache_mb + ' MB'], ['今日请求', s.requests_today + ' / ' + s.daily_cap], ['外网', s.tunnel.status],
+    ['缓存', s.cache_mb + ' MB'], ['今日请求', s.requests_today + ' / ' + s.daily_cap],
+    ['今日推荐请求', s.rec_enabled ? s.rec_today + ' / ' + s.rec_daily_cap : '已关闭'], ['外网', s.tunnel.status],
   ];
   $('#stats').innerHTML = items.map(([k, v]) => `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>`).join('');
   const f = s.fetch;
@@ -112,7 +113,7 @@ $('#discover').onclick = async () => {
 loaders.notes = async () => {
   const list = await api('/api/panel/notes');
   $('#noteGrid').innerHTML = list.length ? list.map((n) => `<figure><img loading="lazy" src="/api/panel/img/${n.id}/thumb.jpg" alt="">
-    <figcaption><b>${esc(n.title || '（无标题）')}</b><br><span class="muted">${esc(n.author)} · ${n.images} 页</span></figcaption></figure>`).join('')
+    <figcaption><b>${esc(n.title || '（无标题）')}</b><br><span class="muted">${n.source === 'rec' ? '推荐 · ' : ''}${esc(n.author)} · ${n.images} 页</span></figcaption></figure>`).join('')
     : '<p class="muted">还没有内容。</p>';
 };
 
@@ -138,12 +139,15 @@ $('#tApply').onclick = async () => {
 // ---- 设置 / Settings ----
 loaders.settings = async () => {
   const cfg = await api('/api/panel/settings');
-  for (const el of $('#setForm').elements) if (el.name && el.name in cfg) el.value = cfg[el.name];
+  for (const el of $('#setForm').elements) {
+    if (!el.name || !(el.name in cfg)) continue;
+    if (el.type === 'checkbox') el.checked = !!cfg[el.name]; else el.value = cfg[el.name];
+  }
 };
 $('#setForm').onsubmit = async (e) => {
   e.preventDefault();
   const body = {};
-  for (const el of e.target.elements) if (el.name) body[el.name] = el.value;
+  for (const el of e.target.elements) if (el.name) body[el.name] = el.type === 'checkbox' ? el.checked : el.value;
   try { await api('/api/panel/settings', { method: 'POST', body }); $('#setMsg').textContent = '已保存'; }
   catch (err) { $('#setMsg').textContent = err.message; }
 };

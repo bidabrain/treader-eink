@@ -13,6 +13,8 @@ main { max-width: 980px; margin: 0 auto; padding: 16px; }
 .narrow { max-width: 360px; margin: 15vh auto; }
 .gate input, .card input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
 .card input[type=number] { width: 90px; }
+.card h2 + p.muted { margin-top: -4px; }
+#setForm h2:not(:first-child) { margin-top: 22px; }
 .card label { display: block; margin: 6px 0; }
 .row { display: flex; gap: 8px; } .row input { flex: 1; }
 button, .button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; text-decoration: none; display: inline-block; }

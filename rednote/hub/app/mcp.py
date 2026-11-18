@@ -4,6 +4,8 @@ Client for the xiaohongshu-mcp HTTP API. Read-only endpoints only: no posting, l
 """
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -19,11 +21,22 @@ class McpError(Exception):
     pass
 
 
+# 只有一个浏览器：定时拉取和设备按需请求排队，一次一个。/ One browser: scheduled and on-demand calls take turns.
+_lock = asyncio.Lock()
+# 上一次请求小红书结束的时间，按需请求据此留间隔。/ When the last call finished; on-demand calls space from it.
+last_call = 0.0
+
+
 async def _call(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    global last_call
     url = f"{config.MCP_URL}/api/v1{path}"
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.request(method, url, json=body)
+        async with _lock:
+            try:
+                async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+                    resp = await client.request(method, url, json=body)
+            finally:
+                last_call = time.time()
     except httpx.HTTPError as e:
         raise McpError(f"连不上小红书服务（mcp）：{type(e).__name__}") from e
     try:
