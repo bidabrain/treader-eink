@@ -1,11 +1,12 @@
-# 把 site/（网页刷机工具）发布到 GitHub Pages。只发布网页，不编译、不上传任何固件。
-# Publish site/ (the web flasher) to GitHub Pages. Publishes the page only; no firmware is built or uploaded.
+# 把 site/（项目主页和网页刷机工具）发布到 GitHub Pages，界面截图从 docs/images 复制进去。只发布网页，不编译、不上传任何固件。
+# Publish site/ (the project homepage and web flasher) to GitHub Pages, copying the screenshots in from docs/images.
+# Publishes the page only; no firmware is built or uploaded.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/images/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # 截图只在 docs/images 存一份，发布时复制。/ Screenshots live only in docs/images and are copied at publish time.
+      - name: Copy screenshots
+        run: mkdir -p site/img && cp docs/images/*.png site/img/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

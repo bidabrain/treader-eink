@@ -3,108 +3,345 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Treader 刷机</title>
-<meta name="description" content="在浏览器里给小纸 Pico 刷入 Treader 固件。固件文件只在本机读取，不会上传。">
+<title>Treader · 小纸 Pico 阅读固件</title>
+<meta name="description" content="Treader 是给小纸 Pico 用的开源墨水屏阅读固件：TXT/EPUB 阅读、CBZ 漫画、番茄小说、小红书、微博、虎扑。在浏览器里直接刷机，固件只在本机读取，不会上传。">
 <style>
-  :root { --bg: #f4f3ef; --card: #fff; --ink: #161616; --mid: #666; --line: #d6d4cc; --accent: #111; --ok: #1d7a3a; --warn: #a3470e; --bad: #b3261e; }
+  :root {
+    --bg: #f5f4ef; --paper: #fbfaf6; --card: #ffffff; --ink: #141414; --mid: #67665f; --soft: #8d8b83;
+    --line: #dddad1; --chip: #ecebe4; --accent: #141414; --on-accent: #fbfaf6;
+    --ok: #1d7a3a; --warn: #a3470e; --bad: #b3261e; --stage: #e9e7df;
+  }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #191918; --card: #232322; --ink: #ececea; --mid: #a3a29d; --line: #3a3936; --accent: #ececea; --ok: #6ccf8b; --warn: #f0a46c; --bad: #f28b82; }
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --paper: #1a1a19; --card: #1f1f1e; --ink: #ecebe6; --mid: #a7a59e; --soft: #85837c;
+      --line: #34332f; --chip: #2a2a28; --accent: #ecebe6; --on-accent: #141413;
+      --ok: #6ccf8b; --warn: #f0a46c; --bad: #f28b82; --stage: #23231f;
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
-  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: .5px; }
-  h2 { font-size: 19px; margin: 0 0 12px; }
-  .lead { color: var(--mid); margin: 0 0 24px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
-  .step { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg); font-size: 14px; font-weight: 700; align-items: center; justify-content: center; margin-right: 8px; vertical-align: 2px; }
-  .drop { display: block; border: 2px dashed var(--line); border-radius: 12px; padding: 26px 16px; text-align: center; cursor: pointer; color: var(--mid); }
-  .drop.over { border-color: var(--accent); color: var(--ink); }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.7 "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .serif { font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif; }
+
+  /* 导航 / Nav */
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: .3px; text-decoration: none; }
+  .logo i { width: 26px; height: 32px; border: 2.5px solid var(--ink); border-radius: 6px; position: relative; }
+  .logo i::after { content: ""; position: absolute; left: 4px; right: 4px; top: 6px; height: 2px; background: var(--ink); box-shadow: 0 6px 0 var(--ink), 0 12px 0 var(--ink); }
+  nav .links { display: flex; gap: 22px; flex: 1; }
+  nav .links a { text-decoration: none; color: var(--mid); font-size: 15px; }
+  nav .links a:hover { color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-weight: 700; font-size: 15px; border-radius: 999px; padding: 10px 22px; text-decoration: none; cursor: pointer; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); }
+  .btn.solid { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn.small { padding: 6px 16px; font-size: 14px; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* 首屏 / Hero */
+  .hero { text-align: center; padding: 76px 0 0; }
+  .eyebrow { display: inline-block; font-size: 14px; color: var(--mid); border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; background: var(--paper); }
+  .hero h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.15; margin: 22px 0 18px; letter-spacing: 1px; font-weight: 800; }
+  .hero p.sub { font-size: clamp(16px, 2vw, 19px); color: var(--mid); max-width: 640px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .stage { margin: 56px auto 0; background: var(--stage); border-radius: 28px 28px 0 0; padding: 40px 24px 0; max-width: 1080px; overflow: hidden; }
+  .stage img { width: 100%; max-width: 1000px; margin: 0 auto -6px; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--paper); }
+  .facts div { padding: 22px 18px; text-align: center; border-right: 1px solid var(--line); }
+  .facts div:last-child { border-right: 0; }
+  .facts b { display: block; font-size: 22px; }
+  .facts span { color: var(--mid); font-size: 14px; }
+
+  /* 区块 / Sections */
+  section { padding: 96px 0 0; }
+  .head { max-width: 680px; margin-bottom: 40px; }
+  .head small { color: var(--soft); font-size: 13px; letter-spacing: 2px; }
+  .head h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin: 8px 0 12px; }
+  .head p { color: var(--mid); margin: 0; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .feat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+  .feat .ic { width: 46px; height: 46px; border: 2px solid var(--ink); border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .feat .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feat h3 { margin: 0 0 6px; font-size: 18px; }
+  .feat p { margin: 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .feat .tag { display: inline-block; margin-top: 12px; font-size: 12px; color: var(--mid); background: var(--chip); border-radius: 6px; padding: 1px 8px; }
+
+  /* 截图 / Screens */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .tabs button { font: inherit; font-size: 15px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 7px 18px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+  .shot { background: #ecebe6; border: 1px solid var(--line); border-radius: 22px; overflow-x: auto; }
+  .shot img { min-width: 900px; width: 100%; }
+  .shot-note { color: var(--mid); font-size: 14px; margin-top: 12px; }
+
+  /* 生态 / Ecosystem */
+  .eco { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .eco .feat { padding: 26px; }
+  .eco ul { margin: 10px 0 16px; padding-left: 18px; color: var(--mid); font-size: 14.5px; }
+  .eco .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* 刷机 / Flasher */
+  .flash { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 16px; }
+  .card h3 { font-size: 18px; margin: 0 0 14px; display: flex; align-items: center; }
+  .step { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 800; align-items: center; justify-content: center; margin-right: 10px; flex: none; }
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 30px 16px; text-align: center; cursor: pointer; color: var(--mid); background: var(--paper); transition: border-color .15s; }
+  .drop.over, .drop:hover { border-color: var(--ink); color: var(--ink); }
   .drop b { color: var(--ink); }
   input[type=file] { display: none; }
   .info { margin-top: 14px; display: none; }
-  .info table { border-collapse: collapse; width: 100%; font-size: 15px; }
-  .info td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .info table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  .info td { padding: 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
   .info td:first-child { color: var(--mid); width: 6.5em; }
   .modes { display: grid; gap: 10px; }
-  .mode { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
-  .mode input { margin-top: 5px; }
-  .mode small { display: block; color: var(--mid); font-size: 14px; }
+  .mode { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid var(--line); border-radius: 14px; padding: 13px 15px; cursor: pointer; }
+  .mode:has(input:checked) { border-color: var(--ink); }
+  .mode input { margin-top: 6px; accent-color: var(--ink); }
+  .mode small { display: block; color: var(--mid); font-size: 14px; line-height: 1.6; }
   .mode.disabled { opacity: .45; cursor: not-allowed; }
-  .erase { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--bad); font-size: 15px; }
-  button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; padding: 12px 26px; background: var(--accent); color: var(--bg); cursor: pointer; }
-  button:disabled { opacity: .35; cursor: not-allowed; }
+  .erase { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--bad); font-size: 14.5px; }
+  .erase input { margin-top: 6px; accent-color: var(--bad); }
+  #go { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 13px 28px; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  #go:disabled { opacity: .3; cursor: not-allowed; }
   .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
-  .bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; margin: 16px 0 6px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin: 18px 0 6px; }
   .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-  .status { font-size: 15px; min-height: 1.6em; }
+  .status { font-size: 14.5px; min-height: 1.6em; }
   .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--warn); }
-  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; height: 180px; overflow: auto; font-size: 12.5px; line-height: 1.5; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
-  ul { padding-left: 20px; margin: 6px 0 0; }
-  li { margin: 3px 0; }
-  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .92em; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 0 4px; }
+  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; height: 170px; overflow: auto; font-size: 12.5px; line-height: 1.5; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+  .notes ul { padding-left: 18px; margin: 0; }
+  .notes li { margin: 8px 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .notes li b { color: var(--ink); }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .9em; background: var(--chip); border-radius: 5px; padding: 1px 5px; }
   .unsupported { display: none; border-color: var(--bad); color: var(--bad); }
-  footer { color: var(--mid); font-size: 14px; margin-top: 28px; }
-  a { color: inherit; }
+  .safe { display: flex; gap: 12px; align-items: flex-start; background: var(--paper); }
+  .safe svg { width: 24px; height: 24px; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
+
+  footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 34px 0 48px; color: var(--mid); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .flash, .eco { grid-template-columns: 1fr; }
+    .facts { grid-template-columns: repeat(2, 1fr); }
+    .facts div:nth-child(2) { border-right: 0; }
+    .facts div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  }
+  @media (max-width: 620px) {
+    nav .links { display: none; }
+    nav .wrap { justify-content: space-between; }
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding-top: 48px; }
+    .stage { border-radius: 20px 20px 0 0; padding: 24px 8px 0; }
+    section { padding-top: 72px; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Treader 刷机</h1>
-  <p class="lead">在浏览器里给小纸 Pico 刷入 Treader。固件文件只在你的电脑上读取，通过 USB 直接写进设备，<b>不会上传到任何服务器</b>。</p>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></symbol>
+    <symbol id="i-comic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 11h16M13 11l-2 10"/></symbol>
+    <symbol id="i-tomato" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M8.5 6.5L12 8.5l3.5-2M12 8.5V4"/></symbol>
+    <symbol id="i-xhs" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M12 16.5l-3.3-3.3a2.1 2.1 0 0 1 3.3-2.5 2.1 2.1 0 0 1 3.3 2.5z"/></symbol>
+    <symbol id="i-weibo" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="4"/><path d="M7 17l-1 4 5-4M10.5 7l-1 7M14.5 7l-1 7M8 9.5h8M7.5 12.5h8"/></symbol>
+    <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4v16M7 6.5c3 3 3 8 0 11M17 6.5c-3 3-3 8 0 11"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.4-1.6M5 16a7.5 7.5 0 0 0 13.4 1.6"/><path d="M19 3v5h-5M5 21v-5h5"/></symbol>
+    <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6 0-.6 0-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1 2.8.8.1-.6.3-1 .6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.7v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  </defs>
+</svg>
 
-  <div class="card unsupported" id="unsupported">
-    这个浏览器不支持网页串口（Web Serial）。请用电脑上的 <b>Chrome</b> 或 <b>Edge</b> 打开本页；手机和 Safari、Firefox 都不行。
-  </div>
-
-  <div class="card">
-    <h2><span class="step">1</span>选择固件</h2>
-    <label class="drop" id="drop" for="file">
-      把 <b>treader-full.bin</b> 拖到这里，或<b>点击选择</b><br>
-      <small>也接受只含主程序的 <code>Read_Pico.bin</code>（只能升级）</small>
-    </label>
-    <input type="file" id="file" accept=".bin">
-    <div class="info" id="info"><table id="infoTable"></table></div>
-  </div>
-
-  <div class="card">
-    <h2><span class="step">2</span>选择方式</h2>
-    <div class="modes">
-      <label class="mode" id="modeUpgrade"><input type="radio" name="mode" value="upgrade" checked>
-        <span><b>升级</b>（推荐）<small>只写主程序，最快。Wi-Fi、阅读进度、壁纸等设置都保留。设备用的是旧分区表（2026-11-17 以前的版本）时请选“完整安装”。</small></span></label>
-      <label class="mode" id="modeFull"><input type="radio" name="mode" value="full">
-        <span><b>完整安装</b><small>写入引导程序、分区表和主程序，跳过设置区，设置仍保留。第一次刷 Treader、或者分区表有变化时用这个。</small></span></label>
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#top"><i></i>Treader</a>
+    <div class="links">
+      <a href="#features">功能</a><a href="#screens">界面</a><a href="#eco">服务器与 App</a><a href="#flash">在线刷机</a>
+      <a href="https://github.com/bidabrain/treader-eink#readme">文档</a>
     </div>
-    <label class="erase"><input type="checkbox" id="erase">
-      <span><b>擦除设备</b>：先清空整片 Flash 再完整写入。会删除 Wi-Fi、阅读进度等所有设置（TF 卡不受影响）。只在从其他第三方固件换过来、或系统出问题时勾选。</span></label>
+    <a class="btn small" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>GitHub</a>
   </div>
+</nav>
 
-  <div class="card">
-    <h2><span class="step">3</span>连接并刷入</h2>
-    <div class="row">
-      <button id="go" disabled>连接设备并开始</button>
-      <span class="status" id="status">先选择固件文件</span>
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="eyebrow">小纸 Pico · Read Pico 开源阅读固件</span>
+    <h1>为墨水屏<br>重新设计的阅读系统</h1>
+    <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
+    <div class="cta">
+      <a class="btn solid" href="#flash">在线刷机</a>
+      <a class="btn" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>查看源码</a>
     </div>
-    <div class="bar"><i id="bar"></i></div>
-    <pre id="log"></pre>
   </div>
+  <div class="stage"><img src="img/site-hero.png" width="1200" height="700" alt="Treader 的书库、阅读和微博界面"></div>
+</header>
+<div class="facts">
+  <div><b>7</b><span>个底部标签，可选显示</span></div>
+  <div><b>16 级灰度</b><span>局部快刷翻页，定时整屏清残影</span></div>
+  <div><b>离线拼音</b><span>全拼、九键，词库在 TF 卡上</span></div>
+  <div><b>双程序槽</b><span>TF 卡升级，起不来自动退回</span></div>
+</div>
 
-  <div class="card">
-    <h2>说明</h2>
-    <ul>
-      <li>用 USB-C 数据线连接小纸 Pico，点“连接设备并开始”，在弹窗里选设备的串口（通常叫 USB JTAG/serial debug unit）。</li>
-      <li>写入约 1～2 分钟，<b>完成前不要拔线</b>。完成后设备会自动重启。</li>
-      <li>小纸 Pico <b>没有 BOOT 键</b>，不用按任何键，网页会通过 USB 自动让设备进入下载模式。设备要先开机（锁屏选“关机”时 USB 不工作）。</li>
-      <li>连接不上：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。</li>
-      <li>固件文件来自你自己编译的 <code>build/treader-full.bin</code>（或 <code>build/Read_Pico.bin</code>）。页面会核对文件头，确认是给 ESP32-S3 的 Treader 固件才允许写入。</li>
-      <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库），详见 <a href="https://github.com/bidabrain/treader-eink#快速开始">项目说明</a>。</li>
-    </ul>
-  </div>
+<main class="wrap">
+  <section id="features">
+    <div class="head">
+      <small>FEATURES</small>
+      <h2>一台阅读器，该有的都在</h2>
+      <p>所有列表都按页翻，不做滚动；联网的内容都先缓存到 TF 卡，没网也能看已经下好的。</p>
+    </div>
+    <div class="grid">
+      <div class="feat"><div class="ic"><svg><use href="#i-book"/></svg></div><h3>书库与阅读</h3><p>TXT、EPUB 书架和封面，拼音首字母搜索；行距、段距、页边距都能调，逐书记住进度，定时自动翻页。</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-comic"/></svg></div><h3>漫画</h3><p>CBZ 按系列整理，一屏一页，一话看完自动接下一话；网页上传时先转成灰度，翻页更快。</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。</p><span class="tag">需要自建下载服务器</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-xhs"/></svg></div><h3>小红书</h3><p>关注博主和首页推荐，两列封面卡片；看图一屏一张，再看正文和评论，大图还能存成锁屏壁纸。</p><span class="tag">经自建 rednote 服务器</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-weibo"/></svg></div><h3>微博</h3><p>关注的人和热门，卡片排版、转发灰框、图片宫格；长微博补全文，评论按需取。不用登录微博。</p><span class="tag">经自建 weibo 服务器</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>传书</h3><p>Wi-Fi 网页上传书、字体和漫画；或者用数据线把 TF 卡当 U 盘直接拷。</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>同步与升级</h3><p>WebDAV 同步阅读进度和番茄书架；TF 卡放好固件就能升级，起不来自动退回旧版。</p></div>
+    </div>
+  </section>
 
-  <footer>
-    Treader · <a href="https://github.com/bidabrain/treader-eink">GitHub</a> · 刷写由 Espressif 的 <a href="https://github.com/espressif/esptool-js">esptool-js</a> 完成 · 非官方固件，刷机有风险，请先备份。
-  </footer>
+  <section id="screens">
+    <div class="head">
+      <small>SCREENS</small>
+      <h2>按设备真实像素设计的界面</h2>
+      <p>每一屏都按 684×1216 的实际坐标绘制，图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。</p>
+    </div>
+    <div class="tabs" id="shotTabs">
+      <button class="on" data-img="screens-reading">书库与阅读</button>
+      <button data-img="screens-comics">漫画与传书</button>
+      <button data-img="screens-tomato">番茄小说</button>
+      <button data-img="screens-xhs">小红书</button>
+      <button data-img="screens-weibo">微博</button>
+      <button data-img="screens-hupu">虎扑</button>
+      <button data-img="screens-settings">设置</button>
+    </div>
+    <div class="shot"><img id="shotImg" src="img/screens-reading.png" width="1508" height="708" alt="Treader 界面截图"></div>
+    <p class="shot-note">全部页面和每一屏的说明见 <a href="https://github.com/bidabrain/treader-eink/blob/main/docs/design/ui.html">设计稿</a>（下载后用浏览器打开）。</p>
+  </section>
+
+  <section id="eco">
+    <div class="head">
+      <small>ECOSYSTEM</small>
+      <h2>自己的服务器，自己的数据</h2>
+      <p>设备不直接访问小红书和微博，只连你自己用 Docker 部署的服务器；服务器把图片处理成墨水屏能直接显示的灰度图。手机上也有同样功能的安卓 App。</p>
+    </div>
+    <div class="eco">
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-xhs"/></svg></div>
+        <h3>rednote · 小红书服务器</h3>
+        <ul><li>扫码登录小红书网页版，定时拉关注博主的图文</li><li>推荐只在设备上点“刷新”时才去读</li><li>关注名单可以 WebDAV 备份恢复；隧道只开放设备接口</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/rednote#readme">部署说明</a>
+          <a class="btn small solid" data-release="rednote-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-weibo"/></svg></div>
+        <h3>weibo · 微博服务器</h3>
+        <ul><li>不登录，访客身份定时拉关注的人和热门</li><li>带视频的不收，长微博补全文，评论按需取</li><li>关注名单和 weiboX 用同一个 WebDAV 备份文件</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/weibo#readme">部署说明</a>
+          <a class="btn small solid" data-release="weibo-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flash">
+    <div class="head">
+      <small>INSTALL</small>
+      <h2>在浏览器里刷机</h2>
+      <p>用电脑上的 Chrome 或 Edge，USB-C 数据线连上小纸 Pico，三步完成。小纸 Pico 没有 BOOT 键，网页会自动让它进入下载模式。</p>
+    </div>
+
+    <div class="card unsupported" id="unsupported">
+      这个浏览器不支持网页串口（Web Serial）。请用电脑上的 <b>Chrome</b> 或 <b>Edge</b> 打开本页；手机和 Safari、Firefox 都不行。
+    </div>
+
+    <div class="flash">
+      <div>
+        <div class="card">
+          <h3><span class="step">1</span>选择固件</h3>
+          <label class="drop" id="drop" for="file">
+            把 <b>treader-full.bin</b> 拖到这里，或<b>点击选择</b><br>
+            <small>也接受只含主程序的 <code>Read_Pico.bin</code>（只能升级）</small>
+          </label>
+          <input type="file" id="file" accept=".bin">
+          <div class="info" id="info"><table id="infoTable"></table></div>
+        </div>
+
+        <div class="card">
+          <h3><span class="step">2</span>选择方式</h3>
+          <div class="modes">
+            <label class="mode" id="modeUpgrade"><input type="radio" name="mode" value="upgrade" checked>
+              <span><b>升级</b>（推荐）<small>只写主程序，最快。Wi-Fi、阅读进度、壁纸等设置都保留。设备用的是旧分区表（2026-11-17 以前的版本）时请选“完整安装”。</small></span></label>
+            <label class="mode" id="modeFull"><input type="radio" name="mode" value="full">
+              <span><b>完整安装</b><small>写入引导程序、分区表和主程序，跳过设置区，设置仍保留。第一次刷 Treader、或者分区表有变化时用这个。</small></span></label>
+          </div>
+          <label class="erase"><input type="checkbox" id="erase">
+            <span><b>擦除设备</b>：先清空整片 Flash 再完整写入。会删除 Wi-Fi、阅读进度等所有设置（TF 卡不受影响）。只在从其他第三方固件换过来、或系统出问题时勾选。</span></label>
+        </div>
+
+        <div class="card">
+          <h3><span class="step">3</span>连接并刷入</h3>
+          <div class="row">
+            <button id="go" disabled>连接设备并开始</button>
+            <span class="status" id="status">先选择固件文件</span>
+          </div>
+          <div class="bar"><i id="bar"></i></div>
+          <pre id="log"></pre>
+        </div>
+      </div>
+
+      <div>
+        <div class="card safe">
+          <svg><use href="#i-shield"/></svg>
+          <div><b>固件不会上传</b><br><span style="color:var(--mid);font-size:14.5px">文件只在你的电脑上读取，通过 USB 直接写进设备。页面会核对文件头，确认是给 ESP32-S3 的 Treader 固件才允许写入；默认不碰设置区，Wi-Fi 和阅读进度都保留。</span></div>
+        </div>
+        <div class="card notes">
+          <h3>刷机说明</h3>
+          <ul>
+            <li>点“连接设备并开始”，在弹窗里选设备的串口（通常叫 USB JTAG/serial debug unit）。</li>
+            <li>写入约 1～2 分钟，<b>完成前不要拔线</b>。完成后设备会自动重启。</li>
+            <li>小纸 Pico <b>没有 BOOT 键</b>，不用按任何键。设备要先开机（锁屏选“关机”时 USB 不工作）。</li>
+            <li>连接不上：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。</li>
+            <li>固件来自你自己编译的 <code>build/treader-full.bin</code>（或 <code>build/Read_Pico.bin</code>），编译方法见 <a href="https://github.com/bidabrain/treader-eink#快速开始">项目说明</a>。</li>
+            <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库）。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
+
+<footer>
+  <div class="wrap">
+    <span>Treader · 开源阅读固件 · 基于 MindReset Read Pico 示例固件 · 刷写由 Espressif 的 <a href="https://github.com/espressif/esptool-js">esptool-js</a> 完成</span>
+    <span>非官方固件，与 MindReset、番茄小说、小红书、微博没有隶属关系。刷机有风险，请先备份。</span>
+  </div>
+</footer>
+
+<script>
+// 截图切换；安卓 App 按钮指向各自最新的发布（取不到就留在发布列表页）。
+// Screenshot tabs; Android buttons point at each app's latest release (falling back to the releases page).
+document.querySelectorAll("#shotTabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#shotTabs button").forEach((x) => x.classList.toggle("on", x === b));
+  document.getElementById("shotImg").src = "img/" + b.dataset.img + ".png";
+}));
+fetch("https://api.github.com/repos/bidabrain/treader-eink/releases?per_page=30")
+  .then((r) => (r.ok ? r.json() : []))
+  .then((list) => document.querySelectorAll("[data-release]").forEach((a) => {
+    const rel = list.find((x) => x.tag_name.startsWith(a.dataset.release) && !x.draft);
+    if (!rel) return;
+    a.href = rel.html_url;
+    a.textContent = "安卓 App " + rel.tag_name.slice(a.dataset.release.length);
+  }))
+  .catch(() => {});
+</script>
 
 <script type="module">
 import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/bundle.js";
