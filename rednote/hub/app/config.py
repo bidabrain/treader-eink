@@ -48,7 +48,7 @@ DEFAULTS: dict[str, Any] = {
     # Daily cap on recommendation requests (refreshes and opens; they also count toward daily_cap).
     "rec_daily_cap": 60,
     # 两次推荐请求之间至少隔几秒（另加 0～3 秒随机）。/ Minimum seconds between recommendation requests (plus 0-3 s jitter).
-    "rec_gap_s": 8,
+    "rec_gap_s": 3,
     # 设备访问令牌。/ Device access token.
     "device_token": "",
     # 外网访问：off / quick / token。/ Public access: off / quick / token.
@@ -72,8 +72,18 @@ def load() -> dict[str, Any]:
                 cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
             except (OSError, ValueError):
                 pass
+        changed = False
         if not cfg.get("device_token"):
             cfg["device_token"] = secrets.token_urlsafe(24)
+            changed = True
+        # 旧默认的 8 秒间隔改成新默认 3 秒（只迁移一次，之后用户改成多少就是多少）。/ Move the old 8 s default gap to
+        # the new 3 s default once; afterwards whatever the user sets stays.
+        if not cfg.get("_gap_v2"):
+            if cfg.get("rec_gap_s") == 8:
+                cfg["rec_gap_s"] = 3
+            cfg["_gap_v2"] = True
+            changed = True
+        if changed:
             _write(cfg)
         return cfg
 

@@ -225,7 +225,7 @@ async def panel_notes(limit: int = 60):
 
 @app.get("/api/panel/img/{note_id}/{name}")
 async def panel_img(note_id: str, name: str):
-    return _image(note_id, name)
+    return await _image(note_id, name)
 
 
 @app.get("/api/panel/logs")
@@ -319,11 +319,12 @@ async def device_note(request: Request, note_id: str):
     return {**_brief(n), "body": n["body"], "comment_list": n["comments"]}
 
 
-def _image(note_id: str, name: str) -> FileResponse:
+async def _image(note_id: str, name: str) -> FileResponse:
     if not ID_RE.match(note_id) or not re.match(r"^(thumb|\d{1,3})\.jpg$", name):
         raise HTTPException(400, "路径不对")
     path = images.note_dir(note_id) / name
-    if not path.exists():
+    # 这篇的图还在后台做：等这一页做好。/ This note's images are still being made: wait for the page.
+    if not path.exists() and not await images.wait_page(note_id, path):
         raise HTTPException(404, "没有这张图")
     return FileResponse(path, media_type="image/jpeg")
 
@@ -331,7 +332,7 @@ def _image(note_id: str, name: str) -> FileResponse:
 @app.get("/api/device/v1/img/{note_id}/{name}")
 async def device_img(request: Request, note_id: str, name: str):
     _device(request)
-    return _image(note_id, name)
+    return await _image(note_id, name)
 
 
 # ---- 设备接口：推荐（按需代拉） / Device API: recommendations (fetched on demand) ----

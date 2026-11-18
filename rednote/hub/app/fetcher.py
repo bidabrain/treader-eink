@@ -62,15 +62,24 @@ def _budget(cfg: dict[str, Any]) -> bool:
     return store.requests_today() < int(cfg["daily_cap"])
 
 
-async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str = "follow") -> bool:
-    """拉一篇详情、处理图片并入库；视频返回 False。/ Fetch one detail, process images and save; False for videos."""
+async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str = "follow",
+                     background: bool = False) -> bool:
+    """拉一篇详情、处理图片并入库；视频返回 False。background 时只要小红书给了图片宽高，就先入库返回，图片在后台做。
+    Fetch one detail, process images and save; False for videos. With background, as long as Xiaohongshu reports
+    image sizes, save and return first and let the images finish in the background."""
     store.count_request("rec" if source == "rec" else "")
     data = await mcp.detail(note_id, token)
     n = data.get("note") or {}
     if (n.get("type") or "normal") != "normal":
         return False
-    urls = [i.get("urlDefault") or i.get("url") for i in (n.get("imageList") or [])][: int(cfg["max_images"])]
-    pages = await images.process(note_id, [u for u in urls if u])
+    shots = [i for i in (n.get("imageList") or []) if i.get("urlDefault") or i.get("url")][: int(cfg["max_images"])]
+    urls = [i.get("urlDefault") or i.get("url") for i in shots]
+    counts = images.plan(shots)
+    if background and counts is not None:
+        pages = sum(counts)
+        images.start_background(note_id, urls, counts)
+    else:
+        pages = await images.process(note_id, urls, counts)
     comments = []
     for c in ((data.get("comments") or {}).get("list") or [])[:20]:
         comments.append({

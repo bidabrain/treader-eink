@@ -1,12 +1,22 @@
 """把笔记图片处理成墨水屏能直接用的灰度 JPEG：不超过 648×1000、太长按屏切开、普通（基线）JPEG；另出一张 150×200 缩略图。
 
+图片同时下载、处理 4 张。小红书给了每张图的宽高时，先按宽高算好每张切几屏、整篇共几页，这样正文可以先返回，
+图片在后台做；取某一页时还没做好就等它（wait_page）。
+
 Turn note images into grayscale JPEGs the e-ink device can show as is: at most 648x1000, very tall images split into
 screens, baseline JPEG; plus a 150x200 thumbnail.
+
+Four images download and process at once. When Xiaohongshu reports each image's size, the page split is planned up
+front, so the note can be returned first while images finish in the background; a request for a page not ready yet
+waits for it (wait_page).
 """
 from __future__ import annotations
 
+import asyncio
 import io
+import math
 import shutil
+import time
 from pathlib import Path
 
 import httpx
@@ -19,6 +29,11 @@ THUMB = (150, 200)
 # 屏幕可用区域的高宽比；比它高 1.5 倍以上的图按屏切开。/ Screen aspect; images 1.5x taller are split per screen.
 SCREEN_RATIO = 1160 / 684
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.xiaohongshu.com/"}
+PARALLEL = 4
+WAIT_PAGE_S = 40
+
+# 正在后台处理的笔记 → 处理完成事件。/ Notes being processed in the background -> completion event.
+_processing: dict[str, asyncio.Event] = {}
 
 
 def note_dir(note_id: str) -> Path:
@@ -26,51 +41,126 @@ def note_dir(note_id: str) -> Path:
 
 
 def _save(img: Image.Image, path: Path) -> None:
-    img.save(path, "JPEG", quality=80, optimize=True, progressive=False)
+    tmp = path.with_suffix(".tmp")
+    img.save(tmp, "JPEG", quality=80, optimize=True, progressive=False)
+    tmp.replace(path)
 
 
-def _pages(img: Image.Image) -> list[Image.Image]:
-    w, h = img.size
-    if h / w <= SCREEN_RATIO * 1.5:
-        return [img]
-    step = round(w * SCREEN_RATIO)
-    cuts = list(range(0, h, step))
+def split_count(w: int, h: int) -> int:
+    """按宽高算一张图切几屏（只看高宽比）。/ How many screens an image splits into (aspect ratio only)."""
+    if not w or not h or h / w <= SCREEN_RATIO * 1.5:
+        return 1
+    step = w * SCREEN_RATIO
+    n = math.ceil(h / step)
     # 最后一小截并进上一屏。/ Merge a tiny last strip into the previous screen.
-    if len(cuts) > 1 and h - cuts[-1] < step * 0.2:
-        cuts.pop()
-    return [img.crop((0, y, w, cuts[i + 1] if i + 1 < len(cuts) else h)) for i, y in enumerate(cuts)]
+    if n > 1 and h - (n - 1) * step < step * 0.2:
+        n -= 1
+    return max(1, n)
 
 
-async def process(note_id: str, urls: list[str]) -> int:
-    """下载并处理图片，返回生成的页数。/ Download and process images; returns the page count."""
+def plan(image_list: list[dict]) -> list[int] | None:
+    """小红书给的 imageList 里都有宽高时，返回每张切几屏；缺任何一张就返回 None。
+    Pages per image when every imageList entry has a size; None if any is missing."""
+    out = []
+    for i in image_list:
+        w, h = int(i.get("width") or 0), int(i.get("height") or 0)
+        if not w or not h:
+            return None
+        out.append(split_count(w, h))
+    return out
+
+
+def _pages(img: Image.Image, n: int) -> list[Image.Image]:
+    """切成正好 n 屏（等高）。/ Split into exactly n equal-height screens."""
+    if n <= 1:
+        return [img]
+    w, h = img.size
+    return [img.crop((0, h * k // n, w, h * (k + 1) // n)) for k in range(n)]
+
+
+async def _fetch(client: httpx.AsyncClient, url: str) -> Image.Image | None:
+    try:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return await asyncio.to_thread(lambda: ImageOps.exif_transpose(Image.open(io.BytesIO(resp.content))).convert("L"))
+    except (httpx.HTTPError, OSError):
+        return None
+
+
+def _write_pages(out: Path, img: Image.Image, first: int, n: int, thumb: bool) -> None:
+    if thumb:
+        _save(ImageOps.fit(img, THUMB, Image.Resampling.LANCZOS), out / "thumb.jpg")
+    for k, page in enumerate(_pages(img, n)):
+        page.thumbnail((MAX_W, MAX_H), Image.Resampling.LANCZOS)
+        _save(page, out / f"{first + k}.jpg")
+
+
+async def process(note_id: str, urls: list[str], counts: list[int] | None = None) -> int:
+    """下载并处理图片，返回页数。counts 是预先算好的每张屏数（和 urls 一一对应），没有就按实际图算。
+    Download and process images; returns the page count. counts is the planned screens per image (matching urls);
+    without it the split follows the downloaded images."""
     out = note_dir(note_id)
-    tmp = out.with_suffix(".tmp")
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.mkdir(parents=True)
-    pages = 0
-    thumb_done = False
-    async with httpx.AsyncClient(timeout=30.0, headers=HEADERS, follow_redirects=True) as client:
-        for url in urls:
-            try:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                img = Image.open(io.BytesIO(resp.content))
-                img = ImageOps.exif_transpose(img).convert("L")
-            except (httpx.HTTPError, OSError):
-                continue
-            if not thumb_done:
-                _save(ImageOps.fit(img, THUMB, Image.Resampling.LANCZOS), tmp / "thumb.jpg")
-                thumb_done = True
-            for page in _pages(img):
-                page.thumbnail((MAX_W, MAX_H), Image.Resampling.LANCZOS)
-                pages += 1
-                _save(page, tmp / f"{pages}.jpg")
     shutil.rmtree(out, ignore_errors=True)
-    tmp.rename(out)
-    return pages
+    out.mkdir(parents=True, exist_ok=True)
+    sem = asyncio.Semaphore(PARALLEL)
+    async with httpx.AsyncClient(timeout=30.0, headers=HEADERS, follow_redirects=True) as client:
+        async def one(i: int, url: str) -> Image.Image | None:
+            async with sem:
+                img = await _fetch(client, url)
+                if img is not None and counts is not None:
+                    first = 1 + sum(counts[:i])
+                    await asyncio.to_thread(_write_pages, out, img, first, counts[i], i == 0)
+                    return None
+                return img
+
+        results = await asyncio.gather(*(one(i, u) for i, u in enumerate(urls)))
+    if counts is not None:
+        return sum(counts)
+    # 没有预先的屏数：图都到了再按顺序编号。/ No plan: number pages in order once every image is in.
+    page, thumb_done = 1, False
+    for img in results:
+        if img is None:
+            continue
+        n = split_count(*img.size)
+        await asyncio.to_thread(_write_pages, out, img, page, n, not thumb_done)
+        thumb_done = True
+        page += n
+    return page - 1
+
+
+def start_background(note_id: str, urls: list[str], counts: list[int]) -> None:
+    """在后台处理图片；取页时用 wait_page 等。/ Process images in the background; wait_page waits for pages."""
+    event = asyncio.Event()
+    _processing[note_id] = event
+
+    async def run() -> None:
+        try:
+            await process(note_id, urls, counts)
+        finally:
+            event.set()
+            _processing.pop(note_id, None)
+
+    asyncio.create_task(run())
+
+
+async def wait_page(note_id: str, path: Path) -> bool:
+    """这页还在后台做：等它出现或整篇做完（最多 WAIT_PAGE_S 秒）。/ Wait for a page still being made, until it
+    appears or the note finishes (at most WAIT_PAGE_S seconds)."""
+    deadline = time.monotonic() + WAIT_PAGE_S
+    while not path.exists():
+        event = _processing.get(note_id)
+        if event is None or time.monotonic() > deadline:
+            return path.exists()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=0.3)
+        except asyncio.TimeoutError:
+            pass
+    return True
 
 
 def remove(note_id: str) -> None:
+    if note_id in _processing:
+        return   # 正在做的不删 / Never remove a note being processed
     shutil.rmtree(note_dir(note_id), ignore_errors=True)
 
 

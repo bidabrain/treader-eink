@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 未发布 / Unreleased
+
+- rednote 服务器：点开推荐笔记更快。正文拉到就先返回，图片在后台同时处理 4 张（取到还没做好的那页时服务器等它）；推荐请求间隔默认从 8 秒改成 3 秒（之前没改过的配置自动改过来）。
+  rednote server: opening a recommended note is faster. The text returns first while images process four at a time in the background (a request for an unfinished page waits for it); the default recommendation gap drops from 8 s to 3 s (untouched configs move over automatically).
+
 ## 2026-11-18 · Treader 0.5.0
 
 - 新增小红书标签：经自建 rednote 服务器（仓库 `rednote/`）看关注博主和首页推荐的图文，一屏一张看图，再看正文和评论。推荐只在点“刷新推荐”时由服务器去读小红书。缓存按篇数和总大小封顶。

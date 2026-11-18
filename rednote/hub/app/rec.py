@@ -164,7 +164,9 @@ async def _open(note_id: str) -> None:
         raise RecError(404, "这篇不在推荐列表里了，请刷新推荐")
     await _space(cfg)
     try:
-        ok = await fetcher.fetch_note(note_id, token, cfg, source="rec")
+        # 正文先返回，图片在后台做；设备取图时服务器会等那一页做好。/ Return the text first; images finish in the
+        # background and an image request waits for its page.
+        ok = await fetcher.fetch_note(note_id, token, cfg, source="rec", background=True)
     except mcp.McpError as e:
         await _blocked(e)
         raise RecError(502, f"读取笔记失败：{e}") from e
