@@ -98,7 +98,7 @@ async def prepare(client: WeiboClient, p: dict[str, Any], cfg: dict[str, Any]) -
         rt_text = await _long_text(client, rt["id"], cfg) or rt_text
     # 本条的图在前，转发原微博的图接在后面。/ This post's images first, then the retweeted post's.
     urls = (list(p.get("pics") or []) + list(rt.get("pics") or []))[: int(cfg["max_images"])]
-    pages = await images.process(p["id"], urls) if urls else 0
+    pages, starts = await images.process_post(p["id"], urls) if urls else (0, [])
     return {
         "id": p["id"], "user_id": p.get("user_id", ""), "user_name": p.get("user_name", ""),
         "text": text, "created_ts": int(p.get("created_at_ts") or 0),
@@ -106,6 +106,7 @@ async def prepare(client: WeiboClient, p: dict[str, Any], cfg: dict[str, Any]) -
         "reposts": int(p.get("reposts_count") or 0), "source": p.get("source", ""),
         "rt_user": rt.get("user_name", "") if rt else "", "rt_text": rt_text,
         "images": pages, "ratio": _cover_ratio(p["id"]) if pages else 1.333,
+        "pics": len(starts), "starts": ",".join(str(s) for s in starts),
     }
 
 

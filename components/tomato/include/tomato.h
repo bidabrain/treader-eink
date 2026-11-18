@@ -318,6 +318,12 @@ esp_err_t tomato_sync_start_wb(const tomato_wb_req_t* req);
 void tomato_wb_post_dir(const char* id, char* out, size_t cap);
 void tomato_wb_img_path(const char* id, int n, char* out, size_t cap);
 void tomato_wb_comments_path(const char* id, char* out, size_t cap);
+/// 第 k 张原图的方形小图（k 从 1 起；服务器 0.1.3 起才有）。/ Square small image of source image k (from 1; servers
+/// from 0.1.3 on).
+void tomato_wb_square_path(const char* id, int k, char* out, size_t cap);
+/// 列表里每条最多取几张方形小图；正文页最多显示几张。/ Most square images fetched per list post; most shown on a post.
+#define TOMATO_WB_LIST_SQUARES 3
+#define TOMATO_WB_POST_SQUARES 4
 /// 关注列表里标记看过；调用方保证此时没有关注列表任务在写。/ Mark a following post as seen; the caller makes sure no
 /// following-list job is writing at the time.
 void tomato_wb_mark_seen(const char* id);

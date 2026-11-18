@@ -100,20 +100,22 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun open(item: Item) {
+    /** 打开一条；image 不为空时直接从第 image 张原图看大图。/ Open a post; with image set, go straight to that
+     *  source image's full view. */
+    fun open(item: Item, image: Int? = null) {
         msg = ""
         if (seg == Seg.FOLLOW && !item.seen) {
             follow = follow?.let { f -> f.copy(items = f.items.map { if (it.id == item.id) it.copy(seen = true) else it }) }
             viewModelScope.launch { repo.markSeen(item.id) }
         }
-        repo.cachedPost(item.id)?.let { enter(it); return }
+        repo.cachedPost(item.id)?.let { enter(it, image); return }
         waiting = item.id
         waitError = ""
         job?.cancel()
         job = viewModelScope.launch {
             try {
                 val post = repo.fetchPost(item.id)
-                if (waiting == item.id) { waiting = null; enter(post) }
+                if (waiting == item.id) { waiting = null; enter(post, image) }
             } catch (e: Exception) {
                 if (e !is CancellationException && waiting == item.id) waitError = e.message ?: "出错了"
             }
@@ -126,13 +128,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         waitError = ""
     }
 
-    private fun enter(post: Post) {
+    private fun enter(post: Post, image: Int? = null) {
         commentsJob?.cancel()
         comments = repo.cachedComments(post.id)
         commentsLoading = false
         commentsError = ""
-        screen = Screen.Text(post, false)
+        screen = if (image != null && post.images > 0) Screen.Images(post, pageOf(post, image)) else Screen.Text(post, false)
     }
+
+    /** 第 k 张原图的第一页（旧服务器没有 starts 就从第一页开始）。/ First page of source image k (the first page
+     *  when an older server sent no starts). */
+    fun pageOf(post: Post, k: Int): Int = post.starts.getOrNull(k)?.coerceIn(0, (post.images - 1).coerceAtLeast(0)) ?: 0
 
     /** 切到评论；没缓存就去取。/ Switch to comments, fetching them when not cached. */
     fun showComments(post: Post) {

@@ -66,7 +66,11 @@ loaders.home = async () => {
     : `上一轮：${when(f.last_round)}；下一轮：${when(f.next_round)}`)
     + (f.last_error ? `<br><span class="err">${esc(f.last_error)}</span>` : '');
 };
-$('#runNow').onclick = async () => { await api('/api/panel/fetch/run', { method: 'POST' }); setTimeout(loaders.home, 800); };
+$('#runNow').onclick = async () => {
+  try { const r = await api('/api/panel/fetch/run', { method: 'POST' }); $('#runMsg').textContent = r.message || ''; }
+  catch (e) { $('#runMsg').textContent = e.message; }
+  setTimeout(loaders.home, 800);
+};
 
 // ---- 关注 / Follows ----
 loaders.users = async () => {

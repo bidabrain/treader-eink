@@ -95,10 +95,11 @@ docker compose up -d
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` 是 `follow`（按发布时间倒序）或 `hot`（按上榜时间、名次）。`{now, posts:[{id, user, time, text, more, images, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`；`text` 截到 140 字，`more` 表示还有全文或转发内容 |
-| `GET /api/device/v1/post/{id}` | 上面的字段，`text` 和 `rt_text` 是全文，另加 `source` |
+| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` 是 `follow`（按发布时间倒序）或 `hot`（按上榜时间、名次）。`{now, posts:[{id, user, time, source, text, more, images, pics, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`；`text` 截到 140 字，`more` 表示还有全文或转发内容；`images` 是大图页数，`pics` 是有方形小图的原图张数（0.1.3 之前拉的为 0） |
+| `GET /api/device/v1/post/{id}` | 上面的字段，`text` 和 `rt_text` 是全文，另加 `starts`（每张原图的第一页，从 0 起） |
 | `GET /api/device/v1/post/{id}/comments` | `{comments:[{user, text, likes}]}`，第一次请求时现取 |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
+| `GET /api/device/v1/img/{id}/s{k}.jpg` | 第 k 张原图（从 1 开始）的方形小图，240×240 灰度，列表和宫格用 |
 | `GET /api/device/v1/img/{id}/thumb.jpg` | 封面：宽 300，保留原图比例（高宽比夹在 3:4～4:3，即 `ratio`） |
 
 ## 日常维护

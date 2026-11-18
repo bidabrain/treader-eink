@@ -2,13 +2,15 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 微博标签页（只读）：顶部分段 关注 / 热门；列表一行一条（作者、时间、正文前几行、转评赞，有图的右边一张缩略图）；
- * 点开先看全文（含转发原文），往后翻是图片（一屏一张），再往后是评论。数据来自用户自建的 weibo 服务器，由
+ * 微博标签页（只读）：顶部分段 关注 / 热门；列表一条一张卡片（头像圆、名字、时间来源、正文、转发原文的灰框、图片、
+ * 转评赞三栏），每页按高度装满；点开先看全文（同样的头部、转发灰框，最后一页下面一排小图），往后翻是图片（一屏
+ * 一张），再往后是评论。数据来自用户自建的 weibo 服务器，由
  * components/tomato 的后台任务取到 TF 卡 weibo/，本页只读缓存；缩略图和大图的缩放抖动交给 hupu_img。
  *
- * English: the Weibo tab (read only): Following / Hot segments; the list shows one post per row (author, time, the
- * first lines of text, counts, and a thumbnail on the right when there are images). A post opens on its full text
- * (with the reposted original), then images one per screen, then comments. Data comes from the user's own weibo
+ * English: the Weibo tab (read only): Following / Hot segments; the list shows one card per post (avatar circle,
+ * name, time and source, text, a gray box for the reposted original, images, and a three-column count bar), each page
+ * filled by height. A post opens on its full text (same header, gray repost box, a strip of small images under the last
+ * page), then images one per screen, then comments. Data comes from the user's own weibo
  * server; the components/tomato task stores it under weibo/ on the TF card and this page reads only that cache;
  * hupu_img scales and dithers thumbnails and images.
  *
@@ -47,24 +49,40 @@
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 #define CW (TR_W - 2 * TR_MARGIN)
 
-// 列表：每页 4 行。/ List: 4 rows per page.
+// 列表：一条一张卡片，每页按高度装满。/ List: one card per post, each page filled by height.
 #define LIST_MAX 100
-#define LIST_TOP 284
+#define LIST_TOP 288
+#define LIST_BOTTOM 1030
 #define PAGER_Y 1036
-#define PER_PAGE 4
-#define ROW_H 188
-#define THUMB 150
-#define ROW_TEXT_LINES 3
+#define AVATAR 60
+#define CARD_PX 30
+#define CARD_LH 42
+#define CARD_LINES 3
+#define QUOTE_PX 26
+#define QUOTE_LH 38
+#define QUOTE_LINES 2
+#define STRIP_GAP 11
+#define STRIP_W ((CW - 2 * STRIP_GAP) / 3)
+#define STRIP_H 164
+#define SINGLE_MAX 300
+#define FOOT_H 44
+#define CARD_GAP 16
+#define QUOTE_GRAY 0xE0
 #define STATUS_Y 240
 #define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - 240, 70, 240, 80}
 #define SETUP_RECT (EpdRect){TR_MARGIN, 420, 240, 72}
 #define DIALOG_RECT (EpdRect){92, 500, TR_W - 184, 220}
 
 // 微博 / Post
-#define POST_SEG (EpdRect){TR_MARGIN, 150, CW, 64}
-#define BODY_TOP 240
-#define BODY_FIRST (BODY_TOP + 64)   // 第一页先写一行时间来源 / Page one starts with a time and source line
+#define HEAD_Y 150
+#define POST_SEG (EpdRect){TR_MARGIN, 232, CW, 56}
+#define BODY_TOP 316
 #define BODY_BOTTOM 1100
+#define QUOTE_INSET 20
+#define POST_SQUARE 144
+#define COMMENT_AVATAR 48
+#define COMMENT_X (TR_MARGIN + 64)
+#define COMMENT_W (CW - 64)
 #define BODY_PX 32
 #define BODY_LH 52
 #define TEXT_PAGER_Y 1124
@@ -86,8 +104,12 @@ typedef struct {
     char text[440];
     char rt_user[48];
     char rt_text[248];
+    char source[40];
     double time;          // 毫秒或秒 / Milliseconds or seconds
-    int16_t images;
+    float ratio;          // 封面高宽比 / Cover height/width
+    int16_t images;       // 大图页数 / Full-image pages
+    int16_t pics;         // 有方形小图的原图张数（旧服务器为 0）/ Source images with squares (0 from older servers)
+    int16_t height;       // 卡片高度 / Card height
     int32_t likes, comments, reposts;
     bool seen;
 } item_t;
@@ -101,6 +123,7 @@ typedef struct {
 typedef struct {
     uint32_t off;
     uint16_t len;
+    bool rt;              // 转发原文的行（画在灰框里）/ A line of the reposted original (drawn in the gray box)
 } line_t;
 
 /* ---- 状态 / State ---- */
@@ -125,6 +148,8 @@ static item_t* s_items;
 static int s_item_count;
 static int s_list_page;
 static double s_list_time;           // 服务器给列表的时间（秒）/ Server time of the list (seconds)
+static uint8_t s_page_first[LIST_MAX + 1];   // 每页第一条 / First item of each page
+static int s_list_page_count;
 
 // 关注列表刷新期间点开的微博：刷新会覆盖 follow.json，等它结束再写“看过”。
 // Posts opened while the following list refreshes: the refresh rewrites follow.json, so mark them seen afterwards.
@@ -141,9 +166,12 @@ static char* s_arena;
 static size_t s_arena_len, s_arena_cap;
 static char s_id[24];
 static bool s_post_loaded;
-static const char *s_user, *s_source, *s_body;
+static const char *s_user, *s_source, *s_body, *s_rt;
 static double s_time;
 static int s_images, s_likes, s_comment_total, s_reposts;
+static int s_pics;                   // 有方形小图的原图张数 / Source images with squares
+static int16_t s_starts[TOMATO_WB_POST_SQUARES];   // 每张原图的第一页 / Each source image's first page
+static int s_tail_y;                 // 最后一页小图和计数的位置 / Where the strip and counts go on the last page
 static comment_t* s_comments;
 static int s_comment_count;
 static bool s_comments_loaded;       // c.json 读到了 / c.json was read
@@ -359,7 +387,61 @@ static const char* loading_text(const char* what) {
 
 static const char* list_file(void) { return s_seg == SEG_FOLLOW ? TOMATO_WB_FOLLOW_FILE : TOMATO_WB_HOT_FILE; }
 
-static int list_pages(void) { return s_item_count ? (s_item_count + PER_PAGE - 1) / PER_PAGE : 1; }
+static int list_pages(void) { return s_list_page_count ? s_list_page_count : 1; }
+
+// 有几行（最多 max）。/ How many lines (at most max).
+static int count_lines(const char* text, int px, int w, int max) {
+    int n = 0;
+    for (const char* p = text; *p && n < max; n++) {
+        p += tr_line_bytes(p, px, w);
+        if (*p == '\n') p++;
+    }
+    return n;
+}
+
+// 卡片里正文和转发框各显示什么。/ What a card shows as text and in the repost box.
+static const char* card_text(const item_t* x) { return x->text[0] || x->rt_text[0] ? x->text : "（没有文字）"; }
+
+static void card_quote(const item_t* x, char* out, size_t cap) {
+    if (x->rt_text[0]) snprintf(out, cap, "@%s：%s", x->rt_user[0] ? x->rt_user : "原微博", x->rt_text);
+    else out[0] = 0;
+}
+
+// 卡片里的图：0 没有，1 一张放大（w×h），2 一排方形小图。/ Card images: 0 none, 1 one enlarged (w x h), 2 a strip.
+static int card_media(const item_t* x, int* w, int* h) {
+    if (x->images <= 0) return 0;
+    if (x->pics >= 2) { *w = CW; *h = STRIP_H; return 2; }
+    const float r = x->ratio > 0.5f && x->ratio < 2.0f ? x->ratio : 1.0f;
+    *w = SINGLE_MAX;
+    *h = (int)(SINGLE_MAX * r);
+    if (*h > SINGLE_MAX) { *h = SINGLE_MAX; *w = (int)(SINGLE_MAX / r); }
+    return 1;
+}
+
+static int card_height(const item_t* x) {
+    char quote[320];
+    card_quote(x, quote, sizeof(quote));
+    int h = 80 + count_lines(card_text(x), CARD_PX, CW, CARD_LINES) * CARD_LH;
+    if (quote[0]) h += 12 + 20 + count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES) * QUOTE_LH;
+    int w, mh;
+    if (card_media(x, &w, &mh)) h += 12 + mh;
+    return h + 10 + FOOT_H + CARD_GAP;
+}
+
+// 按卡片高度分页：放不下的整张挪到下一页。/ Page by card height: a card that does not fit moves to the next page.
+static void layout_list(void) {
+    s_list_page_count = 0;
+    int y = LIST_BOTTOM;
+    for (int i = 0; i < s_item_count; i++) {
+        s_items[i].height = (int16_t)card_height(&s_items[i]);
+        if (y + s_items[i].height > LIST_BOTTOM && y != LIST_TOP) {
+            s_page_first[s_list_page_count++] = (uint8_t)i;
+            y = LIST_TOP;
+        }
+        y += s_items[i].height;
+    }
+    s_page_first[s_list_page_count] = (uint8_t)s_item_count;
+}
 
 static void load_list(void) {
     s_item_count = 0;
@@ -376,8 +458,11 @@ static void load_list(void) {
         str(x->text, sizeof(x->text), it, "text");
         str(x->rt_user, sizeof(x->rt_user), it, "rt_user");
         str(x->rt_text, sizeof(x->rt_text), it, "rt_text");
+        str(x->source, sizeof(x->source), it, "source");
         x->time = dnum(it, "time");
+        x->ratio = (float)dnum(it, "ratio");
         x->images = (int16_t)dnum(it, "images");
+        x->pics = (int16_t)dnum(it, "pics");
         x->likes = (int32_t)dnum(it, "likes");
         x->comments = (int32_t)dnum(it, "comments");
         x->reposts = (int32_t)dnum(it, "reposts");
@@ -385,6 +470,7 @@ static void load_list(void) {
         s_item_count++;
     }
     cJSON_Delete(root);
+    layout_list();
     if (s_list_page >= list_pages()) s_list_page = list_pages() - 1;
 }
 
@@ -411,58 +497,56 @@ static const char* keep_key(const cJSON* o, const char* key) {
     return keep(cJSON_IsString(v) && v->valuestring ? v->valuestring : "");
 }
 
-// 正文后面接转发原文：空一行，“转发 @作者：”，再原文。/ The reposted original follows the text: a blank line,
-// "转发 @author:", then the original.
-static const char* keep_body(const cJSON* root) {
-    const cJSON* t = cJSON_GetObjectItemCaseSensitive(root, "text");
-    const cJSON* ru = cJSON_GetObjectItemCaseSensitive(root, "rt_user");
-    const cJSON* rt = cJSON_GetObjectItemCaseSensitive(root, "rt_text");
-    const char* text = cJSON_IsString(t) && t->valuestring ? t->valuestring : "";
-    const char* rt_user = cJSON_IsString(ru) && ru->valuestring ? ru->valuestring : "";
-    const char* rt_text = cJSON_IsString(rt) && rt->valuestring ? rt->valuestring : "";
-    if (!rt_text[0]) return keep(text);
-    const size_t n = strlen(text) + strlen(rt_user) + strlen(rt_text) + 32;
-    if (s_arena_len + n > s_arena_cap) return keep(text);
-    char* out = s_arena + s_arena_len;
-    const int w = snprintf(out, n, "%s%s转发 @%s：\n%s", text, text[0] ? "\n\n" : "", rt_user[0] ? rt_user : "原微博",
-                           rt_text);
-    s_arena_len += (size_t)(w > 0 ? w : 0) + 1;
-    return out;
-}
+static int tail_height(void) { return (s_pics > 0 || s_images > 0 ? POST_SQUARE + 20 : 0) + FOOT_H + 20; }
 
-static int body_top(int page) { return page ? BODY_TOP : BODY_FIRST; }
-
-static void layout_body(void) {
-    s_line_count = 0;
-    const char* p = s_body;
-    while (*p && s_line_count < LINES_MAX) {
-        size_t n = tr_line_bytes(p, BODY_PX, CW);
+static void add_lines(const char* base, const char* text, int w, bool rt) {
+    for (const char* p = text; *p && s_line_count < LINES_MAX;) {
+        size_t n = tr_line_bytes(p, BODY_PX, w);
         if (n > 0xFFFF) n = 0xFFFF;
-        s_lines[s_line_count++] = (line_t){.off = (uint32_t)(p - s_body), .len = (uint16_t)n};
+        s_lines[s_line_count++] = (line_t){.off = (uint32_t)(p - base), .len = (uint16_t)n, .rt = rt};
         p += n;
         if (*p == '\n') p++;
     }
+}
+
+// 正文的行，空一行，转发原文的行（窄一点，画在灰框里）；再按页切，最后一页留出小图和计数的位置。
+// Text lines, a blank line, then the repost's lines (narrower, in the gray box); paged, leaving room on the last page
+// for the image strip and counts.
+static void layout_body(void) {
+    s_line_count = 0;
+    add_lines(s_body, s_body, CW, false);
+    if (s_rt[0]) {
+        if (s_line_count && s_line_count < LINES_MAX) s_lines[s_line_count++] = (line_t){0};
+        add_lines(s_rt, s_rt, CW - 2 * QUOTE_INSET, true);
+    }
     s_pages[0] = 0;
     s_page_count = 1;
-    int y = body_top(0);
+    int y = BODY_TOP;
     for (int i = 0; i < s_line_count; i++) {
         if (y + BODY_LH > BODY_BOTTOM) {
             if (s_page_count >= PAGES_MAX) break;
             s_pages[s_page_count++] = (uint16_t)i;
-            y = body_top(1);
+            y = BODY_TOP;
         }
         y += BODY_LH;
     }
+    if (y + 16 + tail_height() > BODY_BOTTOM && s_page_count < PAGES_MAX) {
+        s_pages[s_page_count++] = (uint16_t)s_line_count;
+        y = BODY_TOP;
+    } else if (s_line_count) {
+        y += 16;
+    }
+    s_tail_y = y;
 }
 
 static int comment_lines(const comment_t* c) {
     const char* p = c->text;
     int n = 0;
-    while (*p && n < COMMENT_LINES) { p += tr_line_bytes(p, COMMENT_PX, CW); if (*p == '\n') p++; n++; }
+    while (*p && n < COMMENT_LINES) { p += tr_line_bytes(p, COMMENT_PX, COMMENT_W); if (*p == '\n') p++; n++; }
     return n ? n : 1;
 }
 
-static int comment_height(const comment_t* c) { return 40 + comment_lines(c) * COMMENT_LH + 32; }
+static int comment_height(const comment_t* c) { return 52 + comment_lines(c) * COMMENT_LH + 26; }
 
 static void layout_comments(void) {
     int pages = 0, y = BODY_BOTTOM;
@@ -514,7 +598,33 @@ static bool load_post(const char* id) {
     if (!s_arena) { cJSON_Delete(root); s_arena_cap = 0; return false; }
     s_user = keep_key(root, "user");
     s_source = keep_key(root, "source");
-    s_body = keep_body(root);
+    s_body = keep_key(root, "text");
+    // 转发原文写成“@原作者：原文”放进灰框。/ The repost becomes "@author: original" in the gray box.
+    const cJSON* ru = cJSON_GetObjectItemCaseSensitive(root, "rt_user");
+    const cJSON* rt = cJSON_GetObjectItemCaseSensitive(root, "rt_text");
+    if (cJSON_IsString(rt) && rt->valuestring && rt->valuestring[0]) {
+        char head[80];
+        snprintf(head, sizeof(head), "@%.60s：", cJSON_IsString(ru) && ru->valuestring[0] ? ru->valuestring : "原微博");
+        const size_t n = strlen(head) + strlen(rt->valuestring) + 1;
+        if (s_arena_len + n <= s_arena_cap) {
+            char* out = s_arena + s_arena_len;
+            snprintf(out, n, "%s%s", head, rt->valuestring);
+            s_arena_len += n;
+            s_rt = out;
+        } else {
+            s_rt = "";
+        }
+    } else {
+        s_rt = "";
+    }
+    s_pics = (int)dnum(root, "pics");
+    memset(s_starts, 0, sizeof(s_starts));
+    int k = 0;
+    const cJSON* sv;
+    cJSON_ArrayForEach(sv, cJSON_GetObjectItemCaseSensitive(root, "starts")) {
+        if (k >= TOMATO_WB_POST_SQUARES) break;
+        s_starts[k++] = cJSON_IsNumber(sv) ? (int16_t)sv->valueint : 0;
+    }
     s_time = dnum(root, "time");
     s_images = (int)dnum(root, "images");
     s_likes = (int)dnum(root, "likes");
@@ -574,62 +684,131 @@ static void draw_header(uint8_t* fb) {
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, (int)s_seg);
 }
 
-// 一行：作者（没看过的前面黑底“新”）、时间；正文前三行（转发的接原文）；转评赞；有图的右边一张缩略图。
-// One row: author (a black "new" tag before unseen posts) and time; three lines of text (reposts continue with the
-// original); counts; a thumbnail on the right when there are images.
-static void draw_row(uint8_t* fb, const item_t* x, int y) {
-    char thumb[96];
-    tomato_wb_img_path(x->id, 0, thumb, sizeof(thumb));
-    const bool has_thumb = x->images > 0 && exists(thumb);
-    const int text_w = CW - (has_thumb ? THUMB + 18 : 0);
-    if (has_thumb) {
-        const int tx = TR_W - TR_MARGIN - THUMB, ty = y + 14;
-        const uint8_t* px = hupu_img_get(thumb, THUMB, THUMB);
-        if (px) hupu_img_draw(fb, tx, ty, THUMB, THUMB, px, true);
-        else epd_draw_rect((EpdRect){tx, ty, THUMB, THUMB}, TR_GRAY_LINE, fb);
-        if (x->images > 1) {
-            char n[12];
-            snprintf(n, sizeof(n), "%d 图", x->images);
-            const int w = ttf_text_width_px(20, n) + 16;
-            const EpdRect r = {tx + THUMB - w - 6, ty + THUMB - 36, w, 30};
-            epd_fill_rect(r, UI_GRAY_BLACK, fb);
-            tr_text_inv(fb, r.x + w / 2, r.y + 4, 20, n, EPD_DRAW_ALIGN_CENTER, true);
-        }
+// 头像：圆圈里写名字的第一个字。/ Avatar: the first character of the name in a circle.
+static void draw_avatar(uint8_t* fb, int x, int y, int d, const char* name) {
+    const int cx = x + d / 2, cy = y + d / 2;
+    epd_fill_circle(cx, cy, d / 2, UI_GRAY_WHITE, fb);
+    for (int k = 0; k < 3; k++) epd_draw_circle(cx, cy, d / 2 - k, UI_GRAY_BLACK, fb);
+    char first[8] = "微";
+    if (name && name[0]) {
+        const unsigned char c = (unsigned char)name[0];
+        const size_t n = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        if (strlen(name) >= n) { memcpy(first, name, n); first[n] = 0; }
     }
-    int ux = TR_MARGIN;
-    if (!x->seen) {
-        epd_fill_rect((EpdRect){ux, y + 12, 44, 30}, UI_GRAY_BLACK, fb);
-        tr_text_inv(fb, ux + 22, y + 14, 20, "新", EPD_DRAW_ALIGN_CENTER, true);
-        ux += 54;
-    }
-    char when[16], line[800];
-    fmt_time(when, sizeof(when), x->time, false);
-    const int when_w = ttf_text_width_px(22, when);
-    snprintf(line, sizeof(line), "%s", x->user[0] ? x->user : "微博用户");
-    tr_fit(line, 26, TR_MARGIN + text_w - ux - when_w - 16);
-    tr_text(fb, ux, y + 10, 26, line, EPD_DRAW_ALIGN_LEFT, true);
-    tr_text(fb, TR_MARGIN + text_w, y + 13, 22, when, EPD_DRAW_ALIGN_RIGHT, false);
-    if (x->rt_text[0])
-        snprintf(line, sizeof(line), "%s%s// @%s：%s", x->text, x->text[0] ? " " : "", x->rt_user, x->rt_text);
-    else
-        snprintf(line, sizeof(line), "%s", x->text[0] ? x->text : "（没有文字）");
-    tr_wrap(fb, TR_MARGIN, y + 48, text_w, 27, 36, line, ROW_TEXT_LINES);
-    char a[16], b[16], c[16];
-    fmt_count(a, sizeof(a), x->reposts);
-    fmt_count(b, sizeof(b), x->comments);
-    fmt_count(c, sizeof(c), x->likes);
-    snprintf(line, sizeof(line), "转发 %s · 评论 %s · 赞 %s", a, b, c);
-    tr_fit(line, 22, text_w);
-    tr_text(fb, TR_MARGIN, y + 48 + ROW_TEXT_LINES * 36 + 4, 22, line, EPD_DRAW_ALIGN_LEFT, false);
+    const int px = d * 28 / 60;
+    tr_text(fb, cx, cy - px / 2 - 3, px, first, EPD_DRAW_ALIGN_CENTER, true);
 }
 
-static void draw_rows(uint8_t* fb) {
-    for (int k = 0; k < PER_PAGE; k++) {
-        const int i = s_list_page * PER_PAGE + k;
-        if (i >= s_item_count) break;
-        const int y = LIST_TOP + k * ROW_H;
-        draw_row(fb, &s_items[i], y);
-        if (k + 1 < PER_PAGE && i + 1 < s_item_count) tr_hline(fb, y + ROW_H - 4, TR_MARGIN, CW, true);
+// 卡片和正文页共用的头部：头像、粗体名字、下一行时间和来源。/ Header shared by cards and the post page: avatar,
+// bold name, then time and source.
+static void draw_head(uint8_t* fb, int y, const char* user, double t, const char* source, bool long_time, bool dot) {
+    draw_avatar(fb, TR_MARGIN, y, AVATAR, user);
+    if (dot) {
+        epd_fill_circle(TR_MARGIN + AVATAR - 6, y + 6, 10, UI_GRAY_WHITE, fb);
+        epd_fill_circle(TR_MARGIN + AVATAR - 6, y + 6, 7, UI_GRAY_BLACK, fb);
+    }
+    char line[160], when[24];
+    snprintf(line, sizeof(line), "%s", user && user[0] ? user : "微博用户");
+    tr_fit(line, 30, CW - 78);
+    tr_text(fb, TR_MARGIN + 78, y + 2, 30, line, EPD_DRAW_ALIGN_LEFT, true);
+    fmt_time(when, sizeof(when), t, long_time);
+    snprintf(line, sizeof(line), "%s%s%.60s", when, source && source[0] ? " · " : "", source ? source : "");
+    tr_fit(line, 22, CW - 78);
+    tr_text(fb, TR_MARGIN + 78, y + 40, 22, line, EPD_DRAW_ALIGN_LEFT, false);
+}
+
+// 转发、评论、赞的小图标（约 28 像素）。/ Small repost, comment and like glyphs (about 28 px).
+static void draw_glyph(uint8_t* fb, int kind, int cx, int cy) {
+    const uint8_t c = UI_GRAY_BLACK;
+    if (kind == 0) {
+        for (int d = 0; d < 2; d++) {
+            epd_draw_line(cx - 12, cy - 5 + d, cx + 10, cy - 5 + d, c, fb);
+            epd_draw_line(cx + 12, cy + 5 + d, cx - 10, cy + 5 + d, c, fb);
+        }
+        epd_fill_triangle(cx + 13, cy - 4, cx + 6, cy - 10, cx + 6, cy + 2, c, fb);
+        epd_fill_triangle(cx - 13, cy + 6, cx - 6, cy, cx - 6, cy + 12, c, fb);
+    } else if (kind == 1) {
+        for (int d = 0; d < 2; d++) epd_draw_rect((EpdRect){cx - 12 + d, cy - 10 + d, 24 - 2 * d, 17 - 2 * d}, c, fb);
+        epd_fill_triangle(cx - 8, cy + 6, cx - 1, cy + 6, cx - 9, cy + 13, c, fb);
+    } else {
+        epd_fill_circle(cx - 5, cy - 3, 6, c, fb);
+        epd_fill_circle(cx + 5, cy - 3, 6, c, fb);
+        epd_fill_triangle(cx - 11, cy - 1, cx + 11, cy - 1, cx, cy + 11, c, fb);
+    }
+}
+
+// 底部三栏：转发、评论、赞。/ The three-column count bar: reposts, comments, likes.
+static void draw_counts(uint8_t* fb, int y, int reposts, int comments, int likes) {
+    const int vals[3] = {reposts, comments, likes};
+    for (int k = 0; k < 3; k++) {
+        char n[16];
+        fmt_count(n, sizeof(n), vals[k]);
+        const int col = TR_MARGIN + k * CW / 3, w = ttf_text_width_px(24, n) + 40;
+        const int x0 = col + (CW / 3 - w) / 2;
+        draw_glyph(fb, k, x0 + 14, y + FOOT_H / 2);
+        tr_text(fb, x0 + 40, y + (FOOT_H - 24) / 2 - 2, 24, n, EPD_DRAW_ALIGN_LEFT, false);
+    }
+}
+
+// 一张小图：有就画，没有画个灰框。/ One small image: drawn when present, a gray frame otherwise.
+static void draw_pic(uint8_t* fb, const char* path, int x, int y, int w, int h) {
+    const uint8_t* px = exists(path) ? hupu_img_get(path, w, h) : NULL;
+    if (px) hupu_img_draw(fb, x, y, w, h, px, true);
+    else epd_draw_rect((EpdRect){x, y, w, h}, TR_GRAY_LINE, fb);
+}
+
+// 黑底白字的小角标（“+3”）。/ A small black badge with white text ("+3").
+static void draw_badge(uint8_t* fb, int right, int bottom, const char* text) {
+    const int w = ttf_text_width_px(24, text) + 20;
+    epd_fill_rect((EpdRect){right - w - 6, bottom - 40, w, 34}, UI_GRAY_BLACK, fb);
+    tr_text_inv(fb, right - 6 - w / 2, bottom - 36, 24, text, EPD_DRAW_ALIGN_CENTER, true);
+}
+
+static void draw_card(uint8_t* fb, const item_t* x, int y) {
+    draw_head(fb, y, x->user, x->time, x->source, false, !x->seen);
+    int cy = y + 80;
+    const int lines = count_lines(card_text(x), CARD_PX, CW, CARD_LINES);
+    if (lines) tr_wrap(fb, TR_MARGIN, cy, CW, CARD_PX, CARD_LH, card_text(x), CARD_LINES);
+    cy += lines * CARD_LH;
+    char quote[320];
+    card_quote(x, quote, sizeof(quote));
+    if (quote[0]) {
+        const int ql = count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES);
+        const EpdRect box = {TR_MARGIN, cy + 12, CW, 20 + ql * QUOTE_LH};
+        ui_fill_round_rect(fb, box, 14, QUOTE_GRAY);
+        tr_wrap(fb, TR_MARGIN + QUOTE_INSET, box.y + 10, CW - 2 * QUOTE_INSET, QUOTE_PX, QUOTE_LH, quote, QUOTE_LINES);
+        cy = box.y + box.height;
+    }
+    int mw, mh;
+    const int media = card_media(x, &mw, &mh);
+    char path[96];
+    if (media == 1) {
+        tomato_wb_img_path(x->id, 0, path, sizeof(path));
+        draw_pic(fb, path, TR_MARGIN, cy + 12, mw, mh);
+        cy += 12 + mh;
+    } else if (media == 2) {
+        const int n = x->pics < TOMATO_WB_LIST_SQUARES ? x->pics : TOMATO_WB_LIST_SQUARES;
+        for (int k = 0; k < n; k++) {
+            const int px = TR_MARGIN + k * (STRIP_W + STRIP_GAP);
+            tomato_wb_square_path(x->id, k + 1, path, sizeof(path));
+            draw_pic(fb, path, px, cy + 12, STRIP_W, STRIP_H);
+            if (k == n - 1 && x->pics > n) {
+                char more[12];
+                snprintf(more, sizeof(more), "+%d", x->pics - n);
+                draw_badge(fb, px + STRIP_W, cy + 12 + STRIP_H, more);
+            }
+        }
+        cy += 12 + STRIP_H;
+    }
+    draw_counts(fb, cy + 10, x->reposts, x->comments, x->likes);
+}
+
+static void draw_cards(uint8_t* fb) {
+    int y = LIST_TOP;
+    for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
+        draw_card(fb, &s_items[i], y);
+        y += s_items[i].height;
+        if (i + 1 < s_page_first[s_list_page + 1]) tr_hline(fb, y - CARD_GAP / 2 - 1, TR_MARGIN, CW, true);
     }
 }
 
@@ -660,7 +839,7 @@ static void draw_list(uint8_t* fb) {
                    "还没有缓存。点右上角“刷新”，从服务器取热门微博。");
         return;
     }
-    draw_rows(fb);
+    draw_cards(fb);
     tr_pager(fb, PAGER_Y, s_list_page, list_pages());
 }
 
@@ -710,10 +889,8 @@ static void draw_image(uint8_t* fb) {
 }
 
 static void draw_text_header(uint8_t* fb) {
-    char back[80];
-    snprintf(back, sizeof(back), "‹ %s", s_user[0] ? s_user : "返回");
-    tr_fit(back, 30, 400);
-    tr_text(fb, TR_MARGIN, 92, 30, back, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, 92, 30, "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
+    draw_head(fb, HEAD_Y, s_user, s_time, s_source, true, false);
     char l1[24], l2[24], n[16];
     snprintf(l1, sizeof(l1), "图片 %d", s_images);
     fmt_count(n, sizeof(n), s_comment_total);
@@ -722,31 +899,61 @@ static void draw_text_header(uint8_t* fb) {
     tr_segment(fb, POST_SEG, labels, 3, s_tab == T_BODY ? 0 : 2);
 }
 
+// 正文最后一页下面那排小图有几张，第 k 张是哪个文件。/ How many small images the last page shows, and image k's file.
+static int tail_count(void) {
+    if (s_pics > 0) return s_pics < TOMATO_WB_POST_SQUARES ? s_pics : TOMATO_WB_POST_SQUARES;
+    return s_images > 0 ? 1 : 0;
+}
+
+static void tail_path(int k, char* out, size_t cap) {
+    if (s_pics > 0) tomato_wb_square_path(s_id, k + 1, out, cap);
+    else tomato_wb_img_path(s_id, 0, out, cap);
+}
+
 static void draw_body(uint8_t* fb) {
-    int y = body_top(s_page);
-    if (s_page == 0) {
-        char meta[200], when[24], a[16], b[16];
-        fmt_time(when, sizeof(when), s_time, true);
-        fmt_count(a, sizeof(a), s_reposts);
-        fmt_count(b, sizeof(b), s_likes);
-        snprintf(meta, sizeof(meta), "%s%s%s · 转发 %s · 赞 %s", when, s_source[0] ? " · 来自 " : "", s_source, a, b);
-        tr_fit(meta, 24, CW);
-        tr_text(fb, TR_MARGIN, BODY_TOP, 24, meta, EPD_DRAW_ALIGN_LEFT, false);
-        tr_hline(fb, BODY_TOP + 42, TR_MARGIN, CW, true);
-    }
-    if (!s_line_count) {
+    int y = BODY_TOP;
+    if (!s_line_count && s_page == 0 && !tail_count()) {
         tr_text(fb, TR_MARGIN, y, 30, "这条没有文字。", EPD_DRAW_ALIGN_LEFT, false);
         return;
     }
     const int start = s_pages[s_page];
     const int end = s_page + 1 < s_page_count ? s_pages[s_page + 1] : s_line_count;
+    // 这一页上转发原文的行先铺灰框。/ Lay the gray box under this page's repost lines first.
+    int first_rt = -1, last_rt = -1;
+    for (int i = start; i < end; i++)
+        if (s_lines[i].rt) { if (first_rt < 0) first_rt = i; last_rt = i; }
+    if (first_rt >= 0) {
+        const EpdRect box = {TR_MARGIN, y + (first_rt - start) * BODY_LH - 8, CW, (last_rt - first_rt + 1) * BODY_LH + 16};
+        ui_fill_round_rect(fb, box, 14, QUOTE_GRAY);
+    }
     char buf[512];
     for (int i = start; i < end; i++, y += BODY_LH) {
+        const char* base = s_lines[i].rt ? s_rt : s_body;
         size_t n = s_lines[i].len < sizeof(buf) - 1 ? s_lines[i].len : sizeof(buf) - 1;
-        memcpy(buf, s_body + s_lines[i].off, n);
+        memcpy(buf, base + s_lines[i].off, n);
         buf[n] = 0;
-        tr_text(fb, TR_MARGIN, y, BODY_PX, buf, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text(fb, TR_MARGIN + (s_lines[i].rt ? QUOTE_INSET : 0), y, s_lines[i].rt ? 30 : BODY_PX, buf,
+                EPD_DRAW_ALIGN_LEFT, false);
     }
+    if (s_page + 1 < s_page_count) return;
+    // 最后一页：一排小图（多出来的在最后一张上写“+N”），再是三栏计数。/ Last page: a strip of small images ("+N" on
+    // the last one for the rest), then the count bar.
+    int ty = s_tail_y;
+    const int n = tail_count();
+    char path[96];
+    for (int k = 0; k < n; k++) {
+        const int px = TR_MARGIN + k * (POST_SQUARE + STRIP_GAP);
+        tail_path(k, path, sizeof(path));
+        draw_pic(fb, path, px, ty, POST_SQUARE, POST_SQUARE);
+        if (k == n - 1 && s_pics > n) {
+            char more[12];
+            snprintf(more, sizeof(more), "+%d", s_pics - n);
+            draw_badge(fb, px + POST_SQUARE, ty + POST_SQUARE, more);
+        }
+    }
+    if (n) ty += POST_SQUARE + 20;
+    tr_hline(fb, ty, TR_MARGIN, CW, true);
+    draw_counts(fb, ty + 10, s_reposts, s_comment_total, s_likes);
 }
 
 static void draw_comments(uint8_t* fb) {
@@ -760,22 +967,25 @@ static void draw_comments(uint8_t* fb) {
         tr_text(fb, TR_MARGIN, BODY_TOP + 20, 30, "还没有评论", EPD_DRAW_ALIGN_LEFT, false);
         return;
     }
+    // 每条：小头像圆、粗体名字、右边赞数（心形图标），文字从头像右边开始。/ Each: a small avatar circle, bold name,
+    // likes with a heart on the right, and the text starting right of the avatar.
     int y = BODY_TOP;
     char line[160];
     for (int i = s_comment_pages[s_page]; i < s_comment_pages[s_page + 1]; i++) {
         const comment_t* c = &s_comments[i];
+        draw_avatar(fb, TR_MARGIN, y, COMMENT_AVATAR, c->user);
         snprintf(line, sizeof(line), "%s", c->user[0] ? c->user : "微博用户");
-        tr_fit(line, 26, CW - 160);
-        tr_text(fb, TR_MARGIN, y, 26, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(line, 26, COMMENT_W - 140);
+        tr_text(fb, COMMENT_X, y + 8, 26, line, EPD_DRAW_ALIGN_LEFT, true);
         if (c->likes > 0) {
             char n[16];
             fmt_count(n, sizeof(n), c->likes);
-            snprintf(line, sizeof(line), "赞 %s", n);
-            tr_text(fb, TR_W - TR_MARGIN, y, 24, line, EPD_DRAW_ALIGN_RIGHT, true);
+            tr_text(fb, TR_W - TR_MARGIN, y + 8, 24, n, EPD_DRAW_ALIGN_RIGHT, false);
+            draw_glyph(fb, 2, TR_W - TR_MARGIN - ttf_text_width_px(24, n) - 20, y + 22);
         }
-        tr_wrap(fb, TR_MARGIN, y + 40, CW, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
+        tr_wrap(fb, COMMENT_X, y + 52, COMMENT_W, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
         y += comment_height(c);
-        tr_hline(fb, y - 16, TR_MARGIN, CW, true);
+        tr_hline(fb, y - 12, COMMENT_X, COMMENT_W, true);
     }
 }
 
@@ -950,9 +1160,13 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (seg >= 0) return seg == (int)s_seg ? APP_REDRAW_NONE : show_seg((seg_t)seg);
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
-    if (y < LIST_TOP || y >= LIST_TOP + PER_PAGE * ROW_H) return APP_REDRAW_NONE;
-    const int i = s_list_page * PER_PAGE + (y - LIST_TOP) / ROW_H;
-    return i < s_item_count ? open_item(i) : APP_REDRAW_NONE;
+    if (y < LIST_TOP || y >= LIST_BOTTOM) return APP_REDRAW_NONE;
+    int cy = LIST_TOP;
+    for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
+        if (y < cy + s_items[i].height) return open_item(i);
+        cy += s_items[i].height;
+    }
+    return APP_REDRAW_NONE;
 }
 
 static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
@@ -982,6 +1196,11 @@ static app_redraw_t tap_text(uint16_t x, uint16_t y) {
     if (seg == 2) return s_tab == T_COMMENTS ? APP_REDRAW_NONE : show_comments();
     const int pager = tr_pager_hit(TEXT_PAGER_Y, x, y);
     if (pager) return turn(pager);
+    // 正文最后一页的小图：从那张图的第一页开始看。/ The last page's small images open at that image's first page.
+    if (s_tab == T_BODY && s_page + 1 == s_page_count && y >= s_tail_y && y < s_tail_y + POST_SQUARE) {
+        const int k = (x - TR_MARGIN) / (POST_SQUARE + STRIP_GAP);
+        if (x >= TR_MARGIN && k < tail_count()) return show_image(s_pics > 0 ? s_starts[k] : 0);
+    }
     if (y < BODY_TOP || y >= BODY_BOTTOM) return APP_REDRAW_NONE;
     if (x < TR_W * 3 / 10) return turn(-1);
     if (x >= TR_W * 7 / 10) return turn(1);
@@ -1020,14 +1239,25 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 /* ---- 后台进度 / Background progress ---- */
 
 static void queue_visible_images(void) {
+    char path[96];
     if (s_view == V_LIST) {
-        for (int k = 0; k < PER_PAGE; k++) {
-            const int i = s_list_page * PER_PAGE + k;
-            if (i >= s_item_count) break;
-            if (s_items[i].images <= 0) continue;
-            char thumb[96];
-            tomato_wb_img_path(s_items[i].id, 0, thumb, sizeof(thumb));
-            if (exists(thumb)) hupu_img_get(thumb, THUMB, THUMB);
+        for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
+            const item_t* x = &s_items[i];
+            int w, h;
+            const int media = card_media(x, &w, &h);
+            if (media == 1) {
+                tomato_wb_img_path(x->id, 0, path, sizeof(path));
+                if (exists(path)) hupu_img_get(path, w, h);
+            }
+            for (int k = 0; media == 2 && k < x->pics && k < TOMATO_WB_LIST_SQUARES; k++) {
+                tomato_wb_square_path(x->id, k + 1, path, sizeof(path));
+                if (exists(path)) hupu_img_get(path, STRIP_W, STRIP_H);
+            }
+        }
+    } else if (s_view == V_TEXT && s_post_loaded && s_tab == T_BODY && s_page + 1 == s_page_count) {
+        for (int k = 0; k < tail_count(); k++) {
+            tail_path(k, path, sizeof(path));
+            if (exists(path)) hupu_img_get(path, POST_SQUARE, POST_SQUARE);
         }
     } else if (s_view == V_IMAGE && s_post_loaded) {
         // 当前一张和下一张（预取）。/ The current image and the next one (prefetch).

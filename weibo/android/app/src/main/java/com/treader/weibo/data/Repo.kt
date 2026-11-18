@@ -21,6 +21,11 @@ data class Item(
     val comments: Int,
     val reposts: Int,
     val seen: Boolean,
+    val source: String = "",
+    /** 有方形小图的原图张数（旧服务器为 0，只有封面）。/ Source images with squares (0 from older servers). */
+    val pics: Int = 0,
+    /** 封面高宽比。/ Cover height/width. */
+    val ratio: Float = 1f,
 )
 
 data class Comment(val user: String, val text: String, val likes: Int)
@@ -37,6 +42,10 @@ data class Post(
     val likes: Int,
     val comments: Int,
     val reposts: Int,
+    val pics: Int = 0,
+    val ratio: Float = 1f,
+    /** 每张原图的第一页（从 0 起）。/ Each source image's first page (0-based). */
+    val starts: List<Int> = emptyList(),
 )
 
 data class Feed(val items: List<Item>, val now: Double)
@@ -71,7 +80,8 @@ class Repo(context: Context, private val api: Api) {
             if (id.isEmpty()) continue
             add(Item(id, o.optString("user"), o.optString("text"), o.optString("rt_user"), o.optString("rt_text"),
                 o.optDouble("time", 0.0), o.optInt("images"), o.optInt("likes"), o.optInt("comments"),
-                o.optInt("reposts"), hot || o.optBoolean("seen")))
+                o.optInt("reposts"), hot || o.optBoolean("seen"), o.optString("source"), o.optInt("pics"),
+                o.optDouble("ratio", 1.0).toFloat()))
         }
     }
 
@@ -94,7 +104,9 @@ class Repo(context: Context, private val api: Api) {
                     .put("rt_user", p.optString("rt_user")).put("rt_text", p.optString("rt_text"))
                     .put("time", p.optDouble("time", 0.0)).put("images", p.optInt("images"))
                     .put("likes", p.optInt("likes")).put("comments", p.optInt("comments"))
-                    .put("reposts", p.optInt("reposts")).put("seen", hot || old == null || id in seen))
+                    .put("reposts", p.optInt("reposts")).put("seen", hot || old == null || id in seen)
+                    .put("source", p.optString("source")).put("pics", p.optInt("pics"))
+                    .put("ratio", p.optDouble("ratio", 1.0)))
             }
             write(file(hot), JSONObject().put("items", out).put("now", j.optDouble("now", 0.0)))
             cached(hot)!!
@@ -107,7 +119,9 @@ class Repo(context: Context, private val api: Api) {
     fun cachedPost(id: String): Post? = read(postFile(id))?.let { p ->
         Post(p.optString("id"), p.optString("user"), p.optString("text"), p.optString("rt_user"),
             p.optString("rt_text"), p.optString("source"), p.optDouble("time", 0.0), p.optInt("images"),
-            p.optInt("likes"), p.optInt("comments"), p.optInt("reposts"))
+            p.optInt("likes"), p.optInt("comments"), p.optInt("reposts"), p.optInt("pics"),
+            p.optDouble("ratio", 1.0).toFloat(),
+            p.optJSONArray("starts")?.let { a -> List(a.length()) { a.optInt(it) } } ?: emptyList())
     }
 
     suspend fun fetchPost(id: String): Post {

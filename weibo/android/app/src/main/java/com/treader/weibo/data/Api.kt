@@ -26,6 +26,8 @@ class Api(private val prefs: Prefs) {
     private val slowClient = client.newBuilder().readTimeout(45, TimeUnit.SECONDS).build()
 
     fun imageUrl(id: String, n: Int): String = "${prefs.url}/api/device/v1/img/$id/${if (n <= 0) "thumb" else n}.jpg"
+    /** 第 k 张原图的方形小图（k 从 1 起，服务器 0.1.3 起才有）。/ Square small image of source image k (from 1). */
+    fun squareUrl(id: String, k: Int): String = "${prefs.url}/api/device/v1/img/$id/s$k.jpg"
 
     private suspend fun get(path: String, slow: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         if (prefs.url.isEmpty()) throw ApiError("还没设置 weibo 服务器")

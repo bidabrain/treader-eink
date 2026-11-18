@@ -62,7 +62,11 @@ loaders.home = async () => {
     : f.running ? `正在拉取：${esc(f.current || '…')}，本轮新增 ${f.new_notes} 篇`
     : `上一轮：${when(f.last_round)}；下一轮：${when(f.next_round)}`;
 };
-$('#runNow').onclick = async () => { await api('/api/panel/fetch/run', { method: 'POST' }); setTimeout(loaders.home, 800); };
+$('#runNow').onclick = async () => {
+  try { const r = await api('/api/panel/fetch/run', { method: 'POST' }); $('#runMsg').textContent = r.message || ''; }
+  catch (e) { $('#runMsg').textContent = e.message; }
+  setTimeout(loaders.home, 800);
+};
 
 // ---- 小红书账号 / Account ----
 $('#xhsCheck').onclick = async () => {

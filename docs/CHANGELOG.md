@@ -5,6 +5,11 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 微博改成卡片排版（设备和安卓 App 1.1.0）：头像圆、名字和时间来源、转发原文的灰框、图片放在正文下面（设备一排小图，安卓按微博的宫格排）、转评赞三栏带图标；点哪张图从哪张看。weibo 服务器 0.1.3 给每张原图做方形小图。
+  Weibo moves to a card layout (device and Android app 1.1.0): avatar circle, name with time and source, a gray box for reposts, images under the text (a strip on the device, Weibo-style grids on Android), and a three-column count bar with icons; tapping an image opens that one. The weibo server 0.1.3 makes a square small image for each source image.
+- rednote 服务器 0.2.2：拉取进行中点“立即拉一轮”不再被丢掉，按钮会说明结果（比如今天的请求次数已用满）。
+  rednote server 0.2.2: "Run now" pressed during a round is no longer lost, and the button explains the outcome (for example, today's request cap is used up).
+
 - 小红书、微博看大图时可以“存为壁纸”：点图片中间或长按，图片复制到 TF 卡 wallpapers/，也可以直接设成锁屏。锁屏壁纸预览里可以删除壁纸（点两次确认）。
   Xiaohongshu and Weibo image views can save the image as a wallpaper: tap the middle or long-press, and it is copied to wallpapers/ on the TF card, optionally set as the lock screen. The wallpaper preview can delete a wallpaper (two taps to confirm).
 - rednote 服务器 0.2.0：关注的博主可以用 WebDAV 备份和恢复（rednote_backup.json）。

@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -81,12 +81,9 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
             LazyColumn(
                 state = state,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
             ) {
-                itemsIndexed(items, key = { _, it -> it.id }) { i, x ->
-                    PostRow(vm, x)
-                    if (i + 1 < items.size) HLine()
-                }
+                items(items, key = { it.id }) { x -> PostCard(vm, x) }
             }
         }
         if (vm.waiting != null) WaitDialog(vm)
@@ -102,41 +99,25 @@ private fun statusLine(vm: AppVm): String {
     return "$what · ${f?.items?.size ?: 0} 条$time"
 }
 
-/** 一行：作者（没看过的前面“新”）、时间；正文前四行（转发的接原文）；转评赞；有图的右边一张缩略图。
- *  One row: author (a "new" tag before unseen posts) and time; four lines of text (reposts continue with the
- *  original); counts; a thumbnail on the right when there are images. */
+/** 一张卡片：头部（头像、名字、时间来源，没看过的头像上一个黑点）、正文最多 5 行、转发灰框、图片宫格、转评赞三栏；
+ *  卡片之间一条浅灰粗分隔。点图片从那张开始看大图，点别处看全文。
+ *  One card: header (avatar, name, time and source; a black dot on unseen posts), up to five lines of text, the gray
+ *  repost box, the image grid and the count bar, with a thick light-gray divider between cards. Tapping an image opens
+ *  it; tapping elsewhere opens the full text. */
 @Composable
-private fun PostRow(vm: AppVm, x: Item) {
-    val ctx = LocalContext.current
-    Row(Modifier.fillMaxWidth().noRippleClick { vm.open(x) }.padding(vertical = 12.dp)) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!x.seen) Box(Modifier.padding(end = 6.dp).background(Ink, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp)) {
-                    T("新", 11.sp, bold = true, color = Paper)
-                }
-                T(x.user.ifEmpty { "微博用户" }, 14.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-                T(fmtTime(x.time), 12.sp, color = Mid)
+private fun PostCard(vm: AppVm, x: Item) {
+    Column(Modifier.fillMaxWidth().noRippleClick { vm.open(x) }) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+            PostHead(x.user, x.time, x.source, dot = !x.seen)
+            if (x.text.isNotEmpty() || x.rtText.isEmpty())
+                T(x.text.ifEmpty { "（没有文字）" }, 15.sp, maxLines = 5, lineHeight = 22.sp, modifier = Modifier.padding(top = 8.dp))
+            if (x.rtText.isNotEmpty()) QuoteBox(x.rtUser, x.rtText, maxLines = 3, modifier = Modifier.padding(top = 8.dp))
+            if (x.images > 0) Box(Modifier.padding(top = 8.dp)) {
+                PicGrid(vm, x.id, x.images, x.pics, x.ratio) { k -> vm.open(x, image = k) }
             }
-            val text = if (x.rtText.isNotEmpty())
-                x.text + (if (x.text.isNotEmpty()) " " else "") + "// @${x.rtUser}：${x.rtText}"
-            else x.text.ifEmpty { "（没有文字）" }
-            T(text, 15.sp, maxLines = 4, lineHeight = 21.sp, modifier = Modifier.padding(top = 6.dp))
-            T("转发 ${fmtCount(x.reposts)} · 评论 ${fmtCount(x.comments)} · 赞 ${fmtCount(x.likes)}", 12.sp, color = Mid,
-                maxLines = 1, modifier = Modifier.padding(top = 6.dp))
         }
-        if (x.images > 0) Box(
-            Modifier.padding(start = 12.dp).size(84.dp).clip(RoundedCornerShape(6.dp))
-                .border(1.dp, Ink, RoundedCornerShape(6.dp)).background(Line.copy(alpha = 0.35f))
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(ctx).data(vm.api.imageUrl(x.id, 0)).build(), imageLoader = vm.images,
-                contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-            )
-            if (x.images > 1) Box(
-                Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Ink, RoundedCornerShape(3.dp))
-                    .padding(horizontal = 4.dp)
-            ) { T("${x.images} 图", 10.sp, bold = true, color = Paper) }
-        }
+        CountBar(x.reposts, x.comments, x.likes)
+        Box(Modifier.fillMaxWidth().height(8.dp).background(QuoteGray))
     }
 }
 

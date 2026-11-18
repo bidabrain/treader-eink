@@ -167,13 +167,15 @@ async def loop() -> None:
     while True:
         cfg = config.load()
         state.next_round = time.time() + int(cfg["interval_min"]) * 60
+        # 先清再跑：本轮进行中点的“立即拉一轮”留给下一轮，不会被丢掉。/ Clear before running so a "run now" pressed
+        # during the round starts the next one instead of being lost.
+        _wake.clear()
         if not state.paused and store.creators():
             try:
                 await run_round()
             except Exception as e:  # 一轮出错不影响下一轮 / One failed round must not stop the loop
                 note(f"本轮异常：{type(e).__name__}: {e}")
             state.next_round = time.time() + int(cfg["interval_min"]) * 60
-        _wake.clear()
         try:
             await asyncio.wait_for(_wake.wait(), timeout=max(5.0, state.next_round - time.time()))
         except asyncio.TimeoutError:

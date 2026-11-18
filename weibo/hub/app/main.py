@@ -133,8 +133,13 @@ async def panel_status():
 
 @app.post("/api/panel/fetch/run")
 async def fetch_run():
+    """立即拉一轮；回一句话说明会发生什么。/ Run a round now; reply with what will happen."""
+    if not (store.user_ids() or config.load()["hot_enabled"]):
+        return {"ok": False, "message": "还没有关注，先去添加"}
+    was_running = fetcher.state.running
     fetcher.resume()
-    return {"ok": True}
+    fetcher.note("面板点了立即拉一轮" + ("（这一轮结束后马上再拉）" if was_running else ""))
+    return {"ok": True, "message": "正在拉取，这一轮结束后马上再拉一轮" if was_running else "已开始拉取"}
 
 
 @app.get("/api/panel/logs")
@@ -409,8 +414,11 @@ def _device(request: Request) -> None:
 
 def _brief(p: dict) -> dict:
     text = p["text"] or ""
+    # pics：有方形小图 s1..sN.jpg 的原图张数；0.1.3 之前拉的微博是 0（只有 thumb.jpg）。
+    # pics: source images with square small images s1..sN.jpg; 0 for posts fetched before 0.1.3 (thumb.jpg only).
     return {"id": p["id"], "user": p["user_name"], "time": p["created_ts"], "text": text[:140],
             "more": len(text) > 140 or bool(p["rt_text"]), "images": p["images"], "ratio": p["ratio"],
+            "pics": p.get("pics") or 0, "source": p.get("source") or "",
             "likes": p["likes"], "comments": p["comments"], "reposts": p["reposts"],
             "rt_user": p["rt_user"], "rt_text": (p["rt_text"] or "")[:80], "fetched_at": p["fetched_at"]}
 
@@ -430,7 +438,10 @@ async def device_post(request: Request, pid: str):
     p = store.post(pid) if ID_RE.match(pid) else None
     if not p:
         raise HTTPException(404, "没有这条")
-    return {**_brief(p), "text": p["text"], "rt_text": p["rt_text"], "source": p["source"]}
+    # starts：每张原图的第一页（从 0 起），点小图从对应那页看大图。/ starts: each source image's first page (0-based),
+    # so tapping a small image opens the matching page.
+    starts = [int(x) for x in (p.get("starts") or "").split(",") if x.strip().isdigit()]
+    return {**_brief(p), "text": p["text"], "rt_text": p["rt_text"], "source": p["source"], "starts": starts}
 
 
 @app.get("/api/device/v1/post/{pid}/comments")
@@ -452,7 +463,7 @@ async def device_comments(request: Request, pid: str):
 
 
 def _image(pid: str, name: str) -> FileResponse:
-    if not ID_RE.match(pid) or not re.match(r"^(thumb|\d{1,3})\.jpg$", name):
+    if not ID_RE.match(pid) or not re.match(r"^(thumb|\d{1,3}|s\d{1,2})\.jpg$", name):
         raise HTTPException(400, "路径不对")
     path = images.note_dir(pid) / name
     if not path.exists():

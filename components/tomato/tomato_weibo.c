@@ -68,6 +68,12 @@ void tomato_wb_comments_path(const char* id, char* out, size_t cap) {
     snprintf(out, cap, "%s/c.json", dir);
 }
 
+void tomato_wb_square_path(const char* id, int k, char* out, size_t cap) {
+    char dir[64];
+    tomato_wb_post_dir(id, dir, sizeof(dir));
+    snprintf(out, cap, "%s/s%d.jpg", dir, k);
+}
+
 static void mkdirs(void) {
     mkdir(TOMATO_WB_DIR, 0775);
     mkdir(TOMATO_WB_DIR "/p", 0775);
@@ -123,8 +129,11 @@ static esp_err_t run_feed(const tomato_srv_t* srv, bool hot, const volatile bool
         copy_str(x, "text", n, "text");
         copy_str(x, "rt_user", n, "rt_user");
         copy_str(x, "rt_text", n, "rt_text");
+        copy_str(x, "source", n, "source");
         copy_num(x, n, "time");
         copy_num(x, n, "images");
+        copy_num(x, n, "pics");
+        copy_num(x, n, "ratio");
         copy_num(x, n, "likes");
         copy_num(x, n, "comments");
         copy_num(x, n, "reposts");
@@ -149,22 +158,34 @@ static esp_err_t run_feed(const tomato_srv_t* srv, bool hot, const volatile bool
     err = tomato_cache_write_json(file, out);
     if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     progress(1, count + 1);
-    // 有图的取一张缩略图，失败的跳过，下次刷新再补。/ One thumbnail per post with images; failures wait for the next
-    // refresh.
+    // 图：两张以上取前几张方形小图（列表里排一排），一张或旧服务器取封面缩略图。失败的跳过，下次刷新再补。
+    // Images: with two or more, fetch the first square images (a strip in the list); with one, or from an older
+    // server, the cover thumbnail. Failures wait for the next refresh.
     int i = 0;
     char dir[64], dest[96], sid[24];
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
         const char* id = cJSON_GetObjectItemCaseSensitive(n, "id")->valuestring;
+        const int pics = json_int(n, "pics");
         if (json_int(n, "images") <= 0) continue;
-        tomato_wb_img_path(id, 0, dest, sizeof(dest));
-        if (tomato_file_exists(dest)) continue;
         tomato_wb_post_dir(id, dir, sizeof(dir));
         mkdir(dir, 0775);
         tomato_safe_id(id, sid, sizeof(sid));
-        snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg", sid);
-        tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+        if (pics >= 2) {
+            for (int k = 1; k <= pics && k <= TOMATO_WB_LIST_SQUARES && !*cancel; k++) {
+                tomato_wb_square_path(id, k, dest, sizeof(dest));
+                if (tomato_file_exists(dest)) continue;
+                snprintf(path, sizeof(path), "/api/device/v1/img/%s/s%d.jpg", sid, k);
+                tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+            }
+        } else {
+            tomato_wb_img_path(id, 0, dest, sizeof(dest));
+            if (!tomato_file_exists(dest)) {
+                snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg", sid);
+                tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+            }
+        }
         progress(1 + i, count + 1);
     }
     cJSON_Delete(out);
@@ -183,10 +204,11 @@ static esp_err_t run_post(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
     if (!sid[0]) { snprintf(msg, cap, "微博编号不对"); return ESP_ERR_INVALID_ARG; }
     tomato_wb_post_dir(sid, dir, sizeof(dir));
     snprintf(file, sizeof(file), "%s/post.json", dir);
-    int images = 0;
+    int images = 0, pics = 0;
     if (r->images_only && tomato_file_exists(file)) {
         cJSON* post = tomato_cache_read_json(file);
         images = json_int(post, "images");
+        pics = json_int(post, "pics");
         cJSON_Delete(post);
     } else {
         cJSON* root = NULL;
@@ -202,16 +224,30 @@ static esp_err_t run_post(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
         copy_str(out, "source", root, "source");
         copy_num(out, root, "time");
         copy_num(out, root, "images");
+        copy_num(out, root, "pics");
+        copy_num(out, root, "ratio");
+        const cJSON* st = cJSON_GetObjectItemCaseSensitive(root, "starts");
+        cJSON_AddItemToObject(out, "starts", cJSON_IsArray(st) ? cJSON_Duplicate(st, true) : cJSON_CreateArray());
         copy_num(out, root, "likes");
         copy_num(out, root, "comments");
         copy_num(out, root, "reposts");
         images = json_int(root, "images");
+        pics = json_int(root, "pics");
         cJSON_Delete(root);
         mkdirs();
         mkdir(dir, 0775);
         err = tomato_cache_write_json(file, out);
         cJSON_Delete(out);
         if (err != ESP_OK) { snprintf(msg, cap, "写不进 TF 卡"); return err; }
+    }
+    // 正文页下面那排方形小图先取（很小），再一张张取大图。/ Fetch the small squares for the post page first (they are
+    // tiny), then the full images one by one.
+    for (int k = 1; k <= pics && k <= TOMATO_WB_POST_SQUARES && !*cancel; k++) {
+        char dest[96];
+        tomato_wb_square_path(sid, k, dest, sizeof(dest));
+        if (tomato_file_exists(dest)) continue;
+        snprintf(path, sizeof(path), "/api/device/v1/img/%s/s%d.jpg", sid, k);
+        tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
     }
     progress(1, images + 1);
     int failed = 0;

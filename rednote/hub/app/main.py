@@ -219,8 +219,16 @@ async def discover():
 
 @app.post("/api/panel/fetch/run")
 async def fetch_run():
+    """立即拉一轮；回一句话说明会发生什么。/ Run a round now; reply with what will happen."""
+    if not (store.creators()):
+        return {"ok": False, "message": "还没有关注，先去添加"}
+    cfg = config.load()
+    if store.requests_today() >= int(cfg["daily_cap"]):
+        return {"ok": False, "message": f"今天的小红书请求已用满 {cfg['daily_cap']} 次，明天自动继续；急用可以在“设置”里调高上限"}
+    was_running = fetcher.state.running
     fetcher.resume()
-    return {"ok": True}
+    fetcher.note("面板点了立即拉一轮" + ("（这一轮结束后马上再拉）" if was_running else ""))
+    return {"ok": True, "message": "正在拉取，这一轮结束后马上再拉一轮" if was_running else "已开始拉取"}
 
 
 @app.get("/api/panel/notes")

@@ -63,38 +63,45 @@ fun fmtTime(t: Double, long: Boolean = false): String {
 fun TextScreen(vm: AppVm, s: Screen.Text) {
     val p = s.post
     Column(Modifier.fillMaxSize().background(Paper)) {
-        BackTitle(p.user.ifEmpty { "返回" }) { vm.backToList() }
-        Segment(
-            listOf("正文", "图片 ${p.images}", "评论 ${fmtCount(p.comments)}"), if (s.comments) 2 else 0,
-            { i ->
-                when (i) {
-                    0 -> vm.screen = s.copy(comments = false)
-                    1 -> if (p.images > 0) vm.screen = Screen.Images(p, 0)
-                    else -> vm.showComments(p)
-                }
-            },
-            Modifier.padding(horizontal = 20.dp),
-        )
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)) {
-            if (s.comments) Comments(vm) else Body(p)
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            T("‹ 返回", 16.sp, modifier = Modifier.padding(vertical = 10.dp).noRippleClick { vm.backToList() })
+            PostHead(p.user, p.time, p.source, long = true)
+            Segment(
+                listOf("正文", "图片 ${p.images}", "评论 ${fmtCount(p.comments)}"), if (s.comments) 2 else 0,
+                { i ->
+                    when (i) {
+                        0 -> vm.screen = s.copy(comments = false)
+                        1 -> if (p.images > 0) vm.screen = Screen.Images(p, 0)
+                        else -> vm.showComments(p)
+                    }
+                },
+                Modifier.padding(top = 10.dp),
+            )
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 14.dp)) {
+            if (s.comments) Comments(vm) else Body(vm, p)
         }
     }
 }
 
+/** 正文、转发灰框、图片宫格（点哪张从哪张看）、三栏计数。/ Text, the gray repost box, the image grid (tap to open that
+ *  image) and the count bar. */
 @Composable
-private fun Body(p: Post) {
-    val meta = fmtTime(p.time, long = true) + (if (p.source.isNotEmpty()) " · 来自 ${p.source}" else "") +
-        " · 转发 ${fmtCount(p.reposts)} · 赞 ${fmtCount(p.likes)}"
-    T(meta, 12.sp, color = Mid, modifier = Modifier.padding(bottom = 10.dp))
-    HLine()
+private fun Body(vm: AppVm, p: Post) {
+    if (p.text.isNotBlank())
+        Text(p.text, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink))
+    else if (p.rtText.isEmpty()) T("这条没有文字。", 15.sp)
+    if (p.rtText.isNotEmpty()) QuoteBox(p.rtUser, p.rtText, modifier = Modifier.padding(top = 10.dp))
+    if (p.images > 0) Box(Modifier.padding(top = 12.dp)) {
+        PicGrid(vm, p.id, p.images, p.pics, p.ratio) { k -> vm.screen = Screen.Images(p, vm.pageOf(p, k)) }
+    }
     Spacer(Modifier.height(10.dp))
-    val body = if (p.rtText.isNotEmpty())
-        p.text + (if (p.text.isNotEmpty()) "\n\n" else "") + "转发 @${p.rtUser.ifEmpty { "原微博" }}：\n${p.rtText}"
-    else p.text
-    if (body.isBlank()) T("这条没有文字。", 15.sp)
-    else Text(body, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink))
+    HLine()
+    CountBar(p.reposts, p.comments, p.likes)
 }
 
+/** 评论：每条一个小头像圆、粗体名字、右边心形和赞数。/ Comments: each with a small avatar, bold name, and a heart
+ *  with the like count on the right. */
 @Composable
 private fun Comments(vm: AppVm) {
     val list = vm.comments
@@ -105,13 +112,17 @@ private fun Comments(vm: AppVm) {
     }
     if (list.isEmpty()) { T("还没有评论", 15.sp); return }
     list.forEach { c ->
-        Row(Modifier.fillMaxWidth()) {
-            T(c.user.ifEmpty { "微博用户" }, 13.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-            if (c.likes > 0) T("赞 ${fmtCount(c.likes)}", 12.sp, bold = true)
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Avatar(c.user, size = 32.dp)
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    T(c.user.ifEmpty { "微博用户" }, 13.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
+                    if (c.likes > 0) { Glyph(2, 14.dp); T(fmtCount(c.likes), 12.sp, modifier = Modifier.padding(start = 3.dp)) }
+                }
+                T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 3.dp))
+            }
         }
-        T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-        HLine()
-        Spacer(Modifier.height(10.dp).width(1.dp))
+        HLine(modifier = Modifier.padding(start = 42.dp))
     }
 }
 

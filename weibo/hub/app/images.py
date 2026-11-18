@@ -26,6 +26,9 @@ from . import config
 
 MAX_W, MAX_H = 648, 1000
 THUMB_W = 300
+# 每张原图一张方形小图（列表里一排、安卓九宫格用）。/ One square small image per source image (list strips and the
+# Android grid).
+SQUARE = 240
 # 封面高宽比夹在 3:4（横）和 4:3（竖）之间，和小红书首页卡片一样。/ Cover height/width clamped between 3:4 (wide)
 # and 4:3 (tall), like Xiaohongshu home cards.
 RATIO_MIN, RATIO_MAX = 0.75, 4 / 3
@@ -146,6 +149,37 @@ async def process(note_id: str, urls: list[str], counts: list[int] | None = None
         thumb_done = True
         page += n
     return page - 1
+
+
+def _write_square(out: Path, img: Image.Image, k: int) -> None:
+    _save(ImageOps.fit(img, (SQUARE, SQUARE), Image.Resampling.LANCZOS), out / f"s{k}.jpg")
+
+
+async def process_post(post_id: str, urls: list[str]) -> tuple[int, list[int]]:
+    """微博用：下载并处理图片，除了大图和封面，每张原图再做一张方形小图 s<k>.jpg（k 从 1 起）。返回页数和每张原图的
+    第一页（从 0 起），下载失败的图不算。
+    Weibo: download and process images; besides pages and the cover, each source image gets a square s<k>.jpg (k from
+    1). Returns the page count and each source image's first page (0-based); failed downloads are skipped."""
+    out = note_dir(post_id)
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
+    sem = asyncio.Semaphore(PARALLEL)
+    async with httpx.AsyncClient(timeout=30.0, headers=HEADERS, follow_redirects=True) as client:
+        async def one(url: str) -> Image.Image | None:
+            async with sem:
+                return await _fetch(client, url)
+
+        results = await asyncio.gather(*(one(u) for u in urls))
+    page, starts = 1, []
+    for img in results:
+        if img is None:
+            continue
+        n = split_count(*img.size)
+        await asyncio.to_thread(_write_pages, out, img, page, n, not starts)
+        await asyncio.to_thread(_write_square, out, img, len(starts) + 1)
+        starts.append(page - 1)
+        page += n
+    return page - 1, starts
 
 
 def start_background(note_id: str, urls: list[str], counts: list[int]) -> None:

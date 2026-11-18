@@ -43,6 +43,13 @@ def db() -> sqlite3.Connection:
             CREATE TABLE IF NOT EXISTS counters (day TEXT PRIMARY KEY, requests INTEGER);
             """
         )
+        # 0.1.3 起每张原图有方形小图：原图张数和每张的第一页。/ From 0.1.3 each source image has a square small image:
+        # the source image count and each one's first page.
+        cols = [r[1] for r in _db.execute("PRAGMA table_info(posts)")]
+        if "pics" not in cols:
+            _db.execute("ALTER TABLE posts ADD COLUMN pics INTEGER NOT NULL DEFAULT 0")
+            _db.execute("ALTER TABLE posts ADD COLUMN starts TEXT NOT NULL DEFAULT ''")
+            _db.commit()
     return _db
 
 
@@ -130,11 +137,12 @@ def has_post(pid: str) -> bool:
 def save_post(p: dict[str, Any]) -> None:
     _exec(
         "INSERT OR REPLACE INTO posts(id, user_id, user_name, text, created_ts, likes, comments, reposts, source, "
-        "rt_user, rt_text, images, ratio, in_follow, in_hot, hot_at, hot_rank, fetched_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "rt_user, rt_text, images, ratio, in_follow, in_hot, hot_at, hot_rank, fetched_at, pics, starts) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (p["id"], p["user_id"], p["user_name"], p["text"], p["created_ts"], p["likes"], p["comments"], p["reposts"],
          p.get("source", ""), p.get("rt_user", ""), p.get("rt_text", ""), p["images"], p.get("ratio", 1.333),
-         int(p.get("in_follow", 0)), int(p.get("in_hot", 0)), p.get("hot_at", 0), p.get("hot_rank", 0), time.time()),
+         int(p.get("in_follow", 0)), int(p.get("in_hot", 0)), p.get("hot_at", 0), p.get("hot_rank", 0), time.time(),
+         int(p.get("pics", 0)), p.get("starts", "")),
     )
 
 
