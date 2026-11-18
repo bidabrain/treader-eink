@@ -3,18 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 设置：首页六个大分类（显示与阅读、底部标签、Wi-Fi 与传书、内容来源、同步、电源与设备），点进去是二级页。
- * 二级页里：字体、壁纸、睡眠、传书、TF 卡、概览等跳到各自页面；底部标签开关、番茄与 WebDAV 与小红书的地址
- * 在本页用键盘编辑；小红书还能打开“手机网页填写”，用传书的网页服务收地址和令牌；“关于 Treader”在本页显示。
+ * 二级页里：字体、壁纸、睡眠、传书、TF 卡、概览等跳到各自页面；底部标签开关、番茄与 WebDAV 的地址在本页用键盘
+ * 编辑；内容来源再分番茄、小红书、微博三页，小红书和微博共用一个服务器页（地址、令牌、测试），还能打开“手机网页
+ * 填写”，用传书的网页服务收地址和令牌；“关于 Treader”在本页显示。
  *
  * English: Settings. The home lists six categories (display and reading, tab bar, Wi-Fi and transfer, content sources,
  * sync, power and device); each opens a second-level page. There: font, wallpaper, sleep, transfer, TF card and
- * overview jump to their own pages; tab switches and the Tomato, WebDAV and Xiaohongshu addresses are edited here with
- * the keyboard; Xiaohongshu can also serve a phone web form (through the transfer web service) for the address and
- * token; "About Treader" shows here.
+ * overview jump to their own pages; tab switches and the Tomato and WebDAV addresses are edited here with the keyboard;
+ * content sources split into Tomato, Xiaohongshu and Weibo pages, the last two sharing one server page (address,
+ * token, test) that can also serve a phone web form (through the transfer web service) for the address and token;
+ * "About Treader" shows here.
  *
- * 冻结：书库和设置两个标签不能隐藏；网页填写只收小红书地址和令牌，离开本页或关掉开关就停；令牌从不显示原值。
- * Frozen: the library and settings tabs cannot be hidden; the web form takes only the Xiaohongshu address and token
- * and stops when the page is left or the switch is turned off; the token is never shown.
+ * 冻结：书库和设置两个标签不能隐藏，最多同时显示 TR_TABS_SHOWN_MAX 个；网页填写只收当前服务器页的地址和令牌，
+ * 离开本页或关掉开关就停；令牌从不显示原值。
+ * Frozen: the library and settings tabs cannot be hidden and at most TR_TABS_SHOWN_MAX tabs show; the web form takes
+ * only the current server page's address and token and stops when the page is left or the switch is turned off; the
+ * token is never shown.
  */
 
 #include <stdio.h>
@@ -58,10 +62,31 @@ extern const app_desc_t app_tr_wall;
 extern const app_desc_t app_tr_card;
 extern const app_desc_t app_tr_update;
 
-extern const char rednote_form_start[] asm("_binary_rednote_form_html_start");
-extern const char rednote_form_end[] asm("_binary_rednote_form_html_end");
+extern const char server_form_start[] asm("_binary_server_form_html_start");
+extern const char server_form_end[] asm("_binary_server_form_html_end");
 
-typedef enum { P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SYNC, P_POWER, P_ABOUT } page_t;
+typedef enum {
+    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SYNC, P_POWER, P_ABOUT
+} page_t;
+
+// 自建服务器页：小红书和微博共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu and Weibo, picked by
+// s_srv.
+typedef enum { S_RED, S_WB, S_COUNT } srv_t;
+
+static const struct {
+    const char* name;      // 页面和提示里的称呼 / Name in titles and hints
+    const char* panel;     // 服务器面板叫什么 / What the server panel is called
+    const char* example;   // 地址示例 / Address example
+    tr_icon_t icon;
+    esp_err_t (*load)(tomato_srv_config_t* out);
+    esp_err_t (*save)(const tomato_srv_config_t* cfg);
+    uint32_t (*revision)(void);
+} SERVERS[S_COUNT] = {
+    [S_RED] = {"小红书", "rednote", "http://192.168.1.20:8091", TR_ICON_XHS, tomato_red_config_load,
+               tomato_red_config_save, tomato_red_config_revision},
+    [S_WB] = {"微博", "weibo", "http://192.168.1.20:8092", TR_ICON_WEIBO, tomato_wb_config_load,
+              tomato_wb_config_save, tomato_wb_config_revision},
+};
 
 // 首页分类。/ Home categories.
 typedef enum { C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
@@ -76,7 +101,7 @@ typedef struct {
 
 enum {
     R_FONT, R_WALL,
-    R_SRV, R_STORE, R_RED_WEB, R_RED_URL, R_RED_TOKEN, R_RED_TEST,
+    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_CARD, R_ABOUT,
 };
@@ -85,13 +110,15 @@ static const row_t DISPLAY_ROWS[] = {
     {R_FONT, NULL, "字体", 190},
     {R_WALL, NULL, "锁屏壁纸", 262},
 };
-static const row_t SOURCE_ROWS[] = {
-    {R_SRV, "番茄小说", "番茄服务器", 212},
-    {R_STORE, NULL, "书城榜单", 284},
-    {R_RED_WEB, "小红书", "手机网页填写", 422},
-    {R_RED_URL, NULL, "服务器地址", 506},
-    {R_RED_TOKEN, NULL, "设备令牌", 578},
-    {R_RED_TEST, NULL, "测试连接", 650},
+static const row_t TOMATO_ROWS[] = {
+    {R_SRV, NULL, "番茄服务器", 190},
+    {R_STORE, NULL, "书城榜单", 262},
+};
+static const row_t SERVER_ROWS[] = {
+    {R_WEB, NULL, "手机网页填写", 190},
+    {R_URL, NULL, "服务器地址", 274},
+    {R_TOKEN, NULL, "设备令牌", 346},
+    {R_TEST, NULL, "测试连接", 418},
 };
 static const row_t SYNC_ROWS[] = {
     {R_DAV, NULL, "WebDAV", 190},
@@ -104,19 +131,23 @@ static const row_t POWER_ROWS[] = {
 };
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define WEB_ROW_H 84
-#define WEB_BOX (EpdRect){TR_MARGIN, 516, TR_W - 2 * TR_MARGIN, 480}
+#define WEB_BOX (EpdRect){TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 480}
+// 内容来源页：三个来源。/ Content sources page: three sources.
+#define SOURCES 3
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
 #define TAB_TOP 270
 #define TAB_H 100
 
 static page_t s_page;
-static bool s_open_sources;   // 别的页要求直接打开“内容来源”/ Another page asked to open "Content sources"
+static int s_open_source = -1;  // 别的页要求直接打开某个来源（tr_tab_t）/ Another page asked for a source (tr_tab_t)
 static bool s_open_transfer;  // 书库的传书按钮要求打开“传书”/ The library's transfer button asked for "Transfer"
 
-// 键盘编辑：番茄（地址→密码）、WebDAV（地址→用户名→密码）、榜单、小红书地址、小红书令牌。
-// Keyboard edits: Tomato (URL, password), WebDAV (URL, user, password), rank site, Xiaohongshu URL and token.
-typedef enum { E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL, E_RED_URL, E_RED_TOKEN } edit_t;
+// 键盘编辑：番茄（地址→密码）、WebDAV（地址→用户名→密码）、榜单、自建服务器地址和令牌。
+// Keyboard edits: Tomato (URL, password), WebDAV (URL, user, password), rank site, self-hosted server URL and token.
+typedef enum {
+    E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL, E_HOST_URL, E_HOST_TOKEN
+} edit_t;
 
 static const struct { const char* title; const char* hint; const char* go; } EDIT[] = {
     [E_NONE] = {"", "", ""},
@@ -126,16 +157,19 @@ static const struct { const char* title; const char* hint; const char* go; } EDI
     [E_DAV_USER] = {"WebDAV 用户名", "坚果云填登录邮箱", "下一步"},
     [E_DAV_PASS] = {"WebDAV 密码", "坚果云填“应用密码”，不是登录密码", "保存"},
     [E_STORE_URL] = {"书城榜单地址", "留空使用默认榜单；填 FanqieRankTracker 网站地址", "保存"},
-    [E_RED_URL] = {"小红书服务器地址", "rednote 面板“设备与外网”里的地址，如 http://192.168.1.20:8091", "保存"},
-    [E_RED_TOKEN] = {"小红书设备令牌", "令牌很长，建议用“手机网页填写”；留空表示不改", "保存"},
+    // 标题前面加服务器名，地址提示按服务器拼，见 draw_edit。/ The title gets the server name in front and the address
+    // hint is built per server, see draw_edit.
+    [E_HOST_URL] = {"服务器地址", "", "保存"},
+    [E_HOST_TOKEN] = {"设备令牌", "令牌很长，建议用“手机网页填写”；留空表示不改", "保存"},
 };
 
 static edit_t s_edit;
 static char s_wifi[33];
 static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
-static tomato_red_config_t s_red;
-static bool s_has_cfg, s_has_dav, s_has_red;
+static tomato_srv_config_t s_host[S_COUNT];
+static bool s_has_cfg, s_has_dav, s_has_host[S_COUNT];
+static srv_t s_srv;
 static char s_message[112];
 EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 static char s_step1[160], s_step2[64];
@@ -143,10 +177,12 @@ static bool s_syncing;
 static int64_t s_poll_ms;
 static uint32_t s_seen_revision;
 
-// 小红书：测试连接的结果和网页填写的状态。/ Xiaohongshu: test result and web-form state.
-static bool s_red_testing;
-static char s_red_result[96];
+// 自建服务器：测试连接的结果和网页填写的状态。/ Self-hosted servers: test results and web-form state.
+static bool s_testing;
+static srv_t s_test_srv;
+static char s_test_result[S_COUNT][96];
 static bool s_web_on;
+static srv_t s_web_srv;
 static uint32_t s_web_revision;
 static read_pico_transfer_status_t s_web_status;
 static char s_web_note[96];
@@ -200,7 +236,7 @@ static void load(void) {
         memset(s_cfg.password, 0, sizeof(s_cfg.password));
     }
     s_has_dav = tomato_webdav_config_load(&s_dav) == ESP_OK;
-    s_has_red = tomato_red_config_load(&s_red) == ESP_OK;
+    for (int i = 0; i < S_COUNT; i++) s_has_host[i] = SERVERS[i].load(&s_host[i]) == ESP_OK;
 }
 
 // 去掉 http:// 只显示主机。/ Drop the scheme and show the host only.
@@ -237,12 +273,12 @@ static void row_value(int id, char* out, size_t cap) {
         snprintf(out, cap, "%.150s ›", tomato_store_url_load(url, sizeof(url)) == ESP_OK ? host_of(url) : "默认榜单");
         break;
     }
-    case R_RED_URL: snprintf(out, cap, "%.150s ›", s_has_red ? host_of(s_red.url) : "未设置"); break;
-    case R_RED_TOKEN: snprintf(out, cap, "%s ›", s_red.token[0] ? "已填写" : "未填写"); break;
-    case R_RED_TEST:
-        if (s_red_testing) snprintf(out, cap, "测试中…");
-        else if (s_red_result[0]) snprintf(out, cap, "%.90s ›", s_red_result);
-        else snprintf(out, cap, s_has_red ? "点一下测试 ›" : "先填地址");
+    case R_URL: snprintf(out, cap, "%.150s ›", s_has_host[s_srv] ? host_of(s_host[s_srv].url) : "未设置"); break;
+    case R_TOKEN: snprintf(out, cap, "%s ›", s_host[s_srv].token[0] ? "已填写" : "未填写"); break;
+    case R_TEST:
+        if (s_testing && s_test_srv == s_srv) snprintf(out, cap, "测试中…");
+        else if (s_test_result[s_srv][0]) snprintf(out, cap, "%.90s ›", s_test_result[s_srv]);
+        else snprintf(out, cap, s_has_host[s_srv] ? "点一下测试 ›" : "先填地址");
         break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
@@ -264,10 +300,13 @@ static void row_value(int id, char* out, size_t cap) {
 // HTTP 任务里调用：GET 返回地址和“有没有令牌”，POST 保存。令牌从不返回。
 // Runs on the HTTP task: GET returns the address and whether a token exists; POST saves. The token never goes out.
 static int web_form(const char* body, size_t len, char* reply, size_t cap) {
-    tomato_red_config_t cur;
-    const bool has = tomato_red_config_load(&cur) == ESP_OK;
+    tomato_srv_config_t cur;
+    const bool has = SERVERS[s_web_srv].load(&cur) == ESP_OK;
     if (!body) {
         cJSON* j = cJSON_CreateObject();
+        cJSON_AddStringToObject(j, "name", SERVERS[s_web_srv].name);
+        cJSON_AddStringToObject(j, "panel", SERVERS[s_web_srv].panel);
+        cJSON_AddStringToObject(j, "example", SERVERS[s_web_srv].example);
         cJSON_AddStringToObject(j, "url", has ? cur.url : "");
         cJSON_AddBoolToObject(j, "has_token", cur.token[0] != 0);
         memset(&cur, 0, sizeof(cur));
@@ -289,11 +328,11 @@ static int web_form(const char* body, size_t len, char* reply, size_t cap) {
     } else if (!(cJSON_IsString(token) && token->valuestring[0]) && !cur.token[0]) {
         snprintf(reply, cap, "{\"error\":\"请粘贴设备令牌\"}");
     } else {
-        tomato_red_config_t next = {0};
+        tomato_srv_config_t next = {0};
         snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
         snprintf(next.token, sizeof(next.token), "%s",
                  cJSON_IsString(token) && token->valuestring[0] ? token->valuestring : cur.token);
-        const esp_err_t err = tomato_red_config_save(&next);
+        const esp_err_t err = SERVERS[s_web_srv].save(&next);
         memset(&next, 0, sizeof(next));
         status = err == ESP_OK ? 200 : 500;
         snprintf(reply, cap, err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存失败\"}");
@@ -329,17 +368,18 @@ static void web_start(void) {
     read_pico_transfer_get_saved_wifi(ssid, &configured);
     const read_pico_transfer_cfg_t cfg = {
         .mode = configured ? READ_PICO_TRANSFER_MODE_STA : READ_PICO_TRANSFER_MODE_AP,
-        .form_html = rednote_form_start,
-        .form_html_len = (size_t)(rednote_form_end - rednote_form_start - 1),
+        .form_html = server_form_start,
+        .form_html_len = (size_t)(server_form_end - server_form_start - 1),
         .form_cb = web_form,
     };
+    s_web_srv = s_srv;   // 回调在 HTTP 任务里读它，开着期间不变 / Read by the HTTP task; fixed while serving
     const esp_err_t err = read_pico_transfer_start(&cfg);
     if (err != ESP_OK) {
         snprintf(s_message, sizeof(s_message), "打不开网页服务（%s）", esp_err_to_name(err));
         return;
     }
     s_web_on = true;
-    s_web_revision = tomato_red_config_revision();
+    s_web_revision = SERVERS[s_web_srv].revision();
     s_web_note[0] = 0;
     memset(&s_web_status, 0, sizeof(s_web_status));
     read_pico_transfer_get_status(&s_web_status);
@@ -354,12 +394,20 @@ static void web_prepare_qr(void) {
         ui_wifi_qr_prepare_url(s_web_status.url);
 }
 
-static void start_red_test(void) {
-    if (!s_has_red || s_web_on || tomato_sync_preempt() != TOMATO_PREEMPT_FREE) return;
-    const tomato_red_req_t req = {.job = TOMATO_RED_TEST};
-    if (tomato_sync_start_red(&req) == ESP_OK) {
-        s_red_testing = true;
-        s_red_result[0] = 0;
+static void start_test(srv_t which) {
+    if (!s_has_host[which] || s_web_on || tomato_sync_preempt() != TOMATO_PREEMPT_FREE) return;
+    esp_err_t err;
+    if (which == S_RED) {
+        const tomato_red_req_t req = {.job = TOMATO_RED_TEST};
+        err = tomato_sync_start_red(&req);
+    } else {
+        const tomato_wb_req_t req = {.job = TOMATO_WB_TEST};
+        err = tomato_sync_start_wb(&req);
+    }
+    if (err == ESP_OK) {
+        s_testing = true;
+        s_test_srv = which;
+        s_test_result[which][0] = 0;
     }
 }
 
@@ -395,8 +443,8 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     }
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
     case C_SOURCES:
-        snprintf(out, cap, "番茄：%.40s · 小红书：%.60s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url),
-                 s_has_red ? host_of(s_red.url) : "未设置");
+        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置",
+                 s_has_host[S_RED] ? "已设置" : "未设置", s_has_host[S_WB] ? "已设置" : "未设置");
         break;
     case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
     case C_POWER:
@@ -464,13 +512,22 @@ static void draw_switch(uint8_t* fb, int right, int y, bool on) {
     if (!on) for (int d = 0; d < 3; d++) epd_draw_circle(kx, y + 27, 18 - d, UI_GRAY_BLACK, fb);
 }
 
+// 灰色的关着开关（显示满了，不能再开）。/ A gray off switch (the bar is full, it cannot turn on).
+static void draw_switch_gray(uint8_t* fb, int right, int y) {
+    const EpdRect r = {right - 100, y, 100, 54};
+    ui_draw_round_rect(fb, r, 27, TR_GRAY_LINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, TR_GRAY_LINE);
+    epd_draw_circle(r.x + 27, y + 27, 18, TR_GRAY_LINE, fb);
+    epd_draw_circle(r.x + 27, y + 27, 17, TR_GRAY_LINE, fb);
+}
+
 static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
     for (int i = 0; i < n; i++) {
         const row_t* r = &rows[i];
         if (r->section) tr_text(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT, false);
-        const int h = r->id == R_RED_WEB ? WEB_ROW_H : ROW_H;
-        tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_RED_WEB && s_web_on);
-        if (r->id == R_RED_WEB) {
+        const int h = r->id == R_WEB ? WEB_ROW_H : ROW_H;
+        tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_WEB && s_web_on);
+        if (r->id == R_WEB) {
             draw_switch(fb, TR_W - TR_MARGIN, r->y + 15, s_web_on);
         } else {
             char value[160];
@@ -479,7 +536,7 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             tr_text(fb, TR_W - TR_MARGIN, r->y + (h - 28) / 2, 28, value, EPD_DRAW_ALIGN_RIGHT, false);
         }
         const bool last = i + 1 == n || rows[i + 1].section;
-        if (!last && !(r->id == R_RED_WEB && s_web_on)) tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        if (!last && !(r->id == R_WEB && s_web_on)) tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }
 
@@ -515,7 +572,9 @@ static void draw_web_box(uint8_t* fb) {
 }
 
 static void draw_tabs(uint8_t* fb) {
+    const bool full = tr_tab_count() >= TR_TABS_SHOWN_MAX;
     draw_back_title(fb, "底部标签");
+    draw_message(fb);
     tr_wrap(fb, TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 26, 38,
             "关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。", 2);
     for (int t = 0; t < TR_TAB_MAX; t++) {
@@ -524,6 +583,9 @@ static void draw_tabs(uint8_t* fb) {
         tr_text(fb, TR_MARGIN + 62, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
         if (TR_TABS_FIXED & (1u << t))
             tr_text(fb, TR_W - TR_MARGIN, y + (TAB_H - 28) / 2, 28, "固定", EPD_DRAW_ALIGN_RIGHT, false);
+        else if (!tr_tab_shown((tr_tab_t)t) && full)
+            // 已经显示满了：关着的开关画成灰的，点了不开。/ Already full: off switches are gray and do not turn on.
+            draw_switch_gray(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2);
         else
             draw_switch(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2, tr_tab_shown((tr_tab_t)t));
         if (t + 1 < TR_TAB_MAX) tr_hline(fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
@@ -535,23 +597,42 @@ static void draw_tabs(uint8_t* fb) {
 static void draw_sources(uint8_t* fb) {
     draw_back_title(fb, "内容来源");
     draw_message(fb);
+    char sum[200];
+    snprintf(sum, sizeof(sum), "%.150s · 书城榜单", !s_has_cfg ? "番茄服务器未设置" : s_cfg.builtin ? "内置服务器" :
+             host_of(s_cfg.url));
+    draw_cat(fb, CAT_TOP, TR_ICON_TOMATO, "番茄小说", sum, false);
+    for (int i = 0; i < S_COUNT; i++) {
+        snprintf(sum, sizeof(sum), "%s 服务器 · %.150s", SERVERS[i].panel,
+                 s_has_host[i] ? host_of(s_host[i].url) : "未设置");
+        draw_cat(fb, CAT_TOP + (1 + i) * CAT_H, SERVERS[i].icon, SERVERS[i].name, sum, i + 1 == S_COUNT);
+    }
+}
+
+static void draw_server(uint8_t* fb) {
+    draw_back_title(fb, SERVERS[s_srv].name);
+    draw_message(fb);
     if (s_web_on) {
-        draw_rows(fb, SOURCE_ROWS, 3);
+        draw_rows(fb, SERVER_ROWS, 1);
         draw_web_box(fb);
         return;
     }
-    draw_rows(fb, SOURCE_ROWS, COUNT(SOURCE_ROWS));
-    tr_wrap(fb, TR_MARGIN, 740, TR_W - 2 * TR_MARGIN, 24, 36,
-            "地址和令牌在 rednote 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。", 3);
+    draw_rows(fb, SERVER_ROWS, COUNT(SERVER_ROWS));
+    char hint[200];
+    snprintf(hint, sizeof(hint), "地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。",
+             SERVERS[s_srv].panel);
+    tr_wrap(fb, TR_MARGIN, 510, TR_W - 2 * TR_MARGIN, 24, 36, hint, 3);
 }
 
 static void draw_edit(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, EDIT[s_edit].title, EPD_DRAW_ALIGN_LEFT, true);
+    char title[48];
+    snprintf(title, sizeof(title), "%s%s", s_edit == E_HOST_URL || s_edit == E_HOST_TOKEN ? SERVERS[s_srv].name : "",
+             EDIT[s_edit].title);
+    tr_text(fb, 96, 100, 36, title, EPD_DRAW_ALIGN_LEFT, true);
     EpdRect f = {TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 84};
     ui_draw_round_rect(fb, f, 14, UI_GRAY_BLACK);
     ui_draw_round_rect(fb, ui_inset_rect(f, 1), 13, UI_GRAY_BLACK);
-    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_RED_TOKEN;
+    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_HOST_TOKEN;
     char shown[TR_KBD_TEXT_MAX];
     if (secret) {
         // 密码只露最后一个字符。/ Passwords show only the last character.
@@ -566,6 +647,12 @@ static void draw_edit(uint8_t* fb) {
     tr_text(fb, f.x + 20, f.y + 22, 32, tail, EPD_DRAW_ALIGN_LEFT, false);
     epd_fill_rect((EpdRect){f.x + 22 + ttf_text_width_px(32, tail), f.y + 18, 3, 46}, UI_GRAY_BLACK, fb);
     const char* hint = EDIT[s_edit].hint;
+    char host_hint[160];
+    if (s_edit == E_HOST_URL) {
+        snprintf(host_hint, sizeof(host_hint), "%s 面板“设备与外网”里的地址，如 %s", SERVERS[s_srv].panel,
+                 SERVERS[s_srv].example);
+        hint = host_hint;
+    }
     if (s_edit == E_SRV_URL && tomato_config_has_builtin()) hint = "留空使用内置服务器；自建的填 http://地址:端口";
     if (s_message[0]) hint = s_message;   // 输入不对时的提示 / Why the input was refused
     tr_wrap(fb, TR_MARGIN, 286, TR_W - 2 * TR_MARGIN, 26, 36, hint, 2);
@@ -638,6 +725,12 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     case P_TABS: draw_tabs(fb); break;
     case P_TRANSFER: draw_transfer(fb); break;
     case P_SOURCES: draw_sources(fb); break;
+    case P_SRC_TOMATO:
+        draw_back_title(fb, "番茄小说");
+        draw_message(fb);
+        draw_rows(fb, TOMATO_ROWS, COUNT(TOMATO_ROWS));
+        break;
+    case P_SRC_SERVER: draw_server(fb); break;
     case P_SYNC: draw_back_title(fb, "同步"); draw_message(fb); draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS)); break;
     case P_POWER: draw_back_title(fb, "电源与设备"); draw_rows(fb, POWER_ROWS, COUNT(POWER_ROWS)); break;
     case P_ABOUT: draw_about(fb); return;
@@ -664,10 +757,10 @@ static app_redraw_t finish_edit(void) {
         snprintf(next.password, sizeof(next.password), "%.63s", s_kbd.text);
         err = tomato_config_save(&next);
         memset(&next, 0, sizeof(next));
-    } else if (s_edit == E_RED_URL || s_edit == E_RED_TOKEN) {
-        tomato_red_config_t next;
-        tomato_red_config_load(&next);
-        if (s_edit == E_RED_URL) {
+    } else if (s_edit == E_HOST_URL || s_edit == E_HOST_TOKEN) {
+        tomato_srv_config_t next;
+        SERVERS[s_srv].load(&next);
+        if (s_edit == E_HOST_URL) {
             if (s_kbd.text[0] && strncmp(s_kbd.text, "http://", 7) && strncmp(s_kbd.text, "https://", 8)) {
                 memset(&next, 0, sizeof(next));
                 snprintf(s_message, sizeof(s_message), "地址要以 http:// 或 https:// 开头");
@@ -678,9 +771,9 @@ static app_redraw_t finish_edit(void) {
         } else if (s_kbd.text[0]) {
             snprintf(next.token, sizeof(next.token), "%.90s", s_kbd.text);
         }
-        err = tomato_red_config_save(&next);
+        err = SERVERS[s_srv].save(&next);
         memset(&next, 0, sizeof(next));
-        s_red_result[0] = 0;
+        s_test_result[s_srv][0] = 0;
     } else {
         tomato_webdav_config_t next = {0};
         snprintf(next.url, sizeof(next.url), "%.159s", s_step1);
@@ -741,9 +834,17 @@ static app_redraw_t open_page(page_t p) {
 
 static app_redraw_t go_back(void) {
     s_message[0] = 0;
-    if (s_page == P_SOURCES) web_stop();
-    s_page = s_page == P_ABOUT ? P_POWER : P_HOME;
+    if (s_page == P_SRC_SERVER) web_stop();
+    s_page = s_page == P_ABOUT ? P_POWER : s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER ? P_SOURCES : P_HOME;
     return APP_REDRAW_PAGE;
+}
+
+static app_redraw_t touch_sources(uint16_t y) {
+    if (y < CAT_TOP || y >= CAT_TOP + SOURCES * CAT_H) return APP_REDRAW_NONE;
+    const int i = (y - CAT_TOP) / CAT_H;
+    if (i == 0) return open_page(P_SRC_TOMATO);
+    s_srv = (srv_t)(i - 1);
+    return open_page(P_SRC_SERVER);
 }
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
@@ -761,7 +862,7 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
 
 static int row_hit(const row_t* rows, int n, uint16_t y) {
     for (int i = 0; i < n; i++) {
-        const int h = rows[i].id == R_RED_WEB ? WEB_ROW_H : ROW_H;
+        const int h = rows[i].id == R_WEB ? WEB_ROW_H : ROW_H;
         if (y >= rows[i].y && y < rows[i].y + h) return rows[i].id;
     }
     return -1;
@@ -781,6 +882,11 @@ static app_redraw_t touch_tabs(uint16_t y) {
     if (y < TAB_TOP || y >= TAB_TOP + TR_TAB_MAX * TAB_H) return APP_REDRAW_NONE;
     const int t = (y - TAB_TOP) / TAB_H;
     if (TR_TABS_FIXED & (1u << t)) return APP_REDRAW_NONE;
+    if (!tr_tab_shown((tr_tab_t)t) && tr_tab_count() >= TR_TABS_SHOWN_MAX) {
+        snprintf(s_message, sizeof(s_message), "最多显示 %d 个标签，先关掉一个", TR_TABS_SHOWN_MAX);
+        return APP_REDRAW_PAGE;
+    }
+    s_message[0] = 0;
     const uint8_t mask = app_settings_hidden_tabs() ^ (uint8_t)(1u << t);
     app_settings_set_hidden_tabs(mask);
     tr_tabs_set_hidden(mask);
@@ -806,16 +912,16 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         // 内置服务器不回显；有内置时默认留空。/ Never echo the built-in server; start empty when one exists.
         begin_edit(E_SRV_URL, s_has_cfg && !s_cfg.builtin ? s_cfg.url : tomato_config_has_builtin() ? "" : "http://");
         return APP_REDRAW_PAGE;
-    case R_RED_WEB:
+    case R_WEB:
         if (s_web_on) web_stop();
         else web_start();
         if (s_web_on) web_prepare_qr();
         return APP_REDRAW_PAGE;
-    case R_RED_URL: begin_edit(E_RED_URL, s_has_red ? s_red.url : "http://"); return APP_REDRAW_PAGE;
-    case R_RED_TOKEN: begin_edit(E_RED_TOKEN, ""); return APP_REDRAW_PAGE;
-    case R_RED_TEST:
+    case R_URL: begin_edit(E_HOST_URL, s_has_host[s_srv] ? s_host[s_srv].url : "http://"); return APP_REDRAW_PAGE;
+    case R_TOKEN: begin_edit(E_HOST_TOKEN, ""); return APP_REDRAW_PAGE;
+    case R_TEST:
         if (!make_room()) return APP_REDRAW_PAGE;
-        start_red_test();
+        start_test(s_srv);
         return APP_REDRAW_PAGE;
     case R_DAV: begin_edit(E_DAV_URL, s_has_dav ? s_dav.url : "https://"); return APP_REDRAW_PAGE;
     case R_DAV_SYNC:
@@ -844,9 +950,11 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     int id = -1;
     switch (s_page) {
     case P_TABS: return touch_tabs(y);
+    case P_SOURCES: return touch_sources(y);
+    case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
+    case P_SRC_SERVER: id = row_hit(SERVER_ROWS, s_web_on ? 1 : COUNT(SERVER_ROWS), y); break;
     case P_TRANSFER: return touch_transfer(ctx, y);
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
-    case P_SOURCES: id = row_hit(SOURCE_ROWS, s_web_on ? 3 : COUNT(SOURCE_ROWS), y); break;
     case P_SYNC: id = row_hit(SYNC_ROWS, COUNT(SYNC_ROWS), y); break;
     case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
     default: break;
@@ -863,18 +971,27 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 /* ---- 生命周期 / Lifecycle ---- */
 
-void app_tr_settings_request_sources(void) { s_open_sources = true; }
+void app_tr_settings_request_source(int tab) { s_open_source = tab; }
 void app_tr_settings_request_transfer(void) { s_open_transfer = true; }
 
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     s_edit = E_NONE;
-    s_page = s_open_sources ? P_SOURCES : s_open_transfer ? P_TRANSFER : P_HOME;
-    s_open_sources = s_open_transfer = false;
+    s_page = s_open_transfer ? P_TRANSFER : P_HOME;
+    if (s_open_source == TR_TAB_TOMATO) {
+        s_page = P_SRC_TOMATO;
+    } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO) {
+        s_srv = s_open_source == TR_TAB_XHS ? S_RED : S_WB;
+        s_page = P_SRC_SERVER;
+    } else if (s_open_source >= 0) {
+        s_page = P_SOURCES;
+    }
+    s_open_source = -1;
+    s_open_transfer = false;
     s_message[0] = 0;
     // 离开期间同步可能已结束。/ The sync may have finished while away.
     if (s_syncing && !tomato_sync_busy()) s_syncing = false;
-    if (s_red_testing && !tomato_sync_busy()) s_red_testing = false;
+    if (s_testing && !tomato_sync_busy()) s_testing = false;
     load();
 }
 
@@ -883,7 +1000,7 @@ static void page_on_exit(app_ctx_t* ctx) {
     web_stop();
     memset(&s_cfg, 0, sizeof(s_cfg));
     memset(&s_dav, 0, sizeof(s_dav));
-    memset(&s_red, 0, sizeof(s_red));
+    memset(s_host, 0, sizeof(s_host));
     memset(&s_kbd, 0, sizeof(s_kbd));
     s_edit = E_NONE;
 }
@@ -891,7 +1008,7 @@ static void page_on_exit(app_ctx_t* ctx) {
 static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
     if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, SYNC_ROWS[1].y, TR_W, ROW_H};
-    if (s_edit == E_NONE && s_page == P_SOURCES) return (EpdRect){0, SOURCE_ROWS[5].y, TR_W, ROW_H};
+    if (s_edit == E_NONE && s_page == P_SRC_SERVER) return (EpdRect){0, SERVER_ROWS[3].y, TR_W, ROW_H};
     return (EpdRect){0, 160, TR_W, TR_H - 160};
 }
 
@@ -904,14 +1021,14 @@ static app_redraw_t tick_web(void) {
     const bool net_changed = next.network_ready != s_web_status.network_ready || strcmp(next.url, s_web_status.url) ||
                              next.state != s_web_status.state;
     s_web_status = next;
-    if (tomato_red_config_revision() != s_web_revision) {
+    if (SERVERS[s_web_srv].revision() != s_web_revision) {
         if (!read_pico_transfer_try_stop_if_idle()) return APP_REDRAW_NONE;
         s_web_on = false;
         ui_wifi_qr_clear();
         app_loop_hold_awake(false);
         load();
         snprintf(s_message, sizeof(s_message), "已收到网页填写的设置");
-        start_red_test();
+        start_test(s_web_srv);
         return APP_REDRAW_PAGE;
     }
     if (net_changed) {
@@ -929,15 +1046,16 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_poll_ms = ctx->now_ms;
     if (s_web_on) {
         const app_redraw_t r = tick_web();
-        return s_page == P_SOURCES && s_edit == E_NONE ? r : APP_REDRAW_NONE;
+        return s_page == P_SRC_SERVER && s_edit == E_NONE ? r : APP_REDRAW_NONE;
     }
-    if (!s_syncing && !s_red_testing) return APP_REDRAW_NONE;
+    if (!s_syncing && !s_testing) return APP_REDRAW_NONE;
     tomato_status_t st;
     tomato_sync_get_status(&st);
     if (!tomato_sync_busy()) {
         if (s_syncing) snprintf(s_message, sizeof(s_message), "%s", st.message);
-        if (s_red_testing) snprintf(s_red_result, sizeof(s_red_result), "%s", st.message[0] ? st.message : "失败");
-        s_syncing = s_red_testing = false;
+        if (s_testing)
+            snprintf(s_test_result[s_test_srv], sizeof(s_test_result[0]), "%s", st.message[0] ? st.message : "失败");
+        s_syncing = s_testing = false;
         load();
         return s_edit == E_NONE ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
     }

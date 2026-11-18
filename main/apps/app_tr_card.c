@@ -143,7 +143,7 @@ static bool make_dirs(void) {
               "wallpapers/  lock-screen wallpapers, JPG or PNG\n"
               "tomato/      Tomato shelf, covers and settings (managed by the device)\n"
               "update/      firmware for TF-card updates (Read_Pico.bin or treader-full.bin)\n"
-              "hupu/, rednote/, .treader/  caches made by the device; safe to delete\n", f);
+              "hupu/, rednote/, weibo/, .treader/  caches made by the device; safe to delete\n", f);
         fclose(f);
     }
     return ok;

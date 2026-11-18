@@ -56,6 +56,72 @@ void tr_lock_wallpaper_set(const char* path) {
     nvs_close(h);
 }
 
+/* ---- 存为壁纸 / Save as wallpaper ---- */
+
+#define WALL_DIR "/sdcard/wallpapers"
+#define WALL_SRC_MAX (2 * 1024 * 1024)
+
+// 文件名里不能有的字符换成“-”，按 UTF-8 边界截到 max 字节。/ Replace characters not allowed in file names with "-"
+// and cut to max bytes on a UTF-8 boundary.
+static void name_part(const char* in, char* out, size_t max) {
+    const char* src = in ? in : "";
+    size_t n = 0;
+    for (; src[n] && n + 1 < max; n++) {
+        const unsigned char c = (unsigned char)src[n];
+        out[n] = c < 0x20 || c == 0x7F || strchr("/\\:*?\"<>|", c) ? '-' : (char)c;
+    }
+    // 停在一个字符中间就退到它开头。/ If we stopped inside a character, back up to its start.
+    while (n && ((unsigned char)src[n] & 0xC0) == 0x80) n--;
+    out[n] = 0;
+}
+
+tr_wall_save_t tr_lock_wallpaper_save(const char* src, const char* source, const char* author, int n, char* out,
+                                      size_t cap) {
+    out[0] = 0;
+    struct stat st;
+    if (!src || stat(src, &st) != 0 || st.st_size <= 0 || st.st_size > WALL_SRC_MAX) return TR_WALL_FAILED;
+    const char* ext = strrchr(src, '.');
+    if (!ext || (strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".png"))) ext = ".jpg";
+    char who[64], from[24], base[112];
+    name_part(author && author[0] ? author : "未知作者", who, sizeof(who));
+    name_part(source, from, sizeof(from));
+    snprintf(base, sizeof(base), "%s_%s_%d", from, who, n);
+    mkdir(WALL_DIR, 0775);
+    // 找空位：同名同大小就是存过了；同名不同大小加序号。/ Find a free name: same name and size means already saved;
+    // same name but different size gets a number.
+    char path[180];
+    int k = 1;
+    for (; k < 100; k++) {
+        if (k == 1) snprintf(path, sizeof(path), WALL_DIR "/%s%s", base, ext);
+        else snprintf(path, sizeof(path), WALL_DIR "/%s(%d)%s", base, k, ext);
+        struct stat old;
+        if (stat(path, &old) != 0) break;
+        if (old.st_size == st.st_size) {
+            snprintf(out, cap, "%s", path);
+            return TR_WALL_EXISTS;
+        }
+    }
+    if (k >= 100) return TR_WALL_FAILED;
+    FILE* in = fopen(src, "rb");
+    uint8_t* buf = in ? heap_caps_malloc((size_t)st.st_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : NULL;
+    bool ok = buf && fread(buf, 1, (size_t)st.st_size, in) == (size_t)st.st_size;
+    if (in) fclose(in);
+    // 先写 .part 再改名，断电不会留下半张图。/ Write .part then rename so a power cut never leaves half an image.
+    char tmp[192];
+    snprintf(tmp, sizeof(tmp), "%s.part", path);
+    if (ok) {
+        FILE* f = fopen(tmp, "wb");
+        ok = f && fwrite(buf, 1, (size_t)st.st_size, f) == (size_t)st.st_size;
+        if (f) ok = fclose(f) == 0 && ok;
+        ok = ok && rename(tmp, path) == 0;
+        if (!ok) remove(tmp);
+    }
+    heap_caps_free(buf);
+    if (!ok) return TR_WALL_FAILED;
+    snprintf(out, cap, "%s", path);
+    return TR_WALL_SAVED;
+}
+
 static void prepare_battery(void) {
     if (read_pico_pmu_ready()) {
         const pmu_snapshot_t* pmu = read_pico_pmu_get();

@@ -75,6 +75,17 @@ def remove_creator(user_id: str) -> None:
     _exec("DELETE FROM creators WHERE user_id=?", (user_id,))
 
 
+def replace_creators(rows: list[dict[str, Any]]) -> None:
+    """WebDAV 恢复：换成备份里的名单（已有的人保留抓取进度）。/ WebDAV restore: replace the list (existing creators
+    keep their progress)."""
+    keep = {r["user_id"] for r in rows}
+    for c in creators():
+        if c["user_id"] not in keep:
+            remove_creator(c["user_id"])
+    for r in rows:
+        add_creator(r["user_id"], r["xsec_token"], r["nickname"])
+
+
 def mark_creator(user_id: str, nickname: str | None, error: str, token: str | None = None) -> None:
     _exec(
         "UPDATE creators SET last_fetch=?, last_error=?, nickname=COALESCE(?, nickname), "

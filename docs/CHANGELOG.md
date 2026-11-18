@@ -5,8 +5,15 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
-- 新增微博内容服务器（仓库 `weibo/`，独立 Docker 镜像）：不登录微博，在面板里管理关注，定时拉取关注的人和热门的图文微博，带视频的不收，长微博补全文，图片在服务器上转成墨水屏灰度图；WebDAV 备份和 weiboX 互通。设备端标签还没做。
-  New Weibo content server (repo `weibo/`, its own Docker image): no Weibo sign-in, follows managed in the panel, scheduled fetching of followed users' and hot image posts, video posts skipped, long posts completed, images converted to e-ink grayscale on the server; WebDAV backups interoperate with weiboX. The device tab is not built yet.
+- 小红书、微博看大图时可以“存为壁纸”：点图片中间或长按，图片复制到 TF 卡 wallpapers/，也可以直接设成锁屏。锁屏壁纸预览里可以删除壁纸（点两次确认）。
+  Xiaohongshu and Weibo image views can save the image as a wallpaper: tap the middle or long-press, and it is copied to wallpapers/ on the TF card, optionally set as the lock screen. The wallpaper preview can delete a wallpaper (two taps to confirm).
+- rednote 服务器 0.2.0：关注的博主可以用 WebDAV 备份和恢复（rednote_backup.json）。
+  rednote server 0.2.0: followed creators can be backed up to and restored from WebDAV (rednote_backup.json).
+
+- 新增微博标签：经自建 weibo 服务器（仓库 `weibo/`，独立 Docker 镜像，不用登录微博）看关注的人和热门的图文微博。一行一条带缩略图；点开先看全文（长微博已补全、转发接原文），往后是图片和评论。服务器在面板里管理关注，WebDAV 备份和 weiboX 互通，带视频的不收，图片在服务器上转成墨水屏灰度图，表情显示成文字。另有同样功能的独立安卓 App（`weibo/android`，1.0.0）。
+  New Weibo tab: followed users' and hot image posts through the self-hosted weibo server (repo `weibo/`, its own Docker image, no Weibo sign-in). One post per row with a thumbnail; a post opens on its full text (long posts completed, reposts followed by the original), then images and comments. The server manages follows in its panel, its WebDAV backups interoperate with weiboX, video posts are skipped, images are turned into e-ink grayscale on the server and emoji show as text. A standalone Android app with the same features ships as `weibo/android` 1.0.0.
+- 底部标签最多同时显示七个：开满后其余开关变灰；“设置 › 内容来源”分成番茄、小红书、微博三页，手机网页填写两个服务器都能用。
+  The tab bar shows at most seven tabs: once full, the other switches turn gray. "Settings > Content sources" splits into Tomato, Xiaohongshu and Weibo pages, and the phone web form works for both servers.
 
 - rednote 服务器：点开推荐笔记更快。正文拉到就先返回，图片在后台同时处理 4 张（取到还没做好的那页时服务器等它）；推荐请求间隔默认从 8 秒改成 3 秒（之前没改过的配置自动改过来）。
   rednote server: opening a recommended note is faster. The text returns first while images process four at a time in the background (a request for an unfinished page waits for it); the default recommendation gap drops from 8 s to 3 s (untouched configs move over automatically).

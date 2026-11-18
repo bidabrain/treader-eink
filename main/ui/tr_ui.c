@@ -365,6 +365,16 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         epd_fill_rect((EpdRect){x + 25, y + 13, 6, 5}, c, fb);
         epd_fill_circle(cx, y + 33, 4, c, fb);
         break;
+    case TR_ICON_WEIBO:
+        // 微博：对话气泡里一个话题“#”。/ Weibo: a speech bubble holding a topic "#".
+        ui_draw_round_rect(fb, (EpdRect){x + 4, y + 6, 32, 24}, 7, c);
+        ui_draw_round_rect(fb, (EpdRect){x + 5, y + 7, 30, 22}, 6, c);
+        epd_fill_triangle(x + 10, y + 28, x + 19, y + 28, x + 9, y + 36, c, fb);
+        thick_line(fb, x + 17, y + 11, x + 15, y + 25, c);
+        thick_line(fb, x + 25, y + 11, x + 23, y + 25, c);
+        thick_line(fb, x + 12, y + 15, x + 29, y + 15, c);
+        thick_line(fb, x + 11, y + 21, x + 28, y + 21, c);
+        break;
     case TR_ICON_POWER:
         // 电源键：开口的圆和一竖。/ Power symbol: an open circle and a bar.
         thick_circle(fb, cx, y + 21, 12, c);
@@ -388,11 +398,23 @@ EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_
 
 static uint8_t s_hidden;
 
-static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "设置"};
+static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "设置"};
 static const tr_icon_t TAB_ICONS[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS,
-                                                TR_ICON_BALL, TR_ICON_SETTINGS};
+                                                TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_SETTINGS};
 
-void tr_tabs_set_hidden(uint8_t mask) { s_hidden = mask & (uint8_t)~TR_TABS_FIXED; }
+uint8_t tr_tabs_limit(uint8_t mask) {
+    mask &= (uint8_t)~TR_TABS_FIXED;
+    int shown = 0;
+    for (int t = 0; t < TR_TAB_MAX; t++) shown += !(mask & (1u << t));
+    for (int t = TR_TAB_MAX - 1; t >= 0 && shown > TR_TABS_SHOWN_MAX; t--) {
+        if ((TR_TABS_FIXED & (1u << t)) || (mask & (1u << t))) continue;
+        mask |= (uint8_t)(1u << t);
+        shown--;
+    }
+    return mask;
+}
+
+void tr_tabs_set_hidden(uint8_t mask) { s_hidden = tr_tabs_limit(mask); }
 bool tr_tab_shown(tr_tab_t tab) { return tab < TR_TAB_MAX && !(s_hidden & (1u << tab)); }
 const char* tr_tab_label(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_LABELS[tab] : ""; }
 tr_icon_t tr_tab_icon(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_ICONS[tab] : TR_ICON_MENU; }
@@ -415,8 +437,9 @@ void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
     tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
     tr_tab_t tabs[TR_TAB_MAX];
     const int n = visible_tabs(tabs);
-    // 六个全开时每格约 114 像素，字小一号、高亮块窄一点。/ With all six each cell is ~114 px: smaller text, narrower pill.
-    const int px = n >= 6 ? 26 : 28, pill = n >= 6 ? 84 : 92;
+    // 六个时每格约 114 像素、七个约 98 像素：字和高亮块跟着收。/ Six tabs give ~114 px cells and seven ~98 px: text
+    // and the pill shrink with them.
+    const int px = n >= 7 ? 24 : n >= 6 ? 26 : 28, pill = n >= 7 ? 76 : n >= 6 ? 84 : 92;
     for (int i = 0; i < n; i++) {
         int cx = (2 * i + 1) * TR_W / (2 * n);
         bool on = tabs[i] == active;

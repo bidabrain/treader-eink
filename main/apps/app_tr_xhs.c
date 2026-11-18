@@ -32,6 +32,7 @@
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
+#include "tr_wallsave.h"
 #include "ttf_font.h"
 #include "ui_gesture.h"
 #include "ui_kit.h"
@@ -154,6 +155,7 @@ static int s_title_lines;
 static text_tab_t s_tab;
 static int s_page;
 static int s_image;                  // 从 0 开始 / 0-based
+static tr_wallsave_t s_ws;             // 看图时的存为壁纸工具条 / Save-as-wallpaper toolbar
 static bool s_image_missing;         // 当前图还没下好，任务进行中要回头看 / Current image not downloaded yet
 
 /* ---- 内存 / Memory ---- */
@@ -626,6 +628,7 @@ static void draw_image(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(fb, TR_W / 2, TR_H - IMAGE_BAND + 28, 30, label, EPD_DRAW_ALIGN_CENTER, true);
     tr_text(fb, TR_W - TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "正文 ›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_wallsave_draw(fb, &s_ws);
 }
 
 static void draw_text_header(uint8_t* fb) {
@@ -776,6 +779,7 @@ static app_redraw_t open_item(int i) {
 }
 
 static app_redraw_t back_to_list(void) {
+    tr_wallsave_close(&s_ws);
     hupu_img_drop_pending();
     drop_job(TOMATO_RED_NOTE);
     free_note();
@@ -787,6 +791,10 @@ static app_redraw_t back_to_list(void) {
 }
 
 static app_redraw_t turn(int dir) {
+    // 工具条或提示框开着：就算没翻成也要重画把它擦掉。/ With the toolbar or notice up, redraw even when the page
+    // does not change, so it is wiped.
+    const app_redraw_t idle = s_ws.shown || s_ws.title[0] ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
+    tr_wallsave_close(&s_ws);
     int* page;
     int pages;
     if (s_view == V_LIST) { page = &s_list_page; pages = list_pages(); }
@@ -794,12 +802,12 @@ static app_redraw_t turn(int dir) {
     else {
         // 最后一张再往后进正文；第一张再往前回列表。/ Past the last image comes the text; before the first, the list.
         if (dir > 0 && s_image + 1 >= s_images) { s_view = V_TEXT; s_tab = T_BODY; s_page = 0; return APP_REDRAW_PAGE; }
-        if (dir < 0 && s_image == 0) return APP_REDRAW_NONE;
+        if (dir < 0 && s_image == 0) return idle;
         page = &s_image;
         pages = s_images;
     }
     const int next = *page + dir;
-    if (next < 0 || next >= pages) return APP_REDRAW_NONE;
+    if (next < 0 || next >= pages) return idle;
     *page = next;
     hupu_img_drop_pending();
     return APP_REDRAW_PAGE;
@@ -819,7 +827,7 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_XHS)) return APP_REDRAW_NONE;
     if (!s_has_cfg) {
         if (ui_rect_hit(SETUP_RECT, x, y)) {
-            app_tr_settings_request_sources();
+            app_tr_settings_request_source(TR_TAB_XHS);
             ctx->request_app = tr_nav_tab_app(TR_TAB_SETTINGS);
         }
         const int seg = tr_segment_hit(TR_SEGMENT_RECT, 2, x, y);
@@ -837,15 +845,23 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return i < s_item_count ? open_item(i) : APP_REDRAW_NONE;
 }
 
-static app_redraw_t tap_image(uint16_t x, uint16_t y) {
+static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
+    char path[96];
+    image_path(s_image, path, sizeof(path));
+    if (tr_wallsave_tap(&s_ws, x, y, path, "小红书", s_author, s_image + 1, ctx->now_ms)) return APP_REDRAW_PAGE;
     if (y >= TR_H - IMAGE_BAND) {
+        tr_wallsave_close(&s_ws);
         if (x < TR_W / 3) return back_to_list();
         if (x >= TR_W * 2 / 3) { s_view = V_TEXT; s_tab = T_BODY; s_page = 0; hupu_img_drop_pending(); return APP_REDRAW_PAGE; }
         return APP_REDRAW_NONE;
     }
+    if (s_ws.shown && y >= TR_WALLSAVE_TOP) return APP_REDRAW_NONE;   // 工具条空白处 / Blank toolbar area
     if (x < TR_W * 3 / 10) return turn(-1);
     if (x >= TR_W * 7 / 10) return turn(1);
-    return APP_REDRAW_NONE;
+    // 点中间开关存为壁纸工具条。/ A tap in the middle toggles the save-as-wallpaper toolbar.
+    if (s_ws.shown) tr_wallsave_close(&s_ws);
+    else tr_wallsave_open(&s_ws);
+    return APP_REDRAW_PAGE;
 }
 
 static app_redraw_t tap_text(uint16_t x, uint16_t y) {
@@ -877,11 +893,16 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
         return APP_REDRAW_NONE;
     }
     if (ev->type == UI_GESTURE_TAP) {
-        if (s_view == V_IMAGE) return tap_image(ev->x0, ev->y0);
+        if (s_view == V_IMAGE) return tap_image(ctx, ev->x0, ev->y0);
         if (s_view == V_TEXT) return tap_text(ev->x0, ev->y0);
         return tap_list(ctx, ev->x0, ev->y0);
     }
     if (s_wait) return APP_REDRAW_NONE;
+    // 长按图片也打开存为壁纸工具条。/ A long press on the image also opens the save-as-wallpaper toolbar.
+    if (ev->type == UI_GESTURE_LONG_PRESS && s_view == V_IMAGE && ev->y0 < TR_WALLSAVE_TOP && !s_ws.shown) {
+        tr_wallsave_open(&s_ws);
+        return APP_REDRAW_PAGE;
+    }
     if (ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U) return turn(1);
     if (ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D) return turn(-1);
     return APP_REDRAW_NONE;
@@ -947,6 +968,7 @@ static app_redraw_t job_done(bool ok) {
 
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (!s_items) return APP_REDRAW_NONE;
+    if (tr_wallsave_tick(&s_ws, ctx->now_ms)) return APP_REDRAW_PAGE;
     if (!(ctx->touch && ctx->touch->touched) && hupu_img_tick()) return APP_REDRAW_PAGE;
     if (ctx->now_ms - s_poll_ms < POLL_MS) return APP_REDRAW_NONE;
     s_poll_ms = ctx->now_ms;
@@ -1032,12 +1054,14 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    tr_wallsave_close(&s_ws);
     s_has_pending = false;
     free_all();
 }
 
 static void on_media_lost(app_ctx_t* ctx) {
     (void)ctx;
+    tr_wallsave_close(&s_ws);
     tomato_sync_cancel();
     s_job_active = false;
     s_has_pending = false;

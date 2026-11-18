@@ -19,7 +19,7 @@ AUTH_PATH = DATA / "auth.json"
 MCP_URL = os.environ.get("MCP_URL", "http://mcp:18060").rstrip("/")
 NOVNC_URL = os.environ.get("NOVNC_URL", "http://mcp:6080").rstrip("/")
 PORT = int(os.environ.get("PORT", "8091"))
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 DEFAULTS: dict[str, Any] = {
     # 每轮之间隔多少分钟。/ Minutes between rounds.
@@ -54,6 +54,10 @@ DEFAULTS: dict[str, Any] = {
     # 外网访问：off / quick / token。/ Public access: off / quick / token.
     "tunnel_mode": "off",
     "tunnel_token": "",
+    # WebDAV 备份关注的博主（rednote_backup.json）。/ WebDAV backup of followed creators (rednote_backup.json).
+    "webdav_url": "",
+    "webdav_user": "",
+    "webdav_pass": "",
 }
 
 _lock = threading.Lock()

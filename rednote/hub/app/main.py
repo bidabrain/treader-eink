@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, fetcher, images, mcp, rec, store, tunnel
+from . import auth, config, fetcher, images, mcp, rec, store, tunnel, webdav
 
 WEB = Path(__file__).parent / "web"
 ID_RE = re.compile(r"^[0-9a-f]{24}$")
@@ -233,9 +233,17 @@ async def panel_logs():
     return list(fetcher.log)
 
 
+def _public(cfg: dict) -> dict:
+    """面板看到的设置：WebDAV 密码不回显，只说有没有。/ Settings as the panel sees them: the WebDAV password is never
+    echoed, only whether one is set."""
+    out = dict(cfg)
+    out["has_webdav_pass"] = bool(out.pop("webdav_pass", ""))
+    return out
+
+
 @app.get("/api/panel/settings")
 async def settings_get():
-    return config.load()
+    return _public(config.load())
 
 
 @app.post("/api/panel/settings")
@@ -261,15 +269,53 @@ async def settings_set(body: dict):
         raise HTTPException(400, "推荐请求间隔至少 3 秒")
     if "rec_max" in update:
         update["rec_max"] = min(update["rec_max"], 30)
+    for key in ("webdav_url", "webdav_user"):
+        if key in body:
+            update[key] = str(body[key]).strip()
+    # 密码留空表示不改。/ An empty password means unchanged.
+    if body.get("webdav_pass"):
+        update["webdav_pass"] = str(body["webdav_pass"])
     cfg = config.save(update)
     fetcher.wake()
-    return cfg
+    return _public(cfg)
+
+
+def _webdav_cfg() -> tuple[str, str, str]:
+    cfg = config.load()
+    if not cfg.get("webdav_url"):
+        raise HTTPException(400, "先在设置里填 WebDAV 地址")
+    return cfg["webdav_url"], cfg.get("webdav_user", ""), cfg.get("webdav_pass", "")
+
+
+@app.post("/api/panel/webdav/backup")
+async def webdav_backup():
+    url, user, pw = _webdav_cfg()
+    rows = store.creators()
+    try:
+        await asyncio.to_thread(webdav.backup, url, user, pw, rows)
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    fetcher.note(f"已备份到 WebDAV：{len(rows)} 位博主")
+    return {"ok": True, "creators": len(rows)}
+
+
+@app.post("/api/panel/webdav/restore")
+async def webdav_restore():
+    url, user, pw = _webdav_cfg()
+    try:
+        rows = await asyncio.to_thread(webdav.restore, url, user, pw)
+    except Exception as e:
+        raise HTTPException(502, str(e))
+    store.replace_creators(rows)
+    fetcher.note(f"已从 WebDAV 恢复：{len(rows)} 位博主")
+    fetcher.wake()
+    return {"ok": True, "creators": len(rows)}
 
 
 @app.post("/api/panel/device/rotate")
 async def device_rotate():
     import secrets
-    return config.save({"device_token": secrets.token_urlsafe(24)})
+    return _public(config.save({"device_token": secrets.token_urlsafe(24)}))
 
 
 class TunnelBody(BaseModel):

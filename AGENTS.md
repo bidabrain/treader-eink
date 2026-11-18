@@ -50,6 +50,7 @@ idf.py build
 | `rednote/` | 小红书内容服务器（Docker：Python 面板 hub + xiaohongshu-mcp），独立于固件，部署说明在其 README。/ Xiaohongshu content server (Docker: Python hub + xiaohongshu-mcp), separate from the firmware; see its README. |
 | `rednote/android/` | 小红书安卓客户端（Kotlin + Compose），功能和界面照固件小红书标签，独立版本号；tag `rednote-android-v*` 发布，签名用 Secret 里的 debug keystore。/ Xiaohongshu Android client (Kotlin + Compose) mirroring the firmware tab, with its own version; released on `rednote-android-v*` tags, signed with the debug keystore from a secret. |
 | `weibo/` | 微博内容服务器（Docker：Python hub + Playwright Chromium 访客身份），不登录，关注 / 热门两类，图片在服务器转灰度；关注管理与 WebDAV 备份照 weiboX-server，部署说明在其 README。/ Weibo content server (Docker: Python hub + Playwright Chromium visitor identity), no sign-in, following and hot feeds, images converted on the server; follow management and WebDAV backup match weiboX-server; see its README. |
+| `weibo/android/` | 微博安卓客户端（Kotlin + Compose），功能和界面照固件微博标签，独立版本号；tag `weibo-android-v*` 发布，签名和小红书 App 共用 Secret 里的 debug keystore。/ Weibo Android client (Kotlin + Compose) mirroring the firmware tab, with its own version; released on `weibo-android-v*` tags, signed with the same debug keystore secret as the Xiaohongshu app. |
 
 功能操作见 README 和 [docs/TREADER.md](docs/TREADER.md)；页面契约以本文及 `main/app/app.h` 为准。/ See the README and docs/TREADER.md for feature usage; this file and `main/app/app.h` define the page contract.
 
@@ -85,6 +86,7 @@ One file, one `app_desc_t`. Order matches `app_registry.c`.
 | `app_comic.c` | CBZ 漫画书架、系列话列表、一屏一页阅读与工具条；和书库分开，只读 TF 卡 `comics/`。/ CBZ comics shelf, series list, one-page reader and toolbar; separate from the library, reads `comics/` only. | `comic_store`, `zip_reader`, `book_image`, `hupu_img` |
 | `app_book.c` | TXT / EPUB 书架、目录、字号与逐书进度；晃动翻页实验默认关。/ TXT / EPUB shelf, TOC, size and per-book progress; experimental shake defaults off. | `book_*`, `ttf_font` |
 | `app_tr_xhs.c` | 小红书标签：关注 / 推荐列表、一屏一张看图、正文与评论；只读自建 rednote 服务器写到 TF 卡 `rednote/` 的缓存。/ Xiaohongshu tab: following and recommendation lists, one image per screen, text and comments; reads only the `rednote/` cache fetched from the self-hosted rednote server. | `tomato`（`tomato_rednote.c`）, `hupu_img` |
+| `app_tr_weibo.c` | 微博标签：关注 / 热门列表（一行一条带缩略图）、全文、一屏一张看图、评论；只读自建 weibo 服务器写到 TF 卡 `weibo/` 的缓存。/ Weibo tab: following and hot lists (one post per row with a thumbnail), full text, one image per screen, comments; reads only the `weibo/` cache fetched from the self-hosted weibo server. | `tomato`（`tomato_weibo.c`）, `hupu_img` |
 | `app_usb.c` | USB 传书：开始前说明；开始后卸 TF 卡交给电脑当 U 盘，只显示这一页（接管三键、占 PMU、无标签栏）；结束一律重启。/ USB transfer: intro, then the TF card goes to the computer as a USB drive with only this page shown (owns keys and PMU, no tab bar); ending always restarts. | `read_pico_usb`, `read_pico_sd` |
 | `app_transfer.c` | 设备热点/已有 WiFi 传 TXT/EPUB 与 TF 卡 TTF 字体，触屏/网页配网与热点二维码，离页停止；停留期间不计空闲自动休眠；停止按钮返回进入前的位置。/ AP/STA book and TF font upload with touchscreen/web provisioning and hotspot QR; stops on exit; idle auto-sleep does not run while the page is current; the stop button returns to the entry origin. | `read_pico_transfer`, `book_store` |
 

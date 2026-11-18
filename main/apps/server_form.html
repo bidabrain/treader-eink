@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>小纸 Pico · 小红书设置</title>
+<title>小纸 Pico · 服务器设置</title>
 <style>
   body { margin: 0; background: #faf9f5; color: #222; font: 17px/1.6 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
   main { max-width: 520px; margin: 0 auto; padding: 12px 20px 40px; }
@@ -19,8 +19,8 @@
 </head>
 <body>
 <main>
-  <h1>小纸 Pico · 小红书设置</h1>
-  <p class="hint">地址和令牌在 rednote 面板 → 设备与外网，复制后粘贴到这里。</p>
+  <h1>小纸 Pico · <span id="name">服务器</span>设置</h1>
+  <p class="hint">地址和令牌在 <span id="panel">服务器</span> 面板 → 设备与外网，复制后粘贴到这里。</p>
   <form id="f">
     <h2>服务器地址</h2>
     <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:8091" required maxlength="150">
@@ -36,6 +36,9 @@
 const $ = (s) => document.querySelector(s);
 let hasToken = false;
 fetch('/form').then((r) => r.json()).then((d) => {
+  if (d.name) { $('#name').textContent = d.name; document.title = '小纸 Pico · ' + d.name + '设置'; }
+  if (d.panel) $('#panel').textContent = d.panel;
+  if (d.example) $('#url').placeholder = d.example;
   if (d.url) $('#url').value = d.url;
   hasToken = !!d.has_token;
   if (hasToken) $('#tokenHint').textContent = '已经填过令牌，不显示原值；留空表示不改。';

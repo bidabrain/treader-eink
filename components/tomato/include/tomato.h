@@ -38,6 +38,10 @@ extern "C" {
 #define TOMATO_RED_DIR "/sdcard/rednote"
 #define TOMATO_RED_FEED_FILE TOMATO_RED_DIR "/feed.json"
 #define TOMATO_RED_REC_FILE TOMATO_RED_DIR "/rec.json"
+/// 微博缓存：follow.json、hot.json、p/<id>/。/ Weibo cache: follow.json, hot.json, p/<id>/.
+#define TOMATO_WB_DIR "/sdcard/weibo"
+#define TOMATO_WB_FOLLOW_FILE TOMATO_WB_DIR "/follow.json"
+#define TOMATO_WB_HOT_FILE TOMATO_WB_DIR "/hot.json"
 #define TOMATO_RANK_CAT_MAX 48
 #define TOMATO_RANK_BOOK_MAX 20
 #define TOMATO_RANK_INTRO_LEN 900
@@ -240,11 +244,14 @@ void tomato_hupu_schedule_path(const char* league, char* out, size_t cap);
 void tomato_hupu_rating_path(const char* type, const char* no, char* out, size_t cap);
 /* ---- 小红书（经自建 rednote 服务器）/ Xiaohongshu via the self-hosted rednote server ---- */
 
-/// rednote 服务器地址和设备令牌，存在 NVS。/ rednote server address and device token, kept in NVS.
+/// 自建服务器（rednote、weibo）的地址和设备令牌，存在 NVS。/ Self-hosted server (rednote, weibo) address and
+/// device token, kept in NVS.
 typedef struct {
     char url[160];
     char token[96];
-} tomato_red_config_t;
+} tomato_srv_config_t;
+
+typedef tomato_srv_config_t tomato_red_config_t;
 
 /// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
 esp_err_t tomato_red_config_load(tomato_red_config_t* out);
@@ -280,6 +287,40 @@ void tomato_red_cover_path(const char* id, char* out, size_t cap);
 /// 关注列表里标记看过；调用方保证此时没有关注列表任务在写。/ Mark a following note as seen; the caller makes sure no
 /// following-list job is writing at the time.
 void tomato_red_mark_seen(const char* id);
+
+/* ---- 微博（经自建 weibo 服务器）/ Weibo via the self-hosted weibo server ---- */
+
+typedef tomato_srv_config_t tomato_wb_config_t;
+
+/// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
+esp_err_t tomato_wb_config_load(tomato_wb_config_t* out);
+esp_err_t tomato_wb_config_save(const tomato_wb_config_t* cfg);
+/// 每保存一次加一（设置页据此发现网页填写已提交）。/ Bumped on every save (settings notices a web submission).
+uint32_t tomato_wb_config_revision(void);
+
+/// 微博后台任务种类。/ Weibo background jobs.
+typedef enum {
+    TOMATO_WB_FEED,       ///< 关注或热门列表和缩略图；列表写好时进度到 1 / Following or hot list and thumbnails; progress 1 once written
+    TOMATO_WB_POST,       ///< 一条微博和图片；正文写好时进度到 1 / One post and its images; progress 1 once text is written
+    TOMATO_WB_COMMENTS,   ///< 一条微博的评论（服务器第一次会去微博取）/ One post's comments (the server fetches them once)
+    TOMATO_WB_TEST,       ///< 测试连接 / Connection test
+} tomato_wb_job_t;
+
+typedef struct {
+    tomato_wb_job_t job;
+    char id[24];
+    bool hot;           ///< 列表：热门；否则关注 / List: hot; otherwise following
+    bool images_only;   ///< 微博已缓存，只补缺的图 / Post cached; fetch missing images only
+} tomato_wb_req_t;
+
+esp_err_t tomato_sync_start_wb(const tomato_wb_req_t* req);
+/// 微博目录、第 n 张图（n 为 0 是缩略图）、评论文件。/ Post folder, image n (0 = thumbnail), comments file.
+void tomato_wb_post_dir(const char* id, char* out, size_t cap);
+void tomato_wb_img_path(const char* id, int n, char* out, size_t cap);
+void tomato_wb_comments_path(const char* id, char* out, size_t cap);
+/// 关注列表里标记看过；调用方保证此时没有关注列表任务在写。/ Mark a following post as seen; the caller makes sure no
+/// following-list job is writing at the time.
+void tomato_wb_mark_seen(const char* id);
 
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);

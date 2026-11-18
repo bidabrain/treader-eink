@@ -25,8 +25,9 @@ void tr_nav_open_book(app_ctx_t* ctx, const char* path);
 
 /// 由书库页实现。/ Implemented by the library page.
 void app_book_request_open(const char* path);
-/// 由设置页实现：下次进入设置时直接打开“内容来源”。/ Implemented by settings: open "Content sources" on next entry.
-void app_tr_settings_request_sources(void);
+/// 由设置页实现：下次进入设置时直接打开这个来源（TR_TAB_TOMATO / XHS / WEIBO）的设置页。
+/// Implemented by settings: on next entry open this source's page (TR_TAB_TOMATO / XHS / WEIBO).
+void app_tr_settings_request_source(int tab);
 /// 由设置页实现：下次进入设置时直接打开“传书”（Wi-Fi / USB）。/ Implemented by settings: open "Transfer" next time.
 void app_tr_settings_request_transfer(void);
 /// 这个路径是不是阅读器正开着的书（可跨任务调用）。/ Whether this path is the book open in the reader (any task).

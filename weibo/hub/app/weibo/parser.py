@@ -33,6 +33,9 @@ def strip_html(s: str) -> str:
         return ""
     # <br> 转换行，保留可读性
     s = re.sub(r"<br\s*/?>", "\n", s, flags=re.IGNORECASE)
+    # 表情是 <img alt="[笑cry]">：留下 alt 文字，墨水屏和纯文本都看得懂。
+    # Emoji are <img alt="[笑cry]">: keep the alt text so e-ink and plain text still read them.
+    s = re.sub(r"<img[^>]*?\balt=\"([^\"]*)\"[^>]*>", r"\1", s, flags=re.IGNORECASE)
     s = _TAG_RE.sub("", s)
     return html_module.unescape(s).strip()
 
@@ -291,7 +294,8 @@ def parse_comments(data: dict, has_cookie: bool):
             user = c.get("user") or {}
             comments.append({
                 "id": str(c.get("id", "")),
-                "text": strip_html(c.get("text", "") or ""),
+                # 只发了图片的评论没有文字，标一个“[图片]”。/ Picture-only comments get a "[图片]" marker.
+                "text": strip_html(c.get("text", "") or "") or ("[图片]" if c.get("pic") else ""),
                 "created_at": c.get("created_at", "") or "",
                 "created_at_ts": parse_weibo_time(c.get("created_at", "") or ""),
                 "user_name": user.get("screen_name", "") or "",

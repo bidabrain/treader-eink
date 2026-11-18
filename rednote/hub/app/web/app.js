@@ -137,12 +137,37 @@ $('#tApply').onclick = async () => {
 };
 
 // ---- 设置 / Settings ----
-loaders.settings = async () => {
-  const cfg = await api('/api/panel/settings');
-  for (const el of $('#setForm').elements) {
+function fill(form, cfg) {
+  for (const el of form.elements) {
     if (!el.name || !(el.name in cfg)) continue;
     if (el.type === 'checkbox') el.checked = !!cfg[el.name]; else el.value = cfg[el.name];
   }
+}
+loaders.settings = async () => {
+  const cfg = await api('/api/panel/settings');
+  fill($('#setForm'), cfg);
+  fill($('#davForm'), cfg);
+  $('#davForm').webdav_pass.value = '';
+  $('#davForm').webdav_pass.placeholder = cfg.has_webdav_pass ? '已保存，留空表示不改' : 'WebDAV 密码';
+};
+$('#davForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('/api/panel/settings', { method: 'POST', body: { webdav_url: f.webdav_url.value, webdav_user: f.webdav_user.value, webdav_pass: f.webdav_pass.value } });
+    $('#davMsg').textContent = '已保存'; loaders.settings();
+  } catch (err) { $('#davMsg').textContent = err.message; }
+};
+$('#davBackup').onclick = async () => {
+  $('#davMsg').textContent = '备份中…';
+  try { const r = await api('/api/panel/webdav/backup', { method: 'POST' }); $('#davMsg').textContent = `已备份 ${r.creators} 位博主`; }
+  catch (err) { $('#davMsg').textContent = err.message; }
+};
+$('#davRestore').onclick = async () => {
+  if (!confirm('用备份里的名单替换现在关注的博主？')) return;
+  $('#davMsg').textContent = '恢复中…';
+  try { const r = await api('/api/panel/webdav/restore', { method: 'POST' }); $('#davMsg').textContent = `已恢复 ${r.creators} 位博主`; }
+  catch (err) { $('#davMsg').textContent = err.message; }
 };
 $('#setForm').onsubmit = async (e) => {
   e.preventDefault();

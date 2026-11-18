@@ -2,12 +2,12 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 锁屏壁纸：只列 TF 卡 wallpapers 文件夹里的 JPG/PNG，点一张先全屏预览，再设为壁纸或返回。
+ * 锁屏壁纸：只列 TF 卡 wallpapers 文件夹里的 JPG/PNG，点一张先全屏预览，再设为壁纸、删除（点两次）或返回。
  * 选中的路径存 NVS，锁屏时读它（见 tr_lock.c）。从设置页进入，不在菜单里。
  *
  * Lock wallpaper: lists only JPG/PNG in the TF card's wallpapers folder; tapping one shows a full-screen preview,
- * then sets it or goes back. The choice lives in NVS and the lock screen reads it (see tr_lock.c). Opened from
- * Settings; not in the menu.
+ * then sets it, deletes it (two taps) or goes back. The choice lives in NVS and the lock screen reads it (see
+ * tr_lock.c). Opened from Settings; not in the menu.
  *
  * 冻结：不扫描其他目录；解码只在 on_tick 里做，render 只画缓存。
  * Frozen: never scan other folders; decode only in on_tick, render paints caches only.
@@ -53,6 +53,7 @@ static bool s_no_card;
 static char s_msg[64];
 static char s_current[288];
 static uint8_t* s_preview;   // 预览用全屏缓冲（PSRAM）/ Full-screen preview buffer (PSRAM)
+static bool s_confirm_del;   // “删除”点过一次，再点才删 / "Delete" tapped once; the next tap deletes
 
 /* ---- 数据 / Data ---- */
 
@@ -139,8 +140,11 @@ static void draw_preview(uint8_t* fb) {
     book_screen_draw(fb, s_preview);
     epd_fill_rect((EpdRect){0, BAND_Y, TR_W, TR_H - BAND_Y}, UI_GRAY_WHITE, fb);
     tr_hline(fb, BAND_Y, 0, TR_W, false);
-    tr_pill(fb, (EpdRect){TR_MARGIN, BAND_Y + 40, 290, 80}, "设为壁纸", true, 32);
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BAND_Y + 40, 290, 80}, "返回", false, 32);
+    // 三个按钮：设为壁纸、删除（点一次变黑底“确认删除”）、返回。/ Three buttons: set, delete (one tap turns it into a
+    // filled "confirm"), back.
+    tr_pill(fb, (EpdRect){TR_MARGIN, BAND_Y + 40, 190, 80}, "设为壁纸", true, 30);
+    tr_pill(fb, (EpdRect){TR_MARGIN + 207, BAND_Y + 40, 190, 80}, s_confirm_del ? "确认删除" : "删除", s_confirm_del, 30);
+    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 190, BAND_Y + 40, 190, 80}, "返回", false, 30);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -158,8 +162,30 @@ static void leave(app_ctx_t* ctx) {
 
 static app_redraw_t back_to_list(void) {
     free_preview();
+    s_confirm_del = false;
     s_view = V_LIST;
     return APP_REDRAW_FULL;
+}
+
+// 删掉预览中的这张；是当前壁纸就改回书卡样式。它的全屏缓存离页时一起清掉。/ Delete the previewed image; if it is
+// the current wallpaper, go back to the book card. Its screen cache is pruned on exit.
+static app_redraw_t delete_selected(void) {
+    char path[NAME_LEN + 24];
+    path_of(s_sel, path, sizeof(path));
+    if (remove(path) != 0) {
+        snprintf(s_msg, sizeof(s_msg), "删不掉这张图，检查 TF 卡");
+        return back_to_list();
+    }
+    if (!strcmp(path, s_current)) {
+        tr_lock_wallpaper_set(NULL);
+        s_current[0] = 0;
+        snprintf(s_msg, sizeof(s_msg), "已删除，锁屏改回书卡样式");
+    } else {
+        snprintf(s_msg, sizeof(s_msg), "已删除");
+    }
+    scan();
+    if (s_page >= pages()) s_page = pages() - 1;
+    return back_to_list();
 }
 
 static app_redraw_t turn_page(int turn) {
@@ -172,8 +198,18 @@ static app_redraw_t turn_page(int turn) {
 static app_redraw_t tap(app_ctx_t* ctx, int x, int y) {
     if (s_view == V_LOADING) return APP_REDRAW_NONE;
     if (s_view == V_PREVIEW) {
-        if (y < BAND_Y + 20) return APP_REDRAW_NONE;
-        if (x < TR_W / 2) {
+        if (y < BAND_Y + 20) {
+            // 点图片别处取消“确认删除”。/ Tapping the image cancels a pending delete.
+            if (!s_confirm_del) return APP_REDRAW_NONE;
+            s_confirm_del = false;
+            return APP_REDRAW_PAGE;
+        }
+        if (x >= TR_MARGIN + 197 && x < TR_MARGIN + 407) {
+            if (s_confirm_del) return delete_selected();
+            s_confirm_del = true;
+            return APP_REDRAW_PAGE;
+        }
+        if (x < TR_MARGIN + 197) {
             char path[NAME_LEN + 24];
             path_of(s_sel, path, sizeof(path));
             tr_lock_wallpaper_set(path);
@@ -229,6 +265,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         if (book_screen_build(path)) s_preview = book_screen_load(path);
         if (s_preview) {
             s_msg[0] = 0;
+            s_confirm_del = false;
             s_view = V_PREVIEW;
             return APP_REDRAW_FULL;
         }

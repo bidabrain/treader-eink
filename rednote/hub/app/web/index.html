@@ -108,6 +108,15 @@
         <label>两次推荐请求至少隔几秒（另加 0～3 秒随机） <input name="rec_gap_s" type="number" min="3"></label>
         <button>保存</button> <span id="setMsg"></span>
       </form>
+      <form id="davForm" class="card">
+        <h2>WebDAV 备份</h2>
+        <p class="muted">把关注的博主名单（含添加时需要的 xsec_token）存成 WebDAV 上的 rednote_backup.json，换机器或重装后一键恢复。小红书登录状态不备份，恢复后重新扫码。恢复会用备份里的名单替换现在的。</p>
+        <label>地址 <input name="webdav_url" placeholder="https://dav.example.com/rednote" size="40"></label>
+        <label>用户名 <input name="webdav_user" autocomplete="off"></label>
+        <label>密码 <input name="webdav_pass" type="password" autocomplete="new-password" placeholder="留空表示不改"></label>
+        <button>保存</button> <button type="button" id="davBackup" class="ghost">立即备份</button> <button type="button" id="davRestore" class="ghost">从备份恢复</button>
+        <span id="davMsg"></span>
+      </form>
       <form id="pwForm" class="card">
         <h2>面板密码</h2>
         <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>

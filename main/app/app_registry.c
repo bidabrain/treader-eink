@@ -16,12 +16,13 @@ extern const app_desc_t app_tr_tomato;
 extern const app_desc_t app_tr_settings;
 extern const app_desc_t app_tr_hupu;
 extern const app_desc_t app_tr_xhs;
+extern const app_desc_t app_tr_weibo;
 extern const app_desc_t app_selftest;
 
-// 菜单只列主页面（书库、漫画、番茄、小红书、虎扑、设置），和底部标签栏一致；传书、字体、睡眠等从“设置”进入。
+// 菜单只列主页面（书库、漫画、番茄、小红书、虎扑、微博、设置），和底部标签栏一致；传书、字体、睡眠等从“设置”进入。
 // 首页已并入书库（2026-11-17）。设置“底部标签”里隐藏的标签，菜单也跳过（2026-11-18，代替“隐藏虎扑”）。
-// The menu lists the main pages (library, comics, Tomato, Xiaohongshu, Hupu, settings), matching the tab bar; transfer,
-// fonts, sleep etc. live under Settings. Home was merged into the library (2026-11-17). Tabs hidden under Settings
+// The menu lists the main pages (library, comics, Tomato, Xiaohongshu, Hupu, Weibo, settings), matching the tab bar;
+// transfer, fonts, sleep etc. live under Settings. Home was merged into the library (2026-11-17). Tabs hidden under Settings
 // "Tab bar" are skipped here too (2026-11-18, replacing "Hide Hupu").
 static const struct {
     const app_desc_t* app;
@@ -32,6 +33,7 @@ static const struct {
     {&app_tr_tomato, TR_TAB_TOMATO},
     {&app_tr_xhs, TR_TAB_XHS},
     {&app_tr_hupu, TR_TAB_HUPU},
+    {&app_tr_weibo, TR_TAB_WEIBO},
     {&app_tr_settings, TR_TAB_SETTINGS},
 };
 

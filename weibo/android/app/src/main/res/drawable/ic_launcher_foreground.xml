@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 固件微博标签图标（tr_ui.c 的 TR_ICON_WEIBO）原样放大：40×40 网格按 1.65 倍放进 108 的自适应图标安全区（偏移 21）。
+     对话气泡 (4,6) 32×24 圆角 7，左下尾巴三角 (10,28)(19,28)(9,36)，里面一个“#”：竖线 (17,11)-(15,25)、
+     (25,11)-(23,25)，横线 (12,15)-(29,15)、(11,21)-(28,21)。
+     The firmware Weibo tab icon (TR_ICON_WEIBO in tr_ui.c) scaled as is: the 40x40 grid at 1.65x inside the 108-unit
+     adaptive-icon safe zone (offset 21). Speech bubble (4,6) 32x24 radius 7 with a tail triangle (10,28)(19,28)(9,36)
+     at the bottom left, holding a "#": strokes (17,11)-(15,25), (25,11)-(23,25), (12,15)-(29,15), (11,21)-(28,21). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#000000"
+        android:strokeWidth="3.3"
+        android:pathData="M39.15,30.9 L68.85,30.9 A11.55,11.55 0 0 1 80.4,42.45 L80.4,58.95 A11.55,11.55 0 0 1 68.85,70.5 L39.15,70.5 A11.55,11.55 0 0 1 27.6,58.95 L27.6,42.45 A11.55,11.55 0 0 1 39.15,30.9 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M37.5,67.2 L52.35,67.2 L35.85,80.4 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M49.05,39.15 L45.75,62.25 M62.25,39.15 L58.95,62.25 M40.8,45.75 L68.85,45.75 M39.15,55.65 L67.2,55.65" />
+</vector>

@@ -736,7 +736,9 @@ static esp_err_t wifi_handler(httpd_req_t *req) {
 // Web form: GET reads current values, POST submits; POST must be same-origin (like provisioning) so other pages
 // cannot submit on the user's behalf.
 static esp_err_t form_handler(httpd_req_t *req) {
-    char reply[256] = "{}";
+    // GET 回地址（最多 159 字节）加服务器名、面板名和示例地址。/ GET returns the address (up to 159 bytes) plus the
+    // server name, panel name and example address.
+    char reply[512] = "{}";
     int status = 200;
     if (req->method == HTTP_GET) {
         status = s_cfg.form_cb(NULL, 0, reply, sizeof(reply));

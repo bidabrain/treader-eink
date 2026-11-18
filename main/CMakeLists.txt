@@ -48,6 +48,8 @@ idf_component_register(
         "apps/app_tr_update.c"
         "apps/app_tr_hupu.c"
         "apps/app_tr_xhs.c"
+        "apps/app_tr_weibo.c"
+        "apps/tr_wallsave.c"
         "apps/tr_lock.c"
         "apps/app_home.c"
         "apps/app_book.c"
@@ -81,7 +83,7 @@ idf_component_register(
         "assets/loading_4bpp.bin"
         "assets/builtin.ttf"
     EMBED_TXTFILES
-        "apps/rednote_form.html"
+        "apps/server_form.html"
 )
 
 # 静态分析构建：idf.py -B build-analyze -DTREADER_ANALYZE=1 build

@@ -144,6 +144,7 @@ docker compose down                           # 停止（数据保留在 data/�
 ```
 
 - **备份 / 迁移**：停掉后拷贝整个文件夹（重点是 `data/`）。
+- **WebDAV 备份关注的博主**：面板 → 设置 → WebDAV 备份，填地址、用户名、密码（坚果云等都行），点“立即备份”，名单（博主编号、昵称、添加时要用的 `xsec_token`）存成 WebDAV 上的 `rednote_backup.json`。换机器后填同样的 WebDAV 点“从备份恢复”，会用备份里的名单替换现在的（已有博主的拉取进度保留）。小红书登录状态不在备份里，恢复后重新扫码。
 - **忘记面板密码**：删除 `data/auth.json`，`docker restart rednote-hub`，再打开面板重新设置。
 - **xiaohongshu-mcp 版本**：compose 里固定为 `v2.7.4`，在 `.env` 的 `MCP_VERSION` 改。新版本先在面板里试一轮再长期用。
 - **不要同时跑两套**（比如测试机和 NAS）用同一个小红书号。

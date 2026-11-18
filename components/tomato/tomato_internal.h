@@ -88,6 +88,49 @@ esp_err_t tomato_hupu_rating(const char* type, const char* no, const volatile bo
 /// 小红书（rednote 服务器）任务，在同步任务里调用。/ Xiaohongshu (rednote server) job, run on the sync task.
 esp_err_t tomato_red_run(const tomato_red_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
                          char* msg, size_t cap);
+/// 微博（weibo 服务器）任务，在同步任务里调用。/ Weibo (weibo server) job, run on the sync task.
+esp_err_t tomato_wb_run(const tomato_wb_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
+                        char* msg, size_t cap);
+
+/* ---- 自建内容服务器共用 / Shared by self-hosted content servers ---- */
+
+#define TOMATO_SRV_JSON_MAX (512 * 1024)
+#define TOMATO_SRV_IMG_MAX (2 * 1024 * 1024)
+
+/// 一台自建服务器：地址和令牌、令牌请求头名、出错时的称呼。/ One self-hosted server: address and token, the token
+/// header name, and its name in error messages.
+typedef struct {
+    const tomato_srv_config_t* cfg;
+    const char* header;
+    const char* name;
+} tomato_srv_t;
+
+esp_err_t tomato_srv_config_load(const char* ns, tomato_srv_config_t* out);
+esp_err_t tomato_srv_config_save(const char* ns, const tomato_srv_config_t* cfg);
+/// 带令牌 GET 一个接口到 PSRAM（调用方 heap_caps_free，末尾补 0）。非 200 时把服务器给的原因写进 msg。
+/// GET an endpoint with the token into PSRAM (caller frees; NUL-terminated). On a non-200 status msg gets the reason.
+esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, int timeout_ms,
+                         const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap);
+esp_err_t tomato_srv_json(const tomato_srv_t* srv, const char* path, int timeout_ms, const volatile bool* cancel,
+                          cJSON** out, char* msg, size_t cap);
+/// 取一张 JPEG 存到 dest；不是 JPEG 不写。/ Fetch one JPEG into dest; anything else is not written.
+esp_err_t tomato_srv_image(const tomato_srv_t* srv, const char* path, const char* dest, int timeout_ms,
+                           const volatile bool* cancel);
+/// 编号只留字母和数字，免得拼进路径时出现 ../。/ Keep only letters and digits from ids used in paths.
+void tomato_safe_id(const char* in, char* out, size_t cap);
+bool tomato_file_exists(const char* path);
+/// 先写 .part 再改名，断电不会留下半个文件。/ Write .part then rename so a power cut never leaves half a file.
+esp_err_t tomato_cache_write(const char* dest, const void* data, size_t len);
+esp_err_t tomato_cache_write_json(const char* dest, const cJSON* root);
+cJSON* tomato_cache_read_json(const char* path);
+/// root 下的条目目录（名字就是编号）两道上限：超过 keep_dirs 个时先删不在 lists 任何一个里的旧条目；总大小超过
+/// max_bytes 时从最旧的开始只删大图（留 .json 和缩略图）。keep 这一条两样都不动。
+/// Two caps on item folders under root (named by id): past keep_dirs, delete the oldest items absent from every list
+/// file; past max_bytes in total, strip full images from the oldest (keeping .json and thumbnails). keep is untouched.
+void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,
+                        uint64_t max_bytes);
+/// 列表文件里把 id 标成看过。/ Mark id as seen in a list file.
+void tomato_cache_mark_seen(const char* list_file, const char* id);
 /// 封面目录太大时，只留 keep 里这些书的封面和缩略图。/ When the cover dir grows too big, keep only these books' covers and thumbnails.
 void tomato_rank_prune_covers(const tomato_rank_book_t* keep, int n);
 
