@@ -5,6 +5,9 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 新增番茄下载服务器一键部署（仓库 `tomato/`，镜像 `treader-tomato`）：官方下载器加网页面板，面板里看状态、设设备密码、开 Cloudflare 隧道（只放行设备接口），书存在宿主机，默认格式自动设成 TXT；设备和安卓 App 不用改。
+  New one-step Tomato downloader deployment (repo `tomato/`, image `treader-tomato`): the official downloader plus a web panel for status, the device password and a Cloudflare tunnel (device API only); books stay on the host and the default format is set to TXT; no device or app change.
+
 - 小红书、微博：双击顶部当前分段（关注 / 推荐 / 热门）回到最新的第一页（设备和安卓 App）；安卓 App（小红书 1.2.0、微博 1.1.1）看完一篇返回时停在原来的位置，不再跳回最上面。
   Xiaohongshu and Weibo: double-tap the current segment (Following / Recommended / Hot) to jump to the newest first page (device and Android apps); the Android apps (Xiaohongshu 1.2.0, Weibo 1.1.1) return to the same scroll position after a post instead of jumping to the top.
 

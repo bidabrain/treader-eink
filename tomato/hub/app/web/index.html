@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>番茄下载器面板</title>
+<link rel="stylesheet" href="/hub/static/style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="card narrow" method="post" action="#" onsubmit="return false">
+    <h1>番茄下载器面板</h1>
+    <p id="gateHint" class="muted"></p>
+    <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
+    <button type="submit">进入</button>
+    <p id="gateMsg" class="err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <b>番茄下载器面板</b><span id="ver" class="muted"></span>
+    <nav>
+      <a data-tab="home" class="on">概览</a><a data-tab="device">设备与外网</a><a data-tab="settings">设置</a><a data-tab="logs">日志</a>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <main>
+    <section data-panel="home">
+      <div class="grid" id="stats"></div>
+      <div class="card">
+        <h2>番茄下载器</h2>
+        <p id="upState" class="muted">读取中…</p>
+        <p>搜书、下载、看书库、改下载器设置，都在下载器自己的网页里。</p>
+        <a class="button" href="/webui/" target="_blank">打开番茄下载器网页</a>
+        <p class="muted">设备上番茄书统一用 TXT（更新时只追加章节）。第一次启动时已经把下载器的默认格式设成 TXT；在下载器网页里改回 EPUB 的话，设备下载会拿到 EPUB。</p>
+      </div>
+    </section>
+
+    <section data-panel="device" hidden>
+      <div class="card">
+        <h2>设备</h2>
+        <p>小纸 Pico（设置 › 内容来源 › 番茄小说）和番茄安卓 App 里要填的：</p>
+        <p>地址：<code id="devUrl"></code>（局域网）<span id="devTunnelUrl"></span></p>
+        <p>密码：<code id="devPw"></code> <button id="pwRandom" class="ghost">随机换一个</button></p>
+        <form id="pwSet" class="row" method="post" action="#" onsubmit="return false"><input id="pwCustom" placeholder="或者自己定一个（4～63 位，比如沿用以前下载器的密码，设备就不用改）"><button class="ghost">设为设备密码</button></form>
+        <p id="pwMsg" class="muted">换密码后，设备和 App 上要改成新的。</p>
+      </div>
+      <div class="card">
+        <h2>外网访问（Cloudflare Tunnel）</h2>
+        <p class="muted">隧道只转发设备接口（/api/ 和 /download/），面板和下载器网页不会出现在外网。用隧道令牌时，“公共主机名”的服务填 http://localhost:18423。</p>
+        <label><input type="radio" name="tmode" value="off"> 关闭</label>
+        <label><input type="radio" name="tmode" value="quick"> 快速隧道（随机 trycloudflare.com 地址，重启会变）</label>
+        <label><input type="radio" name="tmode" value="token"> 隧道令牌（固定域名）</label>
+        <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌">
+        <button id="tApply">保存并应用</button>
+        <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="settings" hidden>
+      <form id="pwForm" class="card" method="post" action="#" onsubmit="return false">
+        <h2>面板密码</h2>
+        <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
+        <button>修改</button> <span id="pwFormMsg"></span>
+      </form>
+    </section>
+
+    <section data-panel="logs" hidden>
+      <div class="card"><h2>日志</h2><pre id="logBox"></pre></div>
+    </section>
+  </main>
+</div>
+<script src="/hub/static/app.js"></script>
+</body>
+</html>

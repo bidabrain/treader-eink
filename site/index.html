@@ -77,7 +77,7 @@
   .shot-note { color: var(--mid); font-size: 14px; margin-top: 12px; }
 
   /* 生态 / Ecosystem */
-  .eco { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .eco { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .eco .feat { padding: 26px; }
   .eco ul { margin: 10px 0 16px; padding-left: 18px; color: var(--mid); font-size: 14.5px; }
   .eco .row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -239,9 +239,17 @@
     <div class="head">
       <small>ECOSYSTEM</small>
       <h2>自己的服务器，自己的数据</h2>
-      <p>设备不直接访问小红书和微博，只连你自己用 Docker 部署的服务器；服务器把图片处理成墨水屏能直接显示的灰度图。手机上也有同样功能的安卓 App。</p>
+      <p>设备不直接访问番茄、小红书和微博，只连你自己用 Docker 部署的服务器，每个都带网页面板和 Cloudflare 隧道；小红书和微博的服务器还会把图片处理成墨水屏能直接显示的灰度图。手机上也有同样功能的安卓 App。</p>
     </div>
     <div class="eco">
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-tomato"/></svg></div>
+        <h3>tomato · 番茄下载服务器</h3>
+        <ul><li>官方 Tomato-Novel-Downloader + 面板，一个 compose 部署</li><li>设备密码在面板里管，外网只放行设备接口</li><li>书存在宿主机，默认格式自动设成 TXT</li></ul>
+        <div class="row">
+          <a class="btn small solid" href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">部署说明</a>
+        </div>
+      </div>
       <div class="feat">
         <div class="ic"><svg><use href="#i-xhs"/></svg></div>
         <h3>rednote · 小红书服务器</h3>
@@ -282,7 +290,7 @@
       </div>
       <div class="dl-note">
         <b>番茄小说需要自建服务器</b>
-        <p>下载的固件不带番茄下载服务器。阅读、漫画、虎扑、书城榜单、传书都能直接用；要搜索和下载番茄小说，先按 <a href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">部署说明</a> 用 Docker 跑一个 <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> 网页服务，再在设备“设置 › 内容来源 › 番茄小说”填地址和密码。小红书、微博也各需要自建服务器（见上面“服务器与 App”）。</p>
+        <p>下载的固件不带番茄下载服务器。阅读、漫画、虎扑、书城榜单、传书都能直接用；要搜索和下载番茄小说，用本项目的 <a href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">番茄服务器一键部署</a>（官方 <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> + 面板，<code>docker compose up -d</code> 就行），再在设备“设置 › 内容来源 › 番茄小说”填面板上显示的地址和密码。小红书、微博也各需要自建服务器（见上面“服务器与 App”）。</p>
       </div>
     </div>
 

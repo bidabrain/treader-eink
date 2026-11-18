@@ -1,0 +1,36 @@
+# tomato：官方番茄小说下载器 + 我们的面板 hub（设备密码、Cloudflare 隧道）。设备和番茄安卓 App 连 hub，地址和以前一样是
+# 18423 端口。
+# tomato: the official Tomato novel downloader plus our panel hub (device password, Cloudflare tunnel). The device and
+# the Tomato Android app talk to the hub on port 18423 as before.
+#
+# 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:18423
+services:
+  hub:
+    image: ghcr.io/bidabrain/treader-tomato:latest
+    container_name: tomato-hub
+    restart: unless-stopped
+    ports:
+      - "${TOMATO_BIND:-0.0.0.0}:${TOMATO_PORT:-18423}:18423"
+    volumes:
+      - ./data/hub:/data
+    depends_on:
+      - downloader
+
+  downloader:
+    # 官方镜像，固定版本号，验证过再升级。/ The official image, pinned; upgrade only after checking.
+    image: zhongbai233/tomato-novel-downloader-webui:${DOWNLOADER_VERSION:-v2.4.18-musl}
+    container_name: tomato-downloader
+    restart: unless-stopped
+    # 书存在 /data/books（宿主机 data/downloader/books）：下载器默认存到工作目录。
+    # Books go to /data/books (data/downloader/books on the host): the downloader saves to its working directory.
+    working_dir: /data/books
+    command: ["--server", "--data-dir", "/data"]
+    environment:
+      TOMATO_WEB_ADDR: 0.0.0.0:18423
+      # 网页放在 /webui 下，由 hub 转发（要先登录面板）。/ The web page lives under /webui, forwarded by the hub
+      # behind the panel sign-in.
+      TOMATO_WEB_BASE_PATH: /webui
+    volumes:
+      - ./data/downloader:/data
+    # 不对外开端口：只给 hub 用；密码由 hub 管。/ No published ports: only the hub talks to it, and the hub owns the
+    # password.

@@ -221,9 +221,17 @@ Treader 不直接访问番茄的正文接口：搜索、生成 TXT 都交给你�
 
 ### 部署
 
-任选一种，都要开启 **Web UI 服务器模式**（`--server`）并**设置密码**。
+**一键部署（推荐）**：本仓库的 [`tomato/`](tomato/README.md) 把官方下载器和面板打包成一个 compose，`docker compose up -d` 后在网页面板里看状态、设设备密码、开 Cloudflare 隧道，书存在宿主机，默认格式自动设成 TXT。设备和安卓 App 的地址、接口都和直接用官方下载器一样：
 
-**Docker（推荐，NAS / 服务器 / 软路由）**
+```bash
+mkdir tomato && cd tomato
+curl -fsSLO https://raw.githubusercontent.com/bidabrain/treader-eink/main/tomato/docker-compose.yml
+docker compose up -d
+```
+
+然后打开 `http://服务器IP:18423`，详见 [tomato/README.md](tomato/README.md)。下面是不用面板、直接跑官方下载器的方式，任选一种，都要开启 **Web UI 服务器模式**（`--server`）并**设置密码**。
+
+**Docker（直接跑官方镜像）**
 
 ```bash
 docker run -d \
@@ -372,6 +380,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [docs/design/ui.html](docs/design/ui.html) | 全部界面示意图和每个页面的功能（唯一的设计稿） |
 | [docs/TREADER.md](docs/TREADER.md) | Treader 的行为细节、TF 卡目录、各模块职责、已知限制 |
 | [rednote/README.md](rednote/README.md) | 小红书内容服务器：Docker 部署、网页面板、Cloudflare Tunnel；设备上的小红书标签读它 |
+| [tomato/README.md](tomato/README.md) | 番茄下载服务器一键部署：官方下载器 + 面板（设备密码、Cloudflare Tunnel） |
 | [weibo/README.md](weibo/README.md) | 微博内容服务器：不登录、Docker 部署、关注管理、WebDAV 备份；设备上的微博标签读它 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
 | [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |
