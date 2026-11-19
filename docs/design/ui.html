@@ -177,6 +177,12 @@
   .meter span:last-child { font-weight: 700; }
   .dim { position: absolute; inset: 0; background: rgba(255,255,255,.65); }
 </style>
+<style>
+  .pbox { position: absolute; width: 80px; height: 96px; border: 3px solid #000; border-radius: 10px; }
+  .pbox.on::after { content: ""; position: absolute; left: 23px; top: 31px; width: 28px; height: 28px; border-radius: 50%; background: #000; }
+  .pkey { position: absolute; width: 180px; height: 150px; border: 3px solid #000; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 56px; font-weight: 700; }
+  .pkey.fn { font-size: 34px; font-weight: 500; }
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute">
@@ -211,7 +217,7 @@
 
 <h1>Treader 界面与功能（0.5.0）</h1>
 <p class="lead">这是 Treader 当前版本（0.5.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
-底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
+底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。自动锁屏和锁屏密码（L1～L4）是 0.7.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
 
 <h2>书库、阅读与锁屏</h2>
 <div class="grid">
@@ -1758,6 +1764,80 @@
   <div class="a l" style="top:640px;font-size:30px">不要拔 TF 卡，也不要关机。</div>
 </div></div>
 <figcaption><b>㊷ 升级中</b>写进另一个程序槽，进度每 5% 局部刷新；期间电源键不锁屏。校验通过后自动重启，新固件起不来会自动退回旧版本。</figcaption></figure>
+
+<!-- L1 电源与设备 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">电源与设备</div>
+  <div class="a r mid" style="top:104px;font-size:24px;line-height:32px;width:330px">已开启：开机和解锁<br>都要输密码</div>
+  <div class="row" style="top:190px;height:72px"><span>睡眠与锁屏</span><span class="v">浅睡 ›</span></div>
+  <div class="row" style="top:262px;height:72px"><span>自动锁屏</span><span class="v">2 分钟 ›</span></div>
+  <div class="row" style="top:334px;height:72px"><span>锁屏密码</span><span class="v">已开启 ›</span></div>
+  <div class="row" style="top:406px;height:72px"><span>TF 卡</span><span class="v">可用 41.2 GB ›</span></div>
+  <div class="row" style="top:478px;height:72px;border:0"><span>关于 Treader</span><span class="v">版本、开源致谢 ›</span></div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-weibo"/></svg></span>微博</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>L1 设置 › 电源与设备</b>“自动锁屏”点一下换一档：1、2、5、10 分钟或从不，默认 2 分钟；后台同步、定时自动翻页、传书页照旧不计空闲。“锁屏密码”默认关：关着时点它输两遍 4 位数字开启，开着时点它输当前密码关闭。</figcaption></figure>
+
+<!-- L2 设置锁屏密码 -->
+<figure><div class="frame"><div class="s">
+  <div class="big b" style="top:190px;font-size:40px">设置锁屏密码</div>
+  <div class="big" style="top:262px;font-size:26px">再输一次确认</div>
+  <div class="pbox on" style="left:146px;top:330px"></div>
+  <div class="pbox on" style="left:250px;top:330px"></div>
+  <div class="pbox" style="left:354px;top:330px"></div>
+  <div class="pbox" style="left:458px;top:330px"></div>
+  <div class="pkey" style="left:48px;top:520px">1</div>
+  <div class="pkey" style="left:252px;top:520px">2</div>
+  <div class="pkey" style="left:456px;top:520px">3</div>
+  <div class="pkey" style="left:48px;top:694px">4</div>
+  <div class="pkey" style="left:252px;top:694px">5</div>
+  <div class="pkey" style="left:456px;top:694px">6</div>
+  <div class="pkey" style="left:48px;top:868px">7</div>
+  <div class="pkey" style="left:252px;top:868px">8</div>
+  <div class="pkey" style="left:456px;top:868px">9</div>
+  <div class="pkey fn" style="left:48px;top:1042px">取消</div>
+  <div class="pkey" style="left:252px;top:1042px">0</div>
+  <div class="pkey fn" style="left:456px;top:1042px">删除</div>
+</div></div>
+<figcaption><b>L2 设置锁屏密码</b>整屏数字键盘，每按一位上面的格子局部刷新。先输 4 位，再输一次确认，两次一样才开启；“取消”放弃，60 秒不操作也放弃。只存加盐的哈希，不存数字。</figcaption></figure>
+
+<!-- L3 输入密码解锁 -->
+<figure><div class="frame"><div class="s">
+  <div class="big b" style="top:190px;font-size:40px">输入密码解锁</div>
+  <div class="big" style="top:262px;font-size:26px">密码不对，还能试 4 次</div>
+  <div class="pbox" style="left:146px;top:330px"></div>
+  <div class="pbox" style="left:250px;top:330px"></div>
+  <div class="pbox" style="left:354px;top:330px"></div>
+  <div class="pbox" style="left:458px;top:330px"></div>
+  <div class="pkey" style="left:48px;top:520px">1</div>
+  <div class="pkey" style="left:252px;top:520px">2</div>
+  <div class="pkey" style="left:456px;top:520px">3</div>
+  <div class="pkey" style="left:48px;top:694px">4</div>
+  <div class="pkey" style="left:252px;top:694px">5</div>
+  <div class="pkey" style="left:456px;top:694px">6</div>
+  <div class="pkey" style="left:48px;top:868px">7</div>
+  <div class="pkey" style="left:252px;top:868px">8</div>
+  <div class="pkey" style="left:456px;top:868px">9</div>
+  <div class="pkey" style="left:252px;top:1042px">0</div>
+  <div class="pkey fn" style="left:456px;top:1042px">删除</div>
+</div></div>
+<figcaption><b>L3 输入密码解锁</b>开了密码后，开机和每次从锁屏回来都先到这一页，过关前任何页面、三键和菜单都不响应。没有“取消”；30 秒不操作或按电源键回到锁屏睡眠。</figcaption></figure>
+
+<!-- L4 已锁定 -->
+<figure><div class="frame"><div class="s">
+  <div class="big b" style="top:190px;font-size:40px">已锁定</div>
+  <div class="big" style="top:262px;font-size:28px">输错太多次，30 秒后再试</div>
+</div></div>
+<figcaption><b>L4 输错太多次</b>前 5 次直接重输；之后每次先锁定 30 秒，每多错一次多 30 秒，最长 5 分钟，重启清零。倒计时期间电源键照样能锁屏。忘了密码只能用电脑擦掉设置分区。</figcaption></figure>
 
 </div>
 

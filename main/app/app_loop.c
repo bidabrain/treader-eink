@@ -31,6 +31,7 @@
 
 #include "app_loop.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "app_registry.h"
@@ -54,6 +55,7 @@
 #include "pinyin_ime.h"
 #include "book_cover.h"
 #include "tomato.h"
+#include "tr_pin.h"
 
 #define TAG "app_loop"
 
@@ -64,6 +66,9 @@
 // Retry the saved SD font shortly after a card appears or mounts.
 #define FONT_RETRY_INTERVAL_MS 3000
 #define MEDIA_POLL_INTERVAL_MS 500
+// 每隔这么久问一次挂着的卡还应不应答，发现检测脚漏掉的换卡。/ How often the mounted card is asked to answer, to catch
+// swaps the detect pin missed.
+#define CARD_CHECK_INTERVAL_MS 5000
 
 // 页面要求的“保持唤醒”。/ Keep-awake requested by a page.
 static bool s_hold_awake;
@@ -210,9 +215,17 @@ static void debounce_touch(
     memcpy(latest->raw, raw->raw, sizeof(raw->raw));
 }
 
+// 每挂上一张卡加一；TF 卡字体在这一次挂载上加载失败过就不再反复重试（每次重试都会卸掉当前字体），换卡或重新挂载后
+// 再试一次。/ Bumped per mounted card; a TF font that failed on this mount is not retried over and over (each retry
+// unloads the current font), but gets one more try after a swap or remount.
+static uint32_t s_media_gen;
+static uint32_t s_font_fail_gen = UINT32_MAX;
+static char s_font_fail_path[160];
+
 static bool try_load_saved_sd_font(bool allow_probe) {
     const char* path = app_settings_font_path();
     if (ttf_font_path_is_builtin(path)) return false;
+    if (s_font_fail_gen == s_media_gen && strcmp(s_font_fail_path, path) == 0) return false;
     if (ttf_font_ready() && !ttf_font_is_builtin()
         && strcmp(ttf_font_path(), path) == 0) {
         return false;
@@ -225,7 +238,11 @@ static bool try_load_saved_sd_font(bool allow_probe) {
         if (allow_probe && err == ESP_ERR_INVALID_STATE) read_pico_sd_start_probe();
         return false;
     }
-    return ttf_font_open(path) == ESP_OK && !ttf_font_is_builtin();
+    if (ttf_font_open(path) == ESP_OK && !ttf_font_is_builtin()) return true;
+    ESP_LOGW(TAG, "TF font not loaded on this card; retry after a card change");
+    s_font_fail_gen = s_media_gen;
+    snprintf(s_font_fail_path, sizeof(s_font_fail_path), "%s", path);
+    return false;
 }
 
 // 先停文件使用者，再换字体；此处只观察挂载，不卸载也不重新挂载。
@@ -248,6 +265,7 @@ static bool poll_media(app_ctx_t* ctx, const app_desc_t* current,
         // 新卡挂好了：清掉旧卡的缓存，让当前页重新进入，字体由下面的定期重试恢复。
         // The new card is mounted: drop old-card caches and re-enter the page; the periodic retry restores the font.
         s_remount_pending = false;
+        s_media_gen++;
         *mounted = true;
         *invalidated = false;
         pinyin_ime_unload();
@@ -298,6 +316,12 @@ static void lock_and_resume(
     if (powers_down && !tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at power-down");
     if (powers_down && current->on_exit != NULL) current->on_exit(ctx);
     enter_lock_and_sleep(ctx->hl, &s_lock_ignore_until_ms, ctx->acc);
+    // 开了锁屏密码：过关之前不回任何页面。/ With a lock PIN set, no page returns before the gate is passed.
+    tr_pin_gate(ctx->hl, ctx->tp, ctx->acc, &s_lock_ignore_until_ms);
+    // 锁屏期间可能换过卡（浅睡时检测脚的变化不会被看到）：先问一次卡，换过就按拔卡处理再重新挂载。
+    // The card may have been swapped while locked (light sleep never sees the detect pin change): ask the card first;
+    // a swap is handled like a removal and remounted.
+    read_pico_sd_check();
     if (powers_down && current->on_enter != NULL) current->on_enter(ctx);
     ctx->now_ms = esp_timer_get_time() / 1000;
     poll_media(ctx, current, media_mounted, media_invalidated);
@@ -360,9 +384,13 @@ void app_loop_run(const app_loop_config_t* config) {
     int64_t last_input_ms = esp_timer_get_time() / 1000;
     int64_t last_font_retry_ms = 0;
     int64_t last_media_poll_ms = 0;
+    int64_t last_card_check_ms = 0;
     bool media_mounted = ttf_font_ready() && !ttf_font_is_builtin();
     bool media_invalidated = false;
     app_lock_ignore_for(APP_LOCK_IGNORE_BOOT_MS);
+    // 开机也要过锁屏密码（深睡、关机醒来都是重新开机）；过关之前不进任何页面。
+    // Boot passes the lock PIN too (waking from deep sleep or power-off is a fresh boot); no page opens before it.
+    tr_pin_gate(ctx.hl, ctx.tp, ctx.acc, &s_lock_ignore_until_ms);
 
     if (current->on_enter != NULL) current->on_enter(&ctx);
     poll_media(&ctx, current, &media_mounted, &media_invalidated);
@@ -399,6 +427,10 @@ void app_loop_run(const app_loop_config_t* config) {
 
         if (ctx.now_ms - last_media_poll_ms >= MEDIA_POLL_INTERVAL_MS) {
             last_media_poll_ms = ctx.now_ms;
+            if (ctx.now_ms - last_card_check_ms >= CARD_CHECK_INTERVAL_MS) {
+                last_card_check_ms = ctx.now_ms;
+                read_pico_sd_check();
+            }
             if (poll_media(&ctx, current, &media_mounted, &media_invalidated)) {
                 held_key = -1;
                 key2_pending = false;
@@ -530,8 +562,8 @@ void app_loop_run(const app_loop_config_t* config) {
                 // Treader：后台同步在跑、正在定时自动翻页、或页面要求保持唤醒时不自动锁屏。/ Treader: no idle lock while
                 // background sync runs, pages turn automatically, or a page holds the device awake.
                 last_input_ms = ctx.now_ms;
-            } else if (ctx.now_ms >= s_lock_ignore_until_ms
-                       && ctx.now_ms - last_input_ms >= APP_AUTO_SLEEP_MS) {
+            } else if (ctx.now_ms >= s_lock_ignore_until_ms && app_settings_lock_idle_ms() > 0
+                       && ctx.now_ms - last_input_ms >= app_settings_lock_idle_ms()) {
                 ESP_LOGI(TAG, "idle lock");
                 lock_and_resume(
                     &ctx, current, &gesture, &held_key, &menu_pressed, &feedback,

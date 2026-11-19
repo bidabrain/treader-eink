@@ -28,6 +28,7 @@
 #include "app.h"
 #include "app_loop.h"
 #include "book_progress.h"
+#include "tr_pin.h"
 #include "book_source.h"
 #include "cJSON.h"
 #include "esp_app_desc.h"
@@ -110,7 +111,7 @@ enum {
     R_FONT, R_WALL,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
     R_DAV, R_DAV_SYNC,
-    R_SLEEP, R_CARD, R_ABOUT,
+    R_SLEEP, R_IDLE, R_PIN, R_CARD, R_ABOUT,
 };
 
 static const row_t DISPLAY_ROWS[] = {
@@ -134,8 +135,10 @@ static const row_t SYNC_ROWS[] = {
 };
 static const row_t POWER_ROWS[] = {
     {R_SLEEP, NULL, "睡眠与锁屏", 190},
-    {R_CARD, NULL, "TF 卡", 262},
-    {R_ABOUT, NULL, "关于 Treader", 334},
+    {R_IDLE, NULL, "自动锁屏", 262},
+    {R_PIN, NULL, "锁屏密码", 334},
+    {R_CARD, NULL, "TF 卡", 406},
+    {R_ABOUT, NULL, "关于 Treader", 478},
 };
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define WEB_ROW_H 84
@@ -300,6 +303,8 @@ static void row_value(int id, char* out, size_t cap) {
         break;
     }
     case R_SLEEP: snprintf(out, cap, "›"); break;
+    case R_IDLE: snprintf(out, cap, "%s ›", app_settings_lock_idle_label(app_settings_lock_idle())); break;
+    case R_PIN: snprintf(out, cap, "%s ›", app_settings_pin_enabled() ? "已开启" : "关闭"); break;
     case R_CARD: card_value(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_ABOUT: snprintf(out, cap, "版本、开源致谢 ›"); break;
     default: out[0] = 0; break;
@@ -464,7 +469,8 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
     case C_POWER:
         card_value(a, sizeof(a));
-        snprintf(out, cap, "睡眠与锁屏 · TF 卡%s · 关于", a);
+        snprintf(out, cap, "自动锁屏 %s%s · TF 卡%s", app_settings_lock_idle_label(app_settings_lock_idle()),
+                 app_settings_pin_enabled() ? " · 有密码" : "", a);
         break;
     default: out[0] = 0; break;
     }
@@ -749,7 +755,11 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         break;
     case P_SRC_SERVER: draw_server(fb); break;
     case P_SYNC: draw_back_title(fb, "同步"); draw_message(fb); draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS)); break;
-    case P_POWER: draw_back_title(fb, "电源与设备"); draw_rows(fb, POWER_ROWS, COUNT(POWER_ROWS)); break;
+    case P_POWER:
+        draw_back_title(fb, "电源与设备");
+        draw_message(fb);
+        draw_rows(fb, POWER_ROWS, COUNT(POWER_ROWS));
+        break;
     case P_ABOUT: draw_about(fb); return;
     }
     tr_tab_bar(fb, TR_TAB_SETTINGS);
@@ -911,12 +921,47 @@ static app_redraw_t touch_tabs(uint16_t y) {
     return APP_REDRAW_FULL;
 }
 
+// 锁屏密码：关着就输两遍设新密码；开着就先输当前密码再关掉。键盘自己占满屏幕，回来整屏重画。
+// Lock PIN: when off, enter a new PIN twice; when on, enter the current PIN to turn it off. The keypad takes the whole
+// screen, so the page redraws fully afterwards.
+static app_redraw_t touch_pin(app_ctx_t* ctx) {
+    char a[5], b[5];
+    if (app_settings_pin_enabled()) {
+        if (tr_pin_pad(ctx->hl, ctx->tp, "关闭锁屏密码", "输入当前密码", true, 60000, 0, a) != TR_PIN_ENTERED) {
+            return APP_REDRAW_FULL;
+        }
+        const bool ok = app_settings_pin_check(a);
+        memset(a, 0, sizeof(a));
+        if (!ok) snprintf(s_message, sizeof(s_message), "密码不对，没有关闭");
+        else if (app_settings_pin_set(NULL) == ESP_OK) snprintf(s_message, sizeof(s_message), "已关闭锁屏密码");
+        else snprintf(s_message, sizeof(s_message), "关闭失败，再试一次");
+        return APP_REDRAW_FULL;
+    }
+    if (tr_pin_pad(ctx->hl, ctx->tp, "设置锁屏密码", "输入 4 位数字", true, 60000, 0, a) != TR_PIN_ENTERED) {
+        return APP_REDRAW_FULL;
+    }
+    const tr_pin_result_t r = tr_pin_pad(ctx->hl, ctx->tp, "设置锁屏密码", "再输一次确认", true, 60000, 0, b);
+    if (r == TR_PIN_ENTERED && !strcmp(a, b)) {
+        snprintf(s_message, sizeof(s_message), "%s", app_settings_pin_set(a) == ESP_OK ?
+                 "已开启：开机和解锁都要输密码" : "保存失败，再试一次");
+    } else if (r == TR_PIN_ENTERED) {
+        snprintf(s_message, sizeof(s_message), "两次不一样，没有设置");
+    }
+    memset(a, 0, sizeof(a));
+    memset(b, 0, sizeof(b));
+    return APP_REDRAW_FULL;
+}
+
 static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     s_message[0] = 0;
     switch (id) {
     case R_FONT: ctx->request_app = &app_font_pick; return APP_REDRAW_NONE;
     case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
     case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
+    case R_IDLE:
+        app_settings_set_lock_idle((uint8_t)((app_settings_lock_idle() + 1) % APP_LOCK_IDLE_LEVELS));
+        return APP_REDRAW_PAGE;
+    case R_PIN: return touch_pin(ctx);
     case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
     case R_ABOUT: return open_page(P_ABOUT);
     case R_STORE: {

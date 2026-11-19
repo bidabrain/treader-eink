@@ -528,18 +528,26 @@ static void run_search(const tomato_config_t* cfg) {
     set_phase(TOMATO_DONE, n ? NULL : "没有找到");
 }
 
-// 复制一个小文件（封面）。/ Copy a small file (a cover).
+// 复制一个小文件（封面）：先写 .part 再改名，中途拔卡不会留下半张图（封面存在就不再下载，半张会一直坏着）。
+// Copy a small file (a cover): write .part then rename, so a pull midway never leaves half an image (an existing cover
+// is never fetched again, so half a cover would stay broken).
 static bool copy_file(const char* from, const char* to) {
     FILE* in = fopen(from, "rb");
     if (!in) return false;
-    FILE* out = fopen(to, "wb");
+    char part[216];
+    if (snprintf(part, sizeof(part), "%s.part", to) >= (int)sizeof(part)) { fclose(in); return false; }
+    FILE* out = fopen(part, "wb");
     bool ok = out != NULL;
     char buf[1024];
     size_t n;
     while (ok && (n = fread(buf, 1, sizeof(buf), in)) > 0) ok = fwrite(buf, 1, n, out) == n;
     fclose(in);
     if (out) ok = fclose(out) == 0 && ok;
-    if (!ok) remove(to);
+    if (ok) {
+        remove(to);
+        ok = rename(part, to) == 0;
+    }
+    if (!ok) remove(part);
     return ok;
 }
 

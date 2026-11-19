@@ -142,8 +142,11 @@ struct app_desc_s {
 // 锁屏：浅睡按键或拿起回原页；软睡 EN=0，再短按开机；关机 EN=0，长按开机。
 // Lock: light-sleep key or pickup returns to the page; soft sleep drops EN
 // and a short press powers on; power-off drops EN and needs a long press.
-// 无操作满这段时间走同一条锁屏路径，档位仍由睡眠设置决定。
-// Idle this long, then the same lock path; the sleep setting still picks the mode.
+// 无操作多久自动锁屏由设置决定（app_settings_lock_idle_ms，默认 2 分钟，可选从不），走同一条锁屏路径，档位仍由
+// 睡眠设置决定。APP_AUTO_SLEEP_MS 只剩 USB 传书说明页离页用。
+// The idle time before auto-lock comes from settings (app_settings_lock_idle_ms, 2 minutes by default, or never) and
+// takes the same lock path, with the sleep setting still picking the mode. APP_AUTO_SLEEP_MS only times out the USB
+// transfer intro page.
 #define APP_AUTO_SLEEP_MS (2 * 60 * 1000)
 #define APP_LOCK_POLL_MS 200
 #define APP_LOCK_IGNORE_BOOT_MS 2000

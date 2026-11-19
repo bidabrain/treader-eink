@@ -14,6 +14,8 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
+#include "psa/crypto.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -32,6 +34,10 @@
 #define NVS_KEY_TABS_X "tabs_x"     // X 标签已按默认关闭迁移过 / X tab already migrated to hidden
 #define NVS_KEY_BOOK_AUTO "bk_auto"
 #define NVS_KEY_COMIC_AUTO "cm_auto"
+#define NVS_KEY_LOCK_IDLE "lock_idle"
+#define NVS_KEY_PIN "pin_hash"      // 8 字节盐 + 32 字节 SHA-256 / 8-byte salt + 32-byte SHA-256
+#define PIN_SALT_LEN 8
+#define PIN_HASH_LEN 32
 #define FONT_PATH_MAX 160
 
 static app_sleep_mode_t s_sleep = APP_SLEEP_OFF;
@@ -47,6 +53,9 @@ static uint8_t s_book_style = 0x15;
 // X 标签默认关闭。/ The X tab starts hidden.
 static uint8_t s_tabs_off = 1u << TR_TAB_X;
 static uint8_t s_book_auto, s_comic_auto;
+static uint8_t s_lock_idle = 1;
+static bool s_pin_on;
+static uint8_t s_pin[PIN_SALT_LEN + PIN_HASH_LEN];
 
 static void nvs_put_u8(const char* key, uint8_t value);
 
@@ -112,6 +121,12 @@ void app_settings_init(void) {
     uint8_t book_auto = 0, comic_auto = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_AUTO, &book_auto) == ESP_OK) s_book_auto = book_auto;
     if (nvs_get_u8(h, NVS_KEY_COMIC_AUTO, &comic_auto) == ESP_OK) s_comic_auto = comic_auto;
+    uint8_t lock_idle = 0;
+    if (nvs_get_u8(h, NVS_KEY_LOCK_IDLE, &lock_idle) == ESP_OK && lock_idle < APP_LOCK_IDLE_LEVELS) {
+        s_lock_idle = lock_idle;
+    }
+    size_t pin_len = sizeof(s_pin);
+    s_pin_on = nvs_get_blob(h, NVS_KEY_PIN, s_pin, &pin_len) == ESP_OK && pin_len == sizeof(s_pin);
     nvs_close(h);
     if (migrate_x) {
         nvs_put_u8(NVS_KEY_TABS_OFF, s_tabs_off);
@@ -256,4 +271,84 @@ void app_settings_set_book_shake(bool on) {
     if (s_book_shake == on) return;
     s_book_shake = on;
     nvs_put_u8(NVS_KEY_BOOK_SHAKE, on ? 1 : 0);
+}
+
+/* ---- 自动锁屏 / Idle lock ---- */
+
+static const uint8_t LOCK_IDLE_MIN[APP_LOCK_IDLE_LEVELS] = {1, 2, 5, 10, 0};
+static const char* const LOCK_IDLE_LABEL[APP_LOCK_IDLE_LEVELS] = {"1 分钟", "2 分钟", "5 分钟", "10 分钟", "从不"};
+
+uint8_t app_settings_lock_idle(void) {
+    return s_lock_idle;
+}
+
+void app_settings_set_lock_idle(uint8_t level) {
+    if (level >= APP_LOCK_IDLE_LEVELS || level == s_lock_idle) return;
+    s_lock_idle = level;
+    nvs_put_u8(NVS_KEY_LOCK_IDLE, level);
+}
+
+int64_t app_settings_lock_idle_ms(void) {
+    return (int64_t)LOCK_IDLE_MIN[s_lock_idle] * 60 * 1000;
+}
+
+const char* app_settings_lock_idle_label(uint8_t level) {
+    return level < APP_LOCK_IDLE_LEVELS ? LOCK_IDLE_LABEL[level] : "";
+}
+
+/* ---- 锁屏密码 / Lock PIN ---- */
+
+static bool pin_valid(const char* pin) {
+    if (!pin || strlen(pin) != 4) return false;
+    for (int i = 0; i < 4; i++) if (pin[i] < '0' || pin[i] > '9') return false;
+    return true;
+}
+
+static bool pin_hash(const uint8_t* salt, const char* pin, uint8_t out[PIN_HASH_LEN]) {
+    uint8_t buf[PIN_SALT_LEN + 4];
+    memcpy(buf, salt, PIN_SALT_LEN);
+    memcpy(buf + PIN_SALT_LEN, pin, 4);
+    // IDF 6 的 mbedtls 走 PSA 接口；初始化可以重复调用。/ IDF 6's mbedtls uses the PSA API; init may be repeated.
+    size_t len = 0;
+    const bool ok = psa_crypto_init() == PSA_SUCCESS &&
+        psa_hash_compute(PSA_ALG_SHA_256, buf, sizeof(buf), out, PIN_HASH_LEN, &len) == PSA_SUCCESS &&
+        len == PIN_HASH_LEN;
+    memset(buf, 0, sizeof(buf));
+    return ok;
+}
+
+bool app_settings_pin_enabled(void) {
+    return s_pin_on;
+}
+
+bool app_settings_pin_check(const char* pin) {
+    if (!s_pin_on || !pin_valid(pin)) return false;
+    uint8_t h[PIN_HASH_LEN];
+    if (!pin_hash(s_pin, pin, h)) return false;
+    uint8_t diff = 0;
+    for (int i = 0; i < PIN_HASH_LEN; i++) diff |= h[i] ^ s_pin[PIN_SALT_LEN + i];
+    return diff == 0;
+}
+
+esp_err_t app_settings_pin_set(const char* pin) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    if (!pin || !pin[0]) {
+        err = nvs_erase_key(h, NVS_KEY_PIN);
+        if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+        if (err == ESP_OK) { s_pin_on = false; memset(s_pin, 0, sizeof(s_pin)); }
+        return err;
+    }
+    if (!pin_valid(pin)) { nvs_close(h); return ESP_ERR_INVALID_ARG; }
+    uint8_t rec[PIN_SALT_LEN + PIN_HASH_LEN];
+    esp_fill_random(rec, PIN_SALT_LEN);
+    if (!pin_hash(rec, pin, rec + PIN_SALT_LEN)) { nvs_close(h); return ESP_FAIL; }
+    err = nvs_set_blob(h, NVS_KEY_PIN, rec, sizeof(rec));
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    if (err == ESP_OK) { memcpy(s_pin, rec, sizeof(rec)); s_pin_on = true; }
+    return err;
 }

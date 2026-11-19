@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "esp_err.h"
+
 /// 默认关机。浅睡：按键回原页；拿起唤醒默认关。软睡：SOFT_SLEEP 拉低 EN，再短按开机。关机：EN=0，长按开机。
 /// Default is off. Light: key returns to the page; pickup-wake defaults off. Soft sleep: SOFT_SLEEP drops EN, then a short press boots. Off: EN=0, long-press to boot.
 typedef enum {
@@ -68,5 +70,23 @@ void app_settings_set_hidden_tabs(uint8_t mask);
 /// separately for the reader and comics.
 uint8_t app_settings_auto_turn(bool comic);
 void app_settings_set_auto_turn(bool comic, uint8_t level);
+
+/// 不操作多久自动锁屏的档位：0～3 对应 1、2、5、10 分钟，4 是从不；默认 1（2 分钟）。
+/// Idle auto-lock level: 0-3 are 1, 2, 5 and 10 minutes, 4 is never; 1 (2 minutes) by default.
+#define APP_LOCK_IDLE_LEVELS 5
+uint8_t app_settings_lock_idle(void);
+void app_settings_set_lock_idle(uint8_t level);
+/// 当前档位的毫秒数，从不返回 0。/ Milliseconds for the current level; 0 means never.
+int64_t app_settings_lock_idle_ms(void);
+/// 档位的文字（“2 分钟”“从不”）。/ The level's label ("2 分钟", "从不").
+const char* app_settings_lock_idle_label(uint8_t level);
+
+/// 锁屏密码（4 位数字）。NVS 里只存加盐的 SHA-256，不存原文；默认关。
+/// The lock PIN (4 digits). NVS keeps only a salted SHA-256, never the digits; off by default.
+bool app_settings_pin_enabled(void);
+/// 和存的密码比对。/ Compare against the stored PIN.
+bool app_settings_pin_check(const char* pin);
+/// 设新密码；NULL 或空串关闭密码。/ Set a new PIN; NULL or empty turns the PIN off.
+esp_err_t app_settings_pin_set(const char* pin);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);

@@ -235,13 +235,22 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
     if (!esp_http_client_is_complete_data_received(c)) { err = ESP_FAIL; goto done; }
     if (fclose(f) != 0) { f = NULL; err = ESP_FAIL; goto done; }
     f = NULL;
-    // FAT 不能覆盖改名，先删旧文件；改名失败时保留 .part，不能两份都丢。
-    // FAT cannot rename over a file; remove the old one first. If the rename fails, keep .part so nothing is lost.
-    remove(dest);
+    // FAT 不能覆盖改名：旧文件先改名成 .old，新的改名到位后再删 .old。中途拔卡最多留下 .old，书库扫描时会改回来，
+    // 不会出现新旧都没有的情况；改名失败就把旧的放回去并保留 .part。
+    // FAT cannot rename over a file: the old file becomes .old first and is removed once the new one is in place. A
+    // pull midway leaves at most .old, which the shelf scan renames back, so the book never vanishes; if the rename
+    // fails the old file goes back and .part is kept.
+    char old[208];
+    snprintf(old, sizeof(old), "%s.old", dest);
+    remove(old);
+    const bool had_old = rename(dest, old) == 0;
     if (rename(part, dest) != 0) {
         ESP_LOGE(TAG, "rename %s failed; kept %s", dest, part);
+        if (had_old) rename(old, dest);
         keep_part = true;
         err = ESP_FAIL;
+    } else if (had_old) {
+        remove(old);
     }
 done:
     if (err != ESP_OK && !s_detail[0]) note(err, 0, c);

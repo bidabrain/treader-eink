@@ -226,6 +226,33 @@ esp_err_t read_pico_sd_get_info(read_pico_sd_info_t* info) {
     return err;
 }
 
+esp_err_t read_pico_sd_check(void) {
+    portENTER_CRITICAL(&state_lock);
+    const bool live = probe_state == 2 && cached_info.mounted && !media_invalidated && card != NULL;
+    portEXIT_CRITICAL(&state_lock);
+    if (!live) return ESP_OK;
+    // 换过的新卡还没初始化，不会回应 CMD13；挂着的那张卡正常回应。错一次再问一次，免得偶发干扰。
+    // A freshly swapped card is not initialised and does not answer CMD13; the mounted card does. Ask twice so a
+    // one-off glitch does not count.
+    esp_err_t err = sdmmc_get_status(card);
+    if (err != ESP_OK) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        err = sdmmc_get_status(card);
+    }
+    if (err == ESP_OK) return ESP_OK;
+    ESP_LOGW(TAG, "card stopped answering (%s): treat as removed", esp_err_to_name(err));
+    portENTER_CRITICAL(&state_lock);
+    if (probe_state == 2 && cached_info.mounted) {
+        media_invalidated = true;
+        const bool present = cached_info.present;
+        memset(&cached_info, 0, sizeof(cached_info));
+        cached_info.present = present;
+        cached_info.error = ESP_ERR_INVALID_STATE;
+    }
+    portEXIT_CRITICAL(&state_lock);
+    return err;
+}
+
 // 驱动操作期间占用忙状态，不在临界区执行 I/O。/ Reserve busy state across driver I/O outside the critical section.
 static bool begin_operation(void) {
     portENTER_CRITICAL(&state_lock);

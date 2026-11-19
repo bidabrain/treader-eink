@@ -32,6 +32,12 @@ esp_err_t read_pico_sd_start_probe(void);
 /// 查询实时 CD 并锁存失效，不卸载卡；拔卡后容量清零，重新插入也须显式 remount。
 /// / Sample live CD and latch invalidation without unmounting; removal clears capacity and reinsertion requires explicit remount.
 esp_err_t read_pico_sd_get_info(read_pico_sd_info_t* info);
+/// 问挂着的卡还在不在（CMD13）。不回应就和拔卡一样锁存失效（之后 get_info 报失效、主循环重新挂载）；没挂载、正在探测或
+/// 交给 USB 时什么也不做。用来发现检测脚没看到的换卡（拔插太快、浅睡锁屏时换卡）。
+/// / Ask whether the mounted card still answers (CMD13). No answer latches invalidation like a removal (get_info then
+/// reports it and the main loop remounts); does nothing when unmounted, probing or handed to USB. Catches swaps the
+/// detect pin missed (a quick pull and reinsert, or a swap during light-sleep lock).
+esp_err_t read_pico_sd_check(void);
 /// 调用前关闭所有字体、阅读及上传句柄；这是拔卡失效后恢复挂载的唯一入口。
 /// / Close all font, reader and upload handles first; this is the only recovery entry after removal invalidation.
 esp_err_t read_pico_sd_remount(void);

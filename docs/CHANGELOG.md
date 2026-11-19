@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-20 · Treader 0.7.0
+
+- TF 卡更稳：换卡时（包括拔插太快、浅睡锁屏时换卡）设备会主动问卡、发现换过就重新挂载；I2C 偶尔读错不再被当成拔卡（以前会关掉正在看的书）；卡上的字体在这张卡上加载失败只试一次，不再每 3 秒卸载一次字体，换卡后再试；字体切换和阅读页后台排版互相加锁，离开阅读页时也等排版画完。番茄更新替换书文件、复制封面都改成先写临时文件，中途拔卡书不会从书库消失，封面不会一直坏着。
+  Sturdier TF card handling: the device asks the card after waking and every few seconds, so a swap (even a quick one or one during light-sleep lock) is noticed and remounted; an occasional I2C read error no longer counts as a removal (it used to close the open book); a TF font that fails on a card is tried once instead of being unloaded every 3 s, and again after a swap; font switches and the reader's background layout now lock each other, and leaving the reader waits for that layout to finish. Tomato updates replace book files and copy covers through temporary files, so a pull midway never makes a book vanish or leaves a broken cover.
+- 设置 → 电源与设备：新增“自动锁屏”（1、2、5、10 分钟或从不，默认 2 分钟）和“锁屏密码”（4 位数字，默认关）。开了密码，开机和每次解锁都要先输密码；输错 5 次后要等一会儿才能再输。忘了密码只能用电脑擦掉设置分区（见 docs/TREADER.md）。
+  Settings > Power and device: new "Auto-lock" (1, 2, 5 or 10 minutes, or never; 2 minutes by default) and "Lock PIN" (4 digits, off by default). With a PIN, boot and every unlock ask for it first; after 5 wrong tries each new try waits a while. A forgotten PIN can only be cleared by erasing the settings partition from a computer (see docs/TREADER.md).
+
 ## 2026-11-20 · Treader 0.6.1
 
 - 修正（固件 0.6.1、番茄安卓 App 1.0.2）：追更到最后的书“下载全部更新”后，书库和番茄书架一直显示“读完”。下载更新时进度百分比按新的全书大小重算，有新章节就最多 99%，位置还是接着上次读的地方；已经显示“读完”的书打开翻一页就恢复正常。

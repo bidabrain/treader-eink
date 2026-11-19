@@ -22,6 +22,9 @@
 #include <strings.h>
 #include <unistd.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include "settings.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -1827,7 +1830,7 @@ static void abandon_font_source(void) {
     font_mem_len = 0;
 }
 
-void ttf_font_unload(void) {
+static void unload_unlocked(void) {
     font_ready = false;
     cache_reset();
     io_unmap();
@@ -1916,7 +1919,7 @@ static esp_err_t load_opened_font(void) {
     return ESP_OK;
 }
 
-esp_err_t ttf_font_open_builtin(void) {
+static esp_err_t open_builtin_unlocked(void) {
     ttf_font_unload();
     if (!ensure_work()) return ESP_ERR_NO_MEM;
 
@@ -1934,7 +1937,7 @@ esp_err_t ttf_font_suspend_sd(bool suspend) {
     return ESP_OK;
 }
 
-esp_err_t ttf_font_open(const char* path) {
+static esp_err_t open_unlocked(const char* path) {
     if (ttf_font_path_is_builtin(path)) {
         return ttf_font_open_builtin();
     }
@@ -2114,3 +2117,45 @@ void ttf_draw_text_px_bw(
     }
 }
 
+
+/* ---- 字体切换锁 / Font switch lock ---- */
+
+// 阅读页的后台预排版任务在另一个核上用字体画下一页；换字体、卸字体都要等它画完。递归锁：打开字体时内部还会卸载、
+// 退回内置字体。/ The reader's background prep task draws the next page with the font on the other core; switching or
+// unloading the font waits for it. Recursive, since opening a font unloads and may fall back to the built-in one.
+static SemaphoreHandle_t s_font_lock;
+
+static void font_lock_init(void) {
+    if (!s_font_lock) s_font_lock = xSemaphoreCreateRecursiveMutex();
+}
+
+void ttf_font_lock(void) {
+    if (s_font_lock) xSemaphoreTakeRecursive(s_font_lock, portMAX_DELAY);
+}
+
+void ttf_font_unlock(void) {
+    if (s_font_lock) xSemaphoreGiveRecursive(s_font_lock);
+}
+
+void ttf_font_unload(void) {
+    font_lock_init();
+    ttf_font_lock();
+    unload_unlocked();
+    ttf_font_unlock();
+}
+
+esp_err_t ttf_font_open_builtin(void) {
+    font_lock_init();
+    ttf_font_lock();
+    const esp_err_t err = open_builtin_unlocked();
+    ttf_font_unlock();
+    return err;
+}
+
+esp_err_t ttf_font_open(const char* path) {
+    font_lock_init();
+    ttf_font_lock();
+    const esp_err_t err = open_unlocked(path);
+    ttf_font_unlock();
+    return err;
+}

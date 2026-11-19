@@ -732,10 +732,15 @@ static void prep_task(void* arg) {
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         lock_draw();
+        // 主循环可能正在换字体（换卡后重载 TF 卡字体）：拿字体锁，画字期间不让它卸载。
+        // The main loop may be switching fonts (reloading the TF-card font after a swap): hold the font lock so it
+        // cannot unload mid-draw.
+        ttf_font_lock();
         if (s_prep_page >= 0 && s_text && s_next_fb) {
             draw_reader(s_next_fb, (size_t)s_prep_page);
             s_next_page = s_prep_page;
         }
+        ttf_font_unlock();
         unlock_draw();
         xSemaphoreGive(s_prep_done);
     }
@@ -1264,6 +1269,34 @@ static void annotate_tomato(void) {
     }
     heap_caps_free(t);
 }
+// 番茄更新替换书文件时中途拔卡，可能只剩“书名.txt.old”：原文件不在就改回来，书不会从书库消失。
+// A card pulled while a Tomato update replaced a book may leave only "name.txt.old": rename it back when the book
+// itself is missing, so it never vanishes from the shelf.
+static void recover_old_books(const char* root) {
+    char names[4][96];
+    int n = 0;
+    DIR* dir = opendir(root);
+    if (!dir) return;
+    struct dirent* ent;
+    while (n < 4 && (ent = readdir(dir))) {
+        const size_t len = strlen(ent->d_name);
+        if (len > 8 && len < sizeof(names[0]) && !strcasecmp(ent->d_name + len - 4, ".old")) {
+            memcpy(names[n], ent->d_name, len - 3);
+            names[n][len - 4] = 0;
+            const char* ext = strrchr(names[n], '.');
+            if (ext && (!strcasecmp(ext, ".txt") || !strcasecmp(ext, ".epub"))) n++;
+        }
+    }
+    closedir(dir);
+    for (int k = 0; k < n; k++) {
+        char base[200], old[208];
+        if (snprintf(base, sizeof(base), "%.100s/%s", root, names[k]) >= (int)sizeof(base)) continue;
+        snprintf(old, sizeof(old), "%s.old", base);
+        struct stat st;
+        if (stat(base, &st) != 0 && rename(old, base) == 0) ESP_LOGW(TAG, "restored %s", base);
+    }
+}
+
 static void scan_shelf(app_ctx_t* ctx) {
     book_progress_recent_t last;
     s_continue[0] = 0;
@@ -1283,6 +1316,7 @@ static void scan_shelf(app_ctx_t* ctx) {
         char capacity[64];
         snprintf(capacity, sizeof(capacity), "%s%s %.1f MB", i ? " · " : "", roots[i].is_flash ? "内置余" : "TF余", book_store_free_bytes(&roots[i]) / 1048576.0);
         strncat(s_storage, capacity, sizeof(s_storage) - strlen(s_storage) - 1);
+        recover_old_books(roots[i].path);
         DIR* dir = opendir(roots[i].path);
         if (!dir) { unreadable = true; continue; }
         struct dirent* ent;
@@ -1791,12 +1825,17 @@ static void book_on_exit(app_ctx_t* ctx) {
     s_pressed_control = -1;
     save_progress();
     sensor_set(ctx, false);
+    // 拿着排版锁再释放书和删预排版任务：任务这时不可能画到一半（它不是在等通知就是在等这把锁）。
+    // Free the book and delete the prep task while holding the draw lock: the task cannot be mid-draw then (it waits
+    // either for a notification or for this lock).
+    lock_draw();
     free_book();
+    if (s_prep_task) { vTaskDelete(s_prep_task); s_prep_task = NULL; }
+    unlock_draw();
     free(s_shelf);
     s_shelf = NULL;
     s_shelf_capacity = 0;
     s_count = s_visible_count = 0;
-    if (s_prep_task) { vTaskDelete(s_prep_task); s_prep_task = NULL; }
     free(s_next_fb);
     s_next_fb = NULL;
     if (s_prep_done) { vSemaphoreDelete(s_prep_done); s_prep_done = NULL; }

@@ -53,6 +53,11 @@ esp_err_t ttf_font_suspend_sd(bool suspend);
 bool ttf_font_is_builtin(void);
 bool ttf_font_path_is_builtin(const char* path);
 void ttf_font_unload(void);
+/// 别的任务（阅读页预排版）用字体画字时拿着这把锁，换字体和卸字体会等它放开；主循环自己画字不用拿。
+/// Other tasks (the reader's prep) hold this while drawing glyphs, so switching or unloading the font waits for them;
+/// the main loop's own drawing needs no lock.
+void ttf_font_lock(void);
+void ttf_font_unlock(void);
 int ttf_font_scan(void);
 int ttf_font_count(void);
 const ttf_font_item_t* ttf_font_item(int index);

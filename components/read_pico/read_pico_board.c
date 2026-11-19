@@ -701,12 +701,17 @@ bool read_pico_rails_on(void) {
 }
 
 bool read_pico_sd_present(void) {
-    // 卡座 CD 信号低有效，连接到 FCA9555 P0.6。
-    // 读失败时不要把低有效 CD 判成“有卡”。
-    // / Slot CD is active-low on FCA9555 P0.6. A failed read must not look like "card present".
+    // 卡座 CD 信号低有效，连接到 FCA9555 P0.6。I2C 偶尔读失败时沿用上一次读到的结果：当成“没卡”会把正在看的书关掉、
+    // 字体退回内置再重新挂卡；真拔了卡，下一次读得到就会发现。还没成功读过时按没卡算。
+    // / Slot CD is active-low on FCA9555 P0.6. When an I2C read occasionally fails, keep the last result: treating it
+    // as "no card" would close the open book, drop the font and remount; a real removal shows on the next good read.
+    // Before any good read it counts as absent.
+    static bool s_known, s_last;
     uint8_t in0 = 0xFF;
-    if (s_ioe == NULL || fca9555_read_reg(s_ioe, 0, &in0) != ESP_OK) return false;
-    return (in0 & IOE_SD_CD) == 0;
+    if (s_ioe == NULL || fca9555_read_reg(s_ioe, 0, &in0) != ESP_OK) return s_known && s_last;
+    s_last = (in0 & IOE_SD_CD) == 0;
+    s_known = true;
+    return s_last;
 }
 
 void read_pico_clear_ioe_int(void) {
