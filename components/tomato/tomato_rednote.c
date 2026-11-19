@@ -33,7 +33,6 @@
 
 #define TAG "tomato_red"
 #define NVS_NS "rednote"
-#define FEED_LIMIT 100
 #define NOTE_KEEP 80
 // 笔记目录（大图、灰度缓存）一共最多占这么多；超过就从最旧的删大图。/ Cap for all note folders (images and gray
 // caches); past it the oldest notes lose their full images.
@@ -41,11 +40,17 @@
 #define TIMEOUT_MS 15000
 // 点开推荐时服务器要现开小红书，最长要等半分钟以上。/ Opening a recommendation makes the server visit Xiaohongshu live.
 #define SLOW_TIMEOUT_MS 60000
+// 加载更多评论：服务器每次最多等 20 秒就回话，设备接着问，最多问这么多次。/ Loading more comments: the server answers
+// within about 20 s each time and the device asks again, up to this many times.
+#define MORE_TIMEOUT_MS 40000
+#define MORE_POLLS 15
 
 /* ---- 设置 / Settings ---- */
 
 static uint32_t s_revision;
 
+int tomato_red_list_limit(void) { return tomato_srv_list_limit(NVS_NS); }
+esp_err_t tomato_red_list_limit_set(int n) { return tomato_srv_list_limit_set(NVS_NS, n); }
 esp_err_t tomato_red_config_load(tomato_red_config_t* out) { return tomato_srv_config_load(NVS_NS, out); }
 
 esp_err_t tomato_red_config_save(const tomato_red_config_t* cfg) {
@@ -157,13 +162,13 @@ static void prune_covers(const cJSON* items) {
 
 /* ---- 任务 / Jobs ---- */
 
-// 关注列表：取最近 FEED_LIMIT 篇，保留旧文件里的“看过”标记，再补缩略图。
-// Following list: fetch the latest FEED_LIMIT notes, keep "seen" marks from the old file, then fill thumbnails.
+// 关注列表：取最近“列表条数”篇，保留旧文件里的“看过”标记，再补缩略图。
+// Following list: fetch the latest "list size" notes, keep "seen" marks from the old file, then fill thumbnails.
 static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* cancel, tomato_hupu_progress_t progress,
                           char* msg, size_t cap) {
     cJSON* root = NULL;
     char path[96];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", FEED_LIMIT);
+    snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", tomato_red_list_limit());
     esp_err_t err = red_json(cfg, path, TIMEOUT_MS, cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
     cJSON* old = read_json(TOMATO_RED_FEED_FILE);
@@ -290,15 +295,31 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
     tomato_red_note_dir(sid, dir, sizeof(dir));
     snprintf(file, sizeof(file), "%s/note.json", dir);
     int images = 0;
-    if (r->images_only && exists(file)) {
+    if (r->images_only && !r->more_comments && exists(file)) {
         cJSON* note = read_json(file);
         images = json_int(note, "images");
         cJSON_Delete(note);
     } else {
         cJSON* root = NULL;
-        snprintf(path, sizeof(path), r->rec ? "/api/device/v1/rec/note/%s" : "/api/device/v1/note/%s", sid);
-        esp_err_t err = red_json(cfg, path, r->rec ? SLOW_TIMEOUT_MS : TIMEOUT_MS, cancel, &root, msg, cap);
-        if (err != ESP_OK) return err;
+        esp_err_t err;
+        if (r->more_comments) {
+            // 先让服务器开始拉，再一直问到拉完。/ Ask the server to start, then keep asking until it is done.
+            snprintf(path, sizeof(path), "/api/device/v1/note/%s/more_comments?start=1", sid);
+            for (int poll = 0;; poll++) {
+                err = red_json(cfg, path, MORE_TIMEOUT_MS, cancel, &root, msg, cap);
+                if (err != ESP_OK) return err;
+                if (!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "loading"))) break;
+                cJSON_Delete(root);
+                root = NULL;
+                if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
+                if (poll + 1 >= MORE_POLLS) { snprintf(msg, cap, "服务器拉评论太久了，稍后再试"); return ESP_ERR_TIMEOUT; }
+                snprintf(path, sizeof(path), "/api/device/v1/note/%s/more_comments", sid);
+            }
+        } else {
+            snprintf(path, sizeof(path), r->rec ? "/api/device/v1/rec/note/%s" : "/api/device/v1/note/%s", sid);
+            err = red_json(cfg, path, r->rec ? SLOW_TIMEOUT_MS : TIMEOUT_MS, cancel, &root, msg, cap);
+            if (err != ESP_OK) return err;
+        }
         cJSON* out = cJSON_CreateObject();
         copy_str(out, "id", root, "id");
         copy_str(out, "title", root, "title");
@@ -310,6 +331,8 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
         cJSON_AddNumberToObject(out, "images", images);
         const cJSON* tv = cJSON_GetObjectItemCaseSensitive(root, "time");
         cJSON_AddNumberToObject(out, "time", cJSON_IsNumber(tv) ? tv->valuedouble : 0);   // 可能是毫秒 / May be ms
+        // 还能不能加载更多评论（服务器 0.3.0 起才有）。/ Whether more comments can be loaded (servers from 0.3.0).
+        cJSON_AddBoolToObject(out, "more", cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "comments_more")));
         cJSON* list = cJSON_AddArrayToObject(out, "list");
         const cJSON* c;
         cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(root, "comment_list")) {
@@ -347,12 +370,12 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
 static esp_err_t run_test(const tomato_red_config_t* cfg, const volatile bool* cancel, char* msg, size_t cap) {
     cJSON* root = NULL;
     char path[64];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", FEED_LIMIT);
+    snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", tomato_red_list_limit());
     esp_err_t err = red_json(cfg, path, TIMEOUT_MS, cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
     const int n = cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(root, "notes"));
     cJSON_Delete(root);
-    snprintf(msg, cap, n >= FEED_LIMIT ? "正常 · 关注 %d+ 篇" : "正常 · 关注 %d 篇", n);
+    snprintf(msg, cap, n >= tomato_red_list_limit() ? "正常 · 关注 %d+ 篇" : "正常 · 关注 %d 篇", n);
     return ESP_OK;
 }
 

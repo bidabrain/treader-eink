@@ -24,7 +24,6 @@
 
 #define NVS_NS "weibo"
 #define HEADER "x-weibo-token"
-#define FEED_LIMIT 100
 #define POST_KEEP 150
 // 微博目录（大图、灰度缓存）一共最多占这么多；超过就从最旧的删大图。/ Cap for all post folders; past it the oldest
 // posts lose their full images.
@@ -37,6 +36,8 @@
 
 static uint32_t s_revision;
 
+int tomato_wb_list_limit(void) { return tomato_srv_list_limit(NVS_NS); }
+esp_err_t tomato_wb_list_limit_set(int n) { return tomato_srv_list_limit_set(NVS_NS, n); }
 esp_err_t tomato_wb_config_load(tomato_wb_config_t* out) { return tomato_srv_config_load(NVS_NS, out); }
 
 esp_err_t tomato_wb_config_save(const tomato_wb_config_t* cfg) {
@@ -103,13 +104,13 @@ static void prune_posts(const char* keep) {
 
 /* ---- 任务 / Jobs ---- */
 
-// 列表：取最近 FEED_LIMIT 条，关注列表保留旧文件里的“看过”标记，再补缩略图。
-// List: fetch the latest FEED_LIMIT posts, keep "seen" marks from the old following file, then fill thumbnails.
+// 列表：取最近“列表条数”条，关注列表保留旧文件里的“看过”标记，再补缩略图。
+// List: fetch the latest "list size" posts, keep "seen" marks from the old following file, then fill thumbnails.
 static esp_err_t run_feed(const tomato_srv_t* srv, bool hot, const volatile bool* cancel,
                           tomato_hupu_progress_t progress, char* msg, size_t cap) {
     const char* file = hot ? TOMATO_WB_HOT_FILE : TOMATO_WB_FOLLOW_FILE;
     char path[112];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?seg=%s&limit=%d", hot ? "hot" : "follow", FEED_LIMIT);
+    snprintf(path, sizeof(path), "/api/device/v1/feed?seg=%s&limit=%d", hot ? "hot" : "follow", tomato_wb_list_limit());
     cJSON* root = NULL;
     esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
@@ -304,12 +305,12 @@ static esp_err_t run_comments(const tomato_srv_t* srv, const tomato_wb_req_t* r,
 static esp_err_t run_test(const tomato_srv_t* srv, const volatile bool* cancel, char* msg, size_t cap) {
     cJSON* root = NULL;
     char path[80];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?seg=follow&limit=%d", FEED_LIMIT);
+    snprintf(path, sizeof(path), "/api/device/v1/feed?seg=follow&limit=%d", tomato_wb_list_limit());
     esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
     const int n = cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(root, "posts"));
     cJSON_Delete(root);
-    snprintf(msg, cap, n >= FEED_LIMIT ? "正常 · 关注 %d+ 条" : "正常 · 关注 %d 条", n);
+    snprintf(msg, cap, n >= tomato_wb_list_limit() ? "正常 · 关注 %d+ 条" : "正常 · 关注 %d 条", n);
     return ESP_OK;
 }
 

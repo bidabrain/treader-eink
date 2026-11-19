@@ -253,6 +253,13 @@ typedef struct {
 
 typedef tomato_srv_config_t tomato_red_config_t;
 
+/// 关注、热门列表一次取几条：100 / 200 / 300，默认 100。条数越多，TF 卡上的缩略图越多。
+/// Posts per following or hot list: 100 / 200 / 300, 100 by default. More posts keep more thumbnails on the TF card.
+#define TOMATO_LIST_LIMIT_MIN 100
+#define TOMATO_LIST_LIMIT_MAX 300
+int tomato_red_list_limit(void);
+esp_err_t tomato_red_list_limit_set(int n);
+
 /// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
 esp_err_t tomato_red_config_load(tomato_red_config_t* out);
 esp_err_t tomato_red_config_save(const tomato_red_config_t* cfg);
@@ -273,6 +280,7 @@ typedef struct {
     bool rec;           ///< 笔记来自推荐（服务器可能要现拉）/ Note comes from recommendations (server may fetch live)
     bool refresh;       ///< 推荐：让服务器重新读首页 / Recommendations: ask the server to re-read the home feed
     bool images_only;   ///< 笔记已缓存，只补缺的图 / Note cached; fetch missing images only
+    bool more_comments; ///< 笔记：让服务器现拉更多评论（慢）/ Note: have the server fetch more comments now (slow)
 } tomato_red_req_t;
 
 esp_err_t tomato_sync_start_red(const tomato_red_req_t* req);
@@ -291,6 +299,10 @@ void tomato_red_mark_seen(const char* id);
 /* ---- 微博（经自建 weibo 服务器）/ Weibo via the self-hosted weibo server ---- */
 
 typedef tomato_srv_config_t tomato_wb_config_t;
+
+/// 见 tomato_red_list_limit；关注和热门用同一个值。/ See tomato_red_list_limit; following and hot share it.
+int tomato_wb_list_limit(void);
+esp_err_t tomato_wb_list_limit_set(int n);
 
 /// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
 esp_err_t tomato_wb_config_load(tomato_wb_config_t* out);

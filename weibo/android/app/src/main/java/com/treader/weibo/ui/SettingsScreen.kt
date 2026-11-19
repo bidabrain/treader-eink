@@ -50,6 +50,7 @@ fun SettingsScreen(vm: AppVm, onBack: () -> Unit) {
     var testing by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf(vm.prefs.url) }
     var hasToken by remember { mutableStateOf(vm.prefs.token.isNotEmpty()) }
+    var listLimit by remember { mutableStateOf(vm.prefs.listLimit) }
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize()) {
@@ -70,7 +71,12 @@ fun SettingsScreen(vm: AppVm, onBack: () -> Unit) {
                     testing = true
                     scope.launch { result = vm.testConnection(); testing = false }
                 }
-                T("地址和令牌在 weibo 面板的“设备与外网”页。在外面用 Cloudflare 隧道的话，地址填 https://你的域名。",
+                HLine()
+                SettingRow("列表条数", "$listLimit 条 ›") {
+                    listLimit = if (listLimit >= 300) 100 else listLimit + 100
+                    vm.prefs.listLimit = listLimit
+                }
+                T("地址和令牌在 weibo 面板的“设备与外网”页。在外面用 Cloudflare 隧道的话，地址填 https://你的域名。列表条数 100、200、300 轮换，下次刷新列表时生效。",
                     12.sp, color = Mid, lineHeight = 18.sp, modifier = Modifier.padding(top = 12.dp))
                 T("关于", 13.sp, color = Mid, modifier = Modifier.padding(top = 28.dp, bottom = 4.dp))
                 SettingRow("版本", BuildConfig.VERSION_NAME) {}

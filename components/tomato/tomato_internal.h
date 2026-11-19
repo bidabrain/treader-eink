@@ -94,7 +94,7 @@ esp_err_t tomato_wb_run(const tomato_wb_req_t* r, const volatile bool* cancel, t
 
 /* ---- 自建内容服务器共用 / Shared by self-hosted content servers ---- */
 
-#define TOMATO_SRV_JSON_MAX (512 * 1024)
+#define TOMATO_SRV_JSON_MAX (1024 * 1024)
 #define TOMATO_SRV_IMG_MAX (2 * 1024 * 1024)
 
 /// 一台自建服务器：地址和令牌、令牌请求头名、出错时的称呼。/ One self-hosted server: address and token, the token
@@ -107,6 +107,8 @@ typedef struct {
 
 esp_err_t tomato_srv_config_load(const char* ns, tomato_srv_config_t* out);
 esp_err_t tomato_srv_config_save(const char* ns, const tomato_srv_config_t* cfg);
+int tomato_srv_list_limit(const char* ns);
+esp_err_t tomato_srv_list_limit_set(const char* ns, int n);
 /// 带令牌 GET 一个接口到 PSRAM（调用方 heap_caps_free，末尾补 0）。非 200 时把服务器给的原因写进 msg。
 /// GET an endpoint with the token into PSRAM (caller frees; NUL-terminated). On a non-200 status msg gets the reason.
 esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, int timeout_ms,

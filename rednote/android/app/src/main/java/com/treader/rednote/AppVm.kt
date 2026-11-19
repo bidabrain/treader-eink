@@ -58,6 +58,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var waiting by mutableStateOf<String?>(null)     // 等服务器现拉的推荐笔记 / A recommendation being fetched
     var waitError by mutableStateOf("")
     var configured by mutableStateOf(prefs.configured)
+    var moreLoading by mutableStateOf(false)         // 等服务器拉更多评论 / Waiting for more comments
+    var moreError by mutableStateOf("")
 
     private var job: Job? = null
 
@@ -133,6 +135,33 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 加载更多评论：弹等待框，拉完留在评论页。/ Load more comments behind a dialog, then stay on the comments. */
+    fun loadMoreComments(note: Note) {
+        if (!note.more || moreLoading) return
+        moreLoading = true
+        moreError = ""
+        job?.cancel()
+        job = viewModelScope.launch {
+            try {
+                val n = repo.loadMoreComments(note.id)
+                if (moreLoading) {
+                    moreLoading = false
+                    (screen as? Screen.Text)?.let { if (it.note.id == n.id) screen = Screen.Text(n, true) }
+                }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException && moreLoading) moreError = e.message ?: "出错了"
+            }
+        }
+    }
+
+    /** 关掉等待框；还在拉就取消（服务器那边照样会拉完存好）。/ Close the dialog, cancelling if still waiting (the
+     *  server still finishes and keeps the comments). */
+    fun closeMore() {
+        if (moreLoading && moreError.isEmpty()) job?.cancel()
+        moreLoading = false
+        moreError = ""
+    }
+
     fun cancelWait() {
         job?.cancel()
         waiting = null
@@ -146,6 +175,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun noteCached(id: String) = repo.noteCached(id)
 
     fun backToList() {
+        if (moreLoading) closeMore()
         screen = Screen.List
     }
 
@@ -156,8 +186,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun testConnection(): String = try {
-        val n = api.feed(100).optJSONArray("notes")?.length() ?: 0
-        if (n >= 100) "正常 · 关注 $n+ 篇" else "正常 · 关注 $n 篇"
+        val limit = prefs.listLimit
+        val n = api.feed(limit).optJSONArray("notes")?.length() ?: 0
+        if (n >= limit) "正常 · 关注 $n+ 篇" else "正常 · 关注 $n 篇"
     } catch (e: Exception) {
         e.message ?: "失败"
     }

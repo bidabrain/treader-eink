@@ -31,7 +31,8 @@
 
 #define TAG "tomato_srv"
 #define IO_CHUNK 4096
-#define DIRS_MAX 300
+// 微博两个列表各 300 条时，列表里的目录最多 600 个。/ Two Weibo lists of 300 hold up to 600 listed folders.
+#define DIRS_MAX 700
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 
 /* ---- 设置 / Settings ---- */
@@ -58,6 +59,29 @@ esp_err_t tomato_srv_config_save(const char* ns, const tomato_srv_config_t* cfg)
     for (size_t n = strlen(url); n && url[n - 1] == '/'; n--) url[n - 1] = 0;
     err = nvs_set_str(h, "url", url);
     if (err == ESP_OK) err = nvs_set_str(h, "token", cfg->token);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+// 列表条数存在同一个命名空间的 "list" 键；只认 100 / 200 / 300。/ The list size lives under "list" in the same
+// namespace; only 100 / 200 / 300 are accepted.
+int tomato_srv_list_limit(const char* ns) {
+    nvs_handle_t h;
+    uint16_t v = 0;
+    if (nvs_open(ns, NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_u16(h, "list", &v) != ESP_OK) v = 0;
+        nvs_close(h);
+    }
+    return (v == 200 || v == 300) ? v : TOMATO_LIST_LIMIT_MIN;
+}
+
+esp_err_t tomato_srv_list_limit_set(const char* ns, int n) {
+    if (n != 100 && n != 200 && n != 300) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(ns, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u16(h, "list", (uint16_t)n);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;

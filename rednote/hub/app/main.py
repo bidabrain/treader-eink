@@ -233,7 +233,7 @@ async def fetch_run():
 
 @app.get("/api/panel/notes")
 async def panel_notes(limit: int = 60):
-    return store.notes(0, min(limit, 200))
+    return store.notes(0, min(limit, 300))
 
 
 @app.get("/api/panel/img/{note_id}/{name}")
@@ -363,10 +363,14 @@ def _brief(n: dict) -> dict:
             "source": n.get("source") or "follow"}
 
 
+def _full(n: dict) -> dict:
+    return {**_brief(n), "body": n["body"], "comment_list": n["comments"], "comments_more": rec.can_more(n)}
+
+
 @app.get("/api/device/v1/feed")
 async def device_feed(request: Request, since: float = 0, limit: int = 50):
     _device(request)
-    rows = store.notes(since, min(max(limit, 1), 100), source="follow")
+    rows = store.notes(since, min(max(limit, 1), 300), source="follow")
     return {"now": time.time(), "notes": [_brief(n) for n in rows]}
 
 
@@ -376,7 +380,30 @@ async def device_note(request: Request, note_id: str):
     n = store.note(note_id)
     if not n:
         raise HTTPException(404, "没有这篇")
-    return {**_brief(n), "body": n["body"], "comment_list": n["comments"]}
+    return _full(n)
+
+
+@app.get("/api/device/v1/note/{note_id}/more_comments")
+async def device_more_comments(request: Request, note_id: str, start: int = 0):
+    """加载更多评论（最多 60 条）。start=1 开始现拉；之后不带 start 反复问，每次最多等 20 秒。还在拉时返回
+    {"loading": true}；拉完返回和 /note/{id} 一样的内容；失败返回错误。分开问是因为 Cloudflare 隧道约 100 秒就断开请求。
+    Load more comments (up to 60). start=1 begins fetching; then ask again without start, each call waiting up to 20 s.
+    While fetching it returns {"loading": true}; when done the same body as /note/{id}; an error on failure. Split into
+    calls because Cloudflare tunnels drop a request after about 100 s."""
+    _device(request)
+    if not ID_RE.match(note_id):
+        raise HTTPException(400, "路径不对")
+    n = store.note(note_id)
+    if not n:
+        raise HTTPException(404, "没有这篇")
+    if start and rec.can_more(n):
+        rec.more_start(note_id)
+    loading, err = await rec.more_wait(note_id, 20)
+    if loading:
+        return {"loading": True}
+    if err:
+        raise HTTPException(err[0], err[1])
+    return {**_full(store.note(note_id) or n), "loading": False}
 
 
 async def _image(note_id: str, name: str) -> FileResponse:
@@ -428,7 +455,7 @@ async def device_rec_note(request: Request, note_id: str):
         raise HTTPException(e.status, str(e))
     if not n:
         raise HTTPException(404, "没有这篇")
-    return {**_brief(n), "body": n["body"], "comment_list": n["comments"]}
+    return _full(n)
 
 
 # ---- 浏览器桌面（noVNC），只在面板里用 / Browser desktop (noVNC), panel only ----

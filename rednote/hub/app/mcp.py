@@ -75,6 +75,12 @@ async def profile(user_id: str, xsec_token: str) -> dict[str, Any]:
     return data.get("data") or data
 
 
-async def detail(note_id: str, xsec_token: str) -> dict[str, Any]:
-    data = await _call("POST", "/feeds/detail", {"feed_id": note_id, "xsec_token": xsec_token})
+async def detail(note_id: str, xsec_token: str, more_comments: int = 0) -> dict[str, Any]:
+    """more_comments 大于 0 时，浏览器往下滚动加载到这么多条一级评论（慢，十几到几十秒）。
+    With more_comments > 0 the browser scrolls until that many top-level comments are loaded (slow, 10-60 s)."""
+    body: dict[str, Any] = {"feed_id": note_id, "xsec_token": xsec_token}
+    if more_comments > 0:
+        body["load_all_comments"] = True
+        body["comment_config"] = {"max_comment_items": more_comments, "scroll_speed": "normal"}
+    data = await _call("POST", "/feeds/detail", body)
     return data.get("data") or data

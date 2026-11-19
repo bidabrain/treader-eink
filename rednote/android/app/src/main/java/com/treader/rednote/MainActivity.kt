@@ -23,8 +23,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val vm: AppVm = viewModel()
-            BackHandler(enabled = vm.screen != Screen.List || vm.waiting != null) {
-                if (vm.waiting != null) vm.cancelWait() else vm.backToList()
+            BackHandler(enabled = vm.screen != Screen.List || vm.waiting != null || vm.moreLoading) {
+                if (vm.moreLoading) vm.closeMore() else if (vm.waiting != null) vm.cancelWait() else vm.backToList()
             }
             Box(Modifier.fillMaxSize().background(Paper).safeDrawingPadding()) {
                 when (val s = vm.screen) {

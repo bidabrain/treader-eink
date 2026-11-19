@@ -238,7 +238,7 @@ async def users_search(q: str):
 
 @app.get("/api/panel/posts")
 async def panel_posts(limit: int = 60):
-    return store.latest(min(limit, 200))
+    return store.latest(min(limit, 300))
 
 
 @app.get("/api/panel/img/{pid}/{name}")
@@ -428,7 +428,7 @@ async def device_feed(request: Request, seg: str = "follow", since: float = 0, l
     _device(request)
     if seg not in ("follow", "hot"):
         raise HTTPException(400, "seg 只能是 follow 或 hot")
-    rows = store.feed(seg, since, min(max(limit, 1), 200))
+    rows = store.feed(seg, since, min(max(limit, 1), 300))
     return {"now": time.time(), "posts": [_brief(p) for p in rows]}
 
 

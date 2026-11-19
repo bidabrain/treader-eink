@@ -198,3 +198,77 @@ def _prune_covers() -> None:
     for p in COVER_DIR.glob("*.jpg"):
         if p.stem not in keep:
             p.unlink(missing_ok=True)
+
+
+# ---- 加载更多评论（设备按需） / Load more comments (on demand from the device) ----
+
+_more: dict[str, asyncio.Task] = {}
+
+
+def can_more(n: dict[str, Any]) -> bool:
+    """还能不能加载更多评论：有令牌、没加载过、评论总数比已存的多。
+    Whether more comments can be loaded: a token, not loaded yet, and more comments than are stored."""
+    return bool(n.get("xsec_token")) and not n.get("more_comments") and \
+        fetcher.count_value(n.get("comment_count")) > len(n.get("comments") or [])
+
+
+async def _load_more(note_id: str) -> None:
+    cfg = config.load()
+    n = store.note(note_id)
+    if not n:
+        raise RecError(404, "没有这篇")
+    if not can_more(n):
+        return
+    if fetcher.state.paused:
+        raise RecError(503, "小红书要求验证或登录，先在面板里处理")
+    if store.requests_today("rec") >= int(cfg["rec_daily_cap"]):
+        raise RecError(429, "今天的按需请求次数用完了")
+    if store.requests_today() >= int(cfg["daily_cap"]):
+        raise RecError(429, "今天的请求总数用完了")
+    await _space(cfg)
+    # 和推荐一样算按需请求。/ Counted as an on-demand request, like recommendations.
+    store.count_request("rec")
+    try:
+        data = await mcp.detail(note_id, n["xsec_token"], fetcher.COMMENTS_MORE)
+    except mcp.McpError as e:
+        await _blocked(e)
+        raise RecError(502, f"加载评论失败：{e}") from e
+    comments = fetcher.parse_comments(data, fetcher.COMMENTS_MORE)
+    count = ((data.get("note") or {}).get("interactInfo") or {}).get("commentCount") or n["comment_count"]
+    # 拿到的比原来还少（页面没加载出来）就保留原来的。/ Keep the old list if fewer came back (the page did not load).
+    if len(comments) < len(n["comments"]):
+        comments = n["comments"]
+    store.save_comments(note_id, count, comments)
+    fetcher.note(f"设备加载更多评论 {note_id}：{len(comments)} 条")
+
+
+_more_err: dict[str, tuple[int, str]] = {}
+
+
+def more_start(note_id: str) -> None:
+    """在后台开始加载；已经在加载就不重复。/ Start loading in the background unless it already is."""
+    if note_id in _more:
+        return
+    _more_err.pop(note_id, None)
+    task = asyncio.create_task(_load_more(note_id))
+    _more[note_id] = task
+
+    def done(t: asyncio.Task) -> None:
+        _more.pop(note_id, None)
+        e = None if t.cancelled() else t.exception()
+        if isinstance(e, RecError):
+            _more_err[note_id] = (e.status, str(e))
+        elif e is not None:
+            _more_err[note_id] = (500, f"加载评论失败：{type(e).__name__}")
+        while len(_more_err) > 50:
+            _more_err.pop(next(iter(_more_err)))
+
+    task.add_done_callback(done)
+
+
+async def more_wait(note_id: str, seconds: float) -> tuple[bool, tuple[int, str] | None]:
+    """最多等 seconds 秒；返回（还在加载、上次的错误）。/ Wait up to seconds; returns (still loading, last error)."""
+    task = _more.get(note_id)
+    if task is not None:
+        await asyncio.wait({task}, timeout=seconds)
+    return note_id in _more, _more_err.get(note_id)

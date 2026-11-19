@@ -1,6 +1,10 @@
 package com.treader.rednote.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -86,6 +90,7 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
 @Composable
 fun TextScreen(vm: AppVm, s: Screen.Text) {
     val n = s.note
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Paper)) {
         BackTitle(n.author.ifEmpty { "返回" }) { vm.backToList() }
         Segment(
@@ -100,7 +105,31 @@ fun TextScreen(vm: AppVm, s: Screen.Text) {
             Modifier.padding(horizontal = 20.dp),
         )
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp)) {
-            if (s.comments) Comments(n) else Body(n)
+            if (s.comments) Comments(n) { vm.loadMoreComments(n) } else Body(n)
+        }
+    }
+    if (vm.moreLoading) MoreDialog(vm)
+    }
+}
+
+@Composable
+private fun MoreDialog(vm: AppVm) {
+    Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.6f)).noRippleClick { vm.closeMore() }, contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
+                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (vm.moreError.isNotEmpty()) {
+                T("没能加载更多评论", 17.sp, bold = true)
+                T(vm.moreError, 13.sp, align = TextAlign.Center, lineHeight = 19.sp)
+                T("点框外关闭", 12.sp, color = Mid)
+            } else {
+                T("正在加载更多评论…", 17.sp, bold = true)
+                T("服务器要打开小红书往下翻，约 20～60 秒", 13.sp, color = Mid)
+                T("点框外取消", 13.sp)
+            }
         }
     }
 }
@@ -122,8 +151,8 @@ private fun Body(n: Note) {
 }
 
 @Composable
-private fun Comments(n: Note) {
-    if (n.list.isEmpty()) { T("服务器没有存这篇的评论", 15.sp); return }
+private fun Comments(n: Note, onMore: () -> Unit) {
+    if (n.list.isEmpty()) T("服务器没有存这篇的评论", 15.sp, modifier = Modifier.padding(bottom = 16.dp))
     n.list.forEach { c ->
         Row(Modifier.fillMaxWidth()) {
             T(c.user.ifEmpty { "小红书用户" }, 13.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
@@ -132,5 +161,20 @@ private fun Comments(n: Note) {
         T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
         HLine()
         Spacer(Modifier.height(10.dp).width(1.dp))
+    }
+    MoreButton(n.more, onMore)
+}
+
+/** 评论末尾的“加载更多评论”；不能加载时灰色，点了没反应。/ "Load more comments" at the end; gray and inert when
+ *  nothing more can be loaded. */
+@Composable
+private fun MoreButton(enabled: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.width(220.dp).height(44.dp).clip(shape)
+                .then(if (enabled) Modifier.border(1.5.dp, Ink, shape).noRippleClick(onClick) else Modifier.background(Line)),
+            contentAlignment = Alignment.Center,
+        ) { T("加载更多评论", 15.sp, bold = enabled, color = if (enabled) Ink else Mid) }
     }
 }

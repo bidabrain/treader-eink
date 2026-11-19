@@ -81,11 +81,15 @@ static const struct {
     esp_err_t (*load)(tomato_srv_config_t* out);
     esp_err_t (*save)(const tomato_srv_config_t* cfg);
     uint32_t (*revision)(void);
+    int (*list)(void);                 // 列表条数 / List size
+    esp_err_t (*list_set)(int n);
+    const char* unit;                  // 条数的量词 / Counter word for the list size
 } SERVERS[S_COUNT] = {
     [S_RED] = {"小红书", "rednote", "http://192.168.1.20:8091", TR_ICON_XHS, tomato_red_config_load,
-               tomato_red_config_save, tomato_red_config_revision},
+               tomato_red_config_save, tomato_red_config_revision, tomato_red_list_limit, tomato_red_list_limit_set,
+               "篇"},
     [S_WB] = {"微博", "weibo", "http://192.168.1.20:8092", TR_ICON_WEIBO, tomato_wb_config_load,
-              tomato_wb_config_save, tomato_wb_config_revision},
+              tomato_wb_config_save, tomato_wb_config_revision, tomato_wb_list_limit, tomato_wb_list_limit_set, "条"},
 };
 
 // 首页分类。/ Home categories.
@@ -101,7 +105,7 @@ typedef struct {
 
 enum {
     R_FONT, R_WALL,
-    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST,
+    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_CARD, R_ABOUT,
 };
@@ -119,6 +123,7 @@ static const row_t SERVER_ROWS[] = {
     {R_URL, NULL, "服务器地址", 274},
     {R_TOKEN, NULL, "设备令牌", 346},
     {R_TEST, NULL, "测试连接", 418},
+    {R_LIST, NULL, "列表条数", 490},
 };
 static const row_t SYNC_ROWS[] = {
     {R_DAV, NULL, "WebDAV", 190},
@@ -280,6 +285,7 @@ static void row_value(int id, char* out, size_t cap) {
         else if (s_test_result[s_srv][0]) snprintf(out, cap, "%.90s ›", s_test_result[s_srv]);
         else snprintf(out, cap, s_has_host[s_srv] ? "点一下测试 ›" : "先填地址");
         break;
+    case R_LIST: snprintf(out, cap, "%d %s ›", SERVERS[s_srv].list(), SERVERS[s_srv].unit); break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -620,7 +626,9 @@ static void draw_server(uint8_t* fb) {
     char hint[200];
     snprintf(hint, sizeof(hint), "地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。",
              SERVERS[s_srv].panel);
-    tr_wrap(fb, TR_MARGIN, 510, TR_W - 2 * TR_MARGIN, 24, 36, hint, 3);
+    tr_wrap(fb, TR_MARGIN, 582, TR_W - 2 * TR_MARGIN, 24, 36, hint, 3);
+    tr_wrap(fb, TR_MARGIN, 700, TR_W - 2 * TR_MARGIN, 24, 36,
+            "列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。", 3);
 }
 
 static void draw_edit(uint8_t* fb) {
@@ -919,6 +927,11 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         return APP_REDRAW_PAGE;
     case R_URL: begin_edit(E_HOST_URL, s_has_host[s_srv] ? s_host[s_srv].url : "http://"); return APP_REDRAW_PAGE;
     case R_TOKEN: begin_edit(E_HOST_TOKEN, ""); return APP_REDRAW_PAGE;
+    case R_LIST: {
+        const int n = SERVERS[s_srv].list();
+        SERVERS[s_srv].list_set(n >= TOMATO_LIST_LIMIT_MAX ? TOMATO_LIST_LIMIT_MIN : n + 100);
+        return APP_REDRAW_PAGE;
+    }
     case R_TEST:
         if (!make_room()) return APP_REDRAW_PAGE;
         start_test(s_srv);

@@ -53,7 +53,7 @@ class Api(private val prefs: Prefs) {
         }
     }
 
-    suspend fun feed(hot: Boolean, limit: Int = 100) =
+    suspend fun feed(hot: Boolean, limit: Int = prefs.listLimit) =
         get("/api/device/v1/feed?seg=${if (hot) "hot" else "follow"}&limit=$limit")
     suspend fun post(id: String) = get("/api/device/v1/post/$id")
     suspend fun comments(id: String) = get("/api/device/v1/post/$id/comments", slow = true)
@@ -73,4 +73,9 @@ class Prefs(context: Context) {
         get() = sp.getString("token", "").orEmpty()
         set(v) = sp.edit().putString("token", v.trim()).apply()
     val configured get() = url.isNotEmpty()
+
+    /** 列表一次取几条：100 / 200 / 300（照固件的“列表条数”）。/ List size: 100 / 200 / 300, like the firmware. */
+    var listLimit: Int
+        get() = sp.getInt("list", 100).let { if (it == 200 || it == 300) it else 100 }
+        set(v) = sp.edit().putInt("list", v).apply()
 }

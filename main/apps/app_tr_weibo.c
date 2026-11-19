@@ -50,7 +50,7 @@
 #define CW (TR_W - 2 * TR_MARGIN)
 
 // 列表：一条一张卡片，每页按高度装满。/ List: one card per post, each page filled by height.
-#define LIST_MAX 100
+#define LIST_MAX TOMATO_LIST_LIMIT_MAX
 #define LIST_TOP 288
 #define LIST_BOTTOM 1030
 #define PAGER_Y 1036
@@ -150,7 +150,7 @@ static item_t* s_items;
 static int s_item_count;
 static int s_list_page;
 static double s_list_time;           // 服务器给列表的时间（秒）/ Server time of the list (seconds)
-static uint8_t s_page_first[LIST_MAX + 1];   // 每页第一条 / First item of each page
+static uint16_t s_page_first[LIST_MAX + 1];   // 每页第一条 / First item of each page
 static int s_list_page_count;
 
 // 关注列表刷新期间点开的微博：刷新会覆盖 follow.json，等它结束再写“看过”。
@@ -437,12 +437,12 @@ static void layout_list(void) {
     for (int i = 0; i < s_item_count; i++) {
         s_items[i].height = (int16_t)card_height(&s_items[i]);
         if (y + s_items[i].height > LIST_BOTTOM && y != LIST_TOP) {
-            s_page_first[s_list_page_count++] = (uint8_t)i;
+            s_page_first[s_list_page_count++] = (uint16_t)i;
             y = LIST_TOP;
         }
         y += s_items[i].height;
     }
-    s_page_first[s_list_page_count] = (uint8_t)s_item_count;
+    s_page_first[s_list_page_count] = (uint16_t)s_item_count;
 }
 
 static void load_list(void) {

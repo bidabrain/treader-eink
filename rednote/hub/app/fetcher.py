@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import re
 import time
 from collections import deque
 from typing import Any
@@ -62,6 +63,34 @@ def _budget(cfg: dict[str, Any]) -> bool:
     return store.requests_today() < int(cfg["daily_cap"])
 
 
+# 平时每篇存的评论条数；“加载更多评论”时存的条数。/ Comments kept per note normally, and after "load more".
+COMMENTS_KEEP = 20
+COMMENTS_MORE = 60
+
+
+def parse_comments(data: dict[str, Any], keep: int) -> list[dict[str, Any]]:
+    out = []
+    for c in ((data.get("comments") or {}).get("list") or [])[:keep]:
+        out.append({
+            "user": (c.get("userInfo") or {}).get("nickname") or "",
+            "text": c.get("content") or "",
+            "likes": c.get("likeCount") or "",
+        })
+    return out
+
+
+def count_value(s: Any) -> int:
+    """小红书的计数文字（"12"、"1.2万"、"10+"）换成大约的数。/ Xiaohongshu count text ("12", "1.2万", "10+") as a number."""
+    m = re.match(r"\s*([\d.]+)\s*(万|w|W)?", str(s or ""))
+    if not m:
+        return 0
+    try:
+        v = float(m.group(1))
+    except ValueError:
+        return 0
+    return int(v * 10000) if m.group(2) else int(v)
+
+
 async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str = "follow",
                      background: bool = False) -> bool:
     """拉一篇详情、处理图片并入库；视频返回 False。background 时只要小红书给了图片宽高，就先入库返回，图片在后台做。
@@ -80,20 +109,14 @@ async def fetch_note(note_id: str, token: str, cfg: dict[str, Any], source: str 
         images.start_background(note_id, urls, counts)
     else:
         pages = await images.process(note_id, urls, counts)
-    comments = []
-    for c in ((data.get("comments") or {}).get("list") or [])[:20]:
-        comments.append({
-            "user": (c.get("userInfo") or {}).get("nickname") or "",
-            "text": c.get("content") or "",
-            "likes": c.get("likeCount") or "",
-        })
+    comments = parse_comments(data, COMMENTS_KEEP)
     user = n.get("user") or {}
     store.save_note({
         "id": note_id, "user_id": user.get("userId") or "", "author": user.get("nickname") or "",
         "title": n.get("title") or "", "body": n.get("desc") or "", "time": int(n.get("time") or 0),
         "likes": (n.get("interactInfo") or {}).get("likedCount") or "",
         "comment_count": (n.get("interactInfo") or {}).get("commentCount") or "",
-        "comments": comments, "images": pages,
+        "comments": comments, "images": pages, "xsec_token": token,
         "ratio": images.cover_ratio(int((shots[0] if shots else {}).get("width") or 0),
                                     int((shots[0] if shots else {}).get("height") or 0)),
     }, source)
@@ -127,6 +150,9 @@ async def run_round() -> None:
             for f in images_only:
                 if store.note_source(f["id"]) == "rec":
                     store.set_source(f["id"], "follow")
+                # 旧笔记补上令牌，之后才能加载更多评论。/ Give old notes a token so more comments can be loaded.
+                if f.get("xsecToken"):
+                    store.fill_token(f["id"], f["xsecToken"])
             fresh = [f for f in images_only if not store.has_note(f["id"])]
             fresh = fresh[: int(cfg["per_creator"])]
             # 记下最新一篇的令牌，主页令牌过期时可以用它。/ Keep a recent token in case the profile token expires.

@@ -187,8 +187,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun testConnection(): String = try {
-        val n = api.feed(false, 100).optJSONArray("posts")?.length() ?: 0
-        if (n >= 100) "正常 · 关注 $n+ 条" else "正常 · 关注 $n 条"
+        val limit = prefs.listLimit
+        val n = api.feed(false, limit).optJSONArray("posts")?.length() ?: 0
+        if (n >= limit) "正常 · 关注 $n+ 条" else "正常 · 关注 $n 条"
     } catch (e: Exception) {
         e.message ?: "失败"
     }

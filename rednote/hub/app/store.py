@@ -42,6 +42,13 @@ def db() -> sqlite3.Connection:
         if "ratio" not in cols:
             _db.execute("ALTER TABLE notes ADD COLUMN ratio REAL NOT NULL DEFAULT 1.333")
             _db.commit()
+        # 这篇的 xsec_token（加载更多评论要用）和是否已经加载过更多评论；旧笔记没有令牌。
+        # The note's xsec_token (needed to load more comments) and whether more comments were loaded; old notes have
+        # no token.
+        if "xsec_token" not in cols:
+            _db.execute("ALTER TABLE notes ADD COLUMN xsec_token TEXT NOT NULL DEFAULT ''")
+            _db.execute("ALTER TABLE notes ADD COLUMN more_comments INTEGER NOT NULL DEFAULT 0")
+            _db.commit()
     return _db
 
 
@@ -115,11 +122,21 @@ def set_source(note_id: str, source: str) -> None:
 def save_note(note: dict[str, Any], source: str = "follow") -> None:
     _exec(
         "INSERT OR REPLACE INTO notes(id, user_id, author, title, body, time, likes, comment_count, comments, "
-        "images, fetched_at, source, ratio) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "images, fetched_at, source, ratio, xsec_token) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (note["id"], note["user_id"], note["author"], note["title"], note["body"], note["time"], note["likes"],
          note["comment_count"], json.dumps(note["comments"], ensure_ascii=False), note["images"], time.time(),
-         source, note.get("ratio", 1.333)),
+         source, note.get("ratio", 1.333), note.get("xsec_token", "")),
     )
+
+
+def fill_token(note_id: str, token: str) -> None:
+    _exec("UPDATE notes SET xsec_token=? WHERE id=? AND xsec_token=''", (token, note_id))
+
+
+def save_comments(note_id: str, comment_count: str, comments: list[dict[str, Any]]) -> None:
+    """加载更多评论后换掉这篇的评论，并记下已经加载过。/ Replace a note's comments after loading more, and mark it."""
+    _exec("UPDATE notes SET comment_count=?, comments=?, more_comments=1 WHERE id=?",
+          (comment_count, json.dumps(comments, ensure_ascii=False), note_id))
 
 
 def notes(since: float = 0, limit: int = 50, source: str | None = None) -> list[dict[str, Any]]:

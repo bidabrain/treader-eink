@@ -32,6 +32,8 @@ data class Note(
     val time: Double,
     val images: Int,
     val list: List<Comment>,
+    /** 还能加载更多评论（服务器 0.3.0 起才有）。/ More comments can be loaded (servers from 0.3.0). */
+    val more: Boolean = false,
 )
 
 data class RecList(val items: List<Item>, val fetchedAt: Double, val left: Int)
@@ -93,7 +95,7 @@ class Repo(context: Context, private val api: Api) {
                     val c = list.optJSONObject(i) ?: continue
                     add(Comment(str(c, "user"), str(c, "text"), str(c, "likes")))
                 }
-            })
+            }, n.optBoolean("comments_more"))
     }
 
     /** 从服务器取关注列表，保留“看过”；第一次取到的都算看过。/ Fetch the following list keeping "seen" marks; a
@@ -141,6 +143,21 @@ class Repo(context: Context, private val api: Api) {
         return withContext(Dispatchers.IO) {
             write(File(notesDir, "$id.json"), j)
             pruneNotes()
+            cachedNote(id)!!
+        }
+    }
+
+    /** 让服务器现拉更多评论，一直问到拉完（最多约 5 分钟），存好返回。/ Have the server fetch more comments, asking
+     *  until it is done (about 5 minutes at most), then save and return the note. */
+    suspend fun loadMoreComments(id: String): Note {
+        var j = api.moreComments(id, true)
+        var polls = 1
+        while (j.optBoolean("loading")) {
+            if (polls++ >= 15) throw Api.ApiError("服务器拉评论太久了，稍后再试")
+            j = api.moreComments(id, false)
+        }
+        return withContext(Dispatchers.IO) {
+            write(File(notesDir, "$id.json"), j)
             cachedNote(id)!!
         }
     }

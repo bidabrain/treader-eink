@@ -44,7 +44,7 @@
 #define CW (TR_W - 2 * TR_MARGIN)
 
 // 列表 / Lists
-#define LIST_MAX 100
+#define LIST_MAX TOMATO_LIST_LIMIT_MAX
 #define LIST_TOP 284
 #define PAGER_Y 1036
 // 两列卡片，每页 2×2。/ Two-column cards, 2x2 per page.
@@ -71,7 +71,11 @@
 #define TEXT_PAGER_Y 1124
 #define LINES_MAX 1600
 #define PAGES_MAX 200
-#define COMMENTS_MAX 20
+#define COMMENTS_MAX 60
+// 评论最后一页末尾的“加载更多评论”按钮。/ The "load more comments" button at the end of the last comment page.
+#define MORE_BTN_W 400
+#define MORE_BTN_H 76
+#define MORE_BLOCK_H 120
 #define COMMENT_LINES 5
 #define COMMENT_PX 30
 #define COMMENT_LH 44
@@ -153,6 +157,11 @@ static uint16_t* s_pages;
 static int s_page_count;
 static uint8_t s_comment_pages[COMMENTS_MAX + 1];
 static int s_comment_page_count;
+static bool s_comments_more;         // 服务器说还能加载更多评论 / The server says more comments can be loaded
+static int s_more_y;                 // 按钮所在块的顶（最后一页）/ Top of the button block (last page)
+// 等服务器拉更多评论（等待框）；s_more_failed 时框里写原因。/ Waiting for the server to fetch more comments (dialog);
+// with s_more_failed it shows why.
+static bool s_more_wait, s_more_failed;
 static int s_title_lines;
 static text_tab_t s_tab;
 static int s_page;
@@ -424,10 +433,15 @@ static void layout_comments(void) {
         if (y + h > BODY_BOTTOM && y != BODY_TOP) { s_comment_pages[pages++] = (uint8_t)i; y = BODY_TOP; }
         y += h;
     }
-    if (!pages) s_comment_pages[pages++] = 0;
+    if (!pages) { s_comment_pages[pages++] = 0; y = BODY_TOP + 80; }
+    // 按钮放不下就单独占一页。/ The button gets a page of its own when it does not fit.
+    if (y + MORE_BLOCK_H > BODY_BOTTOM) { s_comment_pages[pages++] = (uint8_t)s_comment_count; y = BODY_TOP; }
+    s_more_y = y;
     s_comment_pages[pages] = (uint8_t)s_comment_count;
     s_comment_page_count = pages;
 }
+
+static EpdRect more_btn(void) { return (EpdRect){(TR_W - MORE_BTN_W) / 2, s_more_y + 24, MORE_BTN_W, MORE_BTN_H}; }
 
 static bool load_note(const char* id) {
     free_note();
@@ -451,6 +465,7 @@ static bool load_note(const char* id) {
     const cJSON* tv = cJSON_GetObjectItemCaseSensitive(root, "time");
     s_time = cJSON_IsNumber(tv) ? tv->valuedouble : 0;
     s_images = num(root, "images");
+    s_comments_more = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "more"));
     const cJSON* c;
     cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(root, "list")) {
         if (s_comment_count >= COMMENTS_MAX) break;
@@ -607,6 +622,24 @@ static void draw_wait(uint8_t* fb) {
     tr_text(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER, false);
 }
 
+static void draw_more_wait(uint8_t* fb) {
+    const EpdRect r = DIALOG_RECT;
+    epd_fill_rect(r, UI_GRAY_WHITE, fb);
+    ui_draw_round_rect(fb, r, 22, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 21, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 2), 20, UI_GRAY_BLACK);
+    const int cx = r.x + r.width / 2;
+    if (s_more_failed) {
+        tr_text(fb, cx, r.y + 40, 32, "没能加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
+        tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg[0] ? s_msg : "稍后再试", 2);
+        tr_text(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER, false);
+        return;
+    }
+    tr_text(fb, cx, r.y + 44, 34, "正在加载更多评论…", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, cx, r.y + 104, 26, loading_text("服务器要打开小红书往下翻，约 20～60 秒"), EPD_DRAW_ALIGN_CENTER, false);
+    tr_text(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER, false);
+}
+
 static void draw_image(uint8_t* fb) {
     s_image_missing = false;
     char path[96];
@@ -679,7 +712,20 @@ static void draw_body(uint8_t* fb) {
     }
 }
 
+// 能按时黑框粗体；不能按时灰底。/ Black outline and bold when it can be pressed; a gray fill when it cannot.
+static void draw_more_btn(uint8_t* fb) {
+    const EpdRect b = more_btn();
+    if (s_comments_more) {
+        ui_draw_round_rect(fb, b, 38, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, ui_inset_rect(b, 1), 37, UI_GRAY_BLACK);
+    } else {
+        ui_fill_round_rect(fb, b, 38, TR_GRAY_LINE);
+    }
+    tr_text(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, s_comments_more);
+}
+
 static void draw_comments(uint8_t* fb) {
+    if (s_page + 1 == s_comment_page_count) draw_more_btn(fb);
     if (!s_comment_count) {
         tr_text(fb, TR_MARGIN, BODY_TOP + 20, 30, "服务器没有存这篇的评论", EPD_DRAW_ALIGN_LEFT, false);
         return;
@@ -706,6 +752,7 @@ static void draw_text(uint8_t* fb) {
     if (s_tab == T_BODY) draw_body(fb);
     else draw_comments(fb);
     tr_pager(fb, TEXT_PAGER_Y, s_page, text_pages());
+    if (s_more_wait) draw_more_wait(fb);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -787,8 +834,39 @@ static app_redraw_t back_to_list(void) {
     free_note();
     s_view = V_LIST;
     s_wait = false;
+    s_more_wait = false;
     s_msg[0] = 0;
     load_list();
+    return APP_REDRAW_PAGE;
+}
+
+// 让服务器现拉这篇更多的评论，弹等待框。/ Have the server fetch more of this note's comments, behind a dialog.
+static app_redraw_t load_more_comments(void) {
+    tomato_red_req_t req = {.job = TOMATO_RED_NOTE, .more_comments = true};
+    snprintf(req.id, sizeof(req.id), "%s", s_id);
+    s_more_wait = true;
+    s_more_failed = false;
+    s_msg[0] = 0;
+    if (tomato_sync_busy()) {
+        const bool yields = ours_running() || tomato_sync_preemptible();
+        if (yields) tomato_sync_cancel();
+        s_pending = req;
+        s_has_pending = true;
+        if (!yields) snprintf(s_msg, sizeof(s_msg), "后台正在下载或同步，完成后自动开始");
+    } else {
+        s_has_pending = false;
+        if (!start_req(&req)) s_more_failed = true;
+    }
+    return APP_REDRAW_PAGE;
+}
+
+// 关掉等待框；还在排队或在跑就取消（服务器那边照样会拉完存好）。/ Close the dialog; cancel if still queued or
+// running (the server still finishes and keeps the comments).
+static app_redraw_t close_more(void) {
+    if (s_has_pending && s_pending.more_comments) s_has_pending = false;
+    else if (s_job.more_comments && ours_running()) tomato_sync_cancel();
+    s_more_wait = false;
+    s_msg[0] = 0;
     return APP_REDRAW_PAGE;
 }
 
@@ -876,6 +954,7 @@ static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t tap_text(uint16_t x, uint16_t y) {
+    if (s_more_wait) return !s_more_failed && ui_rect_hit(DIALOG_RECT, x, y) ? APP_REDRAW_NONE : close_more();
     if (y < 140 && x < 420) return back_to_list();
     const int seg = tr_segment_hit(NOTE_SEG, 3, x, y);
     if (seg == 0) {
@@ -892,6 +971,8 @@ static app_redraw_t tap_text(uint16_t x, uint16_t y) {
     }
     const int pager = tr_pager_hit(TEXT_PAGER_Y, x, y);
     if (pager) return turn(pager);
+    if (s_tab == T_COMMENTS && s_page + 1 == s_comment_page_count && ui_rect_hit(more_btn(), x, y))
+        return s_comments_more ? load_more_comments() : APP_REDRAW_NONE;
     if (y < BODY_TOP || y >= BODY_BOTTOM) return APP_REDRAW_NONE;
     if (x < TR_W * 3 / 10) return turn(-1);
     if (x >= TR_W * 7 / 10) return turn(1);
@@ -908,7 +989,7 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
         if (s_view == V_TEXT) return tap_text(ev->x0, ev->y0);
         return tap_list(ctx, ev->x0, ev->y0);
     }
-    if (s_wait) return APP_REDRAW_NONE;
+    if (s_wait || s_more_wait) return APP_REDRAW_NONE;
     // 长按图片也打开存为壁纸工具条。/ A long press on the image also opens the save-as-wallpaper toolbar.
     if (ev->type == UI_GESTURE_LONG_PRESS && s_view == V_IMAGE && ev->y0 < TR_WALLSAVE_TOP && !s_ws.shown) {
         tr_wallsave_open(&s_ws);
@@ -922,6 +1003,7 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
 static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     (void)ctx;
     if (key != UI_KEY_1 || !s_items) return APP_REDRAW_NONE;
+    if (s_more_wait) return close_more();
     if (s_view != V_LIST) return back_to_list();
     if (s_wait) { drop_job(TOMATO_RED_NOTE); s_wait = false; return APP_REDRAW_PAGE; }
     return APP_REDRAW_NONE;
@@ -960,6 +1042,25 @@ static app_redraw_t job_done(bool ok) {
         }
         return APP_REDRAW_NONE;
     case TOMATO_RED_NOTE:
+        if (s_job.more_comments) {
+            if (!s_more_wait || s_view != V_TEXT || !s_note_loaded || strcmp(s_job.id, s_id)) return APP_REDRAW_NONE;
+            if (!ok) { s_more_failed = true; return APP_REDRAW_PAGE; }
+            // 重新读这篇：留在评论页，页码不超出。/ Reload the note: stay on comments within the page range.
+            char id[28];
+            snprintf(id, sizeof(id), "%s", s_id);
+            const int page = s_page;
+            if (!load_note(id)) {
+                s_view = V_LIST;
+                s_more_wait = false;
+                snprintf(s_msg, sizeof(s_msg), "笔记读不出来，检查 TF 卡");
+                load_list();
+                return APP_REDRAW_PAGE;
+            }
+            s_more_wait = false;
+            s_tab = T_COMMENTS;
+            s_page = page < s_comment_page_count ? page : s_comment_page_count - 1;
+            return APP_REDRAW_PAGE;
+        }
         if (s_wait && !strcmp(s_job.id, s_wait_id)) {
             // 失败：等待框里写原因；成功：进入笔记。/ Failure: the dialog shows why; success: open the note.
             if (ok && enter_note(s_wait_id, s_job.rec) == APP_REDRAW_PAGE) return APP_REDRAW_PAGE;
@@ -999,6 +1100,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (tomato_sync_seq() != s_job_seq) {
         s_job_active = false;
         flush_seen();
+        if (s_more_wait) { s_more_failed = true; return APP_REDRAW_PAGE; }
         if (s_view == V_LIST) { load_list(); return APP_REDRAW_PAGE; }
         return APP_REDRAW_NONE;
     }
@@ -1056,6 +1158,7 @@ static void on_enter(app_ctx_t* ctx) {
     s_msg[0] = 0;
     s_view = V_LIST;
     s_wait = false;
+    s_more_wait = false;
     s_list_page = 0;
     // 离开期间的任务：不是自己的、或已经结束，都不再跟踪。/ A job from before: stop tracking it unless ours still runs.
     if (s_job_active && !ours_running()) s_job_active = false;
@@ -1077,6 +1180,7 @@ static void on_media_lost(app_ctx_t* ctx) {
     s_job_active = false;
     s_has_pending = false;
     s_wait = false;
+    s_more_wait = false;
     free_all();
     alloc_all();
     s_view = V_LIST;
