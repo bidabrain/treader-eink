@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 未发布 / Unreleased
+
+- x 服务器 0.1.1：修正在较慢的机器（如 NAS）上登录 X 后存不住。点“登录好了”时先从还开着的浏览器里取一次登录 cookie，再让它正常关闭（最多等 60 秒），浏览器没来得及写盘也不会丢。
+  x server 0.1.1: fix the X sign-in not being kept on slower machines such as a NAS. On "done" the sign-in cookies are taken from the still-running browser before it closes cleanly (up to 60 s), so nothing is lost if the browser has not written them to disk yet.
+
 ## 2026-11-20 · Treader 0.6.0
 
 - 新增 X 标签（固件，默认隐藏，在“设置 › 底部标签”打开）和 X 安卓 App（`x/android`，1.0.0），配合新的 x 服务器（仓库 `x/`）：服务器上的浏览器登录你的 X 账号（面板里用 VNC 手动登录），按随机间隔和睡眠时段拉取“为你推荐”和“正在关注”，去广告、图片转灰度；设备和 App 离线看，回复第一次打开时服务器才去取。面板关掉“正在关注”时，设备和 App 上这个标签变灰。
