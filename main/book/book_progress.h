@@ -62,10 +62,11 @@ bool book_progress_last_path(char* out, size_t cap);
 /// 保存最后路径；空串清除自动恢复入口。/ Save last path; empty string clears automatic restore.
 esp_err_t book_progress_set_last_path(const char* path);
 
-/// 番茄更新在 TXT 末尾追加章节后，把这本书记录里的文件大小从 old_size 改成 new_size，保留章节和偏移。
-/// 记录不存在返回 ESP_OK；大小不符或路径不属于该记录则不改。
+/// 番茄更新在 TXT 末尾追加章节后，把这本书记录里的文件大小从 old_size 改成 new_size，保留章节和偏移；百分比按
+/// old_size / new_size 缩小，文件变大时最多 99%。记录不存在返回 ESP_OK；大小不符或路径不属于该记录则不改。
 /// After a Tomato update appends chapters, move this book's recorded size from old_size to new_size, keeping
-/// chapter and offset. A missing record returns ESP_OK; a size or owner mismatch leaves it unchanged.
+/// chapter and offset; the percentage scales by old_size / new_size and stays at 99% at most when the file grew.
+/// A missing record returns ESP_OK; a size or owner mismatch leaves it unchanged.
 esp_err_t book_progress_resize(const char* path, uint32_t old_size, uint32_t new_size);
 /// WebDAV 导入一条进度：沿用已有记录的阅读序号，不把这本书顶到“最近阅读”最前。
 /// Import progress from WebDAV, keeping the existing reading sequence so it does not jump to the top of "recent".

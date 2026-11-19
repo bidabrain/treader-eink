@@ -27,6 +27,7 @@ data class Progress(
  * Tomato update appends chapters only the recorded size changes (resize).
  */
 class ProgressStore(private val file: File) {
+
     private var data: JSONObject = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
 
     private val books: JSONObject get() = data.optJSONObject("books") ?: JSONObject().also { data.put("books", it) }
@@ -71,13 +72,15 @@ class ProgressStore(private val file: File) {
             .put("pct", p.pct).put("seq", p.seq))
     }
 
-    /** 番茄更新追加章节后改记录的大小，章节和偏移不动（book_progress_resize）。/ After an update appends chapters,
-     *  change only the recorded size (book_progress_resize). */
+    /** 番茄更新追加章节后改记录的大小，章节和偏移不动；百分比按 旧大小 / 新大小 缩小，文件变大时最多 99%，不再显示
+     *  “读完”（同 book_progress_resize）。/ After an update appends chapters, change the recorded size keeping chapter
+     *  and offset; the percentage scales by old / new size and stays at 99% at most when the file grew, so it no longer
+     *  shows "finished" (as book_progress_resize). */
     @Synchronized
     fun resize(key: String, oldSize: Long, newSize: Long) {
         val p = raw(key) ?: return
         if (p.size != oldSize) return
-        put(key, p.copy(size = newSize))
+        put(key, p.copy(size = newSize, pct = rescaledPct(p.pct, oldSize, newSize)))
         flush()
     }
 
@@ -102,5 +105,11 @@ class ProgressStore(private val file: File) {
     companion object {
         /** 固件里的书路径。/ The firmware's path for a book file. */
         fun key(fileName: String) = "/sdcard/books/$fileName"
+
+        /** 文件从 oldSize 变成 newSize 后的百分比：变大时按比例缩小、最多 99。/ The percentage after the file goes
+         *  from oldSize to newSize: scaled down when it grew, 99 at most. */
+        fun rescaledPct(pct: Int, oldSize: Long, newSize: Long): Int =
+            if (newSize > oldSize && newSize > 0) (pct.coerceIn(0, 100).toLong() * oldSize / newSize).toInt().coerceAtMost(99)
+            else pct
     }
 }

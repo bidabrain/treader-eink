@@ -3,8 +3,12 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-20 · Treader 0.6.1
 
+- 修正（固件 0.6.1、番茄安卓 App 1.0.2）：追更到最后的书“下载全部更新”后，书库和番茄书架一直显示“读完”。下载更新时进度百分比按新的全书大小重算，有新章节就最多 99%，位置还是接着上次读的地方；已经显示“读完”的书打开翻一页就恢复正常。
+- 番茄安卓 App 1.0.2：修正看书时有时点屏幕翻不了页（跨章以后手势还在用上一章的排版，会跳页或停在最后一页点了没反应）。
+  Tomato Android app 1.0.2: fix taps sometimes not turning pages while reading (after crossing a chapter the gestures still used the previous chapter's layout, skipping pages or getting stuck on the last page).
+  Fix (firmware 0.6.1, Tomato Android app 1.0.2): books read to the end kept showing "finished" in the library and Tomato shelf after "download all updates". The progress percentage is now rescaled to the new book size when updates download, at most 99% when new chapters arrived, and reading still resumes where you left off; books already showing "finished" recover after opening and turning one page.
 - x 服务器 0.1.4：每次拉完（列表或回复）把浏览器切到空白页。浏览器和登录都还在，下次照常拉；两次拉取之间 X 的网页不再在后台定时访问，内存也降下来。
   x server 0.1.4: after every fetch (lists or replies) the browser switches to a blank page. The browser and sign-in stay for the next fetch; between fetches X's page no longer polls in the background and memory drops.
 - x 服务器 0.1.3：修正拉取“为你推荐”“正在关注”时报错 `NameError: name 'started' is not defined`（0.1.0 起取回复的 45 秒上限误写进了拉列表的代码）。

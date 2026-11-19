@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,6 +106,12 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
                 dir < 0 && r.chapter > 0 -> { r.chapter -= 1; r.off = 0; r.toEnd = true }
             }
         }
+        // 手势只在开始时绑定一次：用 rememberUpdatedState 让它每次都调到最新的 turn（带着这一章的排版）。否则跨章后还在用
+        // 上一章的页数和页起点，会跳页，或者停在最后一页点了没反应。
+        // Gestures bind once: rememberUpdatedState makes them always call the latest turn (with this chapter's layout).
+        // Otherwise after crossing a chapter they kept the previous chapter's page count and starts, skipping pages or
+        // sticking on the last page with taps doing nothing.
+        val turnNow by rememberUpdatedState { dir: Int -> turn(dir) }
         LaunchedEffect(turnSignal.value) { turnSignal.value.second.let { if (it != 0) turn(it) } }
         // 自动翻页：3～30 秒一页，开着工具条时暂停，到书尾停下。/ Auto turn every 3-30 s; paused with a panel open.
         LaunchedEffect(autoLevel, panel, r.chapter, r.off) {
@@ -118,12 +125,12 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
                 detectTapGestures { p ->
                     when {
                         panel != Panel.NONE -> panel = Panel.NONE
-                        p.x < size.width * 0.3f -> turn(-1)
-                        p.x > size.width * 0.7f -> turn(1)
+                        p.x < size.width * 0.3f -> turnNow(-1)
+                        p.x > size.width * 0.7f -> turnNow(1)
                         else -> panel = Panel.TOOLS
                     }
                 }
-            }.swipeTurn { turn(it) }
+            }.swipeTurn { turnNow(it) }
         ) {
             layout.draw(drawContext.canvas.nativeCanvas, r.page, marginPx, topPx, rule)
         }

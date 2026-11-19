@@ -248,10 +248,18 @@ esp_err_t book_progress_resize(const char* path, uint32_t old_size, uint32_t new
     err = nvs_get_blob(h, key, data, &len);
     if (err == ESP_OK && (!record_valid(data, len) || strcmp((const char*)data + HEADER_SIZE, path) != 0 ||
         get32(data + 4) != old_size)) err = ESP_ERR_INVALID_STATE;
-    // 只改文件大小，章节和章内偏移照旧；不动序号，更新不算“最近读过”。
-    // Change only the size; chapter and offset stay, and the sequence is untouched so an update is not a "recent read".
+    // 改文件大小，章节和章内偏移照旧；不动序号，更新不算“最近读过”。百分比按位置占全书的比例跟着重算：文件变大说明
+    // 后面有新章节，最多 99%，不再显示“读完”。
+    // Change the size; chapter and offset stay, and the sequence is untouched so an update is not a "recent read". The
+    // percentage is rescaled as the position's share of the book: a larger file means new chapters follow, so it stays at
+    // 99% at most and no longer shows "finished".
     if (err == ESP_OK) {
         put32(data + 4, new_size);
+        if (new_size > old_size) {
+            const uint32_t pct = data[15] > 100 ? 100 : data[15];
+            const uint32_t scaled = (uint32_t)((uint64_t)pct * old_size / new_size);
+            data[15] = (uint8_t)(scaled > 99 ? 99 : scaled);
+        }
         err = nvs_set_blob(h, key, data, len);
     }
     if (err == ESP_OK) err = nvs_commit(h);
