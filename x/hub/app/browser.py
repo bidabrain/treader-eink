@@ -451,10 +451,8 @@ class XBrowser:
             while not bodies and not limited and time.monotonic() < deadline:
                 await asyncio.sleep(0.5)
             await page.mouse.move(random.randint(500, 800), random.randint(300, 600))
-            # 总共不超过 DETAIL_BUDGET_S 秒，免得设备和 App 等超时。/ Stay within DETAIL_BUDGET_S seconds so the device
-            # and app do not time out.
             for _ in range(scrolls):
-                if limited or time.monotonic() - started > DETAIL_BUDGET_S:
+                if limited:
                     break
                 await _pause(3.0, 9.0)
                 have = len(bodies)
@@ -478,8 +476,10 @@ class XBrowser:
                 await asyncio.sleep(0.5)
             await _pause(2.0, 4.0)
             await page.mouse.move(random.randint(500, 800), random.randint(300, 600))
+            # 总共不超过 DETAIL_BUDGET_S 秒，免得设备和 App 等超时。/ Stay within DETAIL_BUDGET_S seconds so the device
+            # and app do not time out.
             for _ in range(scrolls):
-                if limited:
+                if limited or time.monotonic() - started > DETAIL_BUDGET_S:
                     break
                 have = len(bodies)
                 for _ in range(random.randint(2, 4)):

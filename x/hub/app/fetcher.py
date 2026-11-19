@@ -125,7 +125,7 @@ def request(feed: str) -> tuple[bool, str]:
         return True, f"{config.FEEDS[feed]}已经在排队或正在拉"
     _manual.append(feed)
     wake()
-    return True, f"已开始拉取{config.FEEDS[feed]}" if not state.running else f"排在当前拉取之后"
+    return True, f"已开始拉取{config.FEEDS[feed]}" if not state.running else "排在当前拉取之后"
 
 
 def resume() -> None:

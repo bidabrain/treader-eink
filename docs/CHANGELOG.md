@@ -5,6 +5,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- x 服务器 0.1.3：修正拉取“为你推荐”“正在关注”时报错 `NameError: name 'started' is not defined`（0.1.0 起取回复的 45 秒上限误写进了拉列表的代码）。
+  x server 0.1.3: fix For You and Following fetches failing with `NameError: name 'started' is not defined` (the 45 s cap for replies had landed in the list-fetch code).
 - x 服务器 0.1.2：修正在较慢的机器（如 NAS）上登录 X 后存不住。服务器盯着浏览器资料里的 Cookies 库，登录一写进硬盘就自动收尾；点“登录好了”时也先等它写盘（最多约 45 秒），再让浏览器正常退出（最多等 90 秒），不再提前强杀。登录窗口仍是不带任何调试接口的普通 Chrome（0.1.1 加的调试管道会让 X 暂时限制登录，已去掉）。
   x server 0.1.2: fix the X sign-in not being kept on slower machines such as a NAS. The server watches the profile's Cookies database and finishes as soon as the sign-in is on disk; "done" also waits for that write (about 45 s at most) and then lets the browser exit cleanly (up to 90 s) instead of killing it early. The sign-in window stays an ordinary Chrome with no debugging interface (the debugging pipe added in 0.1.1 made X limit sign-ins and is gone).
 
