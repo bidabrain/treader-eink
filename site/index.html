@@ -179,12 +179,14 @@
 
 <header class="hero" id="top">
   <div class="wrap">
-    <span class="eyebrow">小纸 Pico · Read Pico 开源阅读固件</span>
+    <span class="eyebrow">小纸 Pico · Read Pico 开源阅读固件 · 安卓 App</span>
     <h1>为墨水屏<br>重新设计的阅读系统</h1>
     <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
+    <p class="sub">不只是 Pico 上的固件：番茄小说、小红书、微博各有一个安卓 App，黑白灰度、按页翻、和设备一样的排版，在手机上也是墨水屏的阅读体验；番茄的阅读进度和书架还能用 WebDAV 和 Pico 互通。</p>
     <div class="cta">
       <a class="btn solid" href="#flash">在线刷机</a>
       <a class="btn" href="#download"><svg><use href="#i-down"/></svg>下载固件</a>
+      <a class="btn" href="#eco">安卓 App</a>
       <a class="btn" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>查看源码</a>
     </div>
   </div>
@@ -207,7 +209,7 @@
     <div class="grid">
       <div class="feat"><div class="ic"><svg><use href="#i-book"/></svg></div><h3>书库与阅读</h3><p>TXT、EPUB 书架和封面，拼音首字母搜索；行距、段距、页边距都能调，逐书记住进度，定时自动翻页。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-comic"/></svg></div><h3>漫画</h3><p>CBZ 按系列整理，一屏一页，一话看完自动接下一话；网页上传时先转成灰度，翻页更快。</p></div>
-      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。</p><a class="tag" href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">需要自建下载服务器 ›</a></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。手机上有同样功能的安卓 App。</p><a class="tag" href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">需要自建下载服务器 ›</a></div>
       <div class="feat"><div class="ic"><svg><use href="#i-xhs"/></svg></div><h3>小红书</h3><p>关注博主和首页推荐，两列封面卡片；看图一屏一张，再看正文和评论，大图还能存成锁屏壁纸。</p><span class="tag">经自建 rednote 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-weibo"/></svg></div><h3>微博</h3><p>关注的人和热门，卡片排版、转发灰框、图片宫格；长微博补全文，评论按需取。不用登录微博。</p><span class="tag">经自建 weibo 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
@@ -239,15 +241,16 @@
     <div class="head">
       <small>ECOSYSTEM</small>
       <h2>自己的服务器，自己的数据</h2>
-      <p>设备不直接访问番茄、小红书和微博，只连你自己用 Docker 部署的服务器，每个都带网页面板和 Cloudflare 隧道；小红书和微博的服务器还会把图片处理成墨水屏能直接显示的灰度图。手机上也有同样功能的安卓 App。</p>
+      <p>设备不直接访问番茄、小红书和微博，只连你自己用 Docker 部署的服务器，每个都带网页面板和 Cloudflare 隧道；小红书和微博的服务器还会把图片处理成墨水屏能直接显示的灰度图。三个服务器各配一个安卓 App，功能和界面照固件做：黑白灰度、按页翻，没有 Pico 也能在手机上用，有 Pico 就两边一起用。</p>
     </div>
     <div class="eco">
       <div class="feat">
         <div class="ic"><svg><use href="#i-tomato"/></svg></div>
         <h3>tomato · 番茄下载服务器</h3>
-        <ul><li>官方 Tomato-Novel-Downloader + 面板，一个 compose 部署</li><li>设备密码在面板里管，外网只放行设备接口</li><li>书存在宿主机，默认格式自动设成 TXT</li></ul>
+        <ul><li>官方 Tomato-Novel-Downloader + 面板，一个 compose 部署</li><li>设备密码在面板里管，外网只放行设备接口</li><li>安卓 App：书库、搜书下载、书城、按页阅读，进度和书架用 WebDAV 和 Pico 互通</li></ul>
         <div class="row">
-          <a class="btn small solid" href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">部署说明</a>
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">部署说明</a>
+          <a class="btn small solid" data-release="tomato-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
         </div>
       </div>
       <div class="feat">

@@ -8,7 +8,9 @@
 
 它基于 MindReset 官方的 [Read Pico 示例固件](https://github.com/MindReset/read_pico_firmware)，把演示页换成了一套完整的阅读系统，并移植了安卓版 [番茄阅读器 Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) 的核心功能（不含 TTS）和 [虎扑 X](https://github.com/bidabrain/hupuX) 的浏览部分。
 
-> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore, read-only Hupu browsing, Xiaohongshu and Weibo through self-hosted servers, and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. The documentation is in Chinese.
+不只是固件：番茄小说、小红书、微博各有一个**安卓 App**（[tomato/android](tomato/android/README.md)、[rednote/android](rednote/android/README.md)、[weibo/android](weibo/android/README.md)），功能和界面照固件做——黑白灰度、按页翻、同样的排版，在手机上也是墨水屏的阅读体验；番茄 App 的阅读进度和书架还能用 WebDAV 和设备互通。
+
+> Treader is an e-paper reading firmware for the Read Pico (ESP32-S3, 4.7" 16-gray panel): local TXT/EPUB reading, Tomato novel search, download and updates through a self-hosted server, a rank-based bookstore, read-only Hupu browsing, Xiaohongshu and Weibo through self-hosted servers, and WebDAV progress sync. It is built on MindReset's Read Pico demo firmware. Companion Android apps for Tomato, Xiaohongshu and Weibo mirror the firmware's black-and-white, paged e-ink look on a phone. The documentation is in Chinese.
 
 > ⚠️ 非官方固件，与 MindReset、番茄小说没有隶属关系。刷机前请备份原固件。
 
