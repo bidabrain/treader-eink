@@ -5,6 +5,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- x 服务器 0.1.4：每次拉完（列表或回复）把浏览器切到空白页。浏览器和登录都还在，下次照常拉；两次拉取之间 X 的网页不再在后台定时访问，内存也降下来。
+  x server 0.1.4: after every fetch (lists or replies) the browser switches to a blank page. The browser and sign-in stay for the next fetch; between fetches X's page no longer polls in the background and memory drops.
 - x 服务器 0.1.3：修正拉取“为你推荐”“正在关注”时报错 `NameError: name 'started' is not defined`（0.1.0 起取回复的 45 秒上限误写进了拉列表的代码）。
   x server 0.1.3: fix For You and Following fetches failing with `NameError: name 'started' is not defined` (the 45 s cap for replies had landed in the list-fetch code).
 - x 服务器 0.1.2：修正在较慢的机器（如 NAS）上登录 X 后存不住。服务器盯着浏览器资料里的 Cookies 库，登录一写进硬盘就自动收尾；点“登录好了”时也先等它写盘（最多约 45 秒），再让浏览器正常退出（最多等 90 秒），不再提前强杀。登录窗口仍是不带任何调试接口的普通 Chrome（0.1.1 加的调试管道会让 X 暂时限制登录，已去掉）。

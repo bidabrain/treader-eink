@@ -391,6 +391,15 @@ class XBrowser:
         if path.startswith(("/login", "/i/flow/login", "/logout", "/i/flow/signup")) or path in ("", "/"):
             raise LoginRequired("没有登录或登录已失效")
 
+    async def _blank(self, page) -> None:
+        """拉完切到空白页：浏览器和登录都还在，但 X 的网页不再在后台定时访问，内存也降下来。失败不影响拉取结果。
+        After a fetch switch to a blank page: the browser and sign-in stay, but X's page stops polling in the
+        background and memory drops. A failure here never affects the fetch result."""
+        try:
+            await page.goto("about:blank", wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+
     async def _capture(self, url: str, op: str, work: Callable, first_wait: float = 30.0) -> list[dict]:
         """打开 url，收集名字是 op 的 GraphQL 返回，再跑 work(page, bodies)。/ Open url, collect GraphQL responses
         named op, then run work(page, bodies)."""
@@ -427,8 +436,10 @@ class XBrowser:
             self._check(page)
         finally:
             page.remove_listener("response", on_response)
+            # 先把收到的返回读完，再离开页面。/ Finish reading the responses before leaving the page.
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
+            await self._blank(page)
         self.signed_in_cache = await self._has_auth()
         if limited and not bodies:
             raise RateLimited("X 限流（429）")
