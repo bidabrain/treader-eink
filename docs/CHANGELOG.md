@@ -5,6 +5,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 小红书、微博安卓 App（小红书 1.4.0、微博 1.3.0）：看大图时点中间弹出“保存图片”，把屏幕上这张图存进手机相册（`Pictures/Treader 小红书`、`Pictures/Treader 微博`）。存的是服务器处理好的灰度图，长图只存当前这一屏；服务器不用升级。
+  Xiaohongshu and Weibo Android apps (Xiaohongshu 1.4.0, Weibo 1.3.0): tapping the middle of a full image shows "Save image", which stores the image on screen in the phone's gallery (`Pictures/Treader 小红书`, `Pictures/Treader 微博`). It saves the server's grayscale version, and only the current screen of a split long image; no server upgrade needed.
 - 番茄安卓 App 1.0.1：修正书库里同时有读过和没读过的书时，一打开就闪退。
   Tomato Android app 1.0.1: fix a crash on launch when the library holds both read and unread books.
 - 新增番茄安卓 App（`tomato/android`，1.0.0）：功能和界面照固件的书库与番茄标签——搜书、下载 TXT、检查更新、下载全部更新、书城、导入 TXT / EPUB、按页阅读（目录、字号、排版、自动翻页）。书源解析逐字节照搬固件，阅读进度和番茄书架用 WebDAV 和小纸 Pico 互通。

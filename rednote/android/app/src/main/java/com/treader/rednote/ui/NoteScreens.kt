@@ -19,6 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -54,6 +58,8 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
             k >= 0 -> vm.screen = s.copy(index = k)
         }
     }
+    // 点中间开关“保存图片”栏，翻页就收起。/ A middle tap toggles the save bar; turning the page hides it.
+    var bar by remember(s.index) { mutableStateOf(false) }
     // 预取下一张。/ Prefetch the next image.
     LaunchedEffect(s.index) {
         if (s.index + 1 < n.images)
@@ -68,9 +74,11 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
             )
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(3f).fillMaxHeight().noRippleClick { turn(-1) })
-                Box(Modifier.weight(4f).fillMaxHeight())
+                Box(Modifier.weight(4f).fillMaxHeight().noRippleClick { bar = !bar })
                 Box(Modifier.weight(3f).fillMaxHeight().noRippleClick { turn(1) })
             }
+            if (bar) SaveBar(vm.images, vm.api.imageUrl(n.id, s.index + 1), "xhs_${n.id}_${s.index + 1}.jpg", "Treader 小红书",
+                Modifier.align(Alignment.BottomCenter))
         }
         HLine(soft = false)
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 安卓 8、9 存图进相册要它；10 以上走 MediaStore 不用。/ Saving images on Android 8 and 9; 10+ uses MediaStore. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <!-- 局域网里的 weibo 服务器是 http，要允许明文。/ The LAN weibo server speaks plain http. -->
     <application
