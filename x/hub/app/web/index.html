@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>X 面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" method="post" action="#" onsubmit="return false" class="card narrow">
+    <h1>X 面板</h1>
+    <p id="gateHint" class="muted"></p>
+    <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
+    <button type="submit">进入</button>
+    <p id="gateMsg" class="err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <b>X 面板</b><span id="ver" class="muted"></span>
+    <nav>
+      <a data-tab="home" class="on">概览</a><a data-tab="xlogin">登录 X</a><a data-tab="posts">内容</a>
+      <a data-tab="settings">设置</a><a data-tab="device">设备与外网</a><a data-tab="logs">日志</a>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <main>
+    <section data-panel="home">
+      <div class="card">
+        <h2>状态</h2>
+        <p id="acct"></p>
+        <p id="pauseLine"></p>
+      </div>
+      <div class="feed" id="feeds"></div>
+      <div class="grid" id="stats"></div>
+    </section>
+
+    <section data-panel="xlogin" hidden>
+      <div class="card">
+        <h2>登录 X</h2>
+        <p class="muted">点“打开登录浏览器”，下面会出现服务器上那个浏览器的画面，直接在里面登录（两步验证、验证码都在这里做）。
+          登录完看到首页后点“登录好了”，服务器会保存登录并关闭画面；以后失效或要求验证时，再来这里登录一次。
+          这个窗口是一个普通的 Chrome，没有任何自动化控制。</p>
+        <p id="loginState"></p>
+        <p><button id="loginOpen">打开登录浏览器</button> <button id="loginStop">登录好了</button>
+          <a id="loginPop" class="muted" href="#" target="_blank" hidden>在新窗口打开画面</a></p>
+        <iframe id="vncFrame" title="服务器浏览器" hidden></iframe>
+      </div>
+      <form id="cookieForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>备用：导入 cookie</h2>
+        <p class="muted">登录画面用不了时再用这个。粘贴 Cookie-Editor 导出的 JSON、cookies.txt，或 <code>auth_token=…; ct0=…</code>。
+          注意：cookie 来自别的网络时，X 更容易要求验证。</p>
+        <textarea name="text" placeholder="粘贴到这里"></textarea>
+        <button>导入</button> <span id="cookieMsg"></span>
+      </form>
+      <div class="card">
+        <h2>清除登录</h2>
+        <p class="muted">只清掉服务器这个浏览器里的 X 登录，不影响你在手机和电脑上的登录。</p>
+        <button id="signout" class="ghost">清除服务器上的登录</button>
+      </div>
+    </section>
+
+    <section data-panel="posts" hidden>
+      <div class="card"><h2>已拉到的推文</h2><p class="muted">广告已去掉；图片已经转成设备用的灰度 JPEG。</p><div id="postGrid" class="notes"></div></div>
+    </section>
+
+    <section data-panel="settings" hidden>
+      <form id="setForm" method="post" action="#" onsubmit="return false" class="card inline">
+        <h2>正在关注总开关</h2>
+        <label><input name="following_on" type="checkbox"> 拉取正在关注</label>
+        <p class="muted">关掉后正在关注手动、自动都不拉，只拉为你推荐；设备和 App 会探测到，把“正在关注”标签变灰、不能切换。已存的不删。</p>
+        <h2>自动拉取</h2>
+        <p class="muted">每次拉完，下一次在最小和最大间隔之间随机取，不会准点。最小间隔不低于 <span id="floor"></span> 分钟。手动拉取不受这些限制。</p>
+        <label><input name="foryou_enabled" type="checkbox"> 为你推荐：每隔 <input name="foryou_min" type="number"> ～ <input name="foryou_max" type="number"> 分钟</label>
+        <label><input name="following_enabled" type="checkbox"> 正在关注：每隔 <input name="following_min" type="number"> ～ <input name="following_max" type="number"> 分钟</label>
+        <label>每次往下滚 <input name="scroll_min" type="number" min="1" max="10"> ～ <input name="scroll_max" type="number" min="1" max="10"> 次（随机，次数越多拉得越多）</label>
+        <h2>回复</h2>
+        <label>打开一条推文取回复时往下滚 <input name="reply_scroll_min" type="number" min="0" max="15"> ～ <input name="reply_scroll_max" type="number" min="0" max="15"> 次（随机）</label>
+        <label>每条推文最多保留 <input name="reply_max" type="number" min="5" max="200"> 条回复</label>
+        <p class="muted">滚得越多拿到的回复越多，但设备和 App 第一次打开回复要等更久（每次约多 5～10 秒；总共最多约 45 秒，到时间就停）。只影响以后第一次打开的推文，已经取过的不会重取。</p>
+        <h2>睡眠时段</h2>
+        <label><input name="sleep_enabled" type="checkbox"> 从 <input name="sleep_start" type="text" placeholder="01:00"> 到 <input name="sleep_end" type="text" placeholder="08:00">，自动拉取全部暂停</label>
+        <p class="muted">可以跨零点。醒来后第一次拉取会随机推迟一会儿，不会一到点就拉。时区：服务器的 TZ（默认 Asia/Shanghai）。</p>
+        <h2>内容</h2>
+        <label>带视频的推文 <select name="video"><option value="cover">留下，只存封面</option><option value="skip">不要</option></select></label>
+        <label>每条最多几张图（含引用推文） <input name="max_images" type="number" min="1"></label>
+        <h2>缓存</h2>
+        <label>保留天数 <input name="keep_days" type="number" min="1"></label>
+        <label>为你推荐最多留几条 <input name="foryou_keep" type="number" min="50"></label>
+        <label>总大小上限（MB） <input name="max_mb" type="number" min="100"></label>
+        <h2>代理</h2>
+        <p class="muted">服务器访问不了 X 时填。浏览器和图片下载都走它，例如 <code>http://192.168.1.2:7890</code> 或 <code>socks5://192.168.1.2:1080</code>（Docker Desktop 上本机代理写 <code>host.docker.internal</code>）。改了会在浏览器空闲时重启。</p>
+        <input name="proxy" type="text" style="width:100%" placeholder="留空表示直连">
+        <p><button>保存</button> <span id="setMsg"></span></p>
+      </form>
+      <form id="pwForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>面板密码</h2>
+        <input id="pwNew" type="password" placeholder="新密码，至少 8 位" autocomplete="new-password" required>
+        <button>修改</button> <span id="pwMsg"></span>
+      </form>
+    </section>
+
+    <section data-panel="device" hidden>
+      <div class="card">
+        <h2>设备</h2>
+        <p>地址：<code id="devUrl"></code>（局域网）<span id="devTunnelUrl"></span></p>
+        <p>令牌：<code id="devToken"></code> <button id="rotate" class="ghost">换一个</button></p>
+        <p class="muted">换令牌后，设备上要重新填。</p>
+      </div>
+      <div class="card">
+        <h2>外网访问（Cloudflare Tunnel）</h2>
+        <p class="muted">隧道只转发设备接口（/api/device/），面板和登录画面不会出现在外网。</p>
+        <label><input type="radio" name="tmode" value="off"> 关闭</label>
+        <label><input type="radio" name="tmode" value="quick"> 快速隧道（随机 trycloudflare.com 地址，重启会变）</label>
+        <label><input type="radio" name="tmode" value="token"> 隧道令牌（固定域名）</label>
+        <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌（服务填 http://localhost:8093）">
+        <button id="tApply">保存并应用</button>
+        <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="logs" hidden>
+      <div class="card"><h2>日志</h2><pre id="logBox"></pre></div>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

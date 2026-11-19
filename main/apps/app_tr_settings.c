@@ -70,9 +70,9 @@ typedef enum {
     P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SYNC, P_POWER, P_ABOUT
 } page_t;
 
-// 自建服务器页：小红书和微博共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu and Weibo, picked by
-// s_srv.
-typedef enum { S_RED, S_WB, S_COUNT } srv_t;
+// 自建服务器页：小红书、微博和 X 共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu, Weibo and X,
+// picked by s_srv.
+typedef enum { S_RED, S_WB, S_X, S_COUNT } srv_t;
 
 static const struct {
     const char* name;      // 页面和提示里的称呼 / Name in titles and hints
@@ -91,6 +91,8 @@ static const struct {
                "篇"},
     [S_WB] = {"微博", "weibo", "http://192.168.1.20:8092", TR_ICON_WEIBO, tomato_wb_config_load,
               tomato_wb_config_save, tomato_wb_config_revision, tomato_wb_list_limit, tomato_wb_list_limit_set, "条"},
+    [S_X] = {"X", "x", "http://192.168.1.20:8093", TR_ICON_X, tomato_x_config_load, tomato_x_config_save,
+             tomato_x_config_revision, tomato_x_list_limit, tomato_x_list_limit_set, "条"},
 };
 
 // 首页分类。/ Home categories.
@@ -138,12 +140,12 @@ static const row_t POWER_ROWS[] = {
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define WEB_ROW_H 84
 #define WEB_BOX (EpdRect){TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 480}
-// 内容来源页：三个来源。/ Content sources page: three sources.
-#define SOURCES 3
+// 内容来源页：番茄加各个自建服务器。/ Content sources page: Tomato plus each self-hosted server.
+#define SOURCES (1 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
 #define TAB_TOP 270
-#define TAB_H 100
+#define TAB_H 90
 
 static page_t s_page;
 static int s_open_source = -1;  // 别的页要求直接打开某个来源（tr_tab_t）/ Another page asked for a source (tr_tab_t)
@@ -409,9 +411,12 @@ static void start_test(srv_t which) {
     if (which == S_RED) {
         const tomato_red_req_t req = {.job = TOMATO_RED_TEST};
         err = tomato_sync_start_red(&req);
-    } else {
+    } else if (which == S_WB) {
         const tomato_wb_req_t req = {.job = TOMATO_WB_TEST};
         err = tomato_sync_start_wb(&req);
+    } else {
+        const tomato_x_req_t req = {.job = TOMATO_X_TEST};
+        err = tomato_sync_start_x(&req);
     }
     if (err == ESP_OK) {
         s_testing = true;
@@ -452,8 +457,9 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     }
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
     case C_SOURCES:
-        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置",
-                 s_has_host[S_RED] ? "已设置" : "未设置", s_has_host[S_WB] ? "已设置" : "未设置");
+        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置",
+                 s_has_host[S_RED] ? "已设置" : "未设置", s_has_host[S_WB] ? "已设置" : "未设置",
+                 s_has_host[S_X] ? "已设置" : "未设置");
         break;
     case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
     case C_POWER:
@@ -996,8 +1002,8 @@ static void on_enter(app_ctx_t* ctx) {
     s_page = s_open_transfer ? P_TRANSFER : P_HOME;
     if (s_open_source == TR_TAB_TOMATO) {
         s_page = P_SRC_TOMATO;
-    } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO) {
-        s_srv = s_open_source == TR_TAB_XHS ? S_RED : S_WB;
+    } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO || s_open_source == TR_TAB_X) {
+        s_srv = s_open_source == TR_TAB_XHS ? S_RED : s_open_source == TR_TAB_WEIBO ? S_WB : S_X;
         s_page = P_SRC_SERVER;
     } else if (s_open_source >= 0) {
         s_page = P_SOURCES;

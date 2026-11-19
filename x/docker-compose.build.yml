@@ -1,0 +1,7 @@
+# 从源码构建 hub（开发或镜像还没发布时）：
+# Build the hub from source (development, or before the image is published):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  hub:
+    image: treader-x:local
+    build: ./hub

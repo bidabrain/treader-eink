@@ -1,0 +1,19 @@
+# x：服务器上的浏览器登录你的 X 账号（在面板里用 VNC 手动登录），按随机间隔拉取“为你推荐”和“正在关注”，
+# 图片处理成墨水屏用的灰度图，给小纸 Pico 和安卓 App 来取。
+# x: a browser on the server signed in to your X account (by hand over VNC in the panel) fetches For You and Following
+# at random intervals, turns images into e-ink grayscale, and serves them to the Read Pico and the Android app.
+#
+# 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:8093
+services:
+  hub:
+    image: ghcr.io/bidabrain/treader-x:latest
+    container_name: x-hub
+    restart: unless-stopped
+    # 有界面的 Chromium 需要较大的共享内存。/ The headed Chromium needs a larger /dev/shm.
+    shm_size: 1gb
+    ports:
+      - "${X_BIND:-0.0.0.0}:${X_PORT:-8093}:8093"
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/data

@@ -29,8 +29,14 @@
 // posts lose their full images.
 #define POSTS_BYTES_MAX (200ull * 1024 * 1024)
 #define TIMEOUT_MS 15000
-// 评论第一次请求时服务器要去微博取。/ The first comments request makes the server ask Weibo.
-#define SLOW_TIMEOUT_MS 45000
+// 评论第一次请求时服务器要去微博取：设备用 wait=0 让它在后台取，自己隔几秒问一次（每次马上回话，前台随时能插队），
+// 最多等这么久。/ The first comments request makes the server ask Weibo: the device passes wait=0 so it fetches in
+// the background and asks every few seconds (each call answers at once, so the foreground can always cut in), for
+// at most this long.
+#define LIVE_MAX_MS 120000
+// 每次请求的超时：新服务器马上回话；旧服务器不认 wait=0、还会照旧等着取完，留足时间。/ Per-request timeout: new
+// servers answer at once; old ones ignore wait=0 and still answer when done, so leave room.
+#define LIVE_TIMEOUT_MS 45000
 
 /* ---- 设置 / Settings ---- */
 
@@ -275,9 +281,9 @@ static esp_err_t run_comments(const tomato_srv_t* srv, const tomato_wb_req_t* r,
     char sid[24], dir[64], file[96], path[112];
     tomato_safe_id(r->id, sid, sizeof(sid));
     if (!sid[0]) { snprintf(msg, cap, "微博编号不对"); return ESP_ERR_INVALID_ARG; }
-    snprintf(path, sizeof(path), "/api/device/v1/post/%s/comments", sid);
+    snprintf(path, sizeof(path), "/api/device/v1/post/%s/comments?wait=0", sid);
     cJSON* root = NULL;
-    esp_err_t err = tomato_srv_json(srv, path, SLOW_TIMEOUT_MS, cancel, &root, msg, cap);
+    esp_err_t err = tomato_srv_poll(srv, path, NULL, "pending", LIVE_TIMEOUT_MS, LIVE_MAX_MS, cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
     cJSON* out = cJSON_CreateObject();
     cJSON* list = cJSON_AddArrayToObject(out, "list");

@@ -38,12 +38,14 @@
 // caches); past it the oldest notes lose their full images.
 #define NOTES_BYTES_MAX (200ull * 1024 * 1024)
 #define TIMEOUT_MS 15000
-// 点开推荐时服务器要现开小红书，最长要等半分钟以上。/ Opening a recommendation makes the server visit Xiaohongshu live.
-#define SLOW_TIMEOUT_MS 60000
-// 加载更多评论：服务器每次最多等 20 秒就回话，设备接着问，最多问这么多次。/ Loading more comments: the server answers
-// within about 20 s each time and the device asks again, up to this many times.
-#define MORE_TIMEOUT_MS 40000
-#define MORE_POLLS 15
+// 刷新推荐、点开推荐、加载更多评论时服务器要现去小红书：设备用 wait=0 让它在后台做，自己隔几秒问一次（每次马上回话，
+// 前台随时能插队），最多等这么久。/ Refreshing or opening recommendations and loading more comments make the server
+// visit Xiaohongshu live: the device passes wait=0 so it works in the background and asks every few seconds (each call
+// answers at once, so the foreground can always cut in), for at most this long.
+#define LIVE_MAX_MS 180000
+// 每次请求的超时：新服务器马上回话；旧服务器不认 wait=0、还会照旧等着做完，留足时间。/ Per-request timeout: new
+// servers answer at once; old ones ignore wait=0 and still answer when done, so leave room.
+#define LIVE_TIMEOUT_MS 60000
 
 /* ---- 设置 / Settings ---- */
 
@@ -93,6 +95,12 @@ static esp_err_t red_json(const tomato_red_config_t* cfg, const char* path, int 
                           const volatile bool* cancel, cJSON** out, char* msg, size_t cap) {
     const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
     return tomato_srv_json(&srv, path, timeout_ms, cancel, out, msg, cap);
+}
+
+static esp_err_t red_poll(const tomato_red_config_t* cfg, const char* first, const char* again, const char* key,
+                          const volatile bool* cancel, cJSON** out, char* msg, size_t cap) {
+    const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
+    return tomato_srv_poll(&srv, first, again, key, LIVE_TIMEOUT_MS, LIVE_MAX_MS, cancel, out, msg, cap);
 }
 
 static esp_err_t fetch_image(const tomato_red_config_t* cfg, const char* path, const char* dest,
@@ -237,8 +245,8 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* c
 static esp_err_t run_rec(const tomato_red_config_t* cfg, bool refresh, const volatile bool* cancel,
                          tomato_hupu_progress_t progress, char* msg, size_t cap) {
     cJSON* root = NULL;
-    esp_err_t err = red_json(cfg, refresh ? "/api/device/v1/rec?refresh=1" : "/api/device/v1/rec", SLOW_TIMEOUT_MS,
-                             cancel, &root, msg, cap);
+    esp_err_t err = red_poll(cfg, refresh ? "/api/device/v1/rec?refresh=1&wait=0" : "/api/device/v1/rec?wait=0",
+                             "/api/device/v1/rec?wait=0", "pending", cancel, &root, msg, cap);
     if (err != ESP_OK) return err;
     cJSON* out = cJSON_CreateObject();
     const cJSON* fa = cJSON_GetObjectItemCaseSensitive(root, "fetched_at");
@@ -303,21 +311,16 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
         cJSON* root = NULL;
         esp_err_t err;
         if (r->more_comments) {
-            // 先让服务器开始拉，再一直问到拉完。/ Ask the server to start, then keep asking until it is done.
-            snprintf(path, sizeof(path), "/api/device/v1/note/%s/more_comments?start=1", sid);
-            for (int poll = 0;; poll++) {
-                err = red_json(cfg, path, MORE_TIMEOUT_MS, cancel, &root, msg, cap);
-                if (err != ESP_OK) return err;
-                if (!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "loading"))) break;
-                cJSON_Delete(root);
-                root = NULL;
-                if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
-                if (poll + 1 >= MORE_POLLS) { snprintf(msg, cap, "服务器拉评论太久了，稍后再试"); return ESP_ERR_TIMEOUT; }
-                snprintf(path, sizeof(path), "/api/device/v1/note/%s/more_comments", sid);
-            }
+            // 先让服务器开始拉，再隔几秒问到拉完。/ Ask the server to start, then ask every few seconds until done.
+            char again[112];
+            snprintf(path, sizeof(path), "/api/device/v1/note/%s/more_comments?start=1&wait=0", sid);
+            snprintf(again, sizeof(again), "/api/device/v1/note/%s/more_comments?wait=0", sid);
+            err = red_poll(cfg, path, again, "loading", cancel, &root, msg, cap);
+            if (err != ESP_OK) return err;
         } else {
-            snprintf(path, sizeof(path), r->rec ? "/api/device/v1/rec/note/%s" : "/api/device/v1/note/%s", sid);
-            err = red_json(cfg, path, r->rec ? SLOW_TIMEOUT_MS : TIMEOUT_MS, cancel, &root, msg, cap);
+            snprintf(path, sizeof(path), r->rec ? "/api/device/v1/rec/note/%s?wait=0" : "/api/device/v1/note/%s", sid);
+            err = r->rec ? red_poll(cfg, path, NULL, "pending", cancel, &root, msg, cap)
+                         : red_json(cfg, path, TIMEOUT_MS, cancel, &root, msg, cap);
             if (err != ESP_OK) return err;
         }
         cJSON* out = cJSON_CreateObject();

@@ -159,6 +159,39 @@ async def refresh(force: bool) -> dict[str, Any]:
         return view()
 
 
+# 设备的后台模式（wait=0）：刷新在后台跑，设备隔几秒来问，每次马上回话，设备那边的后台任务不会被挂住、前台随时能插队。
+# The device's background mode (wait=0): the refresh runs in the background and the device asks again every few
+# seconds; each call answers at once, so the device's worker is never held and its foreground can always cut in.
+_refresh_task: asyncio.Task | None = None
+_refresh_err: RecError | None = None
+
+
+def refresh_bg(force: bool) -> dict[str, Any] | None:
+    """后台刷新：还在读返回 None；读完返回列表；上次失败抛一次错误。/ Background refresh: None while reading, the
+    list when done; a failure is raised once."""
+    global _refresh_task, _refresh_err
+    if _refresh_task is not None and not _refresh_task.done():
+        return None
+    if _refresh_err is not None:
+        err, _refresh_err = _refresh_err, None
+        raise err
+    cfg = config.load()
+    if not force or time.time() < _list.fetched_at + int(cfg["rec_cache_min"]) * 60:
+        return view()
+    _refresh_task = asyncio.create_task(refresh(True))
+
+    def done(t: asyncio.Task) -> None:
+        global _refresh_err
+        e = None if t.cancelled() else t.exception()
+        if isinstance(e, RecError):
+            _refresh_err = e
+        elif e is not None:
+            _refresh_err = RecError(500, f"读取推荐失败：{type(e).__name__}")
+
+    _refresh_task.add_done_callback(done)
+    return None
+
+
 async def _open(note_id: str) -> None:
     cfg = config.load()
     _check(cfg)
@@ -190,6 +223,37 @@ async def open_note(note_id: str) -> dict[str, Any] | None:
         task.add_done_callback(lambda _t: _opening.pop(note_id, None))
     await asyncio.shield(task)
     return store.note(note_id)
+
+
+_open_err: dict[str, RecError] = {}
+
+
+def open_note_bg(note_id: str) -> dict[str, Any] | None:
+    """后台打开推荐笔记：拉过就返回；还在拉返回 None；上次失败抛一次错误。/ Open a recommended note in the
+    background: the note when cached, None while fetching; a failure is raised once."""
+    n = store.note(note_id)
+    if n:
+        return n
+    task = _opening.get(note_id)
+    if task is not None and not task.done():
+        return None
+    if note_id in _open_err:
+        raise _open_err.pop(note_id)
+    task = asyncio.create_task(_open(note_id))
+    _opening[note_id] = task
+
+    def done(t: asyncio.Task) -> None:
+        _opening.pop(note_id, None)
+        e = None if t.cancelled() else t.exception()
+        if isinstance(e, RecError):
+            _open_err[note_id] = e
+        elif e is not None:
+            _open_err[note_id] = RecError(500, f"读取笔记失败：{type(e).__name__}")
+        while len(_open_err) > 50:
+            _open_err.pop(next(iter(_open_err)))
+
+    task.add_done_callback(done)
+    return None
 
 
 def _prune_covers() -> None:

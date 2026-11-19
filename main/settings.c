@@ -29,6 +29,7 @@
 #define NVS_KEY_BOOK_STYLE "bk_style"
 #define NVS_KEY_HIDE_HUPU "hide_hupu"   // 旧版，只读来迁移 / Old key, read only to migrate
 #define NVS_KEY_TABS_OFF "tabs_off"
+#define NVS_KEY_TABS_X "tabs_x"     // X 标签已按默认关闭迁移过 / X tab already migrated to hidden
 #define NVS_KEY_BOOK_AUTO "bk_auto"
 #define NVS_KEY_COMIC_AUTO "cm_auto"
 #define FONT_PATH_MAX 160
@@ -43,8 +44,11 @@ static bool s_book_shake;
 // 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
 // Defaults: standard line spacing, small paragraph gap, medium margins, indent as written, no rules (the old layout).
 static uint8_t s_book_style = 0x15;
-static uint8_t s_tabs_off;
+// X 标签默认关闭。/ The X tab starts hidden.
+static uint8_t s_tabs_off = 1u << TR_TAB_X;
 static uint8_t s_book_auto, s_comic_auto;
+
+static void nvs_put_u8(const char* key, uint8_t value);
 
 static app_book_style_t unpack_style(uint8_t v) {
     app_book_style_t s = {.line = v & 3, .para = (v >> 2) & 3, .margin = (v >> 4) & 3,
@@ -99,11 +103,20 @@ void app_settings_init(void) {
     uint8_t tabs_off = 0, hide_hupu = 0;
     if (nvs_get_u8(h, NVS_KEY_TABS_OFF, &tabs_off) == ESP_OK) s_tabs_off = tabs_off;
     else if (nvs_get_u8(h, NVS_KEY_HIDE_HUPU, &hide_hupu) == ESP_OK && hide_hupu) s_tabs_off = 1u << TR_TAB_HUPU;
+    // 加 X 标签之前存的掩码没有它的位：第一次读到时把 X 关上，免得升级后多出一个标签。/ Masks saved before the X tab
+    // lack its bit: hide X the first time so an upgrade does not add a tab.
+    uint8_t tabs_x = 0;
+    const bool migrate_x = nvs_get_u8(h, NVS_KEY_TABS_X, &tabs_x) != ESP_OK;
+    if (migrate_x) s_tabs_off |= 1u << TR_TAB_X;
     s_tabs_off &= (uint8_t)~TR_TABS_FIXED;
     uint8_t book_auto = 0, comic_auto = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_AUTO, &book_auto) == ESP_OK) s_book_auto = book_auto;
     if (nvs_get_u8(h, NVS_KEY_COMIC_AUTO, &comic_auto) == ESP_OK) s_comic_auto = comic_auto;
     nvs_close(h);
+    if (migrate_x) {
+        nvs_put_u8(NVS_KEY_TABS_OFF, s_tabs_off);
+        nvs_put_u8(NVS_KEY_TABS_X, 1);
+    }
     ESP_LOGI(
         TAG, "sleep mode %s, font %s",
         app_sleep_mode_name(s_sleep),
@@ -222,6 +235,9 @@ void app_settings_set_hidden_tabs(uint8_t mask) {
     if (s_tabs_off == mask) return;
     s_tabs_off = mask;
     nvs_put_u8(NVS_KEY_TABS_OFF, mask);
+    // 存过就说明掩码已经包含 X 的位，以后开机不再迁移（否则新设备打开 X 后重启又被关掉）。/ A saved mask already
+    // covers the X bit; never migrate it again (otherwise a new device that turned X on would lose it on reboot).
+    nvs_put_u8(NVS_KEY_TABS_X, 1);
 }
 
 uint8_t app_settings_auto_turn(bool comic) {

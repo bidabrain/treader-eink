@@ -37,7 +37,9 @@
 #define BUSY_RETRIES 6
 #define DEFER_MAX 8
 
-typedef enum { OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB } op_t;
+typedef enum {
+    OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X
+} op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
 typedef struct {
@@ -67,6 +69,7 @@ static int s_rank_book_n;
 static tomato_hupu_req_t s_hupu;
 static tomato_red_req_t s_red;
 static tomato_wb_req_t s_wb;
+static tomato_x_req_t s_x;
 // 每启动一次任务加一；页面据此认出“这是不是我发起的那个任务”。/ Bumped per started job so a page can tell its own job.
 static uint32_t s_seq;
 static work_t* s_work;
@@ -137,13 +140,13 @@ int tomato_sync_hits(tomato_hit_t* out, int max) {
 bool tomato_sync_busy(void) { return s_busy; }
 void tomato_sync_cancel(void) { s_cancel = true; }
 
-// 浏览类任务（虎扑、小红书、微博、书城、搜索）可以让给前台；下载、检查更新和 WebDAV 同步不打断。
-// Browsing jobs (Hupu, Xiaohongshu, Weibo, bookstore, search) yield to the foreground; downloads, update checks and WebDAV
-// sync are never interrupted.
+// 浏览类任务（虎扑、小红书、微博、X、书城、搜索）可以让给前台；下载、检查更新和 WebDAV 同步不打断。
+// Browsing jobs (Hupu, Xiaohongshu, Weibo, X, bookstore, search) yield to the foreground; downloads, update checks and
+// WebDAV sync are never interrupted.
 bool tomato_sync_preemptible(void) {
     portENTER_CRITICAL(&s_lock);
-    const bool yes = s_busy && (s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_RANK ||
-                                s_op == OP_RANK_COVER || s_op == OP_SEARCH);
+    const bool yes = s_busy && (s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X ||
+                                s_op == OP_RANK || s_op == OP_RANK_COVER || s_op == OP_SEARCH);
     portEXIT_CRITICAL(&s_lock);
     return yes;
 }
@@ -151,7 +154,7 @@ bool tomato_sync_preemptible(void) {
 tomato_preempt_t tomato_sync_preempt(void) {
     portENTER_CRITICAL(&s_lock);
     const bool busy = s_busy;
-    const bool browse = s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_RANK ||
+    const bool browse = s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X || s_op == OP_RANK ||
                         s_op == OP_RANK_COVER || s_op == OP_SEARCH;
     if (busy && browse) s_cancel = true;
     portEXIT_CRITICAL(&s_lock);
@@ -707,7 +710,7 @@ static void sync_task(void* arg) {
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
     const bool needs_server =
         s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU && s_op != OP_RED &&
-        s_op != OP_WB;
+        s_op != OP_WB && s_op != OP_X;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -761,6 +764,14 @@ static void sync_task(void* arg) {
         set_phase(TOMATO_DOWNLOADING, "正在加载");
         char msg[96] = "";
         err = tomato_wb_run(&s_wb, &s_cancel, set_progress, msg, sizeof(msg));
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(err, s_cancel ? "已取消" : msg);
+        break;
+    }
+    case OP_X: {
+        set_phase(TOMATO_DOWNLOADING, "正在加载");
+        char msg[96] = "";
+        err = tomato_x_run(&s_x, &s_cancel, set_progress, msg, sizeof(msg));
         if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
         else fail(err, s_cancel ? "已取消" : msg);
         break;
@@ -837,6 +848,13 @@ esp_err_t tomato_sync_start_wb(const tomato_wb_req_t* req) {
     s_wb = *req;
     s_wb.id[sizeof(s_wb.id) - 1] = 0;
     return start(OP_WB);
+}
+esp_err_t tomato_sync_start_x(const tomato_x_req_t* req) {
+    if (!req) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    s_x = *req;
+    s_x.id[sizeof(s_x.id) - 1] = 0;
+    return start(OP_X);
 }
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }

@@ -3,8 +3,12 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-20 · Treader 0.6.0
 
+- 新增 X 标签（固件，默认隐藏，在“设置 › 底部标签”打开）和 X 安卓 App（`x/android`，1.0.0），配合新的 x 服务器（仓库 `x/`）：服务器上的浏览器登录你的 X 账号（面板里用 VNC 手动登录），按随机间隔和睡眠时段拉取“为你推荐”和“正在关注”，去广告、图片转灰度；设备和 App 离线看，回复第一次打开时服务器才去取。面板关掉“正在关注”时，设备和 App 上这个标签变灰。
+  New X tab (firmware, hidden by default; turn it on under "Settings > Tab bar") and X Android app (`x/android`, 1.0.0), backed by the new x server (repo `x/`): a browser on the server signed in to your X account (by hand over VNC in the panel) fetches For You and Following at random intervals outside a sleep window, drops ads and turns images gray; the device and app read offline, and replies are fetched the first time they are opened. When the panel turns Following off, that tab greys out on the device and app.
+- 前台优先更彻底（固件，rednote 服务器 0.3.2、weibo 服务器 0.1.5、x 服务器）：刷新小红书推荐、点开推荐笔记、加载更多评论、第一次看微博评论和 X 回复时，服务器改在后台做，设备隔几秒问一次，不再一直挂着等；这期间切到别的标签，那边的加载马上开始。旧服务器照旧能用，只是还会挂着等。安卓 App 不受影响。
+  Foreground first, all the way (firmware, rednote server 0.3.2, weibo server 0.1.5, x server): refreshing Xiaohongshu recommendations, opening a recommended note, loading more comments, and first opening Weibo comments or X replies now run in the background on the server while the device asks every few seconds instead of holding the line; switching tabs meanwhile starts the other tab's loading at once. Older servers still work but keep the old wait. The Android apps are unaffected.
 - 小红书、微博安卓 App（小红书 1.4.0、微博 1.3.0）：看大图时点中间弹出“保存图片”，把屏幕上这张图存进手机相册（`Pictures/Treader 小红书`、`Pictures/Treader 微博`）。存的是服务器处理好的灰度图，长图只存当前这一屏；服务器不用升级。
   Xiaohongshu and Weibo Android apps (Xiaohongshu 1.4.0, Weibo 1.3.0): tapping the middle of a full image shows "Save image", which stores the image on screen in the phone's gallery (`Pictures/Treader 小红书`, `Pictures/Treader 微博`). It saves the server's grayscale version, and only the current screen of a split long image; no server upgrade needed.
 - 番茄安卓 App 1.0.1：修正书库里同时有读过和没读过的书时，一打开就闪退。

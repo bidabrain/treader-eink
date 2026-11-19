@@ -42,6 +42,12 @@ extern "C" {
 #define TOMATO_WB_DIR "/sdcard/weibo"
 #define TOMATO_WB_FOLLOW_FILE TOMATO_WB_DIR "/follow.json"
 #define TOMATO_WB_HOT_FILE TOMATO_WB_DIR "/hot.json"
+/// X 缓存：foryou.json、following.json、state.json（服务器上哪些流开着）、p/<id>/。/ X cache: foryou.json,
+/// following.json, state.json (which feeds the server has on), p/<id>/.
+#define TOMATO_X_DIR "/sdcard/x"
+#define TOMATO_X_FORYOU_FILE TOMATO_X_DIR "/foryou.json"
+#define TOMATO_X_FOLLOWING_FILE TOMATO_X_DIR "/following.json"
+#define TOMATO_X_STATE_FILE TOMATO_X_DIR "/state.json"
 #define TOMATO_RANK_CAT_MAX 48
 #define TOMATO_RANK_BOOK_MAX 20
 #define TOMATO_RANK_INTRO_LEN 900
@@ -345,6 +351,48 @@ void tomato_wb_square_path(const char* id, int k, char* out, size_t cap);
 /// 关注列表里标记看过；调用方保证此时没有关注列表任务在写。/ Mark a following post as seen; the caller makes sure no
 /// following-list job is writing at the time.
 void tomato_wb_mark_seen(const char* id);
+
+/* ---- X（经自建 x 服务器）/ X via the self-hosted x server ---- */
+
+typedef tomato_srv_config_t tomato_x_config_t;
+
+/// 见 tomato_red_list_limit；为你推荐和正在关注用同一个值。/ See tomato_red_list_limit; For You and Following share it.
+int tomato_x_list_limit(void);
+esp_err_t tomato_x_list_limit_set(int n);
+/// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
+esp_err_t tomato_x_config_load(tomato_x_config_t* out);
+esp_err_t tomato_x_config_save(const tomato_x_config_t* cfg);
+/// 每保存一次加一（设置页据此发现网页填写已提交）。/ Bumped on every save (settings notices a web submission).
+uint32_t tomato_x_config_revision(void);
+
+/// X 后台任务种类。/ X background jobs.
+typedef enum {
+    TOMATO_X_FEED,       ///< 为你推荐或正在关注列表和缩略图；列表写好时进度到 1 / A list and thumbnails; progress 1 once written
+    TOMATO_X_POST,       ///< 一条推文和图片；正文写好时进度到 1 / One post and its images; progress 1 once text is written
+    TOMATO_X_COMMENTS,   ///< 一条推文的回复（服务器第一次会去 X 取）/ One post's replies (the server fetches them once)
+    TOMATO_X_STATE,      ///< 只问服务器哪些流开着 / Only ask the server which feeds are on
+    TOMATO_X_TEST,       ///< 测试连接 / Connection test
+} tomato_x_job_t;
+
+typedef struct {
+    tomato_x_job_t job;
+    char id[28];
+    bool following;     ///< 列表：正在关注；否则为你推荐 / List: Following; otherwise For You
+    bool images_only;   ///< 推文已缓存，只补缺的图 / Post cached; fetch missing images only
+} tomato_x_req_t;
+
+esp_err_t tomato_sync_start_x(const tomato_x_req_t* req);
+/// 推文目录、第 n 张图（n 为 0 是缩略图）、回复文件、第 k 张方形小图。/ Post folder, image n (0 = thumbnail),
+/// replies file, square image k.
+void tomato_x_post_dir(const char* id, char* out, size_t cap);
+void tomato_x_img_path(const char* id, int n, char* out, size_t cap);
+void tomato_x_comments_path(const char* id, char* out, size_t cap);
+void tomato_x_square_path(const char* id, int k, char* out, size_t cap);
+/// 服务器上次说的“正在关注”开关；没问过算开。/ The server's last known Following switch; on when never asked.
+bool tomato_x_following_on(void);
+/// 正在关注列表里标记看过；调用方保证此时没有该列表任务在写。/ Mark a Following post as seen; the caller makes sure
+/// no Following-list job is writing at the time.
+void tomato_x_mark_seen(const char* id);
 
 /// WebDAV 同步阅读进度和番茄书架。/ Sync reading progress and the Tomato shelf over WebDAV.
 esp_err_t tomato_sync_start_webdav(void);

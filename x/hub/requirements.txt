@@ -1,0 +1,5 @@
+fastapi==0.163.2
+uvicorn==0.54.0
+pillow==13.0.0
+websockets==17.4
+playwright==1.49.1

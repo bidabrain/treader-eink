@@ -49,6 +49,7 @@ idf_component_register(
         "apps/app_tr_hupu.c"
         "apps/app_tr_xhs.c"
         "apps/app_tr_weibo.c"
+        "apps/app_tr_x.c"
         "apps/tr_wallsave.c"
         "apps/tr_lock.c"
         "apps/app_home.c"

@@ -26,6 +26,9 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs.h"
 #include "tomato_internal.h"
 
@@ -190,6 +193,32 @@ esp_err_t tomato_srv_json(const tomato_srv_t* srv, const char* path, int timeout
     heap_caps_free(buf);
     if (!*out) { snprintf(msg, cap, "服务器返回的内容看不懂"); return ESP_FAIL; }
     return ESP_OK;
+}
+
+#define POLL_GAP_MS 2500
+
+esp_err_t tomato_srv_poll(const tomato_srv_t* srv, const char* first, const char* again, const char* key,
+                          int timeout_ms, int max_ms, const volatile bool* cancel, cJSON** out, char* msg, size_t cap) {
+    *out = NULL;
+    const int64_t start = esp_timer_get_time() / 1000;
+    for (const char* path = first;; path = again ? again : first) {
+        cJSON* root = NULL;
+        esp_err_t err = tomato_srv_json(srv, path, timeout_ms, cancel, &root, msg, cap);
+        if (err != ESP_OK) return err;
+        if (!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, key))) {
+            *out = root;
+            return ESP_OK;
+        }
+        cJSON_Delete(root);
+        if (esp_timer_get_time() / 1000 - start > max_ms) {
+            snprintf(msg, cap, "服务器处理太久了，稍后再试");
+            return ESP_ERR_TIMEOUT;
+        }
+        for (int t = 0; t < POLL_GAP_MS; t += 100) {
+            if (cancel && *cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+    }
 }
 
 esp_err_t tomato_srv_image(const tomato_srv_t* srv, const char* path, const char* dest, int timeout_ms,

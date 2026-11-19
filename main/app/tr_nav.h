@@ -25,8 +25,8 @@ void tr_nav_open_book(app_ctx_t* ctx, const char* path);
 
 /// 由书库页实现。/ Implemented by the library page.
 void app_book_request_open(const char* path);
-/// 由设置页实现：下次进入设置时直接打开这个来源（TR_TAB_TOMATO / XHS / WEIBO）的设置页。
-/// Implemented by settings: on next entry open this source's page (TR_TAB_TOMATO / XHS / WEIBO).
+/// 由设置页实现：下次进入设置时直接打开这个来源（TR_TAB_TOMATO / XHS / WEIBO / X）的设置页。
+/// Implemented by settings: on next entry open this source's page (TR_TAB_TOMATO / XHS / WEIBO / X).
 void app_tr_settings_request_source(int tab);
 /// 由设置页实现：下次进入设置时直接打开“传书”（Wi-Fi / USB）。/ Implemented by settings: open "Transfer" next time.
 void app_tr_settings_request_transfer(void);

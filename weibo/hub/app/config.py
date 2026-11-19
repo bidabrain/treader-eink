@@ -17,7 +17,7 @@ DB_PATH = DATA / "weibo.db"
 CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8092"))
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 
 # m.weibo.cn 的热门频道（/api/config/list）。/ m.weibo.cn hot channels (from /api/config/list).
 HOT_CHANNELS = {

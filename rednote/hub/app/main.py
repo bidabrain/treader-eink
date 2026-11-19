@@ -384,7 +384,7 @@ async def device_note(request: Request, note_id: str):
 
 
 @app.get("/api/device/v1/note/{note_id}/more_comments")
-async def device_more_comments(request: Request, note_id: str, start: int = 0):
+async def device_more_comments(request: Request, note_id: str, start: int = 0, wait: float = 20):
     """加载更多评论（最多 60 条）。start=1 开始现拉；之后不带 start 反复问，每次最多等 20 秒。还在拉时返回
     {"loading": true}；拉完返回和 /note/{id} 一样的内容；失败返回错误。分开问是因为 Cloudflare 隧道约 100 秒就断开请求。
     Load more comments (up to 60). start=1 begins fetching; then ask again without start, each call waiting up to 20 s.
@@ -400,7 +400,8 @@ async def device_more_comments(request: Request, note_id: str, start: int = 0):
         raise HTTPException(409, "这篇是服务器升级前拉的，还没有令牌；等服务器下一轮拉取博主时补上，或者过几天再试")
     if start and rec.can_more(n):
         rec.more_start(note_id)
-    loading, err = await rec.more_wait(note_id, 20)
+    # 设备带 wait=0：马上回话，自己隔几秒再问。/ The device passes wait=0: answer at once; it asks again later.
+    loading, err = await rec.more_wait(note_id, max(0.0, min(float(wait), 20.0)))
     if loading:
         return {"loading": True}
     if err:
@@ -427,9 +428,15 @@ async def device_img(request: Request, note_id: str, name: str):
 # ---- 设备接口：推荐（按需代拉） / Device API: recommendations (fetched on demand) ----
 
 @app.get("/api/device/v1/rec")
-async def device_rec(request: Request, refresh: int = 0):
+async def device_rec(request: Request, refresh: int = 0, wait: int = 1):
+    """推荐列表；refresh=1 让服务器重新读首页。wait=0（设备用）在后台读，读的时候返回 {"pending": true}，
+    之后不带 refresh 再问。/ Recommendations; refresh=1 re-reads the home feed. wait=0 (the device) reads in the
+    background and answers {"pending": true} meanwhile; ask again without refresh."""
     _device(request)
     try:
+        if not wait:
+            v = rec.refresh_bg(bool(refresh))
+            return {"pending": True} if v is None else v
         return await rec.refresh(bool(refresh))
     except rec.RecError as e:
         raise HTTPException(e.status, str(e))
@@ -447,11 +454,19 @@ async def device_rec_cover(request: Request, note_id: str):
 
 
 @app.get("/api/device/v1/rec/note/{note_id}")
-async def device_rec_note(request: Request, note_id: str):
+async def device_rec_note(request: Request, note_id: str, wait: int = 1):
+    """推荐笔记；没拉过就现拉。wait=0（设备用）在后台拉，拉的时候返回 {"pending": true}，同一地址再问。
+    A recommended note, fetched when not cached. wait=0 (the device) fetches in the background and answers
+    {"pending": true} meanwhile; ask the same address again."""
     _device(request)
     if not ID_RE.match(note_id):
         raise HTTPException(400, "路径不对")
     try:
+        if not wait:
+            n = rec.open_note_bg(note_id)
+            if n is None:
+                return {"pending": True}
+            return _full(n)
         n = await rec.open_note(note_id)
     except rec.RecError as e:
         raise HTTPException(e.status, str(e))

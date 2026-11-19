@@ -444,22 +444,67 @@ async def device_post(request: Request, pid: str):
     return {**_brief(p), "text": p["text"], "rt_text": p["rt_text"], "source": p["source"], "starts": starts}
 
 
+async def _fetch_comments(pid: str) -> None:
+    store.count("comments")
+    rows, _ = await _weibo(lambda c: c.get_comments(pid))
+    items = [{"user": c.get("user_name", ""), "text": c.get("text", ""), "likes": c.get("like_count", 0)}
+             for c in rows[:20]]
+    store.save_comments(pid, items)
+
+
+# 正在后台取评论的微博 → 任务；取失败的原因（下一次请求拿走一次）。/ Posts whose comments are being fetched -> task;
+# failure reasons (handed out once on the next request).
+_comment_tasks: dict[str, asyncio.Task] = {}
+_comment_errors: dict[str, tuple[int, str]] = {}
+
+
+def _comment_task(pid: str) -> asyncio.Task:
+    task = _comment_tasks.get(pid)
+    if task is None or task.done():
+        _comment_errors.pop(pid, None)
+        task = asyncio.create_task(_fetch_comments(pid))
+        _comment_tasks[pid] = task
+
+        def done(t: asyncio.Task) -> None:
+            if _comment_tasks.get(pid) is t:
+                _comment_tasks.pop(pid, None)
+            e = None if t.cancelled() else t.exception()
+            if isinstance(e, HTTPException):
+                _comment_errors[pid] = (e.status_code, str(e.detail))
+            elif e is not None:
+                _comment_errors[pid] = (502, f"评论没取到：{type(e).__name__}")
+            while len(_comment_errors) > 50:
+                _comment_errors.pop(next(iter(_comment_errors)))
+
+        task.add_done_callback(done)
+    return task
+
+
 @app.get("/api/device/v1/post/{pid}/comments")
-async def device_comments(request: Request, pid: str):
-    """评论：第一次请求时去微博取一次（热评前 20 条），存下来以后不再取。/ Comments: fetched from Weibo on the first
-    request (top 20) and kept."""
+async def device_comments(request: Request, pid: str, wait: int = 1):
+    """评论：第一次请求时去微博取一次（热评前 20 条），存下来以后不再取。wait=0（设备用）在后台取，取的时候返回
+    {"pending": true}，设备隔几秒再问，它的后台任务不会被挂住；默认（App 用）等结果。
+    Comments: fetched from Weibo on the first request (top 20) and kept. wait=0 (the device) fetches in the background
+    and answers {"pending": true} meanwhile, so the device's worker is never held; the default (the app) waits."""
     _device(request)
     if not ID_RE.match(pid) or not store.post(pid):
         raise HTTPException(404, "没有这条")
     cached = store.comments(pid)
     if cached is not None:
         return {"comments": cached}
-    store.count("comments")
-    rows, _ = await _weibo(lambda c: c.get_comments(pid))
-    items = [{"user": c.get("user_name", ""), "text": c.get("text", ""), "likes": c.get("like_count", 0)}
-             for c in rows[:20]]
-    store.save_comments(pid, items)
-    return {"comments": items}
+    running = pid in _comment_tasks and not _comment_tasks[pid].done()
+    if not running and pid in _comment_errors:
+        status, why = _comment_errors.pop(pid)
+        raise HTTPException(status, why)
+    task = _comment_task(pid)
+    if not wait:
+        return {"pending": True}
+    await asyncio.wait({task})
+    cached = store.comments(pid)
+    if cached is not None:
+        return {"comments": cached}
+    status, why = _comment_errors.pop(pid, (502, "评论没取到"))
+    raise HTTPException(status, why)
 
 
 def _image(pid: str, name: str) -> FileResponse:

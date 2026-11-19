@@ -34,7 +34,7 @@ extern "C" {
 /// 标签的身份（不是位置），也是“隐藏标签”位掩码里的位号；显示的标签平分宽度。
 /// Tab identity, not position, and the bit number in the hidden-tab mask; visible tabs share the width.
 typedef enum {
-    TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_SETTINGS, TR_TAB_MAX
+    TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_X, TR_TAB_SETTINGS, TR_TAB_MAX
 } tr_tab_t;
 
 /// 底部最多同时显示几个标签（再多一格就放不下字）。/ Most tabs shown at once (one more cell leaves no room for labels).
@@ -47,7 +47,7 @@ typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,
     TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
     TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BALL, TR_ICON_COMIC,
-    TR_ICON_XHS, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_POWER, TR_ICON_USB, TR_ICON_WEIBO,
+    TR_ICON_XHS, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_POWER, TR_ICON_USB, TR_ICON_WEIBO, TR_ICON_X,
 } tr_icon_t;
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.

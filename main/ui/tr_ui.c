@@ -375,6 +375,15 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 12, y + 15, x + 29, y + 15, c);
         thick_line(fb, x + 11, y + 21, x + 28, y + 21, c);
         break;
+    case TR_ICON_X:
+        // X：一只简化的小鸟（圆身子、圆头、尖嘴、上扬的翅膀、短尾巴）。/ X: a simple bird (round body and head, a
+        // pointed beak, a raised wing and a short tail).
+        epd_fill_circle(x + 18, y + 24, 10, c, fb);
+        epd_fill_circle(x + 28, y + 15, 6, c, fb);
+        epd_fill_triangle(x + 33, y + 12, x + 39, y + 13, x + 33, y + 17, c, fb);
+        epd_fill_triangle(x + 9, y + 21, x + 23, y + 18, x + 4, y + 9, c, fb);
+        epd_fill_triangle(x + 10, y + 27, x + 2, y + 31, x + 13, y + 33, c, fb);
+        break;
     case TR_ICON_POWER:
         // 电源键：开口的圆和一竖。/ Power symbol: an open circle and a bar.
         thick_circle(fb, cx, y + 21, 12, c);
@@ -398,9 +407,9 @@ EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_
 
 static uint8_t s_hidden;
 
-static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "设置"};
+static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置"};
 static const tr_icon_t TAB_ICONS[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS,
-                                                TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_SETTINGS};
+                                                TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_X, TR_ICON_SETTINGS};
 
 uint8_t tr_tabs_limit(uint8_t mask) {
     mask &= (uint8_t)~TR_TABS_FIXED;

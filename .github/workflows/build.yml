@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     # 只改文档、网页、服务器或安卓 App 时不用编固件。/ Skip the firmware build for docs, site, servers and apps.
-    paths-ignore: ["**.md", "docs/**", "site/**", "rednote/**", "weibo/**", "tomato/**", ".github/workflows/pages.yml", ".github/workflows/rednote-image.yml", ".github/workflows/weibo-image.yml", ".github/workflows/tomato-image.yml", ".github/workflows/rednote-android.yml", ".github/workflows/weibo-android.yml", ".github/workflows/tomato-android.yml"]
+    paths-ignore: ["**.md", "docs/**", "site/**", "rednote/**", "weibo/**", "tomato/**", ".github/workflows/pages.yml", ".github/workflows/rednote-image.yml", ".github/workflows/weibo-image.yml", ".github/workflows/tomato-image.yml", ".github/workflows/rednote-android.yml", ".github/workflows/weibo-android.yml", ".github/workflows/tomato-android.yml", "x/**", ".github/workflows/x-image.yml", ".github/workflows/x-android.yml"]
   pull_request:
   workflow_dispatch:
 
