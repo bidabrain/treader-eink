@@ -402,6 +402,9 @@ void tomato_sync_set_progress_io(tomato_progress_export_t export_cb, tomato_prog
 /// Called on the sync task after a TXT is replaced, to migrate reading progress. old_size 0 means a new book.
 typedef void (*tomato_file_hook_t)(const char* path, uint32_t old_size, uint32_t new_size);
 void tomato_sync_set_file_hook(tomato_file_hook_t hook);
+/// 联网时要不要顺便用 SNTP 对时（主程序按“自动校时”设置调用，默认要）。/ Whether going online also syncs time over SNTP
+/// (the app sets this from its "auto time" switch; on by default).
+void tomato_net_set_sntp(bool on);
 /// 系统时间是否已经对过（联网时用 SNTP 对时）。/ Whether system time has been set (SNTP while online).
 bool tomato_time_valid(void);
 /// 上次取走之后是否又用 SNTP 对过时（取走即清零）。主程序据此把时间写进 PMU 的 RTC。

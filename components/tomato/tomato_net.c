@@ -35,6 +35,7 @@ static esp_event_handler_instance_t s_wifi_h, s_ip_h;
 static bool s_loop_owned, s_inited, s_started;
 static int s_retries;
 static bool s_sntp;
+static bool s_sntp_allowed = true;
 static bool s_public_dns;
 
 // 路由器的 DNS 解析失败时改用公共 DNS（阿里 223.5.5.5，腾讯 119.29.29.29 备用）。很多路由器开了“DNS 重绑定保护”，
@@ -63,6 +64,8 @@ bool tomato_take_time_synced(void) {
 }
 
 // 2025 年以后才算对过时。/ Treat time as set once it is past 2025.
+void tomato_net_set_sntp(bool on) { s_sntp_allowed = on; }
+
 bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
 
 static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
@@ -152,11 +155,11 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
     if (err != ESP_OK) goto fail;
     memset(pass, 0, sizeof(pass));
     ESP_LOGI(TAG, "connected");
-    // 顺便对时，最多等 3 秒；失败不影响后续操作。/ Sync time on the way, waiting at most 3 s; failure is harmless.
-    setenv("TZ", "CST-8", 1);
-    tzset();
+    // 顺便对时，最多等 3 秒；失败不影响后续操作。SNTP 给的是 UTC，显示用哪个时区由主程序设定；关了自动校时就不对。
+    // Sync time on the way, waiting at most 3 s; failure is harmless. SNTP gives UTC and the app sets the display
+    // zone; with auto time off nothing is synced.
     esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("ntp.aliyun.com");
-    if (esp_netif_sntp_init(&sc) == ESP_OK) {
+    if (s_sntp_allowed && esp_netif_sntp_init(&sc) == ESP_OK) {
         s_sntp = true;
         if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(3000)) == ESP_OK && tomato_time_valid()) s_time_fresh = true;
     }

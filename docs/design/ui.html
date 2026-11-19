@@ -217,7 +217,7 @@
 
 <h1>Treader 界面与功能（0.5.0）</h1>
 <p class="lead">这是 Treader 当前版本（0.5.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
-底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。自动锁屏和锁屏密码（L1～L4）是 0.7.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
+底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。自动锁屏和锁屏密码（L1～L4）是 0.7.0 新加的，还没在真机上验证。时间与时区（T1、T2）是 0.7.1 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
 
 <h2>书库、阅读与锁屏</h2>
 <div class="grid">
@@ -1838,6 +1838,65 @@
   <div class="big" style="top:262px;font-size:28px">输错太多次，30 秒后再试</div>
 </div></div>
 <figcaption><b>L4 输错太多次</b>前 5 次直接重输；之后每次先锁定 30 秒，每多错一次多 30 秒，最长 5 分钟，重启清零。倒计时期间电源键照样能锁屏。忘了密码只能用电脑擦掉设置分区。</figcaption></figure>
+
+<!-- T1 时间与时区 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">时间与时区</div>
+  <div class="row" style="top:190px;height:72px"><span>自动校时</span></div>
+  <div class="sw" style="top:199px"></div>
+  <div class="row" style="top:262px;height:72px"><span>时区</span><span class="v">北京、上海 UTC+8 ›</span></div>
+  <div class="row" style="top:334px;height:72px;border:0"><span>手动设置时间</span><span class="v">2026-11-20 21:30 ›</span></div>
+  <div class="a" style="left:40px;right:40px;top:440px;font-size:24px;line-height:36px">自动校时开着时，设备每次联网（番茄、小红书、传书等）都会顺便对一次时，按上面的时区显示。关掉后只用手动设置的时间。时间存在电源芯片的时钟里，断电也继续走。</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-weibo"/></svg></span>微博</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>T1 设置 › 时间与时区</b>从“电源与设备 › 时间与时区”进入。自动校时默认开；这里画的是关掉后的样子，“手动设置时间”才能点。时区默认北京时间，点进去是 15 个常用时区的列表，当前那个加粗标“当前”，欧美和悉尼自动切夏令时。</figcaption></figure>
+
+<!-- T2 手动设置时间 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">手动设置时间</div>
+  <div class="a" style="left:40px;width:108px;top:200px;text-align:center;font-size:26px">年</div>
+  <div class="pill out" style="left:40px;top:248px;width:108px;height:88px;font-size:40px">+</div>
+  <div class="a b" style="left:40px;width:108px;top:360px;text-align:center;font-size:40px">2026</div>
+  <div class="pill out" style="left:40px;top:444px;width:108px;height:88px;font-size:40px">−</div>
+  <div class="a" style="left:164px;width:108px;top:200px;text-align:center;font-size:26px">月</div>
+  <div class="pill out" style="left:164px;top:248px;width:108px;height:88px;font-size:40px">+</div>
+  <div class="a b" style="left:164px;width:108px;top:360px;text-align:center;font-size:48px">11</div>
+  <div class="pill out" style="left:164px;top:444px;width:108px;height:88px;font-size:40px">−</div>
+  <div class="a" style="left:288px;width:108px;top:200px;text-align:center;font-size:26px">日</div>
+  <div class="pill out" style="left:288px;top:248px;width:108px;height:88px;font-size:40px">+</div>
+  <div class="a b" style="left:288px;width:108px;top:360px;text-align:center;font-size:48px">20</div>
+  <div class="pill out" style="left:288px;top:444px;width:108px;height:88px;font-size:40px">−</div>
+  <div class="a" style="left:412px;width:108px;top:200px;text-align:center;font-size:26px">时</div>
+  <div class="pill out" style="left:412px;top:248px;width:108px;height:88px;font-size:40px">+</div>
+  <div class="a b" style="left:412px;width:108px;top:360px;text-align:center;font-size:48px">21</div>
+  <div class="pill out" style="left:412px;top:444px;width:108px;height:88px;font-size:40px">−</div>
+  <div class="a" style="left:536px;width:108px;top:200px;text-align:center;font-size:26px">分</div>
+  <div class="pill out" style="left:536px;top:248px;width:108px;height:88px;font-size:40px">+</div>
+  <div class="a b" style="left:536px;width:108px;top:360px;text-align:center;font-size:48px">30</div>
+  <div class="pill out" style="left:536px;top:444px;width:108px;height:88px;font-size:40px">−</div>
+  <div class="pill blk" style="left:40px;right:40px;top:600px;height:88px;font-size:32px">保存</div>
+  <div class="a" style="left:40px;right:40px;top:720px;font-size:24px;line-height:36px">按北京、上海 UTC+8的本地时间填写，保存后立刻生效。</div>
+  <div class="tabs six">
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-books"/></svg></span>书库</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-comic"/></svg></span>漫画</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-tomato"/></svg></span>番茄</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-xhs"/></svg></span>小红书</div>
+    <div class="tab"><span class="ic"><svg class="icon"><use href="#i-weibo"/></svg></span>微博</div>
+    <div class="tab on"><span class="ic"><svg class="icon"><use href="#i-set"/></svg></span>设置</div>
+  </div>
+</div></div>
+<figcaption><b>T2 手动设置时间</b>年、月、日、时、分各有加减，循环滚动；换月份时日自动收进当月天数。按当前时区填写，“保存”后立刻生效并写进电源芯片的时钟。</figcaption></figure>
 
 </div>
 

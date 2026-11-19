@@ -81,6 +81,22 @@ int64_t app_settings_lock_idle_ms(void);
 /// 档位的文字（“2 分钟”“从不”）。/ The level's label ("2 分钟", "从不").
 const char* app_settings_lock_idle_label(uint8_t level);
 
+/// 自动校时：开着时联网顺便用 SNTP 对时（默认开）；关着时只用手动设置的时间。
+/// Auto time: when on, SNTP sets the clock whenever the device goes online (on by default); when off, only the
+/// manually set time is used.
+bool app_settings_time_auto(void);
+void app_settings_set_time_auto(bool on);
+
+/// 时区，按表里的序号存；默认 0（北京时间 UTC+8）。夏令时按 POSIX 规则自动切换。
+/// Time zone stored as an index into the table; 0 (Beijing, UTC+8) by default. Daylight saving follows the POSIX rule.
+int app_settings_tz_count(void);
+uint8_t app_settings_tz(void);
+void app_settings_set_tz(uint8_t index);
+/// 时区的中文名（“北京、上海”）、偏移（“UTC+8”）和 POSIX TZ 串。/ The zone's name, offset label and POSIX TZ string.
+const char* app_settings_tz_name(uint8_t index);
+const char* app_settings_tz_offset(uint8_t index);
+const char* app_settings_tz_posix(uint8_t index);
+
 /// 锁屏密码（4 位数字）。NVS 里只存加盐的 SHA-256，不存原文；默认关。
 /// The lock PIN (4 digits). NVS keeps only a salted SHA-256, never the digits; off by default.
 bool app_settings_pin_enabled(void);

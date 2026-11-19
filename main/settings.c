@@ -35,6 +35,8 @@
 #define NVS_KEY_BOOK_AUTO "bk_auto"
 #define NVS_KEY_COMIC_AUTO "cm_auto"
 #define NVS_KEY_LOCK_IDLE "lock_idle"
+#define NVS_KEY_TIME_AUTO "time_auto"
+#define NVS_KEY_TZ "tz"
 #define NVS_KEY_PIN "pin_hash"      // 8 字节盐 + 32 字节 SHA-256 / 8-byte salt + 32-byte SHA-256
 #define PIN_SALT_LEN 8
 #define PIN_HASH_LEN 32
@@ -54,10 +56,32 @@ static uint8_t s_book_style = 0x15;
 static uint8_t s_tabs_off = 1u << TR_TAB_X;
 static uint8_t s_book_auto, s_comic_auto;
 static uint8_t s_lock_idle = 1;
+static bool s_time_auto = true;
+static uint8_t s_tz;
 static bool s_pin_on;
 static uint8_t s_pin[PIN_SALT_LEN + PIN_HASH_LEN];
 
 static void nvs_put_u8(const char* key, uint8_t value);
+
+// 时区表：中文名、偏移、POSIX TZ（含夏令时规则）。第 0 项是默认。/ Zone table: name, offset label, POSIX TZ with
+// daylight-saving rules. Entry 0 is the default.
+static const struct { const char* name; const char* offset; const char* posix; } TZ_TABLE[] = {
+    {"北京、上海", "UTC+8", "CST-8"},
+    {"香港、台北", "UTC+8", "HKT-8"},
+    {"东京、首尔", "UTC+9", "JST-9"},
+    {"新加坡、吉隆坡", "UTC+8", "SGT-8"},
+    {"曼谷、河内", "UTC+7", "ICT-7"},
+    {"新德里", "UTC+5:30", "IST-5:30"},
+    {"迪拜", "UTC+4", "GST-4"},
+    {"莫斯科", "UTC+3", "MSK-3"},
+    {"柏林、巴黎", "UTC+1/+2", "CET-1CEST,M3.5.0,M10.5.0/3"},
+    {"伦敦", "UTC+0/+1", "GMT0BST,M3.5.0/1,M10.5.0"},
+    {"协调世界时", "UTC", "UTC0"},
+    {"纽约", "UTC-5/-4", "EST5EDT,M3.2.0,M11.1.0"},
+    {"芝加哥", "UTC-6/-5", "CST6CDT,M3.2.0,M11.1.0"},
+    {"洛杉矶", "UTC-8/-7", "PST8PDT,M3.2.0,M11.1.0"},
+    {"悉尼", "UTC+10/+11", "AEST-10AEDT,M10.1.0,M4.1.0/3"},
+};
 
 static app_book_style_t unpack_style(uint8_t v) {
     app_book_style_t s = {.line = v & 3, .para = (v >> 2) & 3, .margin = (v >> 4) & 3,
@@ -125,6 +149,9 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_LOCK_IDLE, &lock_idle) == ESP_OK && lock_idle < APP_LOCK_IDLE_LEVELS) {
         s_lock_idle = lock_idle;
     }
+    uint8_t time_auto = 1, tz = 0;
+    if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
+    if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
     size_t pin_len = sizeof(s_pin);
     s_pin_on = nvs_get_blob(h, NVS_KEY_PIN, s_pin, &pin_len) == ESP_OK && pin_len == sizeof(s_pin);
     nvs_close(h);
@@ -351,4 +378,42 @@ esp_err_t app_settings_pin_set(const char* pin) {
     nvs_close(h);
     if (err == ESP_OK) { memcpy(s_pin, rec, sizeof(rec)); s_pin_on = true; }
     return err;
+}
+
+/* ---- 时间与时区 / Time and zone ---- */
+
+bool app_settings_time_auto(void) {
+    return s_time_auto;
+}
+
+void app_settings_set_time_auto(bool on) {
+    if (on == s_time_auto) return;
+    s_time_auto = on;
+    nvs_put_u8(NVS_KEY_TIME_AUTO, on ? 1 : 0);
+}
+
+int app_settings_tz_count(void) {
+    return (int)(sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]));
+}
+
+uint8_t app_settings_tz(void) {
+    return s_tz;
+}
+
+void app_settings_set_tz(uint8_t index) {
+    if (index >= app_settings_tz_count() || index == s_tz) return;
+    s_tz = index;
+    nvs_put_u8(NVS_KEY_TZ, index);
+}
+
+const char* app_settings_tz_name(uint8_t index) {
+    return index < app_settings_tz_count() ? TZ_TABLE[index].name : "";
+}
+
+const char* app_settings_tz_offset(uint8_t index) {
+    return index < app_settings_tz_count() ? TZ_TABLE[index].offset : "";
+}
+
+const char* app_settings_tz_posix(uint8_t index) {
+    return index < app_settings_tz_count() ? TZ_TABLE[index].posix : "CST-8";
 }

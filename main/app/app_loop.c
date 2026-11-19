@@ -56,6 +56,7 @@
 #include "book_cover.h"
 #include "tomato.h"
 #include "tr_pin.h"
+#include "tr_time.h"
 
 #define TAG "app_loop"
 
@@ -388,6 +389,10 @@ void app_loop_run(const app_loop_config_t* config) {
     bool media_mounted = ttf_font_ready() && !ttf_font_is_builtin();
     bool media_invalidated = false;
     app_lock_ignore_for(APP_LOCK_IGNORE_BOOT_MS);
+    // 时区和自动校时按设置生效；系统时间还没设过就从 PMU 的 RTC 读回来（深睡、关机醒来都是重新开机）。
+    // Apply the zone and auto-time switch; restore the clock from the PMU RTC when unset (waking from deep sleep or
+    // power-off is a fresh boot).
+    tr_time_restore();
     // 开机也要过锁屏密码（深睡、关机醒来都是重新开机）；过关之前不进任何页面。
     // Boot passes the lock PIN too (waking from deep sleep or power-off is a fresh boot); no page opens before it.
     tr_pin_gate(ctx.hl, ctx.tp, ctx.acc, &s_lock_ignore_until_ms);

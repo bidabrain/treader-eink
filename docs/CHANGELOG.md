@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-20 · Treader 0.7.1
+
+- 设置 → 电源与设备 → 时间与时区：自动校时（默认开，联网时对时）、15 个常用时区（默认北京时间，欧美和悉尼自动切夏令时）、关掉自动校时后可以手动设置日期和时间。修正：开机时从电源芯片的时钟恢复时间（以前写好了但没有调用，深睡、关机醒来后要等联网才有时间）。
+  Settings > Power and device > Time and zone: auto time (on by default, synced when online), 15 common time zones (Beijing by default; Europe, the US and Sydney switch daylight saving automatically), and a manual date and time once auto time is off. Fix: boot now restores the clock from the power chip's RTC (the code existed but was never called, so after deep sleep or power-off the time stayed blank until the device went online).
+
 ## 2026-11-20 · Treader 0.7.0
 
 - TF 卡更稳：换卡时（包括拔插太快、浅睡锁屏时换卡）设备会主动问卡、发现换过就重新挂载；I2C 偶尔读错不再被当成拔卡（以前会关掉正在看的书）；卡上的字体在这张卡上加载失败只试一次，不再每 3 秒卸载一次字体，换卡后再试；字体切换和阅读页后台排版互相加锁，离开阅读页时也等排版画完。番茄更新替换书文件、复制封面都改成先写临时文件，中途拔卡书不会从书库消失，封面不会一直坏着。

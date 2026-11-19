@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include "app.h"
 #include "app_loop.h"
@@ -68,7 +69,8 @@ extern const char server_form_start[] asm("_binary_server_form_html_start");
 extern const char server_form_end[] asm("_binary_server_form_html_end");
 
 typedef enum {
-    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SYNC, P_POWER, P_ABOUT
+    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SYNC, P_POWER, P_ABOUT,
+    P_TIME, P_TZ, P_TSET
 } page_t;
 
 // 自建服务器页：小红书、微博和 X 共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu, Weibo and X,
@@ -111,7 +113,8 @@ enum {
     R_FONT, R_WALL,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
     R_DAV, R_DAV_SYNC,
-    R_SLEEP, R_IDLE, R_PIN, R_CARD, R_ABOUT,
+    R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
+    R_TAUTO, R_TZONE, R_TSET,
 };
 
 static const row_t DISPLAY_ROWS[] = {
@@ -137,8 +140,14 @@ static const row_t POWER_ROWS[] = {
     {R_SLEEP, NULL, "睡眠与锁屏", 190},
     {R_IDLE, NULL, "自动锁屏", 262},
     {R_PIN, NULL, "锁屏密码", 334},
-    {R_CARD, NULL, "TF 卡", 406},
-    {R_ABOUT, NULL, "关于 Treader", 478},
+    {R_TIME, NULL, "时间与时区", 406},
+    {R_CARD, NULL, "TF 卡", 478},
+    {R_ABOUT, NULL, "关于 Treader", 550},
+};
+static const row_t TIME_ROWS[] = {
+    {R_TAUTO, NULL, "自动校时", 190},
+    {R_TZONE, NULL, "时区", 262},
+    {R_TSET, NULL, "手动设置时间", 334},
 };
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 #define WEB_ROW_H 84
@@ -305,6 +314,30 @@ static void row_value(int id, char* out, size_t cap) {
     case R_SLEEP: snprintf(out, cap, "›"); break;
     case R_IDLE: snprintf(out, cap, "%s ›", app_settings_lock_idle_label(app_settings_lock_idle())); break;
     case R_PIN: snprintf(out, cap, "%s ›", app_settings_pin_enabled() ? "已开启" : "关闭"); break;
+    case R_TIME: {
+        char clock[24] = "未设置";
+        const time_t now = time(NULL);
+        if (tr_time_valid()) {
+            struct tm tm;
+            localtime_r(&now, &tm);
+            snprintf(clock, sizeof(clock), "%02d:%02d", tm.tm_hour % 100, tm.tm_min % 100);
+        }
+        snprintf(out, cap, "%s · %s ›", clock, app_settings_tz_offset(app_settings_tz()));
+        break;
+    }
+    case R_TZONE:
+        snprintf(out, cap, "%s %s ›", app_settings_tz_name(app_settings_tz()), app_settings_tz_offset(app_settings_tz()));
+        break;
+    case R_TSET: {
+        if (app_settings_time_auto()) { snprintf(out, cap, "关掉自动校时后可调"); break; }
+        if (!tr_time_valid()) { snprintf(out, cap, "未设置 ›"); break; }
+        const time_t now = time(NULL);
+        struct tm tm;
+        localtime_r(&now, &tm);
+        snprintf(out, cap, "%04d-%02d-%02d %02d:%02d ›", (tm.tm_year + 1900) % 10000, (tm.tm_mon + 1) % 100,
+                 tm.tm_mday % 100, tm.tm_hour % 100, tm.tm_min % 100);
+        break;
+    }
     case R_CARD: card_value(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_ABOUT: snprintf(out, cap, "版本、开源致谢 ›"); break;
     default: out[0] = 0; break;
@@ -550,6 +583,8 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
         tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_WEB && s_web_on);
         if (r->id == R_WEB) {
             draw_switch(fb, TR_W - TR_MARGIN, r->y + 15, s_web_on);
+        } else if (r->id == R_TAUTO) {
+            draw_switch(fb, TR_W - TR_MARGIN, r->y + (h - 54) / 2, app_settings_time_auto());
         } else {
             char value[160];
             row_value(r->id, value, sizeof(value));
@@ -737,6 +772,117 @@ static void draw_about(uint8_t* fb) {
     tr_text(fb, TR_W - TR_MARGIN, ABOUT_TEST_Y + 14, 28, "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT, false);
 }
 
+/* ---- 时间与时区 / Time and zone ---- */
+
+// 手动设置时间：年、月、日、时、分五栏，每栏上下各一个按钮。/ Manual time: five columns (year, month, day, hour,
+// minute), each with a button above and below.
+#define TSET_COLS 5
+#define TSET_COL_W 108
+#define TSET_GAP ((TR_W - 2 * TR_MARGIN - TSET_COLS * TSET_COL_W) / (TSET_COLS - 1))
+#define TSET_LABEL_Y 200
+#define TSET_UP_Y 248
+#define TSET_BTN_H 88
+#define TSET_VALUE_Y 360
+#define TSET_DOWN_Y 444
+#define TSET_SAVE (EpdRect){TR_MARGIN, 600, TR_W - 2 * TR_MARGIN, 88}
+// 时区列表每行高度。/ Row height in the zone list.
+#define TZ_TOP 170
+#define TZ_ROW_H 60
+
+static int s_tset[TSET_COLS];   // 年、月、日、时、分 / Year, month, day, hour, minute
+
+static int days_in_month(int year, int month) {
+    static const int DAYS[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    return month == 2 && leap ? 29 : DAYS[(month - 1) % 12];
+}
+
+static EpdRect tset_col(int k, int y, int h) {
+    return (EpdRect){TR_MARGIN + k * (TSET_COL_W + TSET_GAP), y, TSET_COL_W, h};
+}
+
+static void draw_time_page(uint8_t* fb) {
+    draw_back_title(fb, "时间与时区");
+    draw_message(fb);
+    draw_rows(fb, TIME_ROWS, COUNT(TIME_ROWS));
+    tr_wrap(fb, TR_MARGIN, 440, TR_W - 2 * TR_MARGIN, 24, 36,
+            "自动校时开着时，设备每次联网（番茄、小红书、传书等）都会顺便对一次时，按上面的时区显示。关掉后只用手动设置的时间。"
+            "时间存在电源芯片的时钟里，断电也继续走。", 4);
+}
+
+static void draw_tz_page(uint8_t* fb) {
+    draw_back_title(fb, "时区");
+    const int cur = app_settings_tz();
+    for (int i = 0; i < app_settings_tz_count(); i++) {
+        const int y = TZ_TOP + i * TZ_ROW_H;
+        tr_text(fb, TR_MARGIN, y + (TZ_ROW_H - 30) / 2 - 2, 30, app_settings_tz_name((uint8_t)i), EPD_DRAW_ALIGN_LEFT,
+                i == cur);
+        char right[32];
+        snprintf(right, sizeof(right), "%s%s", app_settings_tz_offset((uint8_t)i), i == cur ? " · 当前" : "");
+        tr_text(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT, i == cur);
+        if (i + 1 < app_settings_tz_count()) tr_hline(fb, y + TZ_ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+}
+
+static void draw_tset_page(uint8_t* fb) {
+    draw_back_title(fb, "手动设置时间");
+    static const char* const LABELS[TSET_COLS] = {"年", "月", "日", "时", "分"};
+    for (int k = 0; k < TSET_COLS; k++) {
+        const EpdRect c = tset_col(k, 0, 0);
+        tr_text(fb, c.x + TSET_COL_W / 2, TSET_LABEL_Y, 26, LABELS[k], EPD_DRAW_ALIGN_CENTER, false);
+        tr_pill(fb, tset_col(k, TSET_UP_Y, TSET_BTN_H), "+", false, 40);
+        char v[8];
+        snprintf(v, sizeof(v), k == 0 ? "%04d" : "%02d", s_tset[k] % 10000);
+        tr_text(fb, c.x + TSET_COL_W / 2, TSET_VALUE_Y, k == 0 ? 40 : 48, v, EPD_DRAW_ALIGN_CENTER, true);
+        tr_pill(fb, tset_col(k, TSET_DOWN_Y, TSET_BTN_H), "−", false, 40);
+    }
+    tr_pill(fb, TSET_SAVE, "保存", true, 32);
+    char hint[96];
+    snprintf(hint, sizeof(hint), "按%s %s的本地时间填写，保存后立刻生效。", app_settings_tz_name(app_settings_tz()),
+             app_settings_tz_offset(app_settings_tz()));
+    tr_wrap(fb, TR_MARGIN, 720, TR_W - 2 * TR_MARGIN, 24, 36, hint, 2);
+}
+
+static void tset_begin(void) {
+    struct tm tm = {.tm_year = 2026 - 1900, .tm_mon = 0, .tm_mday = 1};
+    if (tr_time_valid()) {
+        const time_t now = time(NULL);
+        localtime_r(&now, &tm);
+    }
+    s_tset[0] = tm.tm_year + 1900;
+    s_tset[1] = tm.tm_mon + 1;
+    s_tset[2] = tm.tm_mday;
+    s_tset[3] = tm.tm_hour;
+    s_tset[4] = tm.tm_min;
+}
+
+static app_redraw_t touch_tset(uint16_t x, uint16_t y) {
+    if (ui_rect_hit(TSET_SAVE, x, y)) {
+        const esp_err_t err = tr_time_set_local(s_tset[0], s_tset[1], s_tset[2], s_tset[3], s_tset[4]);
+        s_page = P_TIME;
+        snprintf(s_message, sizeof(s_message), "%s", err == ESP_OK ? "时间已设置" : "这个时间不对，没有保存");
+        return APP_REDRAW_PAGE;
+    }
+    for (int k = 0; k < TSET_COLS; k++) {
+        const int dir = ui_rect_hit(tset_col(k, TSET_UP_Y, TSET_BTN_H), x, y) ? 1 :
+                        ui_rect_hit(tset_col(k, TSET_DOWN_Y, TSET_BTN_H), x, y) ? -1 : 0;
+        if (!dir) continue;
+        int* v = &s_tset[k];
+        switch (k) {
+        case 0: *v += dir; if (*v < 2025) *v = 2099; if (*v > 2099) *v = 2025; break;
+        case 1: *v = (*v - 1 + dir + 12) % 12 + 1; break;
+        case 2: { const int n = days_in_month(s_tset[0], s_tset[1]); *v = (*v - 1 + dir + n) % n + 1; break; }
+        case 3: *v = (*v + dir + 24) % 24; break;
+        default: *v = (*v + dir + 60) % 60; break;
+        }
+        // 换了年或月，日不能超过这个月的天数。/ After a year or month change, keep the day inside the month.
+        const int n = days_in_month(s_tset[0], s_tset[1]);
+        if (s_tset[2] > n) s_tset[2] = n;
+        return APP_REDRAW_PAGE;
+    }
+    return APP_REDRAW_NONE;
+}
+
 static void render(app_ctx_t* ctx, uint8_t* fb) {
     (void)ctx;
     ui_clear_page(fb);
@@ -761,6 +907,9 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         draw_rows(fb, POWER_ROWS, COUNT(POWER_ROWS));
         break;
     case P_ABOUT: draw_about(fb); return;
+    case P_TIME: draw_time_page(fb); break;
+    case P_TZ: draw_tz_page(fb); break;
+    case P_TSET: draw_tset_page(fb); break;
     }
     tr_tab_bar(fb, TR_TAB_SETTINGS);
 }
@@ -862,7 +1011,8 @@ static app_redraw_t open_page(page_t p) {
 static app_redraw_t go_back(void) {
     s_message[0] = 0;
     if (s_page == P_SRC_SERVER) web_stop();
-    s_page = s_page == P_ABOUT ? P_POWER : s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER ? P_SOURCES : P_HOME;
+    s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
+             s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER ? P_SOURCES : P_HOME;
     return APP_REDRAW_PAGE;
 }
 
@@ -962,6 +1112,20 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         app_settings_set_lock_idle((uint8_t)((app_settings_lock_idle() + 1) % APP_LOCK_IDLE_LEVELS));
         return APP_REDRAW_PAGE;
     case R_PIN: return touch_pin(ctx);
+    case R_TIME: return open_page(P_TIME);
+    case R_TAUTO:
+        app_settings_set_time_auto(!app_settings_time_auto());
+        tr_time_apply_settings();
+        snprintf(s_message, sizeof(s_message), "%s", app_settings_time_auto() ? "下次联网时自动对时" : "已关闭自动校时");
+        return APP_REDRAW_PAGE;
+    case R_TZONE: return open_page(P_TZ);
+    case R_TSET:
+        if (app_settings_time_auto()) {
+            snprintf(s_message, sizeof(s_message), "先关掉自动校时");
+            return APP_REDRAW_PAGE;
+        }
+        tset_begin();
+        return open_page(P_TSET);
     case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
     case R_ABOUT: return open_page(P_ABOUT);
     case R_STORE: {
@@ -1024,6 +1188,18 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
     case P_SYNC: id = row_hit(SYNC_ROWS, COUNT(SYNC_ROWS), y); break;
     case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
+    case P_TIME: id = row_hit(TIME_ROWS, COUNT(TIME_ROWS), y); break;
+    case P_TSET: return touch_tset(x, y);
+    case P_TZ: {
+        if (y < TZ_TOP) return APP_REDRAW_NONE;
+        const int i = (y - TZ_TOP) / TZ_ROW_H;
+        if (i >= app_settings_tz_count()) return APP_REDRAW_NONE;
+        app_settings_set_tz((uint8_t)i);
+        tr_time_apply_settings();
+        s_page = P_TIME;
+        snprintf(s_message, sizeof(s_message), "时区已改为%s", app_settings_tz_name((uint8_t)i));
+        return APP_REDRAW_PAGE;
+    }
     default: break;
     }
     return id >= 0 ? touch_row(ctx, id) : APP_REDRAW_NONE;
