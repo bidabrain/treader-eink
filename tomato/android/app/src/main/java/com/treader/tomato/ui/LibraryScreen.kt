@@ -62,7 +62,7 @@ fun LibraryTab(vm: AppVm) {
     val shown = all.filter {
         when (filter) { 1 -> it.tomato != null; 2 -> it.tomato == null; else -> true }
     }.filter { query.isBlank() || matches(it, query) }
-        .let { l -> if (byTitle) l.sortedBy { it.title } else l.sortedWith(compareByDescending<LibBook> { it.progress?.seq ?: 0 }.thenBy { it.title }) }
+        .let { l -> if (byTitle) l.sortedBy { it.title } else l.sortedWith(compareByDescending<LibBook> { it.progress?.seq ?: 0L }.thenBy { it.title }) }
     val cont = all.firstOrNull { it.key == vm.progressStore.last && it.progress != null }
 
     Box(Modifier.fillMaxSize()) {

@@ -5,6 +5,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 番茄安卓 App 1.0.1：修正书库里同时有读过和没读过的书时，一打开就闪退。
+  Tomato Android app 1.0.1: fix a crash on launch when the library holds both read and unread books.
 - 新增番茄安卓 App（`tomato/android`，1.0.0）：功能和界面照固件的书库与番茄标签——搜书、下载 TXT、检查更新、下载全部更新、书城、导入 TXT / EPUB、按页阅读（目录、字号、排版、自动翻页）。书源解析逐字节照搬固件，阅读进度和番茄书架用 WebDAV 和小纸 Pico 互通。
   New Tomato Android app (`tomato/android`, 1.0.0) mirroring the firmware's library and Tomato tab: search, TXT downloads, update checks, download all updates, the bookstore, TXT / EPUB import and paged reading (TOC, size, layout, auto turn). Book parsing copies the firmware byte for byte, and reading progress and the Tomato shelf sync with the Read Pico over WebDAV.
 - WebDAV 同步修正（设备和 App）：先同步、后下载的书也能接上进度（本机从没同步过的书不再要求进度“比上次同步新”）；写回进度前核对章节和位置，书的文件和备份时不一样（比如换了下载服务器）就不用，同步结果里说明有几本。
