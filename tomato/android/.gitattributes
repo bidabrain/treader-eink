@@ -1,0 +1,7 @@
+*.bat text eol=crlf
+gradlew text eol=lf
+*.jar binary
+
+# 测试书和标准答案要逐字节保持原样（GBK、CRLF、坏字节），不做换行转换。
+# Test books and the reference must stay byte for byte (GBK, CRLF, bad bytes); no line-ending conversion.
+app/src/test/resources/** binary

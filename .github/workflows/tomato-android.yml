@@ -1,0 +1,96 @@
+# 番茄安卓客户端：打 tag tomato-android-v* 时编译 APK 并发布 GitHub Release。
+# Tomato Android client: build the APK and publish a GitHub Release on a tomato-android-v* tag.
+#
+# 签名：番茄 App 自己的固定 keystore（和小红书、微博 App 都不同），这样每次发布都能覆盖安装。keystore 不进仓库，来自 Secret
+# TOMATO_KEYSTORE_BASE64（base64 编码的 ~/.android/tomato.keystore，别名 tomato，口令 android）。
+# Signing: the Tomato app's own fixed keystore (not the Xiaohongshu or Weibo key) so each release installs over the last.
+# The keystore is not in the repo; it comes from the TOMATO_KEYSTORE_BASE64 secret (base64 of ~/.android/tomato.keystore,
+# alias tomato, password android).
+name: tomato android
+
+on:
+  push:
+    tags: ["tomato-android-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tomato/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # 还原固定的番茄 keystore；没设 Secret 就直接失败，免得发出签名不一样、装不上的 APK。
+      # Restore the fixed Tomato keystore; fail without the secret rather than ship an APK with a different signature.
+      - name: Restore Tomato keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.TOMATO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::缺少 Secret TOMATO_KEYSTORE_BASE64 / missing secret TOMATO_KEYSTORE_BASE64"
+            exit 1
+          fi
+          ks="$RUNNER_TEMP/tomato.keystore"
+          echo "$KEYSTORE_B64" | base64 -d > "$ks"
+          # 明确告诉 Gradle 用这个文件签名，并打印指纹方便核对。/ Point Gradle at this file and print its fingerprint.
+          echo "TOMATO_KEYSTORE=$ks" >> "$GITHUB_ENV"
+          keytool -list -v -keystore "$ks" -storepass android -alias tomato | grep -E 'SHA256:'
+
+      # 先跑书源和固件逐字节一致的单元测试，不过就不发布。/ Run the firmware-parity unit tests first; no release on failure.
+      - name: Unit tests
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --no-daemon --console=plain
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --console=plain
+
+      # 核对 APK 真是用这把钥匙签的，不对就失败，不发布。/ Check the APK is signed with that key; fail otherwise.
+      - name: Verify signature
+        run: |
+          want=$(keytool -list -v -keystore "$TOMATO_KEYSTORE" -storepass android -alias tomato \
+                 | grep -E 'SHA256:' | head -1 | sed 's/.*SHA256: //; s/://g' | tr 'A-F' 'a-f')
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          got=$("$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+                | grep 'SHA-256 digest' | head -1 | sed 's/.*: //')
+          echo "keystore $want"
+          echo "apk      $got"
+          if [ "$want" != "$got" ]; then echo "::error::APK 签名和 Secret 里的 keystore 不一致 / APK signer does not match the keystore"; exit 1; fi
+
+      - name: Name the APK
+        id: apk
+        run: |
+          ver=$(grep '^versionName=' version.properties | cut -d= -f2)
+          out="tomato-android-${ver}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$out"
+          echo "file=tomato/android/$out" >> "$GITHUB_OUTPUT"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tomato-android-apk
+          path: ${{ steps.apk.outputs.file }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/tomato-android-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 番茄安卓客户端 ${{ steps.apk.outputs.version }}
+          body: |
+            番茄独立安卓客户端，功能和 Treader 固件里的书库、番茄标签一样：搜书、下载 TXT、检查更新、书城、阅读，
+            读你自己部署的番茄下载服务器（见 tomato/README.md）。阅读进度和番茄书架可以用 WebDAV 和小纸 Pico 互通。
+            每次发布用同一个签名，可以直接覆盖安装。
+          files: ${{ steps.apk.outputs.file }}
+          make_latest: false

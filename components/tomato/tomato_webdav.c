@@ -12,6 +12,8 @@
  * - 本机进度和签名不同：本机改过，以本机为准。
  * - 本机没改、服务器那条在上次同步之后更新过：以服务器为准写回本机。
  * - 本机这本书从没同步过、服务器上已有：以服务器为准（新设备或重置后不会把别处的进度冲掉）。
+ * - 只在服务器上的进度：比上次同步新，或本机从没同步过这本（先同步、后下载书时也能接上）。写回前核对章节和位置，
+ *   超出本机这本书就不用（文件和备份时不一样，比如换了下载服务器），结果里说明有几本。
  * - 番茄书架按 book_id 取并集；只在服务器上的书加进本机书架，章节数记 0，等用户点“下载全部更新”。
  *   书库删掉的书记在“已删除”清单里，两边都不再加回；远端的文件名不可信，新加的书由下载时重新命名。
  * - 没对过时不同步；服务器文件读得到却解析不了时不覆盖它。
@@ -20,6 +22,9 @@
  * - Local differs from its signature: changed here, local wins.
  * - Local unchanged and the remote entry is newer than the last sync: remote wins and is written back.
  * - A book never synced here but present remotely takes the remote entry (new or reset devices don't clobber others).
+ * - Remote-only progress is written back when newer than the last sync, or when this book was never synced here (so
+ *   syncing before downloading the book still lines up). Chapter and offset are checked first; a position past this
+ *   book is skipped (the file differs from the backup, e.g. after switching download servers) and counted.
  * - The Tomato shelf is a union by book_id; remote-only books join locally with 0 chapters, pending download.
  *   Books deleted from the library stay on a removed list and are never re-added; remote file names are not
  *   trusted, so new books get named at download time.
@@ -229,7 +234,7 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
     cJSON *remote = NULL, *state = NULL;
     char* body = NULL;
     esp_err_t err = ESP_OK;
-    int uploaded = 0, downloaded = 0, added = 0;
+    int uploaded = 0, downloaded = 0, added = 0, mismatched = 0;
     if (!local || !shelf) { err = ESP_ERR_NO_MEM; snprintf(msg, cap, "内存不足"); goto done; }
 
     if (!tomato_time_valid()) {
@@ -279,7 +284,9 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
         if (r && (never_synced || (!changed && json_num(r, "time") > last))) {
             tomato_progress_t in;
             progress_from_json(r, local[i].path, &in);
-            if (import_cb(&in)) downloaded++;
+            const tomato_import_result_t got = import_cb(&in);
+            if (got == TOMATO_IMPORT_OK) downloaded++;
+            else if (got == TOMATO_IMPORT_MISMATCH) mismatched++;
             continue;
         }
         if (!r || changed) {
@@ -289,15 +296,19 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
             if (o) { progress_to_json(o, &local[i], now); uploaded++; }
         }
     }
-    // 只在服务器上、比上次同步新的进度：本机有这本书就写回。/ Remote-only newer entries: import if the book exists here.
+    // 只在服务器上的进度：比上次同步新，或本机从没同步过这本，本机有这本书就写回。
+    // Remote-only entries: newer than the last sync, or never synced here; import if the book exists here.
     const cJSON* r;
     cJSON_ArrayForEach(r, rp) {
         bool known = false;
         for (int i = 0; i < n && !known; i++) known = !strcmp(local[i].path, r->string);
-        if (known || json_num(r, "time") <= last) continue;
+        if (known) continue;
+        if (json_num(r, "time") <= last && cJSON_IsString(cJSON_GetObjectItemCaseSensitive(sigs, r->string))) continue;
         tomato_progress_t in;
         progress_from_json(r, r->string, &in);
-        if (import_cb(&in)) downloaded++;
+        const tomato_import_result_t got = import_cb(&in);
+        if (got == TOMATO_IMPORT_OK) downloaded++;
+        else if (got == TOMATO_IMPORT_MISMATCH) mismatched++;
     }
 
     // 番茄书架。/ Tomato shelf.
@@ -351,7 +362,9 @@ esp_err_t tomato_webdav_run(tomato_progress_export_t export_cb, tomato_progress_
         cJSON_AddStringToObject(ns, local[i].path, sig);
     }
     write_state(state);
-    snprintf(msg, cap, "已同步：上传 %d 条，下载 %d 条%s", uploaded, downloaded, added ? "，书架有新书" : "");
+    if (mismatched)
+        snprintf(msg, cap, "已同步：上传 %d 条，下载 %d 条；%d 本书和备份时的文件不一样，进度没同步", uploaded, downloaded, mismatched);
+    else snprintf(msg, cap, "已同步：上传 %d 条，下载 %d 条%s", uploaded, downloaded, added ? "，书架有新书" : "");
 
 done:
     cJSON_Delete(remote);

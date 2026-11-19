@@ -63,4 +63,30 @@ uint32_t book_total_bytes(void) { return s_epub ? book_epub_total_bytes(s_epub) 
 uint32_t book_chapter_byte_offset(size_t i) {
     return s_epub ? book_epub_chapter_byte_offset(s_epub, i) : i < s_book.count ? s_book.entries[i].offset : 0;
 }
+bool book_position_fits(const char *path, size_t chapter, uint32_t off) {
+    if (!path || !*path) return false;
+    const char *ext = strrchr(path, '.');
+    bool ok = false;
+    if (ext && !strcasecmp(ext, ".epub")) {
+        book_epub_t *e = NULL;
+        if (book_epub_open(path, &e) != ESP_OK) return false;
+        if (chapter < book_epub_chapter_count(e)) {
+            html_text_t t = {0};
+            ok = book_epub_load(e, chapter, &t) == ESP_OK && off <= t.len;
+            html_text_free(&t);
+        }
+        book_epub_close(e);
+        return ok;
+    }
+    // 用自己的书源结构，不动单例。/ Use a private source struct; the singleton stays untouched.
+    book_txt_t b = {0};
+    if (book_txt_open(&b, path) == ESP_OK && chapter < b.count) {
+        char *text = NULL; size_t len = 0;
+        ok = book_txt_load(&b, chapter, &text, &len) == ESP_OK && off <= len;
+        free(text);
+    }
+    if (b.file) fclose(b.file);
+    free(b.entries);
+    return ok;
+}
 book_kind_t book_kind(void) { return s_epub ? BOOK_KIND_EPUB : BOOK_KIND_TXT; }

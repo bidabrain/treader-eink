@@ -7,6 +7,7 @@
  * Frozen: The caller frees loaded text; no UI dependencies.
  */
 #pragma once
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
@@ -37,5 +38,9 @@ uint32_t book_total_bytes(void);
 /// TXT 为原文件章起点；EPUB 为前序 spine 原始 HTML 字节总和。
 /// TXT uses original chapter offsets; EPUB uses the sum of preceding spine source HTML bytes.
 uint32_t book_chapter_byte_offset(size_t i);
+/// 不碰当前打开的书，单独打开 path 看能不能放下“第 chapter 章、章内偏移 off”（WebDAV 写回进度前核对用）。
+/// Without touching the open book, open path on its own and check it can hold chapter / offset (checked before WebDAV
+/// writes progress back).
+bool book_position_fits(const char *path, size_t chapter, uint32_t off);
 /// 当前类型；关闭时默认 TXT。/ Current kind, defaulting to TXT when closed.
 book_kind_t book_kind(void);

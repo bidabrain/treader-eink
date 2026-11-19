@@ -1,6 +1,6 @@
 # tomato：番茄小说下载服务器（带面板）
 
-把作者官方的 [Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) 和我们的面板打包成一个 compose：一条命令部署，在网页面板里看状态、设设备密码、开外网访问。小纸 Pico 的番茄标签和番茄安卓 App 都连它，接口和直接用官方下载器完全一样，**固件和 App 不用改**。
+把作者官方的 [Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) 和我们的面板打包成一个 compose：一条命令部署，在网页面板里看状态、设设备密码、开外网访问。小纸 Pico 的番茄标签、本仓库的[番茄安卓 App](android/README.md) 和以前的 Tomato-Novel 安卓版都连它，接口和直接用官方下载器完全一样，**固件和 App 不用改**。
 
 ```
 小纸 Pico / 番茄安卓 App ──(x-tomato-password)──> tomato-hub :18423 ──> 官方下载器（内网，不对外开端口）
@@ -62,7 +62,7 @@ docker compose up -d
 面板 → **设备与外网** 里有地址和设备密码。
 
 - **设备**：设置 → 内容来源 → 番茄小说 → 番茄服务器，地址填 `http://服务器局域网IP:18423`，密码填面板上的设备密码。
-- **番茄安卓 App**：设置里填同样的地址和密码。
+- **番茄安卓 App**（[tomato/android](android/README.md)，或以前的 Tomato-Novel）：设置里填同样的地址和密码。
 - **设备密码**：默认随机 8 位（去掉了容易看错的 0、o、1、l，方便在设备键盘上输入）。也可以自己定一个；设成以前下载器的密码，已经填好的设备和 App 就不用改。换了以后设备和 App 要改成新的。
 - **在外面用**：选一种外网方式，保存后显示外网地址：
   - **快速隧道**：什么都不用准备，得到一个随机的 `https://xxx.trycloudflare.com`，**每次重启都会变**，适合临时用。
@@ -103,3 +103,4 @@ docker compose down                           # 停止（数据保留在 data/�
 | `hub/app/main.py` | 转发、设备密码、面板接口、隧道限制 |
 | `hub/app/tunnel.py` | cloudflared 子进程 |
 | `hub/app/web/` | 面板页面 |
+| `android/` | 番茄安卓客户端（和固件书库、番茄标签一样），有自己的版本号和发布流程 |

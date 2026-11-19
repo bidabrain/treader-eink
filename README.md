@@ -34,6 +34,7 @@
 - 检查更新与下载分开：都只在你点的时候运行，**不会自动检查**；正在读的那本不替换
 - 书城：读取 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 榜单，男频 / 女频 37 个分类，封面网格显示，详情页直接下载；国内直连 GitHub Pages 超时会自动改用 jsDelivr 镜像
 - 所有列表都按页显示，点按钮或滑一下翻一整页，墨水屏不做滚动
+- 另有一个和固件书库、番茄标签功能相同的独立安卓 App（搜书、下载、书城、阅读，WebDAV 和设备互通进度），见 [tomato/android](tomato/android/README.md)
 
 **虎扑**（只读，不需要服务器，移植自安卓版 [虎扑 X](https://github.com/bidabrain/hupuX)）
 - 推荐：首页推荐，每页 5 条，带缩略图

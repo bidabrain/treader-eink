@@ -5,6 +5,10 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
+- 新增番茄安卓 App（`tomato/android`，1.0.0）：功能和界面照固件的书库与番茄标签——搜书、下载 TXT、检查更新、下载全部更新、书城、导入 TXT / EPUB、按页阅读（目录、字号、排版、自动翻页）。书源解析逐字节照搬固件，阅读进度和番茄书架用 WebDAV 和小纸 Pico 互通。
+  New Tomato Android app (`tomato/android`, 1.0.0) mirroring the firmware's library and Tomato tab: search, TXT downloads, update checks, download all updates, the bookstore, TXT / EPUB import and paged reading (TOC, size, layout, auto turn). Book parsing copies the firmware byte for byte, and reading progress and the Tomato shelf sync with the Read Pico over WebDAV.
+- WebDAV 同步修正（设备和 App）：先同步、后下载的书也能接上进度（本机从没同步过的书不再要求进度“比上次同步新”）；写回进度前核对章节和位置，书的文件和备份时不一样（比如换了下载服务器）就不用，同步结果里说明有几本。
+  WebDAV sync fixes (device and app): progress now lines up for books downloaded after syncing (a book never synced here no longer needs to be "newer than the last sync"); chapter and offset are checked before writing progress back, and a file that differs from the backup (for example after switching download servers) is skipped and counted in the result.
 - 小红书、微博：设置里可以选列表条数 100 / 200 / 300（设备在“设置 › 内容来源”，安卓 App 在设置页），刷新时一次取这么多条；条数越多，TF 卡上存的缩略图越多。rednote 服务器 0.3.0、weibo 服务器 0.1.4 起每次最多给 300 条。
   Xiaohongshu and Weibo: settings offer a list size of 100 / 200 / 300 (on the device under "Settings > Content sources", in the Android apps' settings); a refresh fetches that many, and more posts keep more thumbnails on the TF card. The rednote server 0.3.0 and weibo server 0.1.4 return up to 300.
 - 修正：升级前缓存的小红书笔记“加载更多评论”一直是灰的。按钮改由设备和 App 自己判断（评论总数比显示的多、还没加载过）；服务器升级前拉的笔记没有令牌时，点了会说明原因（rednote 0.3.1、安卓 1.3.1）。

@@ -28,6 +28,7 @@
 #include "app.h"
 #include "app_loop.h"
 #include "book_progress.h"
+#include "book_source.h"
 #include "cJSON.h"
 #include "esp_app_desc.h"
 #include "esp_attr.h"
@@ -214,10 +215,12 @@ static int export_progress(tomato_progress_t* out, int max) {
     return count;
 }
 
-// 本机文件不小于记录时的大小才写回（番茄更新只追加章节）。/ Import only if the local file is no smaller (updates only append).
-static bool import_progress(const tomato_progress_t* in) {
+// 本机文件不小于记录时的大小才写回（番茄更新只追加章节）；章节和位置要放得下（文件和备份时一样）。
+// Import only if the local file is no smaller (updates only append) and can hold the chapter and offset (same file).
+static tomato_import_result_t import_progress(const tomato_progress_t* in) {
     struct stat st;
-    if (!in->size || stat(in->path, &st) != 0 || (uint32_t)st.st_size < in->size) return false;
+    if (!in->size || stat(in->path, &st) != 0 || (uint32_t)st.st_size < in->size) return TOMATO_IMPORT_MISSING;
+    if (!book_position_fits(in->path, in->chapter, in->off)) return TOMATO_IMPORT_MISMATCH;
     book_progress_t p = {
         .file_size = (uint32_t)st.st_size,
         .chapter = in->chapter,
@@ -226,7 +229,7 @@ static bool import_progress(const tomato_progress_t* in) {
         .pct = in->pct > 100 ? 100 : in->pct,
     };
     // 导入不改最近阅读顺序。/ Importing must not reorder "recently read".
-    return book_progress_import(in->path, &p) == ESP_OK;
+    return book_progress_import(in->path, &p) == ESP_OK ? TOMATO_IMPORT_OK : TOMATO_IMPORT_MISSING;
 }
 
 /* ---- 数据 / Data ---- */

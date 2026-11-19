@@ -119,8 +119,14 @@ typedef struct {
 
 /// 列出本机全部阅读进度，返回条数。/ List all local progress records; returns the count.
 typedef int (*tomato_progress_export_t)(tomato_progress_t* out, int max);
-/// 写入一条进度；本机没有这本书或文件对不上时返回 false。/ Store one record; false when the book is missing or does not match.
-typedef bool (*tomato_progress_import_t)(const tomato_progress_t* in);
+/// 写入一条进度的结果。/ Result of storing one record.
+typedef enum {
+    TOMATO_IMPORT_OK,         ///< 写好了 / Stored
+    TOMATO_IMPORT_MISSING,    ///< 本机没有这本书或文件比记录时小 / The book is missing here or smaller than recorded
+    TOMATO_IMPORT_MISMATCH,   ///< 章节或位置超出本机这本书（文件和备份时不一样）/ Chapter or offset past this book (a different file)
+} tomato_import_result_t;
+/// 写入一条进度。/ Store one record.
+typedef tomato_import_result_t (*tomato_progress_import_t)(const tomato_progress_t* in);
 
 /* ---- 配置与书架（同步，读写 TF 卡）/ Config and shelf (synchronous, TF I/O) ---- */
 
