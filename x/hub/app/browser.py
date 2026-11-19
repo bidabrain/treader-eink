@@ -18,6 +18,8 @@ import asyncio
 import json
 import os
 import random
+import shutil
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -74,64 +76,30 @@ def _clear_locks() -> None:
             p.unlink(missing_ok=True)
 
 
-class _Pipe:
-    """登录窗口的 Chrome 用 --remote-debugging-pipe 开着一条只有本进程能用的管道（不开端口，网页看不见），登录时一句
-    命令都不发；点“登录好了”时才用它取一次 cookie 并让 Chrome 正常关闭。
-    The sign-in Chrome keeps a private pipe via --remote-debugging-pipe (no port, invisible to pages) and receives
-    no commands while you sign in; only on "done" does it read the cookies once and ask Chrome to close cleanly."""
-
-    def __init__(self) -> None:
-        self.cmd_r, self.cmd_w = os.pipe()     # Chrome 从 fd 3 读命令 / Chrome reads commands on fd 3
-        self.out_r, self.out_w = os.pipe()     # Chrome 往 fd 4 写回复 / Chrome writes replies on fd 4
-        self._buf = b""
-        self._id = 0
-
-    def child_setup(self) -> None:
-        a, b = os.dup(self.cmd_r), os.dup(self.out_w)
-        os.dup2(a, 3)
-        os.dup2(b, 4)
-
-    def fds(self) -> tuple[int, ...]:
-        return (3, 4, self.cmd_r, self.out_w)
-
-    def after_spawn(self) -> None:
-        os.close(self.cmd_r)
-        os.close(self.out_w)
-
-    def _call_sync(self, method: str) -> dict:
-        self._id += 1
-        os.write(self.cmd_w, json.dumps({"id": self._id, "method": method}).encode() + b"\0")
-        while True:
-            while b"\0" not in self._buf:
-                chunk = os.read(self.out_r, 65536)
-                if not chunk:
-                    raise OSError("pipe closed")
-                self._buf += chunk
-            msg, self._buf = self._buf.split(b"\0", 1)
-            data = json.loads(msg)
-            if data.get("id") == self._id:
-                return data.get("result") or {}
-
-    async def call(self, method: str, timeout: float = 15.0) -> dict:
-        return await asyncio.wait_for(asyncio.to_thread(self._call_sync, method), timeout)
-
-    def close(self) -> None:
-        for fd in (self.cmd_w, self.out_r):
+def _auth_on_disk() -> bool:
+    """浏览器资料的 Cookies 库里有没有 X 的 auth_token（复制一份再读，不碰正在用的文件）。Chrome 不开任何调试接口，
+    网页看到的就是普通浏览器；它大约每 30 秒把 cookie 写一次盘。
+    Whether the profile's Cookies database holds X's auth_token (read from a copy, never the live file). Chrome runs
+    with no debugging interface at all, so pages see an ordinary browser; it writes cookies to disk about every 30 s."""
+    for src in (config.PROFILE_DIR / "Default" / "Cookies", config.PROFILE_DIR / "Default" / "Network" / "Cookies"):
+        if not src.exists():
+            continue
+        tmp = config.DATA / "cookies-check.db"
+        try:
+            shutil.copyfile(src, tmp)
+            con = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
             try:
-                os.close(fd)
-            except OSError:
-                pass
-
-
-def _pw_cookie(c: dict[str, Any]) -> dict[str, Any]:
-    """CDP 的 cookie 换成 Playwright add_cookies 的格式。/ A CDP cookie in Playwright's add_cookies format."""
-    out = {"name": c["name"], "value": c.get("value", ""), "domain": c.get("domain", ""), "path": c.get("path", "/"),
-           "httpOnly": bool(c.get("httpOnly")), "secure": bool(c.get("secure"))}
-    if not c.get("session") and float(c.get("expires") or -1) > 0:
-        out["expires"] = float(c["expires"])
-    if c.get("sameSite") in ("Strict", "Lax", "None"):
-        out["sameSite"] = c["sameSite"]
-    return out
+                n = con.execute("SELECT COUNT(*) FROM cookies WHERE name='auth_token' AND "
+                                "(host_key LIKE '%x.com' OR host_key LIKE '%twitter.com')").fetchone()[0]
+            finally:
+                con.close()
+            if n:
+                return True
+        except (OSError, sqlite3.Error):
+            pass
+        finally:
+            tmp.unlink(missing_ok=True)
+    return False
 
 
 async def _pause(lo: float, hi: float) -> None:
@@ -235,7 +203,7 @@ class XBrowser:
             await self._context()
 
     async def shutdown(self) -> None:
-        await self.stop_login()
+        await self.stop_login(wait=True)
         await self._stop_vnc()
         await self._close_context()
         if self._pw is not None:
@@ -327,73 +295,76 @@ class XBrowser:
         self.login.update(active=True, message="等浏览器空出来…")
         self._login_task = asyncio.create_task(self._login_session(on_done))
 
-    async def stop_login(self) -> None:
+    async def stop_login(self, wait: bool = False) -> None:
+        """让登录窗口收尾。面板点“登录好了”时不等（保存可能要一两分钟，面板自己刷新状态）；关机时等一会儿。
+        Ask the sign-in window to finish. The panel's "done" does not wait (saving may take a minute or two and the
+        panel polls the status); shutdown waits a little."""
         self._login_stop = True
-        if self._login_task and not self._login_task.done():
+        if wait and self._login_task and not self._login_task.done():
             try:
-                await asyncio.wait_for(asyncio.shield(self._login_task), 40)
+                await asyncio.wait_for(asyncio.shield(self._login_task), 20)
             except (asyncio.TimeoutError, Exception):
                 self._login_task.cancel()
 
     async def _login_session(self, on_done: Callable[[bool], None]) -> None:
         """登录用一个完全普通的 Chrome 进程（同一份资料，不连 Playwright、不开调试端口），网页看不出是自动化浏览器。
-        你点“登录好了”或关掉窗口后，正常退出 Chrome（cookie 落盘），再用 Playwright 打开同一份资料检查登录态。
+        登录写进资料的 Cookies 库后自动收尾；点“登录好了”时也会先等它写盘，再让 Chrome 正常退出（慢机器多给时间），
+        最后用 Playwright 打开同一份资料检查登录态。
         Sign-in uses a completely ordinary Chrome process (same profile, no Playwright, no debugging port), so the
-        site sees no automation. After "done" or closing the window Chrome exits cleanly (cookies flushed), then
+        site sees no automation. Once the sign-in reaches the profile's Cookies database it finishes by itself; "done"
+        also waits for that write first, then lets Chrome exit cleanly (slow machines get extra time), and finally
         Playwright reopens the profile to check the sign-in."""
         ok = False
         chrome: asyncio.subprocess.Process | None = None
-        pipe: _Pipe | None = None
-        live: list[dict[str, Any]] = []
         try:
             async with self.lock:
                 await self._close_context()
                 await self._start_xvfb()
                 _clear_locks()
-                args = [CHROME, f"--user-data-dir={config.PROFILE_DIR}", "--remote-debugging-pipe", "--no-first-run",
+                had_auth = _auth_on_disk()
+                args = [CHROME, f"--user-data-dir={config.PROFILE_DIR}", "--no-first-run",
                         "--no-default-browser-check", "--password-store=basic", "--no-sandbox",
                         "--disable-dev-shm-usage", "--window-position=0,0", "--window-size=1280,860"]
                 px = _proxy(config.load().get("proxy", ""))
                 if px:
                     args.append(f"--proxy-server={px['server']}")
                 args.append("https://x.com/home" if self.signed_in_cache else "https://x.com/i/flow/login")
-                pipe = _Pipe()
                 chrome = await asyncio.create_subprocess_exec(
-                    *args, env={**os.environ, "DISPLAY": config.DISPLAY}, preexec_fn=pipe.child_setup,
-                    pass_fds=pipe.fds(), stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-                pipe.after_spawn()
+                    *args, env={**os.environ, "DISPLAY": config.DISPLAY},
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
                 await self._start_vnc()
                 self.login["message"] = "在下面的画面里登录 X（或按提示完成验证），完成后点“登录好了”"
                 deadline = time.monotonic() + LOGIN_TIMEOUT_S
+                tick = 0
                 while not self._login_stop and chrome.returncode is None and time.monotonic() < deadline:
                     await asyncio.sleep(1)
-                self.login["message"] = "正在保存登录…"
+                    tick += 1
+                    # 本来没登录、现在登录已经写进硬盘：自动收尾。/ Not signed in before and the sign-in is now on disk:
+                    # finish by itself.
+                    if not had_auth and tick % 3 == 0 and _auth_on_disk():
+                        self.login["message"] = "检测到登录，正在保存…"
+                        await asyncio.sleep(3)
+                        break
                 await self._stop_vnc()
                 if chrome.returncode is None:
-                    # 先从活着的 Chrome 拿 cookie（不依赖它关闭时写盘），再让它自己正常关闭；机器慢就多等一会儿。
-                    # Take the cookies from the live Chrome first (not relying on its shutdown flush), then let it
-                    # close itself; slow machines get more time.
-                    try:
-                        got = await pipe.call("Storage.getCookies")
-                        live = [_pw_cookie(c) for c in got.get("cookies") or []
-                                if str(c.get("domain", "")).endswith(("x.com", "twitter.com"))]
-                    except Exception:
-                        live = []
-                    try:
-                        await pipe.call("Browser.close", 10)
-                    except Exception:
+                    # 等浏览器把登录写进硬盘（最多约 45 秒），再让它正常退出；慢机器多给时间，尽量不强杀。
+                    # Wait for the browser to write the sign-in to disk (about 45 s at most), then let it exit
+                    # cleanly; slow machines get extra time and a hard kill is the last resort.
+                    if not had_auth and not _auth_on_disk():
+                        self.login["message"] = "正在等浏览器把登录写进硬盘…（最多约 45 秒）"
+                        until = time.monotonic() + 45
+                        while time.monotonic() < until and chrome.returncode is None and not _auth_on_disk():
+                            await asyncio.sleep(2)
+                    self.login["message"] = "正在保存登录…"
+                    if chrome.returncode is None:
                         chrome.terminate()
-                    try:
-                        await asyncio.wait_for(chrome.wait(), 60)
-                    except asyncio.TimeoutError:
-                        chrome.kill()
-                        await chrome.wait()
+                        try:
+                            await asyncio.wait_for(chrome.wait(), 90)
+                        except asyncio.TimeoutError:
+                            chrome.kill()
+                            await chrome.wait()
                 await asyncio.sleep(1)
                 await self._context()
-                # 资料里没写进去，但刚才从 Chrome 拿到了：放回去。/ Missing from the profile but taken from Chrome just
-                # now: put them back.
-                if not await self._has_auth() and any(c["name"] == "auth_token" for c in live):
-                    await self._ctx.add_cookies(live)
                 ok = await self._has_auth()
                 self.signed_in_cache = ok
                 if ok:
@@ -401,15 +372,13 @@ class XBrowser:
                     self.login["message"] = "登录成功，已保存"
                 else:
                     self.login["message"] = ("超过 20 分钟没完成，已关闭" if time.monotonic() >= deadline
-                                             else f"窗口已关闭，但没有检测到登录（从浏览器读到 {len(live)} 个 X 的 cookie）")
+                                             else "窗口已关闭，但没有检测到登录")
         except Exception as e:
             self.login["message"] = f"登录窗口出错：{type(e).__name__}: {e}"
         finally:
             await self._stop_vnc()
             if chrome and chrome.returncode is None:
                 chrome.kill()
-            if pipe:
-                pipe.close()
             self.login["active"] = False
             on_done(ok)
 

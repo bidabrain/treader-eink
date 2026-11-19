@@ -5,8 +5,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 未发布 / Unreleased
 
-- x 服务器 0.1.1：修正在较慢的机器（如 NAS）上登录 X 后存不住。点“登录好了”时先从还开着的浏览器里取一次登录 cookie，再让它正常关闭（最多等 60 秒），浏览器没来得及写盘也不会丢。
-  x server 0.1.1: fix the X sign-in not being kept on slower machines such as a NAS. On "done" the sign-in cookies are taken from the still-running browser before it closes cleanly (up to 60 s), so nothing is lost if the browser has not written them to disk yet.
+- x 服务器 0.1.2：修正在较慢的机器（如 NAS）上登录 X 后存不住。服务器盯着浏览器资料里的 Cookies 库，登录一写进硬盘就自动收尾；点“登录好了”时也先等它写盘（最多约 45 秒），再让浏览器正常退出（最多等 90 秒），不再提前强杀。登录窗口仍是不带任何调试接口的普通 Chrome（0.1.1 加的调试管道会让 X 暂时限制登录，已去掉）。
+  x server 0.1.2: fix the X sign-in not being kept on slower machines such as a NAS. The server watches the profile's Cookies database and finishes as soon as the sign-in is on disk; "done" also waits for that write (about 45 s at most) and then lets the browser exit cleanly (up to 90 s) instead of killing it early. The sign-in window stays an ordinary Chrome with no debugging interface (the debugging pipe added in 0.1.1 made X limit sign-ins and is gone).
 
 ## 2026-11-20 · Treader 0.6.0
 

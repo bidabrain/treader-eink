@@ -20,7 +20,7 @@ CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8093"))
 DISPLAY = os.environ.get("DISPLAY", ":99")
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 FEEDS = {"foryou": "为你推荐", "following": "正在关注"}
 # 自动拉取的最小间隔不能低于这么多分钟。/ Automatic fetching never runs closer together than this.
