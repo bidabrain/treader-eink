@@ -32,7 +32,7 @@ data class Note(
     val time: Double,
     val images: Int,
     val list: List<Comment>,
-    /** 还能加载更多评论（服务器 0.3.0 起才有）。/ More comments can be loaded (servers from 0.3.0). */
+    /** 还能加载更多评论：评论总数比已有的多、还没加载过。/ More comments can be loaded: more than stored, not loaded yet. */
     val more: Boolean = false,
 )
 
@@ -95,7 +95,7 @@ class Repo(context: Context, private val api: Api) {
                     val c = list.optJSONObject(i) ?: continue
                     add(Comment(str(c, "user"), str(c, "text"), str(c, "likes")))
                 }
-            }, n.optBoolean("comments_more"))
+            }, !n.optBoolean("more_done") && countValue(str(n, "comments")) > (list?.length() ?: 0))
     }
 
     /** 从服务器取关注列表，保留“看过”；第一次取到的都算看过。/ Fetch the following list keeping "seen" marks; a
@@ -157,9 +157,16 @@ class Repo(context: Context, private val api: Api) {
             j = api.moreComments(id, false)
         }
         return withContext(Dispatchers.IO) {
-            write(File(notesDir, "$id.json"), j)
+            write(File(notesDir, "$id.json"), j.put("more_done", true))
             cachedNote(id)!!
         }
+    }
+
+    /** 小红书的计数文字（“12”“1.2万”“10+”）换成大约的数。/ Count text ("12", "1.2万", "10+") as a number. */
+    private fun countValue(s: String): Long {
+        val m = Regex("""^\s*([\d.]+)\s*(万|w|W)?""").find(s) ?: return 0
+        val v = m.groupValues[1].toDoubleOrNull() ?: return 0
+        return if (m.groupValues[2].isNotEmpty()) (v * 10000).toLong() else v.toLong()
     }
 
     suspend fun markSeen(id: String) = withContext(Dispatchers.IO) {

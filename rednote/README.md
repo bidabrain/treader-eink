@@ -132,7 +132,7 @@ docker compose up -d
 | `GET /api/device/v1/rec/cover/{id}.jpg` | 推荐列表里的封面，规格和下面的 `thumb.jpg` 一样 |
 | `GET /api/device/v1/rec/note/{id}` | 点开推荐里的一篇：没拉过就现拉（视频返回 415），返回和 `note/{id}` 一样；之后图片用下面的 `img` 接口。次数用完 429，暂停中 503，不在近期列表里 404 |
 | `GET /api/device/v1/note/{id}` | 上面的字段加 `body`（正文）、`comment_list`（前 20 条：`user`、`text`、`likes`）和 `comments_more`（还能加载更多评论：有这篇的令牌、没加载过、评论总数比已存的多） |
-| `GET /api/device/v1/note/{id}/more_comments?start=1` | 加载更多评论：`start=1` 让服务器现拉这篇最多 60 条（浏览器往下翻，约 20～60 秒，算一次按需请求，受推荐次数和每日总数限制）。之后不带 `start` 反复问，每次最多等 20 秒：还在拉返回 `{"loading": true}`，拉完返回和 `note/{id}` 一样的内容。分开问是为了不碰 Cloudflare 约 100 秒的超时 |
+| `GET /api/device/v1/note/{id}/more_comments?start=1` | 加载更多评论：`start=1` 让服务器现拉这篇最多 60 条（浏览器往下翻，约 20～60 秒，算一次按需请求，受推荐次数和每日总数限制）。之后不带 `start` 反复问，每次最多等 20 秒：还在拉返回 `{"loading": true}`，拉完返回和 `note/{id}` 一样的内容。分开问是为了不碰 Cloudflare 约 100 秒的超时。没有这篇的令牌（服务器升级前拉的、之后也没在博主主页上再出现）返回 409 |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
 | `GET /api/device/v1/img/{id}/thumb.jpg` | 封面：宽 300，保留原图比例（高宽比夹在 3:4～4:3，即接口里的 `ratio`） |
 

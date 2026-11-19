@@ -396,6 +396,8 @@ async def device_more_comments(request: Request, note_id: str, start: int = 0):
     n = store.note(note_id)
     if not n:
         raise HTTPException(404, "没有这篇")
+    if start and not n.get("xsec_token") and not n.get("more_comments"):
+        raise HTTPException(409, "这篇是服务器升级前拉的，还没有令牌；等服务器下一轮拉取博主时补上，或者过几天再试")
     if start and rec.can_more(n):
         rec.more_start(note_id)
     loading, err = await rec.more_wait(note_id, 20)

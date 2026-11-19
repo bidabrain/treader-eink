@@ -331,8 +331,8 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
         cJSON_AddNumberToObject(out, "images", images);
         const cJSON* tv = cJSON_GetObjectItemCaseSensitive(root, "time");
         cJSON_AddNumberToObject(out, "time", cJSON_IsNumber(tv) ? tv->valuedouble : 0);   // 可能是毫秒 / May be ms
-        // 还能不能加载更多评论（服务器 0.3.0 起才有）。/ Whether more comments can be loaded (servers from 0.3.0).
-        cJSON_AddBoolToObject(out, "more", cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "comments_more")));
+        // 加载过更多评论就记下，按钮变灰。/ Remember that more comments were loaded, so the button turns gray.
+        if (r->more_comments) cJSON_AddBoolToObject(out, "more_done", true);
         cJSON* list = cJSON_AddArrayToObject(out, "list");
         const cJSON* c;
         cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(root, "comment_list")) {

@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - 小红书、微博：设置里可以选列表条数 100 / 200 / 300（设备在“设置 › 内容来源”，安卓 App 在设置页），刷新时一次取这么多条；条数越多，TF 卡上存的缩略图越多。rednote 服务器 0.3.0、weibo 服务器 0.1.4 起每次最多给 300 条。
   Xiaohongshu and Weibo: settings offer a list size of 100 / 200 / 300 (on the device under "Settings > Content sources", in the Android apps' settings); a refresh fetches that many, and more posts keep more thumbnails on the TF card. The rednote server 0.3.0 and weibo server 0.1.4 return up to 300.
+- 修正：升级前缓存的小红书笔记“加载更多评论”一直是灰的。按钮改由设备和 App 自己判断（评论总数比显示的多、还没加载过）；服务器升级前拉的笔记没有令牌时，点了会说明原因（rednote 0.3.1、安卓 1.3.1）。
+  Fix: "Load more comments" stayed gray on Xiaohongshu notes cached before the upgrade. The device and app now decide the state themselves (more comments than shown, not loaded yet); a note fetched before the server upgrade without a token explains why when pressed (rednote 0.3.1, Android 1.3.1).
 - 小红书评论末尾加“加载更多评论”（设备和安卓 App 1.3.0）：点了让服务器现拉这篇最多 60 条评论，弹等待框，约 20～60 秒，算一次按需请求。评论本来就不比已显示的多、已经加载过、或服务器太旧时按钮是灰的。需要 rednote 服务器 0.3.0；旧笔记要等服务器下一轮拉取补上令牌后才能用。微博安卓 App 1.2.0 只加了列表条数。
   Xiaohongshu comments end with "Load more comments" (device and Android app 1.3.0): the server fetches up to 60 comments for the note behind a wait dialog, about 20-60 s, counted as one on-demand request. The button is gray when there are no more comments than shown, after loading once, or with an older server. Needs the rednote server 0.3.0; older notes work once the next fetch round gives them a token. The Weibo Android app 1.2.0 only adds the list size.
 

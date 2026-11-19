@@ -157,7 +157,7 @@ static uint16_t* s_pages;
 static int s_page_count;
 static uint8_t s_comment_pages[COMMENTS_MAX + 1];
 static int s_comment_page_count;
-static bool s_comments_more;         // 服务器说还能加载更多评论 / The server says more comments can be loaded
+static bool s_comments_more;         // 还能加载更多评论 / More comments can be loaded
 static int s_more_y;                 // 按钮所在块的顶（最后一页）/ Top of the button block (last page)
 // 等服务器拉更多评论（等待框）；s_more_failed 时框里写原因。/ Waiting for the server to fetch more comments (dialog);
 // with s_more_failed it shows why.
@@ -443,6 +443,15 @@ static void layout_comments(void) {
 
 static EpdRect more_btn(void) { return (EpdRect){(TR_W - MORE_BTN_W) / 2, s_more_y + 24, MORE_BTN_W, MORE_BTN_H}; }
 
+// 小红书的计数文字（“12”“1.2万”“10+”）换成大约的数。/ Xiaohongshu count text ("12", "1.2万", "10+") as a number.
+static long count_value(const char* s) {
+    char* end = NULL;
+    const double v = strtod(s, &end);
+    if (end == s || v < 0) return 0;
+    while (*end == ' ') end++;
+    return !strncmp(end, "万", strlen("万")) || *end == 'w' || *end == 'W' ? (long)(v * 10000) : (long)v;
+}
+
 static bool load_note(const char* id) {
     free_note();
     char dir[64], path[80];
@@ -465,7 +474,7 @@ static bool load_note(const char* id) {
     const cJSON* tv = cJSON_GetObjectItemCaseSensitive(root, "time");
     s_time = cJSON_IsNumber(tv) ? tv->valuedouble : 0;
     s_images = num(root, "images");
-    s_comments_more = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "more"));
+    const bool more_done = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "more_done"));
     const cJSON* c;
     cJSON_ArrayForEach(c, cJSON_GetObjectItemCaseSensitive(root, "list")) {
         if (s_comment_count >= COMMENTS_MAX) break;
@@ -475,6 +484,9 @@ static bool load_note(const char* id) {
         x->likes = keep(c, "l");
     }
     cJSON_Delete(root);
+    // 按钮在设备上判断（升级前缓存的笔记也能用）：评论总数比显示的多、还没加载过。
+    // Decided on the device so notes cached before an upgrade work too: more comments than shown, not loaded yet.
+    s_comments_more = !more_done && count_value(s_comment_total) > s_comment_count;
     snprintf(s_id, sizeof(s_id), "%s", id);
     s_title_lines = title_lines();
     layout_body();
