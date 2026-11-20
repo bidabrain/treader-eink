@@ -40,16 +40,18 @@ extern "C" {
 #define TR_GRAY_OUTLINE 0x50     ///< #555 描边（DU 下按黑处理）/ Outlines (black under DU)
 #define TR_GRAY_SECONDARY 0x50   ///< #555 次要文字 / Secondary text
 
-/// 标签的身份（不是位置），也是“隐藏标签”位掩码里的位号；显示的标签平分宽度。
-/// Tab identity, not position, and the bit number in the hidden-tab mask; visible tabs share the width.
+/// 功能的身份（不是位置），也是“隐藏功能”位掩码里的位号。/ Feature identity, not position, and the bit number in the
+/// hidden-feature mask.
 typedef enum {
     TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_X, TR_TAB_SETTINGS, TR_TAB_MAX
 } tr_tab_t;
 
-/// 底部最多同时显示几个标签（再多一格就放不下字）。/ Most tabs shown at once (one more cell leaves no room for labels).
-#define TR_TABS_SHOWN_MAX 7
+/// 底部最后一格“全部”（tr_tab_hit 的返回值、tr_tab_bar 的选中值）。/ The last bar cell, "All" (a tr_tab_hit result and a
+/// tr_tab_bar selection).
+#define TR_TAB_ALL TR_TAB_MAX
 
-/// 书库和设置不能隐藏。/ The library and settings cannot be hidden.
+/// 书库和设置不能隐藏；书库还固定在底部第一格。/ The library and settings cannot be hidden; the library also stays in
+/// the first bar cell.
 #define TR_TABS_FIXED ((1u << TR_TAB_LIBRARY) | (1u << TR_TAB_SETTINGS))
 
 typedef enum {
@@ -92,23 +94,27 @@ void tr_status_bar(uint8_t* fb);
 /// 页标题（大号粗体）。/ Page title (large bold).
 void tr_title(uint8_t* fb, const char* title);
 
-/// 隐藏哪些标签（按 tr_tab_t 位号的掩码；开机和改设置时由调用方告知，本文件不读设置）。固定的两个忽略。
-/// Which tabs are hidden (mask by tr_tab_t bit; callers set it at boot and on change; this file never reads
-/// settings). The two fixed tabs are ignored.
-void tr_tabs_set_hidden(uint8_t mask);
-/// 把隐藏掩码收到最多显示 TR_TABS_SHOWN_MAX 个：从右往左多关几个可隐藏的标签。/ Clamp a hidden mask so at most
-/// TR_TABS_SHOWN_MAX tabs show, hiding extra hideable tabs from the right.
-uint8_t tr_tabs_limit(uint8_t mask);
-/// 这个标签现在显示吗。/ Whether this tab is shown.
+/// 告诉本文件哪些功能隐藏、哪些放在底部（书库之后，按顺序）。开机和改设置时由调用方告知，本文件不读设置。
+/// Tell this file which features are hidden and which are pinned after the library, in order. Callers set it at boot
+/// and on change; this file never reads settings.
+void tr_tabs_configure(uint8_t hidden, const uint8_t* pins, int n);
+/// 底部一共几格（含书库和“全部”）。/ Bar cells in total, the library and "All" included.
+int tr_tab_slots(void);
+/// 底部实际显示的功能（书库加放得下的常用，不含“全部”），按位置顺序；返回个数。/ Features actually in the bar
+/// (the library plus the pins that fit, "All" excluded), in position order; returns the count.
+int tr_tab_bar_tabs(tr_tab_t out[TR_TAB_MAX]);
+/// 这个功能没被隐藏（“全部”页里有它）。/ Whether this feature is not hidden (the All page lists it).
 bool tr_tab_shown(tr_tab_t tab);
-/// 标签名和图标（设置页列表也用）。/ Tab label and icon (the settings list uses them too).
+/// 功能名和图标（设置页和“全部”页也用）；TR_TAB_ALL 是“全部”。/ Feature label and icon (settings and the All page
+/// use them too); TR_TAB_ALL is "All".
 const char* tr_tab_label(tr_tab_t tab);
 tr_icon_t tr_tab_icon(tr_tab_t tab);
-/// 显示几个标签。/ Number of visible tabs.
+/// 没隐藏的功能有几个。/ Number of features that are not hidden.
 int tr_tab_count(void);
-/// 底部标签栏。/ Bottom tab bar.
+/// 底部标签栏：书库、常用功能、最后一格“全部”。active 不在底部时选中“全部”。/ Bottom bar: the library, pinned
+/// features, and "All" last. When active is not in the bar, "All" is selected.
 void tr_tab_bar(uint8_t* fb, tr_tab_t active);
-/// 命中的标签（tr_tab_t），未命中返回 -1。/ Hit tab as a tr_tab_t, or -1.
+/// 命中的格子：功能号或 TR_TAB_ALL，未命中返回 -1。/ Hit cell: a feature id or TR_TAB_ALL, or -1.
 int tr_tab_hit(uint16_t x, uint16_t y);
 /// 标签栏区域。/ Tab bar area.
 EpdRect tr_tab_area(void);

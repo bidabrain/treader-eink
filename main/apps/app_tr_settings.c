@@ -14,11 +14,16 @@
  * token, test) that can also serve a phone web form (through the transfer web service) for the address and token;
  * "About Treader" shows here.
  *
- * 冻结：书库和设置两个标签不能隐藏，最多同时显示 TR_TABS_SHOWN_MAX 个；网页填写只收当前服务器页的地址和令牌，
+ * 冻结：书库和设置两个功能不能隐藏，书库固定在底部第一格；网页填写只收当前服务器页的地址和令牌，
  * 离开本页或关掉开关就停；令牌从不显示原值。
- * Frozen: the library and settings tabs cannot be hidden and at most TR_TABS_SHOWN_MAX tabs show; the web form takes
- * only the current server page's address and token and stops when the page is left or the switch is turned off; the
- * token is never shown.
+ * Frozen: the library and settings features cannot be hidden and the library stays in the first bar cell; the web
+ * form takes only the current server page's address and token and stops when the page is left or the switch is
+ * turned off; the token is never shown.
+ * 修订（2026-11-21，用户要求）：“底部标签”从“开关显示（最多 7 个）”改成“挑哪几个放底部、排顺序、隐藏”；底部最后一格
+ * 固定是“全部”，没放在底部的功能在“全部”页里。原因：写死个数不方便，以后加功能也更麻烦。
+ * Revision (2026-11-21, user request): "Tab bar" changed from show/hide switches (at most 7) to picking which features
+ * sit in the bar, their order, and hiding; the last cell is always "All" and unpinned features live on the All page.
+ * Reason: a fixed count was inconvenient and would get worse as features are added.
  */
 
 #include <stdio.h>
@@ -156,8 +161,11 @@ static const row_t TIME_ROWS[] = {
 #define SOURCES (1 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
-#define TAB_TOP 270
-#define TAB_H 90
+#define TAB_TOP 210   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
+#define TAB_H 70      // 每行高度 / Row height
+#define TAB_SEC_H 40  // 段标题高度 / Section heading height
+#define TAB_SEC_GAP 22
+#define TAB_BTN_H 52
 
 static page_t s_page;
 static int s_open_source = -1;  // 别的页要求直接打开某个来源（tr_tab_t）/ Another page asked for a source (tr_tab_t)
@@ -485,12 +493,11 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
         snprintf(out, cap, "%.60s · 锁屏壁纸 %.50s", a, b);
         break;
     case C_TABS: {
-        int n = 0, len = 0;
-        len = snprintf(out, cap, "显示 %d 个：", tr_tab_count());
-        for (int t = 0; t < TR_TAB_MAX && len < (int)cap; t++) {
-            if (!tr_tab_shown((tr_tab_t)t)) continue;
-            len += snprintf(out + len, cap - (size_t)len, "%s%s", n++ ? "、" : "", tr_tab_label((tr_tab_t)t));
-        }
+        tr_tab_t bar[TR_TAB_MAX];
+        const int n = tr_tab_bar_tabs(bar);
+        int len = snprintf(out, cap, "底部：");
+        for (int i = 0; i < n && len < (int)cap; i++)
+            len += snprintf(out + len, cap - (size_t)len, "%s%s", i ? "、" : "", tr_tab_label(bar[i]));
         break;
     }
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
@@ -569,15 +576,6 @@ static void draw_switch(uint8_t* fb, int right, int y, bool on) {
     }
 }
 
-// 灰色的关着开关（显示满了，不能再开）。/ A gray off switch (the bar is full, it cannot turn on).
-static void draw_switch_gray(uint8_t* fb, int right, int y) {
-    const EpdRect r = {right - 100, y, 100, 54};
-    ui_draw_round_rect(fb, r, 27, TR_GRAY_LINE);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, TR_GRAY_LINE);
-    epd_draw_circle(r.x + 27, y + 27, 18, TR_GRAY_LINE, fb);
-    epd_draw_circle(r.x + 27, y + 27, 17, TR_GRAY_LINE, fb);
-}
-
 static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
     for (int i = 0; i < n; i++) {
         const row_t* r = &rows[i];
@@ -630,27 +628,159 @@ static void draw_web_box(uint8_t* fb) {
                 : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。", 3);
 }
 
+// “底部标签”页的行：书库和放在底部的（按顺序）、只在“全部”里的、隐藏的三段。绘制和点击都用这一份排版。
+// Rows on the tab-bar page in three sections: the library and pinned features (in order), those only on the All
+// page, and hidden ones. Drawing and taps share this one layout.
+typedef enum { TB_PINNED, TB_REST, TB_HIDDEN } tb_sec_t;
+typedef enum { TB_UP, TB_DOWN, TB_OUT, TB_IN, TB_HIDE, TB_SHOW, TB_BTN_COUNT } tb_btn_t;
+typedef struct {
+    tr_tab_t tab;
+    tb_sec_t sec;
+    int index;   // 在常用里的位置（书库是 -1）/ Position among the pins (-1 for the library)
+    int y;
+} tb_row_t;
+
+static uint8_t s_tb_pins[TR_TAB_MAX];
+static int s_tb_pin_n;
+
+// 常用最多几个（底部减去书库和“全部”两格）。/ Most pins (the bar minus the library and "All").
+static int tb_capacity(void) { return tr_tab_slots() - 2; }
+
+static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[3]) {
+    s_tb_pin_n = app_settings_tab_pins(s_tb_pins);
+    const uint8_t hidden = app_settings_hidden_tabs();
+    int n = 0, y = TAB_TOP;
+    sec_y[TB_PINNED] = y;
+    y += TAB_SEC_H;
+    rows[n++] = (tb_row_t){TR_TAB_LIBRARY, TB_PINNED, -1, y};
+    y += TAB_H;
+    for (int i = 0; i < s_tb_pin_n; i++) {
+        rows[n++] = (tb_row_t){(tr_tab_t)s_tb_pins[i], TB_PINNED, i, y};
+        y += TAB_H;
+    }
+    y += TAB_SEC_GAP;
+    sec_y[TB_REST] = y;
+    y += TAB_SEC_H;
+    for (int t = 1; t < TR_TAB_MAX; t++) {
+        bool pinned = false;
+        for (int i = 0; i < s_tb_pin_n; i++) pinned |= s_tb_pins[i] == t;
+        if (pinned || (hidden & (1u << t))) continue;
+        rows[n++] = (tb_row_t){(tr_tab_t)t, TB_REST, -1, y};
+        y += TAB_H;
+    }
+    y += TAB_SEC_GAP;
+    sec_y[TB_HIDDEN] = hidden ? y : -1;
+    if (hidden) y += TAB_SEC_H;
+    for (int t = 1; t < TR_TAB_MAX; t++) {
+        if (!(hidden & (1u << t))) continue;
+        rows[n++] = (tb_row_t){(tr_tab_t)t, TB_HIDDEN, -1, y};
+        y += TAB_H;
+    }
+    return n;
+}
+
+static int tb_btn_w(const char* label) { return ttf_text_width_px(26, label) + 32; }
+
+// 这一行某个按钮的位置；这一行没有这个按钮返回 false。/ Where a row's button sits; false if the row lacks it.
+static bool tb_btn_rect(const tb_row_t* r, tb_btn_t b, EpdRect* out) {
+    const int top = r->y + (TAB_H - TAB_BTN_H) / 2;
+    int right = TR_W - TR_MARGIN;
+    if (r->sec == TB_PINNED) {
+        if (r->index < 0) return false;
+        const int out_w = tb_btn_w("移出");
+        if (b == TB_OUT) { *out = (EpdRect){right - out_w, top, out_w, TAB_BTN_H}; return true; }
+        right -= out_w + 14;
+        if (b == TB_DOWN) { *out = (EpdRect){right - TAB_BTN_H, top, TAB_BTN_H, TAB_BTN_H}; return true; }
+        right -= TAB_BTN_H + 10;
+        if (b == TB_UP) { *out = (EpdRect){right - TAB_BTN_H, top, TAB_BTN_H, TAB_BTN_H}; return true; }
+        return false;
+    }
+    if (r->sec == TB_REST) {
+        const int in_w = tb_btn_w("放到底部");
+        if (b == TB_IN) { *out = (EpdRect){right - in_w, top, in_w, TAB_BTN_H}; return true; }
+        right -= in_w + 14;
+        const int hide_w = tb_btn_w("隐藏");
+        if (b == TB_HIDE && !(TR_TABS_FIXED & (1u << r->tab))) {
+            *out = (EpdRect){right - hide_w, top, hide_w, TAB_BTN_H};
+            return true;
+        }
+        return false;
+    }
+    const int show_w = tb_btn_w("显示");
+    if (b == TB_SHOW) { *out = (EpdRect){right - show_w, top, show_w, TAB_BTN_H}; return true; }
+    return false;
+}
+
+// 这一行的按钮能不能按（到头的箭头、底部满了的“放到底部”是灰的）。/ Whether a row's button is enabled (arrows at
+// the ends and "Pin" with a full bar are gray).
+static bool tb_btn_enabled(const tb_row_t* r, tb_btn_t b) {
+    if (b == TB_UP) return r->index > 0;
+    if (b == TB_DOWN) return r->index >= 0 && r->index + 1 < s_tb_pin_n;
+    if (b == TB_IN) return s_tb_pin_n < tb_capacity();
+    return true;
+}
+
+static void tb_draw_btn(uint8_t* fb, EpdRect r, tb_btn_t b, bool enabled) {
+    // 能按：深灰描边；不能按：浅灰底、深灰字。这一页整页刷新。/ Enabled: dark outline; disabled: light gray fill
+    // with dark gray text. This page refreshes whole pages.
+    if (enabled) {
+        ui_draw_round_rect(fb, r, r.height / 2, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), r.height / 2 - 1, TR_GRAY_OUTLINE);
+    } else {
+        ui_fill_round_rect(fb, r, r.height / 2, TR_GRAY_SURFACE);
+    }
+    const uint8_t ink = enabled ? UI_GRAY_BLACK : TR_GRAY_OUTLINE, bg = enabled ? UI_GRAY_WHITE : TR_GRAY_SURFACE;
+    if (b == TB_UP || b == TB_DOWN) {
+        const int cx = r.x + r.width / 2, cy = r.y + r.height / 2, a = 10, dy = b == TB_UP ? -a / 2 : a / 2;
+        for (int d = -1; d <= 1; d++) {
+            epd_draw_line(cx - a + d, cy - dy, cx + d, cy + dy, ink, fb);
+            epd_draw_line(cx + d, cy + dy, cx + a + d, cy - dy, ink, fb);
+        }
+        return;
+    }
+    static const char* const LABELS[TB_BTN_COUNT] = {"", "", "移出", "放到底部", "隐藏", "显示"};
+    tr_text_on(fb, r.x + r.width / 2, r.y + (r.height - 26) / 2 - 2, 26, LABELS[b], EPD_DRAW_ALIGN_CENTER, false, ink, bg);
+}
+
 static void draw_tabs(uint8_t* fb) {
-    const bool full = tr_tab_count() >= TR_TABS_SHOWN_MAX;
     draw_back_title(fb, "底部标签");
     draw_message(fb);
-    tr_wrap(fb, TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 26, 38,
-            "关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。", 2);
-    for (int t = 0; t < TR_TAB_MAX; t++) {
-        const int y = TAB_TOP + t * TAB_H;
-        tr_icon(fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + TAB_H / 2, false);
-        tr_text(fb, TR_MARGIN + 62, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
-        if (TR_TABS_FIXED & (1u << t))
-            tr_text_dim(fb, TR_W - TR_MARGIN, y + (TAB_H - 28) / 2, 28, "固定", EPD_DRAW_ALIGN_RIGHT);
-        else if (!tr_tab_shown((tr_tab_t)t) && full)
-            // 已经显示满了：关着的开关画成灰的，点了不开。/ Already full: off switches are gray and do not turn on.
-            draw_switch_gray(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2);
-        else
-            draw_switch(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2, tr_tab_shown((tr_tab_t)t));
-        if (t + 1 < TR_TAB_MAX) tr_hline(fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    char line[96];
+    snprintf(line, sizeof(line), "底部放 %d 个，最后一格固定是“全部”", tr_tab_slots() - 1);
+    tr_text_dim(fb, TR_MARGIN, 158, 26, line, EPD_DRAW_ALIGN_LEFT);
+    tb_row_t rows[TR_TAB_MAX];
+    int sec_y[3];
+    const int n = tb_layout(rows, sec_y);
+    tr_text_dim(fb, TR_MARGIN, sec_y[TB_PINNED], 26, "放在底部（按顺序）", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, sec_y[TB_REST], 26, "只在“全部”里", EPD_DRAW_ALIGN_LEFT);
+    if (sec_y[TB_HIDDEN] >= 0)
+        tr_text_dim(fb, TR_MARGIN, sec_y[TB_HIDDEN], 26, "已隐藏（“全部”里也不显示）", EPD_DRAW_ALIGN_LEFT);
+    for (int i = 0; i < n; i++) {
+        const tb_row_t* r = &rows[i];
+        const bool pinned = r->sec == TB_PINNED;
+        int x = TR_MARGIN;
+        if (pinned) {
+            snprintf(line, sizeof(line), "%d", r->index + 2);
+            tr_text_dim(fb, x + 6, r->y + (TAB_H - 28) / 2 - 2, 28, line, EPD_DRAW_ALIGN_LEFT);
+            x += 40;
+        }
+        tr_icon(fb, tr_tab_icon(r->tab), x + 20, r->y + TAB_H / 2, false);
+        if (r->sec == TB_HIDDEN)
+            tr_text_dim(fb, x + 60, r->y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT);
+        else tr_text(fb, x + 60, r->y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT, false);
+        if (r->sec == TB_PINNED && r->index < 0) {
+            tr_text_dim(fb, TR_W - TR_MARGIN, r->y + (TAB_H - 26) / 2, 26, "固定第一格（主页）", EPD_DRAW_ALIGN_RIGHT);
+        } else if (r->sec == TB_PINNED && r->index >= tb_capacity()) {
+            // 这一档底部放不下：先留在“全部”里。/ No room in the bar at this size: on the All page for now.
+            tr_text_dim(fb, x + 60 + ttf_text_width_px(32, tr_tab_label(r->tab)) + 16, r->y + (TAB_H - 24) / 2, 24,
+                        "这一档在“全部”里", EPD_DRAW_ALIGN_LEFT);
+        }
+        for (int b = 0; b < TB_BTN_COUNT; b++) {
+            EpdRect br;
+            if (tb_btn_rect(r, (tb_btn_t)b, &br)) tb_draw_btn(fb, br, (tb_btn_t)b, tb_btn_enabled(r, (tb_btn_t)b));
+        }
+        if (i + 1 < n && rows[i + 1].sec == r->sec) tr_hline(fb, r->y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
-    tr_text_dim(fb, TR_MARGIN, TAB_TOP + TR_TAB_MAX * TAB_H + 30, 26, "下面的标签栏就是效果，开关一下整屏刷新一次。",
-                EPD_DRAW_ALIGN_LEFT);
 }
 
 static void draw_sources(uint8_t* fb) {
@@ -1061,20 +1191,56 @@ static app_redraw_t touch_transfer(app_ctx_t* ctx, uint16_t y) {
     return APP_REDRAW_NONE;
 }
 
-static app_redraw_t touch_tabs(uint16_t y) {
-    if (y < TAB_TOP || y >= TAB_TOP + TR_TAB_MAX * TAB_H) return APP_REDRAW_NONE;
-    const int t = (y - TAB_TOP) / TAB_H;
-    if (TR_TABS_FIXED & (1u << t)) return APP_REDRAW_NONE;
-    if (!tr_tab_shown((tr_tab_t)t) && tr_tab_count() >= TR_TABS_SHOWN_MAX) {
-        snprintf(s_message, sizeof(s_message), "最多显示 %d 个标签，先关掉一个", TR_TABS_SHOWN_MAX);
-        return APP_REDRAW_PAGE;
+// 保存常用和隐藏，交给标签栏，整页重画（标签栏也跟着变）。/ Save pins and hidden features, hand them to the bar,
+// and redraw the whole page (the bar changes with it).
+static app_redraw_t tb_apply(uint8_t hidden) {
+    app_settings_set_tab_pins(s_tb_pins, s_tb_pin_n);
+    app_settings_set_hidden_tabs(hidden);
+    tr_tabs_configure(app_settings_hidden_tabs(), s_tb_pins, s_tb_pin_n);
+    return APP_REDRAW_PAGE;
+}
+
+static app_redraw_t touch_tabs(uint16_t x, uint16_t y) {
+    tb_row_t rows[TR_TAB_MAX];
+    int sec_y[3];
+    const int n = tb_layout(rows, sec_y);
+    uint8_t hidden = app_settings_hidden_tabs();
+    for (int i = 0; i < n; i++) {
+        const tb_row_t* r = &rows[i];
+        for (int b = 0; b < TB_BTN_COUNT; b++) {
+            EpdRect br;
+            if (!tb_btn_rect(r, (tb_btn_t)b, &br) || !ui_rect_hit(br, x, y)) continue;
+            if (!tb_btn_enabled(r, (tb_btn_t)b)) {
+                if (b == TB_IN) {
+                    snprintf(s_message, sizeof(s_message), "底部满了，先移出一个");
+                    return APP_REDRAW_PAGE;
+                }
+                return APP_REDRAW_NONE;
+            }
+            s_message[0] = 0;
+            const int k = r->index;
+            switch ((tb_btn_t)b) {
+            case TB_UP:
+            case TB_DOWN: {
+                const int j = b == TB_UP ? k - 1 : k + 1;
+                const uint8_t t = s_tb_pins[k];
+                s_tb_pins[k] = s_tb_pins[j];
+                s_tb_pins[j] = t;
+                break;
+            }
+            case TB_OUT:
+                for (int m = k; m + 1 < s_tb_pin_n; m++) s_tb_pins[m] = s_tb_pins[m + 1];
+                s_tb_pin_n--;
+                break;
+            case TB_IN: s_tb_pins[s_tb_pin_n++] = (uint8_t)r->tab; break;
+            case TB_HIDE: hidden |= (uint8_t)(1u << r->tab); break;
+            case TB_SHOW: hidden &= (uint8_t)~(1u << r->tab); break;
+            default: return APP_REDRAW_NONE;
+            }
+            return tb_apply(hidden);
+        }
     }
-    s_message[0] = 0;
-    const uint8_t mask = app_settings_hidden_tabs() ^ (uint8_t)(1u << t);
-    app_settings_set_hidden_tabs(mask);
-    tr_tabs_set_hidden(mask);
-    // 标签栏整条变了，整屏刷新。/ The whole tab bar changes, so refresh the full screen.
-    return APP_REDRAW_FULL;
+    return APP_REDRAW_NONE;
 }
 
 // 锁屏密码：关着就输两遍设新密码；开着就先输当前密码再关掉。键盘自己占满屏幕，回来整屏重画。
@@ -1186,7 +1352,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     if (ui_rect_hit(BACK_RECT, x, y)) return go_back();
     int id = -1;
     switch (s_page) {
-    case P_TABS: return touch_tabs(y);
+    case P_TABS: return touch_tabs(x, y);
     case P_SOURCES: return touch_sources(y);
     case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
     case P_SRC_SERVER: id = row_hit(SERVER_ROWS, s_web_on ? 1 : COUNT(SERVER_ROWS), y); break;

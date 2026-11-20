@@ -13,6 +13,8 @@ extern const app_desc_t app_tr_hupu;
 extern const app_desc_t app_tr_xhs;
 extern const app_desc_t app_tr_weibo;
 extern const app_desc_t app_tr_x;
+extern const app_desc_t app_tr_store;
+extern const app_desc_t app_tr_all;
 
 // 番茄标签上次停留的页面（书架或书城）。/ Last page under the Tomato tab (shelf or store).
 static const app_desc_t* s_tomato_page = &app_tr_tomato;
@@ -31,14 +33,26 @@ const app_desc_t* tr_nav_tab_app(int tab) {
     case TR_TAB_WEIBO: return &app_tr_weibo;
     case TR_TAB_X: return &app_tr_x;
     case TR_TAB_SETTINGS: return &app_tr_settings;
+    case TR_TAB_ALL: return &app_tr_all;
     default: return NULL;
     }
+}
+
+int tr_nav_app_tab(const app_desc_t* app) {
+    if (!app) return -1;
+    if (app == &app_tr_store) return TR_TAB_TOMATO;
+    for (int t = 0; t < TR_TAB_MAX; t++)
+        if (tr_nav_tab_app(t) == app || (t == TR_TAB_TOMATO && app == &app_tr_tomato)) return t;
+    return -1;
 }
 
 bool tr_nav_touch(app_ctx_t* ctx, uint16_t x, uint16_t y, tr_tab_t self) {
     int tab = tr_tab_hit(x, y);
     if (tab < 0) return false;
-    if (tab != (int)self) ctx->request_app = tr_nav_tab_app(tab);
+    if (tab == (int)self) return true;
+    // 点“全部”：记下从哪个功能来。/ Tapping "All": remember which feature it came from.
+    if (tab == TR_TAB_ALL) tr_all_open_from(tr_nav_tab_app(self));
+    ctx->request_app = tr_nav_tab_app(tab);
     return true;
 }
 

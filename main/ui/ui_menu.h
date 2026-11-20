@@ -2,10 +2,10 @@
  * SPDX-FileCopyrightText: 2026 mindreset
  * SPDX-License-Identifier: Apache-2.0
  *
- * 全屏菜单和屏幕下方那条触摸按键区。菜单条目从 app 注册表取，不自己维护表。
+ * 菜单把手和屏幕下方那条触摸按键区。原来的全屏列表菜单（2026-11-21 起）换成了“全部”页（apps/app_tr_all.c）。
  *
- * Full-screen menu and the touch-key strip below the display. Items come
- * from the app registry; this file does not keep its own table.
+ * The menu handle and the touch-key strip below the display. The old full-screen list menu was replaced by the All
+ * page (apps/app_tr_all.c) on 2026-11-21.
  */
 
 #pragma once
@@ -13,16 +13,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "app.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define UI_MENU_ITEMS_PER_PAGE 8
-#define UI_MENU_HIT_NONE (-1)
-#define UI_MENU_HIT_PREV (-2)
-#define UI_MENU_HIT_NEXT (-3)
 
 // 触摸面板比显示区长，屏幕下方那条感应区里有三个按键。它们不在画面里，
 // 没有东西可画，只能按坐标识别：实测中心 x=80/240/400，y≈1500。
@@ -38,21 +31,11 @@ extern "C" {
 #define UI_KEY_2 1
 #define UI_KEY_3 2
 
-/// 底栏最右那格的菜单把手，箭头向上表示能打开菜单。所有页都要画。
-/// Menu handle in the rightmost bar cell; an up arrow means the menu can open. Every page draws it.
+/// 没有标签栏的老页面右下角的菜单把手，点了打开“全部”页。menu_open 只决定箭头朝向。
+/// Menu handle in the bottom-right corner of legacy pages without a tab bar; a tap opens the All page. menu_open only
+/// sets the arrow direction.
 void ui_draw_menu_handle(uint8_t* framebuffer, bool menu_open);
 bool ui_menu_handle_hit_test(uint16_t x, uint16_t y);
-
-void ui_draw_menu_page(uint8_t* framebuffer, const app_desc_t* current, int leaf);
-/// 命中条目时返回它在注册表里的下标，翻页返回 UI_MENU_HIT_PREV / NEXT。
-/// Returns the registry index on a row hit, or UI_MENU_HIT_PREV / NEXT for paging.
-int ui_menu_hit_test(uint16_t x, uint16_t y, int leaf);
-/// 叶内行矩形；无效行返回 false。/ Rectangle for a local row; false for invalid rows.
-bool ui_menu_row_rect(int leaf, int row, EpdRect* out);
-/// 重画按下态或原态，保留当前项边框。/ Redraw pressed or original row, retaining the current-page border.
-void ui_draw_menu_row_pressed(uint8_t* framebuffer, const app_desc_t* current, int leaf, int row, bool pressed);
-int ui_menu_leaf_count(void);
-int ui_menu_leaf_for_app(const app_desc_t* app);
 
 /// 屏幕下方触摸按键区的命中测试，返回 UI_KEY_1/2/3，不在按键区时返回 -1。
 /// Hit-test for the keys below the display. Returns UI_KEY_1/2/3, or -1 outside the key strip.

@@ -9,6 +9,8 @@ User-visible changes by date and author; Git retains implementation history. See
   The UI moves to a Material 3 grayscale style (tab bar, buttons, segments, cards, dialogs, toolbars, lock card and more); features and controls are unchanged, and areas refreshed by fast partial updates stay black and white.
 - 番茄搜索入口从书架搬到书城页最上面；从书城进的搜索返回时回书城，书架多显示一行。
   The Tomato search entry moves from the shelf to the top of the bookstore page; searches started there return to the bookstore, and the shelf shows one more row.
+- 底部标签栏改成“书库 + 常用 + 全部”：最后一格“全部”打开所有功能的大图标页（一页放不下就翻页）；KEY3、工具条的“菜单”也打开这一页，代替原来的列表菜单。设置 → 底部标签里挑哪几个放底部、排顺序、隐藏。升级后原来底部的标签按原顺序放进常用，放不下的（默认是微博和设置）在“全部”里。
+  The tab bar becomes "library + pinned + All": the last cell opens a large-icon page of every feature (paged when it overflows); KEY3 and the toolbar "Menu" open it too, replacing the old list menu. Settings > Tab bar picks which features sit in the bar, their order, and which are hidden. After upgrading, the old bar's tabs become the pins in order; those that do not fit (Weibo and Settings by default) are on the All page.
 
 ## 2026-11-20 · 番茄安卓 App 1.0.3
 

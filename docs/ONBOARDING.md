@@ -58,7 +58,7 @@ This document is for **first-time human developers and AI agents**. After readin
 | TF 卡 | 1-bit SDMMC | CLK/CMD/D0 = 38/42/44 | 挂载点 `/sdcard`；字体目录 `/sdcard/assets/fonts`、`/sdcard/fonts` |
 | 蜂鸣器 | 无源，GPIO2 | PWM / 1-bit | 三种驱动路径 CLASSIC / HF / DIRECT_1BIT |
 | I2C 总线 | SCL 40 / SDA 39，400 kHz | Kconfig 菜单 "Read Pico board configuration" 可改 | |
-| 按键 | 屏下三个触摸键区 KEY1/KEY2/KEY3 + 电源键（PMU） | — | KEY2 = 整屏 GC16；KEY3 = 菜单把手；电源键短按 = 锁屏。**没有 BOOT / RESET 物理键** |
+| 按键 | 屏下三个触摸键区 KEY1/KEY2/KEY3 + 电源键（PMU） | — | KEY2 = 短按回书库、长按整屏 GC16；KEY3 = 打开“全部”页；电源键短按 = 锁屏。**没有 BOOT / RESET 物理键** |
 | 调试口 | USB Serial/JTAG（VID 303A, PID 1001） | Windows 显示为 "USB 串行设备 (COMx)" | 端口号因机器而异，记在 `docs/HANDOFF.local.md`。烧写由 esptool `--before default_reset` 自动进下载模式，不需要按键 |
 
 ---
@@ -208,14 +208,14 @@ idf.py size
 
 | 我想… | 去这里 |
 | --- | --- |
-| 加一个演示页 | `main/apps/app_xxx.c` + [main/app/app_registry.c](../main/app/app_registry.c) `s_apps[]` + [main/CMakeLists.txt](../main/CMakeLists.txt) `SRCS` |
-| 改菜单顺序 | [main/app/app_registry.c](../main/app/app_registry.c) |
+| 加一个功能页 | `main/apps/app_xxx.c` + [main/CMakeLists.txt](../main/CMakeLists.txt) `SRCS` + `tr_ui.h` 的 `tr_tab_t` + [main/app/tr_nav.c](../main/app/tr_nav.c) `tr_nav_tab_app()` |
+| 改“全部”页 / 底部标签栏 | [main/apps/app_tr_all.c](../main/apps/app_tr_all.c) / `main/ui/tr_ui.c` 的 `tr_tab_bar` |
 | 改刷新档位（GL16/GC16/DU、多少次软刷后压一次 GC16） | [main/app/app_config.h](../main/app/app_config.h) |
 | 改推屏、pclk、轨道空闲断电 | [main/display.c](../main/display.c) |
 | 改锁屏 / 浅睡 / 深睡 / 拿起唤醒 | [main/sleep.c](../main/sleep.c)、[main/apps/app_sleep.c](../main/apps/app_sleep.c) |
 | 加一个 NVS 设置项 | [main/settings.c](../main/settings.c)（命名空间 `read_pico`） |
 | 改排版常量、公共绘制原语 | [main/ui/ui_kit.h](../main/ui/ui_kit.h) / `ui_kit.c` |
-| 改两层菜单 / 三键区几何 | [main/ui/ui_menu.h](../main/ui/ui_menu.h) / `ui_menu.c` |
+| 改菜单把手 / 三键区几何 | [main/ui/ui_menu.h](../main/ui/ui_menu.h) / `ui_menu.c` |
 | 字体渲染、TF 卡字体加载 | [main/font/ttf_font.h](../main/font/ttf_font.h) / `ttf_font.c` |
 | 重新生成内置字体子集 | [tools/gen_builtin_font.py](../tools/gen_builtin_font.py) → `main/assets/builtin.ttf`（扫描 UI 字串 + `main/font/charset.txt`，≤700 KB） |
 | 开机图 / 锁屏图 | 源图 `assets/image/*.png` → `main/assets/*_4bpp.bin`（4bpp，尺寸必须等于 w×h/2，`images_match_panel()` 会校验） |
@@ -261,11 +261,10 @@ flowchart TD
 
 1. 读 CST836U → 去抖 → 区分屏内触摸 / 屏下三键区（`ui_menu.h`：`UI_KEY_AREA_TOP` 1300，pitch 160，中心 x=80/240/400）。
 2. 按键路由（全局，不交给页面）：
-   - **KEY2**：除菜单关闭时 `owns_keys` 页面自行接管外，整屏 GC16 重画当前页或当前菜单页（复用页面 `render()`，所以 `render()` 必须纯）。
-   - **KEY3 / 右下"把手"**：KEY3 在菜单关闭且 `owns_keys` 时交给页面；其余情况与把手均切换全屏一级菜单（打开时定位到当前页所在的菜单叶）。
-   - **菜单打开时的 KEY1**：菜单上一叶；菜单里的"上一页/下一页"触摸区翻叶；点条目切页。
-   - **菜单关闭时的 KEY1** → 页面 `on_key(UI_KEY_1)`（页面自己决定含义，通常是翻页）；屏内触摸 → `on_touch()`。
-3. 手势页使用 `on_gesture` 替代 `on_touch`；主循环在全局中断/重绘边界发 CANCEL。菜单条目按下高亮、同项抬起切页，滑出取消。
+   - **KEY2**：除 `owns_keys` 页面自行接管外，短按回书库，长按 0.5 秒整屏 GC16 重画当前页（复用页面 `render()`，所以 `render()` 必须纯）。
+   - **KEY3 / 右下"把手"**：KEY3 在 `owns_keys` 时交给页面；其余情况与把手（只在没有标签栏的页面）都打开“全部”页（`app_tr_all.c`，一个普通页面，记下来处）。
+   - **KEY1** → 页面 `on_key(UI_KEY_1)`（页面自己决定含义，通常是翻页）；屏内触摸 → `on_touch()`。
+3. 手势页使用 `on_gesture` 替代 `on_touch`；主循环在全局中断/重绘边界发 CANCEL。
 4. `request_app` / `request_menu` 在 `on_tick` 后统一消费（切页优先）；输入已有请求则跳过旧页 tick。`request_app` 非空 → `switch_to()`：`on_exit` → `on_enter` → `enter_full ? FULL : PAGE`。
 4. `rails_idle_check`：屏电源轨空闲 8 s（`RAILS_IDLE_TIMEOUT_MS`）断电。
 5. 电源键短按 → `enter_lock_and_sleep()`，除非当前页 `holds_pmu`。开机后 2 s 内忽略（`APP_LOCK_IGNORE_BOOT_MS`）。
@@ -322,7 +321,7 @@ flowchart TD
 
 ## 7. 演示页与冻结决策速查 / Demo pages & Frozen decisions
 
-菜单顺序 = [main/app/app_registry.c](../main/app/app_registry.c) `s_apps[]`。每页文件头都有 `冻结 / Frozen:` 段，**改行为前必须先改那段并说明决策为何变化**。摘要（以文件头为准）：
+功能列表 = `tr_ui.h` 的 `tr_tab_t`，切页映射在 [main/app/tr_nav.c](../main/app/tr_nav.c)。每页文件头都有 `冻结 / Frozen:` 段，**改行为前必须先改那段并说明决策为何变化**。摘要（以文件头为准）：
 
 | 页 | 文件 | 标志 | Frozen 摘要 |
 | --- | --- | --- | --- |
@@ -349,11 +348,11 @@ flowchart TD
 
 1. 复制一个结构相近的页（读数类抄 `app_power.c`，交互类抄 `app_sd.c`）到 `main/apps/app_xxx.c`。
 2. 写文件头（SPDX + 中文/English 职责 + 冻结/Frozen），只实现需要的回调，末尾导出一个 `const app_desc_t app_xxx`。
-3. `main/CMakeLists.txt` `SRCS` 加文件；`main/app/app_registry.c` `s_apps[]` 加条目（位置即菜单顺序）。
+3. `main/CMakeLists.txt` `SRCS` 加文件；要出现在底部和“全部”页，在 `tr_ui.h` 的 `tr_tab_t` 加一项（标签名和图标在 `tr_ui.c`），在 `tr_nav.c` 的 `tr_nav_tab_app()` 映射到页面（隐藏掩码是 `uint8_t`，超过 8 个功能先加宽）。
 4. 若用了新组件，`REQUIRES` 加上。
 5. UI 字串若含新汉字，运行 `python tools/gen_builtin_font.py` 重新生成 `builtin.ttf`，否则显示为缺字。
 6. **不要改 `app_loop.c`**。
-7. 编译 → 真机走一遍：进页、KEY2 强刷、菜单切走再切回、电源键锁屏回来。
+7. 编译 → 真机走一遍：进页、中键长按强刷、从“全部”页切走再切回、电源键锁屏回来。
 
 ### 8.2 改一个页面的行为
 
@@ -516,7 +515,7 @@ Read AGENTS.md, then docs/ONBOARDING.md, then docs/HANDOFF.md. Do not duplicate 
 
 这些文件是"热点"，两个任务同时改必冲突。开工前在账本声明你要改哪些：
 
-- `main/app/app_registry.c`（菜单表）
+- `main/ui/tr_ui.h` / `main/app/tr_nav.c`（功能列表和切页映射）
 - `main/CMakeLists.txt`（源文件列表）
 - `main/app/app_config.h`、`main/display.c`（全局刷新行为）
 - `main/ui/ui_kit.h`（排版常量，牵一发动全身）
@@ -598,8 +597,8 @@ Read AGENTS.md, then docs/ONBOARDING.md, then docs/HANDOFF.md. Do not duplicate 
 
 ### 图书与传书的契约扩展 / Book and transfer contract extensions
 
-`owns_keys` 只在菜单关闭时接管三键；图书工具条提供强刷，中键长按或把手打开演示菜单。传书组件不依赖页面；由 `app_transfer` 注入存储根、限额、容量回调。文件提交、删除或进度清理重试后通过书源 revision 请求下次进图书时重扫；文件变更回调只清对应路径进度。传书与阅读互斥，停止HTTP并等待退出后才切图书页，进度API由调用端串行化。
-`owns_keys` captures three keys outside the menu; Books provides toolbar refresh; holding the middle key or using the handle opens the demo menu. Transfer receives storage policy from its page. File commits, deletions and metadata retries invalidate the shelf through a storage revision; an injected callback clears progress only for the affected path. Transfer and reading are exclusive; HTTP is stopped and joined before entering Books, serializing progress API callers.
+`owns_keys` 接管三键；图书工具条提供强刷和“菜单”（打开“全部”页），中键长按整屏刷新。传书组件不依赖页面；由 `app_transfer` 注入存储根、限额、容量回调。文件提交、删除或进度清理重试后通过书源 revision 请求下次进图书时重扫；文件变更回调只清对应路径进度。传书与阅读互斥，停止HTTP并等待退出后才切图书页，进度API由调用端串行化。
+`owns_keys` captures the three keys; Books provides toolbar refresh and a Menu button that opens the All page; holding the middle key refreshes. Transfer receives storage policy from its page. File commits, deletions and metadata retries invalidate the shelf through a storage revision; an injected callback clears progress only for the affected path. Transfer and reading are exclusive; HTTP is stopped and joined before entering Books, serializing progress API callers.
 
 
 传书页通过 `display_set_bulk_io` 在页内提高扫描预填余量，退出恢复默认；大文件进度用低频FOLLOW DU，结束/离页清残影。欠载恢复必须保留目标前缓冲，不能调用 `epd_hl_set_all_white` 丢掉整页。相关回归：`tools/run_display_host_test.sh`。

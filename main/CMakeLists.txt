@@ -51,6 +51,7 @@ idf_component_register(
         "apps/app_tr_xhs.c"
         "apps/app_tr_weibo.c"
         "apps/app_tr_x.c"
+        "apps/app_tr_all.c"
         "apps/tr_pin.c"
         "apps/tr_wallsave.c"
         "apps/tr_lock.c"

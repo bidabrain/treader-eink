@@ -21,6 +21,7 @@
 #include "tr_ui.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
+#include "ui_menu.h"
 #include "book_cover.h"
 #include "read_pico_pmu.h"
 #include "settings.h"
@@ -30,9 +31,23 @@
 
 /* ---- epdiy 替身 / epdiy shim ---- */
 
+// 和设备一样：物理缓冲是横屏 1216×684、一字节两个像素，竖屏坐标按 epdiy 的 _rotate 换过去。
+// As on the device: the physical buffer is landscape 1216x684 with two pixels per byte; portrait coordinates go
+// through epdiy's _rotate.
+#define PW H
+#define PH W
 void epd_draw_pixel(int x, int y, uint8_t color, uint8_t* fb) {
     if (x < 0 || y < 0 || x >= W || y >= H) return;
-    fb[y * W + x] = color & 0xF0;
+    const int px = PW - y - 1, py = x;
+    uint8_t* b = &fb[py * PW / 2 + px / 2];
+    if (px % 2) *b = (*b & 0x0F) | (color & 0xF0);
+    else *b = (*b & 0xF0) | (color >> 4);
+}
+// 读回一个竖屏像素，返回 8 位灰（高 4 位有效）。/ Read one portrait pixel back as 8-bit gray (high nibble).
+static uint8_t px_get(const uint8_t* fb, int x, int y) {
+    const int px = PW - y - 1, py = x;
+    const uint8_t b = fb[py * PW / 2 + px / 2];
+    return px % 2 ? (b & 0xF0) : (uint8_t)(b << 4);
 }
 void epd_fill_rect(EpdRect r, uint8_t color, uint8_t* fb) {
     for (int y = r.y; y < r.y + r.height; y++)
@@ -139,7 +154,7 @@ static void write_png(const char* path, const uint8_t* fb) {
     uint8_t* raw = malloc(raw_len);
     for (int y = 0; y < H; y++) {
         raw[y * row] = 0;
-        for (int x = 0; x < W; x++) raw[y * row + 1 + x] = (uint8_t)((fb[y * W + x] >> 4) * 17);
+        for (int x = 0; x < W; x++) raw[y * row + 1 + x] = (uint8_t)((px_get(fb, x, y) >> 4) * 17);
     }
     uLongf zlen = compressBound(raw_len);
     uint8_t* z = malloc(zlen);
@@ -160,9 +175,9 @@ static void write_png(const char* path, const uint8_t* fb) {
 
 /* ---- 预览屏 / Preview screens ---- */
 
-static uint8_t s_fb[W * H];
+static uint8_t s_fb[W * H / 2];
 
-static void clear(void) { memset(s_fb, UI_GRAY_WHITE, sizeof(s_fb)); }
+static void clear(void) { memset(s_fb, 0xFF, sizeof(s_fb)); }
 
 // 书库样子的一屏：标题、胶囊、进度、翻页、标签栏。/ A library-like screen: title, pills, progress, pager, tab bar.
 static void screen_library(void) {
@@ -210,7 +225,7 @@ static void screen_tomato(void) {
     tr_tab_bar(s_fb, TR_TAB_TOMATO);
 }
 
-// 所有图标，以及六个标签时的标签栏。/ Every icon, and the tab bar with six tabs.
+// 所有图标，以及默认的标签栏。/ Every icon, and the default tab bar.
 static void screen_icons(void) {
     clear();
     tr_status_bar(s_fb);
@@ -219,9 +234,7 @@ static void screen_icons(void) {
         const int cx = TR_MARGIN + 40 + (i % 6) * 104, cy = 220 + (i / 6) * 110;
         tr_icon(s_fb, (tr_icon_t)i, cx, cy, false);
     }
-    tr_tabs_set_hidden((1u << TR_TAB_HUPU) | (1u << TR_TAB_X));
     tr_tab_bar(s_fb, TR_TAB_SETTINGS);
-    tr_tabs_set_hidden(1u << TR_TAB_X);
 }
 
 /* ---- 按页面坐标仿画的几屏（app_book.c、tr_lock.c）/ Screens copied from page coordinates (app_book.c, tr_lock.c) ---- */
@@ -826,24 +839,155 @@ static void set_switch(int right, int y, bool on) {
     }
 }
 
-// 设置 › 底部标签：开关。坐标照 draw_tabs。/ Settings > tabs with switches; follows draw_tabs.
-static void screen_set_tabs(void) {
+// 设置 › 底部标签：放在底部 / 只在“全部”里 / 已隐藏三段。照 app_tr_settings.c 的 tb_layout 和 draw_tabs。
+// Settings > tab bar: pinned / All page only / hidden; follows tb_layout and draw_tabs in app_tr_settings.c.
+#define TAB_TOP 210
+#define TAB_H 70
+#define TAB_SEC_H 40
+#define TAB_SEC_GAP 22
+#define TAB_BTN_H 52
+static void tb_btn(int x, int y, int w, const char* label, int arrow, bool enabled) {
+    const EpdRect r = {x, y, w, TAB_BTN_H};
+    if (enabled) {
+        ui_draw_round_rect(s_fb, r, r.height / 2, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(s_fb, ui_inset_rect(r, 1), r.height / 2 - 1, TR_GRAY_OUTLINE);
+    } else {
+        ui_fill_round_rect(s_fb, r, r.height / 2, TR_GRAY_SURFACE);
+    }
+    const uint8_t ink = enabled ? UI_GRAY_BLACK : TR_GRAY_OUTLINE, bg = enabled ? UI_GRAY_WHITE : TR_GRAY_SURFACE;
+    if (arrow) {
+        const int cx = r.x + r.width / 2, cy = r.y + r.height / 2, a = 10, dy = arrow < 0 ? -a / 2 : a / 2;
+        for (int d = -1; d <= 1; d++) {
+            epd_draw_line(cx - a + d, cy - dy, cx + d, cy + dy, ink, s_fb);
+            epd_draw_line(cx + d, cy + dy, cx + a + d, cy - dy, ink, s_fb);
+        }
+        return;
+    }
+    tr_text_on(s_fb, r.x + r.width / 2, r.y + (r.height - 26) / 2 - 2, 26, label, EPD_DRAW_ALIGN_CENTER, false, ink, bg);
+}
+static int tb_w(const char* label) { return ttf_text_width_px(26, label) + 32; }
+static void draw_tabs_page(const uint8_t* pins, int pin_n, uint8_t hidden, const char* message) {
     clear();
+    tr_tabs_configure(hidden, pins, pin_n);
     tr_status_bar(s_fb);
     tr_text(s_fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(s_fb, 96, 100, 36, "底部标签", EPD_DRAW_ALIGN_LEFT, true);
-    tr_wrap(s_fb, TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 26, 38,
-            "关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。", 2);
-    for (int t = 0; t < TR_TAB_MAX; t++) {
-        const int y = 270 + t * 90;
-        tr_icon(s_fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + 45, false);
-        tr_text(s_fb, TR_MARGIN + 62, y + (90 - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
-        if (t == 0 || t == TR_TAB_SETTINGS) tr_text_dim(s_fb, TR_W - TR_MARGIN, y + 31, 28, "固定", EPD_DRAW_ALIGN_RIGHT);
-        else set_switch(TR_W - TR_MARGIN, y + 18, t != TR_TAB_X);
-        if (t + 1 < TR_TAB_MAX) tr_hline(s_fb, y + 88, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    if (message) tr_message(s_fb, TR_W - TR_MARGIN, 104, 92, 360, 26, message, EPD_DRAW_ALIGN_RIGHT, false);
+    char line[96];
+    snprintf(line, sizeof(line), "底部放 %d 个，最后一格固定是“全部”", tr_tab_slots() - 1);
+    tr_text_dim(s_fb, TR_MARGIN, 158, 26, line, EPD_DRAW_ALIGN_LEFT);
+    const int cap = tr_tab_slots() - 2;
+    int y = TAB_TOP;
+    tr_text_dim(s_fb, TR_MARGIN, y, 26, "放在底部（按顺序）", EPD_DRAW_ALIGN_LEFT);
+    y += TAB_SEC_H;
+    for (int i = -1; i < pin_n; i++) {
+        const tr_tab_t t = i < 0 ? TR_TAB_LIBRARY : (tr_tab_t)pins[i];
+        snprintf(line, sizeof(line), "%d", i + 2);
+        tr_text_dim(s_fb, TR_MARGIN + 6, y + (TAB_H - 28) / 2 - 2, 28, line, EPD_DRAW_ALIGN_LEFT);
+        const int x = TR_MARGIN + 40;
+        tr_icon(s_fb, tr_tab_icon(t), x + 20, y + TAB_H / 2, false);
+        tr_text(s_fb, x + 60, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(t), EPD_DRAW_ALIGN_LEFT, false);
+        const int top = y + (TAB_H - TAB_BTN_H) / 2;
+        if (i < 0) {
+            tr_text_dim(s_fb, TR_W - TR_MARGIN, y + (TAB_H - 26) / 2, 26, "固定第一格（主页）", EPD_DRAW_ALIGN_RIGHT);
+        } else {
+            if (i >= cap)
+                tr_text_dim(s_fb, x + 60 + ttf_text_width_px(32, tr_tab_label(t)) + 16, y + (TAB_H - 24) / 2, 24,
+                            "这一档在“全部”里", EPD_DRAW_ALIGN_LEFT);
+            int right = TR_W - TR_MARGIN;
+            tb_btn(right - tb_w("移出"), top, tb_w("移出"), "移出", 0, true);
+            right -= tb_w("移出") + 14;
+            tb_btn(right - TAB_BTN_H, top, TAB_BTN_H, "", 1, i + 1 < pin_n);
+            right -= TAB_BTN_H + 10;
+            tb_btn(right - TAB_BTN_H, top, TAB_BTN_H, "", -1, i > 0);
+        }
+        if (i + 1 < pin_n) tr_hline(s_fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        y += TAB_H;
+    }
+    y += TAB_SEC_GAP;
+    tr_text_dim(s_fb, TR_MARGIN, y, 26, "只在“全部”里", EPD_DRAW_ALIGN_LEFT);
+    y += TAB_SEC_H;
+    int rest[TR_TAB_MAX], rn = 0;
+    for (int t = 1; t < TR_TAB_MAX; t++) {
+        bool pinned = false;
+        for (int i = 0; i < pin_n; i++) pinned |= pins[i] == t;
+        if (!pinned && !(hidden & (1u << t))) rest[rn++] = t;
+    }
+    for (int k = 0; k < rn; k++) {
+        const tr_tab_t t = (tr_tab_t)rest[k];
+        tr_icon(s_fb, tr_tab_icon(t), TR_MARGIN + 20, y + TAB_H / 2, false);
+        tr_text(s_fb, TR_MARGIN + 60, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(t), EPD_DRAW_ALIGN_LEFT, false);
+        const int top = y + (TAB_H - TAB_BTN_H) / 2;
+        int right = TR_W - TR_MARGIN;
+        tb_btn(right - tb_w("放到底部"), top, tb_w("放到底部"), "放到底部", 0, pin_n < cap);
+        right -= tb_w("放到底部") + 14;
+        if (!(TR_TABS_FIXED & (1u << t))) tb_btn(right - tb_w("隐藏"), top, tb_w("隐藏"), "隐藏", 0, true);
+        if (k + 1 < rn) tr_hline(s_fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        y += TAB_H;
+    }
+    y += TAB_SEC_GAP;
+    if (hidden) {
+        tr_text_dim(s_fb, TR_MARGIN, y, 26, "已隐藏（“全部”里也不显示）", EPD_DRAW_ALIGN_LEFT);
+        y += TAB_SEC_H;
+        for (int t = 1; t < TR_TAB_MAX; t++) {
+            if (!(hidden & (1u << t))) continue;
+            tr_icon(s_fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + TAB_H / 2, false);
+            tr_text_dim(s_fb, TR_MARGIN + 60, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT);
+            tb_btn(TR_W - TR_MARGIN - tb_w("显示"), y + (TAB_H - TAB_BTN_H) / 2, tb_w("显示"), "显示", 0, true);
+            y += TAB_H;
+        }
     }
     tr_tab_bar(s_fb, TR_TAB_SETTINGS);
 }
+static const uint8_t DEF_PINS[] = {TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU};
+// 默认：底部满了。/ Default: the bar is full.
+static void screen_set_tabs(void) { draw_tabs_page(DEF_PINS, 4, 1u << TR_TAB_X, NULL); }
+// 移出一个、隐藏虎扑：“放到底部”能按。/ One unpinned and Hupu hidden: "Pin" is enabled.
+static void screen_set_tabs_room(void) {
+    static const uint8_t pins[] = {TR_TAB_TOMATO, TR_TAB_COMIC, TR_TAB_XHS};
+    draw_tabs_page(pins, 3, (1u << TR_TAB_X) | (1u << TR_TAB_HUPU), NULL);
+}
+// 底部满了还按“放到底部”。/ Pinning with a full bar.
+static void screen_set_tabs_full(void) { draw_tabs_page(DEF_PINS, 4, 1u << TR_TAB_X, "底部满了，先移出一个"); }
+
+// “全部”页。照 app_tr_all.c 的 render。/ The All page; follows render in app_tr_all.c.
+#define ALL_GRID_TOP 212
+#define ALL_COLS 3
+#define ALL_GAP 16
+#define ALL_CELL_W ((TR_W - 2 * TR_MARGIN - (ALL_COLS - 1) * ALL_GAP) / ALL_COLS)
+#define ALL_CELL_H 170
+#define ALL_PAGER_Y 1010
+#define ALL_ROWS ((ALL_PAGER_Y - 20 - ALL_GRID_TOP + ALL_GAP) / (ALL_CELL_H + ALL_GAP))
+static void draw_all_page(uint8_t hidden, int from, int page) {
+    clear();
+    tr_tabs_configure(hidden, DEF_PINS, 4);
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "全部");
+    tr_text_dim(s_fb, TR_MARGIN, 156, 26, "底部放哪几个：设置 › 底部标签", EPD_DRAW_ALIGN_LEFT);
+    tr_tab_t tabs[TR_TAB_MAX];
+    int n = 0;
+    for (int t = 0; t < TR_TAB_MAX; t++)
+        if (tr_tab_shown((tr_tab_t)t)) tabs[n++] = (tr_tab_t)t;
+    const int per = ALL_ROWS * ALL_COLS;
+    for (int k = 0; k < per; k++) {
+        const int i = page * per + k;
+        if (i >= n) break;
+        const EpdRect r = {TR_MARGIN + (k % ALL_COLS) * (ALL_CELL_W + ALL_GAP),
+                           ALL_GRID_TOP + (k / ALL_COLS) * (ALL_CELL_H + ALL_GAP), ALL_CELL_W, ALL_CELL_H};
+        const bool on = (int)tabs[i] == from;
+        const uint8_t bg = on ? TR_GRAY_SELECTED : TR_GRAY_SURFACE;
+        ui_fill_round_rect(s_fb, r, 24, bg);
+        tr_icon_on(s_fb, tr_tab_icon(tabs[i]), r.x + r.width / 2, r.y + 62, UI_GRAY_BLACK, bg);
+        tr_text_on(s_fb, r.x + r.width / 2, r.y + 108, 30, tr_tab_label(tabs[i]), EPD_DRAW_ALIGN_CENTER, on,
+                   UI_GRAY_BLACK, bg);
+    }
+    tr_pager(s_fb, ALL_PAGER_Y, page, n ? (n + per - 1) / per : 1);
+    tr_tab_bar(s_fb, (tr_tab_t)TR_TAB_ALL);
+}
+// 从微博打开（微博不在底部）。/ Opened from Weibo (not pinned).
+static void screen_all(void) { draw_all_page(1u << TR_TAB_X, TR_TAB_WEIBO, 0); }
+// X 也显示：八个功能。/ X shown too: all eight features.
+static void screen_all_x(void) { draw_all_page(0, TR_TAB_TOMATO, 0); }
 
 // 锁屏密码键盘。坐标照 tr_pin.c 的 draw_all。/ Lock PIN keypad; follows draw_all in tr_pin.c.
 static void screen_pin(void) {
@@ -876,6 +1020,171 @@ static void screen_pin(void) {
     }
 }
 
+/* ---- 预览：显示大小（还没做进固件）/ Preview: display size (not in the firmware yet) ---- */
+
+// 按百分比缩放。/ Scale by percent.
+#define SC(v) ((v) * s_pct / 100)
+static int s_pct = 100;
+
+// 图标先画到 40×40 小缓冲，再按比例放大贴上去（预览用）。/ Draw an icon into a 40x40 buffer, then blit it scaled
+// (preview only).
+static void icon_s(tr_icon_t icon, int cx, int cy, uint8_t bg) {
+    static uint8_t tmp[W * H / 2];
+    memcpy(tmp, s_fb, sizeof(tmp));
+    const int sz = 48;
+    epd_fill_rect((EpdRect){0, 0, sz, sz}, bg, s_fb);
+    tr_icon_on(s_fb, icon, sz / 2, sz / 2, UI_GRAY_BLACK, bg);
+    uint8_t cell[48 * 48];
+    for (int y = 0; y < sz; y++)
+        for (int x = 0; x < sz; x++) cell[y * sz + x] = px_get(s_fb, x, y);
+    memcpy(s_fb, tmp, sizeof(tmp));
+    const int d = SC(sz);
+    for (int y = 0; y < d; y++)
+        for (int x = 0; x < d; x++) {
+            const uint8_t c = cell[(y * sz / d) * sz + x * sz / d];
+            if (c != (bg & 0xF0)) epd_draw_pixel(cx - d / 2 + x, cy - d / 2 + y, c, s_fb);
+        }
+}
+
+static const tr_icon_t ALL_ICONS[8] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS, TR_ICON_BALL,
+                                       TR_ICON_WEIBO, TR_ICON_X, TR_ICON_SETTINGS};
+static const char* const ALL_NAMES[8] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置"};
+
+// 新标签栏：slots 格，最后一格是“全部”。active 是当前格（-1 = 全部）。/ New bar: slots cells, the last one is
+// "All"; active is the current cell (-1 = All).
+static int bar_top(void) { return TR_H - SC(122); }
+static void new_bar(int slots, int active) {
+    const int top = bar_top(), h = TR_H - top;
+    epd_fill_rect((EpdRect){0, top, TR_W, h}, TR_GRAY_SURFACE, s_fb);
+    static const int fav[6] = {0, 1, 2, 3, 4, 5};
+    const int px = SC(26), pill = TR_W / slots - SC(18);
+    for (int i = 0; i < slots; i++) {
+        const int cx = (2 * i + 1) * TR_W / (2 * slots), cy = top + SC(38);
+        const bool all = i == slots - 1, on = all ? active < 0 : active == i;
+        uint8_t under = TR_GRAY_SURFACE;
+        if (on) {
+            ui_fill_round_rect(s_fb, (EpdRect){cx - pill / 2, cy - SC(26), pill, SC(52)}, SC(26), TR_GRAY_SELECTED);
+            under = TR_GRAY_SELECTED;
+        }
+        icon_s(all ? TR_ICON_MENU : ALL_ICONS[fav[i]], cx, cy, under);
+        tr_text_on(s_fb, cx, top + SC(70), px, all ? "全部" : ALL_NAMES[fav[i]], EPD_DRAW_ALIGN_CENTER, on,
+                   on ? UI_GRAY_BLACK : TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+    }
+}
+
+static int new_slots(void) { return s_pct >= 130 ? 4 : s_pct >= 115 ? 5 : 6; }
+
+// 按比例画的翻页器：两侧灰底圆钮加箭头，和 tr_pager 一样，只是跟着缩放。/ A scaled pager: gray round buttons with
+// arrows either side, like tr_pager but following the scale.
+static void mock_pager(int y, int page, int pages) {
+    if (pages <= 1) return;
+    char pg[16];
+    snprintf(pg, sizeof(pg), "%d / %d", page + 1, pages);
+    tr_text(s_fb, TR_W / 2, y, SC(30), pg, EPD_DRAW_ALIGN_CENTER, true);
+    const int cy = y + SC(17), a = SC(11);
+    for (int k = -1; k <= 1; k += 2) {
+        const int cx = TR_W / 2 + k * SC(120);
+        epd_fill_circle(cx, cy, SC(34), TR_GRAY_SURFACE, s_fb);
+        for (int d = -1; d <= 1; d++) {
+            epd_draw_line(cx - k * a / 2 + d, cy - a, cx + k * a / 2 + d, cy, UI_GRAY_BLACK, s_fb);
+            epd_draw_line(cx + k * a / 2 + d, cy, cx - k * a / 2 + d, cy + a, UI_GRAY_BLACK, s_fb);
+        }
+    }
+}
+
+// 书库按可用空间排版：筛选胶囊放不下就换行，书目条数按剩余高度算。/ The library laid out by available space:
+// chips wrap when they do not fit, and the row count follows the remaining height.
+static void flow_library(void) {
+    clear();
+    tr_text(s_fb, TR_MARGIN, SC(22), SC(28), "21:30", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, SC(22), SC(28), "82%", EPD_DRAW_ALIGN_RIGHT, false);
+    int y = SC(80);
+    tr_text(s_fb, TR_MARGIN, y, SC(52), "书库", EPD_DRAW_ALIGN_LEFT, true);
+    icon_s(TR_ICON_SEARCH, TR_W - TR_MARGIN - SC(96), y + SC(34), UI_GRAY_WHITE);
+    icon_s(TR_ICON_IMPORT, TR_W - TR_MARGIN - SC(24), y + SC(34), UI_GRAY_WHITE);
+    y += SC(76);
+    tr_text_dim(s_fb, TR_MARGIN, y, SC(28), "12 本 · 按最近阅读", EPD_DRAW_ALIGN_LEFT);
+    y += SC(50);
+    static const char* const chips[3] = {"全部", "按最近", "管理"};
+    int x = TR_MARGIN;
+    for (int i = 0; i < 3; i++) {
+        const int w = ttf_text_width_px(SC(28), chips[i]) + SC(56);
+        if (x + w > TR_W - TR_MARGIN) { x = TR_MARGIN; y += SC(66); }
+        tr_pill(s_fb, (EpdRect){x, y, w, SC(54)}, chips[i], false, SC(28));
+        x += w + SC(12);
+    }
+    y += SC(72);
+    const EpdRect c = {TR_MARGIN, y, TR_W - 2 * TR_MARGIN, SC(136)};
+    ui_fill_round_rect(s_fb, c, SC(24), TR_GRAY_SURFACE);
+    tr_mini_cover(s_fb, (EpdRect){c.x + SC(16), c.y + SC(20), SC(70), SC(96)}, "宿命之环", true);
+    const int tx = c.x + SC(108), right = c.x + c.width - SC(20);
+    tr_text_on(s_fb, tx, c.y + SC(14), SC(24), "继续阅读", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, right, c.y + SC(14), SC(24), "接着读 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, tx, c.y + SC(46), SC(32), "宿命之环", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_progress(s_fb, tx, c.y + SC(108), right - tx - SC(80), 41);
+    tr_text_on(s_fb, right, c.y + SC(94), SC(26), "41%", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    y += SC(136) + SC(16);
+    const int pager_y = bar_top() - SC(84), row_h = SC(140);
+    const int rows = (pager_y - SC(12) - y) / row_h;
+    static const char* const t[5] = {"斗破苍穹", "十日终焉", "夜航船", "三体", "灵境行者"};
+    static const char* const m[5] = {"番茄 · 天蚕土豆", "番茄 · 杀虫队队员", "TXT", "EPUB", "番茄 · 卖报小郎君"};
+    for (int i = 0; i < rows && i < 5; i++) {
+        const int ry = y + i * row_h;
+        tr_mini_cover(s_fb, (EpdRect){TR_MARGIN, ry + SC(8), SC(70), SC(96)}, t[i], i % 2 == 1);
+        const int bx = TR_MARGIN + SC(96);
+        tr_text(s_fb, bx, ry + SC(4), SC(34), t[i], EPD_DRAW_ALIGN_LEFT, true);
+        if (i == 0) tr_badge(s_fb, TR_W - TR_MARGIN - 10, ry + SC(10), "+3 章 待下载", true, SC(24));
+        tr_text_dim(s_fb, bx, ry + SC(52), SC(26), m[i], EPD_DRAW_ALIGN_LEFT);
+        tr_progress(s_fb, bx, ry + SC(98), TR_W - TR_MARGIN - bx - SC(90), 20 + i * 15);
+        char p[8];
+        snprintf(p, sizeof(p), "%d%%", 20 + i * 15);
+        tr_text_dim(s_fb, TR_W - TR_MARGIN, ry + SC(86), SC(26), p, EPD_DRAW_ALIGN_RIGHT);
+        tr_hline(s_fb, ry + row_h - SC(8), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    mock_pager(pager_y, 0, (12 + rows - 1) / rows);
+    new_bar(new_slots(), 0);
+}
+
+// “全部”页：所有功能的大图标网格（KEY3 也打开这一页）。/ The "All" page: a large-icon grid of every feature
+// (KEY3 opens it too).
+static void flow_all(void) {
+    clear();
+    tr_text(s_fb, TR_MARGIN, SC(22), SC(28), "21:30", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, SC(22), SC(28), "82%", EPD_DRAW_ALIGN_RIGHT, false);
+    int y = SC(80);
+    tr_text(s_fb, TR_MARGIN, y, SC(52), "全部", EPD_DRAW_ALIGN_LEFT, true);
+    y += SC(76);
+    tr_text_dim(s_fb, TR_MARGIN, y, SC(26), "底部放哪几个：设置 › 底部标签", EPD_DRAW_ALIGN_LEFT);
+    y += SC(56);
+    const int cols = s_pct >= 130 ? 2 : 3, gap = SC(16);
+    const int cw = (TR_W - 2 * TR_MARGIN - (cols - 1) * gap) / cols, ch = SC(170);
+    const int limit = bar_top() - SC(110);
+    int shown = 0, total = 0;
+    for (int i = 0; i < 8; i++) {
+        if (i == 6) continue;   // X 默认隐藏 / X is hidden by default
+        total++;
+        const int col = shown % cols, row = shown / cols;
+        const EpdRect r = {TR_MARGIN + col * (cw + gap), y + row * (ch + gap), cw, ch};
+        if (r.y + r.height > limit) continue;
+        const bool on = i == 2;
+        const uint8_t bg = on ? TR_GRAY_SELECTED : TR_GRAY_SURFACE;
+        ui_fill_round_rect(s_fb, r, SC(24), bg);
+        icon_s(ALL_ICONS[i], r.x + cw / 2, r.y + SC(62), bg);
+        tr_text_on(s_fb, r.x + cw / 2, r.y + SC(112), SC(30), ALL_NAMES[i], EPD_DRAW_ALIGN_CENTER, on, UI_GRAY_BLACK, bg);
+        shown++;
+    }
+    if (shown < total) {
+        // 一页放不下：和其他列表一样翻页。/ More than a page: page through like other lists.
+        mock_pager(bar_top() - SC(84), 0, (total + shown - 1) / shown);
+    }
+    new_bar(new_slots(), -1);
+}
+
+static void screen_nav_lib_100(void) { s_pct = 100; flow_library(); }
+static void screen_nav_lib_115(void) { s_pct = 115; flow_library(); }
+static void screen_nav_lib_130(void) { s_pct = 130; flow_library(); }
+static void screen_nav_all_130(void) { s_pct = 130; flow_all(); s_pct = 100; }
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -884,15 +1193,18 @@ int main(int argc, char** argv) {
         fprintf(stderr, "cannot open font %s\n", font);
         return 1;
     }
-    tr_tabs_set_hidden(1u << TR_TAB_X);
+    tr_tabs_configure(1u << TR_TAB_X, DEF_PINS, 4);
     char path[256];
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
                                screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi,
                                screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home,
                                screen_hupu_feed, screen_hupu_scores, screen_hupu_post, screen_weibo, screen_xhs,
-                               screen_settings, screen_set_tabs, screen_pin};
+                               screen_settings, screen_set_tabs, screen_set_tabs_room, screen_set_tabs_full,
+                               screen_all, screen_all_x, screen_pin, screen_nav_lib_100, screen_nav_lib_115,
+                               screen_nav_lib_130, screen_nav_all_130};
     const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
-                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post", "weibo", "xhs", "settings", "set_tabs", "pin"};
+                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post", "weibo", "xhs", "settings", "set_tabs", "set_tabs_room", "set_tabs_full", "all", "all_x", "pin",
+                           "nav_lib_100", "nav_lib_115", "nav_lib_130", "nav_all_130"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);

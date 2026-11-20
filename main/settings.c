@@ -32,6 +32,7 @@
 #define NVS_KEY_HIDE_HUPU "hide_hupu"   // 旧版，只读来迁移 / Old key, read only to migrate
 #define NVS_KEY_TABS_OFF "tabs_off"
 #define NVS_KEY_TABS_X "tabs_x"     // X 标签已按默认关闭迁移过 / X tab already migrated to hidden
+#define NVS_KEY_TAB_PINS "tab_pins" // 底部常用功能的顺序 / Order of the pinned features
 #define NVS_KEY_BOOK_AUTO "bk_auto"
 #define NVS_KEY_COMIC_AUTO "cm_auto"
 #define NVS_KEY_LOCK_IDLE "lock_idle"
@@ -54,6 +55,9 @@ static bool s_book_shake;
 static uint8_t s_book_style = 0x15;
 // X 标签默认关闭。/ The X tab starts hidden.
 static uint8_t s_tabs_off = 1u << TR_TAB_X;
+// 底部常用功能（书库之后），-1 表示还没读过或要迁移。/ Pinned features after the library; -1 means not loaded.
+static uint8_t s_pins[TR_TAB_MAX];
+static int s_pin_n = -1;
 static uint8_t s_book_auto, s_comic_auto;
 static uint8_t s_lock_idle = 1;
 static bool s_time_auto = true;
@@ -154,6 +158,22 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
     size_t pin_len = sizeof(s_pin);
     s_pin_on = nvs_get_blob(h, NVS_KEY_PIN, s_pin, &pin_len) == ESP_OK && pin_len == sizeof(s_pin);
+    // 存的是“个数 + 功能号”，个数可以是 0（全都移出底部）。/ Stored as count + feature ids; the count may be 0.
+    uint8_t pins_blob[1 + TR_TAB_MAX];
+    size_t pins_len = sizeof(pins_blob);
+    if (nvs_get_blob(h, NVS_KEY_TAB_PINS, pins_blob, &pins_len) == ESP_OK && pins_len >= 1 &&
+        pins_blob[0] <= TR_TAB_MAX && pins_len >= 1u + pins_blob[0]) {
+        s_pin_n = pins_blob[0];
+        for (int i = 0; i < s_pin_n; i++) s_pins[i] = pins_blob[1 + i];
+    } else {
+        // 没存过：旧版底部显示的标签（书库、设置除外）按原顺序放到底部，隐藏的不放。
+        // Never saved: pin the tabs the old bar showed (minus the library and settings) in order; hidden ones stay out.
+        s_pin_n = 0;
+        for (int t = 0; t < TR_TAB_MAX; t++) {
+            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || (s_tabs_off & (1u << t))) continue;
+            s_pins[s_pin_n++] = (uint8_t)t;
+        }
+    }
     nvs_close(h);
     if (migrate_x) {
         nvs_put_u8(NVS_KEY_TABS_OFF, s_tabs_off);
@@ -270,6 +290,27 @@ void app_settings_set_book_style(const app_book_style_t* style) {
 
 uint8_t app_settings_hidden_tabs(void) {
     return s_tabs_off;
+}
+
+int app_settings_tab_pins(uint8_t out[8]) {
+    const int n = s_pin_n > 0 ? s_pin_n : 0;
+    for (int i = 0; i < n; i++) out[i] = s_pins[i];
+    return n;
+}
+
+void app_settings_set_tab_pins(const uint8_t* pins, int n) {
+    if (n < 0) n = 0;
+    if (n > TR_TAB_MAX) n = TR_TAB_MAX;
+    for (int i = 0; i < n; i++) s_pins[i] = pins[i];
+    s_pin_n = n;
+    uint8_t blob[1 + TR_TAB_MAX];
+    blob[0] = (uint8_t)n;
+    for (int i = 0; i < n; i++) blob[1 + i] = s_pins[i];
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, NVS_KEY_TAB_PINS, blob, 1 + (size_t)n);
+    nvs_commit(h);
+    nvs_close(h);
 }
 
 void app_settings_set_hidden_tabs(uint8_t mask) {

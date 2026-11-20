@@ -451,51 +451,60 @@ void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t 
 
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
-static uint8_t s_hidden;
+static uint8_t s_hidden = 1u << TR_TAB_X;
+static uint8_t s_pins[TR_TAB_MAX] = {TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU};
+static int s_pin_n = 4;
 
 static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置"};
 static const tr_icon_t TAB_ICONS[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS,
                                                 TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_X, TR_ICON_SETTINGS};
 
-uint8_t tr_tabs_limit(uint8_t mask) {
-    mask &= (uint8_t)~TR_TABS_FIXED;
-    int shown = 0;
-    for (int t = 0; t < TR_TAB_MAX; t++) shown += !(mask & (1u << t));
-    for (int t = TR_TAB_MAX - 1; t >= 0 && shown > TR_TABS_SHOWN_MAX; t--) {
-        if ((TR_TABS_FIXED & (1u << t)) || (mask & (1u << t))) continue;
-        mask |= (uint8_t)(1u << t);
-        shown--;
+void tr_tabs_configure(uint8_t hidden, const uint8_t* pins, int n) {
+    s_hidden = hidden & (uint8_t)~TR_TABS_FIXED;
+    s_pin_n = 0;
+    // 只收合法、没隐藏、不重复、不是书库的。/ Keep valid, visible, unique, non-library entries only.
+    for (int i = 0; pins && i < n && s_pin_n < TR_TAB_MAX; i++) {
+        const int t = pins[i];
+        if (t <= TR_TAB_LIBRARY || t >= TR_TAB_MAX || (s_hidden & (1u << t))) continue;
+        bool dup = false;
+        for (int k = 0; k < s_pin_n; k++) dup |= s_pins[k] == t;
+        if (!dup) s_pins[s_pin_n++] = (uint8_t)t;
     }
-    return mask;
 }
 
-void tr_tabs_set_hidden(uint8_t mask) { s_hidden = tr_tabs_limit(mask); }
+// 正常显示大小是 6 格；大、特大以后按显示大小减少。/ Six cells at the normal display size; larger sizes will use fewer.
+int tr_tab_slots(void) { return 6; }
+
 bool tr_tab_shown(tr_tab_t tab) { return tab < TR_TAB_MAX && !(s_hidden & (1u << tab)); }
-const char* tr_tab_label(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_LABELS[tab] : ""; }
+const char* tr_tab_label(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_LABELS[tab] : tab == TR_TAB_ALL ? "全部" : ""; }
 tr_icon_t tr_tab_icon(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_ICONS[tab] : TR_ICON_MENU; }
 
-// 当前显示的标签，按从左到右的顺序。/ Visible tabs, left to right.
-static int visible_tabs(tr_tab_t out[TR_TAB_MAX]) {
+int tr_tab_count(void) {
     int n = 0;
-    for (int t = 0; t < TR_TAB_MAX; t++)
-        if (tr_tab_shown((tr_tab_t)t)) out[n++] = (tr_tab_t)t;
+    for (int t = 0; t < TR_TAB_MAX; t++) n += tr_tab_shown((tr_tab_t)t);
     return n;
 }
 
-int tr_tab_count(void) {
-    tr_tab_t tabs[TR_TAB_MAX];
-    return visible_tabs(tabs);
+int tr_tab_bar_tabs(tr_tab_t out[TR_TAB_MAX]) {
+    int n = 0;
+    out[n++] = TR_TAB_LIBRARY;
+    // 留一格给“全部”；放不下的常用功能这一档只在“全部”里。/ Keep one cell for "All"; pins that do not fit live on the
+    // All page at this size.
+    for (int i = 0; i < s_pin_n && n < tr_tab_slots() - 1; i++) out[n++] = (tr_tab_t)s_pins[i];
+    return n;
 }
 
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    // Material 3 导航栏：浅灰底，选中的图标垫一块灰胶囊，名字加粗变黑，其余名字深灰。
+    // Material 3 导航栏：浅灰底，选中的图标垫一块灰胶囊，名字加粗变黑，其余名字深灰。最后一格固定是“全部”。
     // Material 3 navigation bar: light gray surface; the active icon sits on a gray capsule with a bold black label,
-    // the others have dark gray labels.
+    // the others have dark gray labels. The last cell is always "All".
     epd_fill_rect(tr_tab_area(), TR_GRAY_SURFACE, fb);
-    tr_tab_t tabs[TR_TAB_MAX];
-    const int n = visible_tabs(tabs);
-    // 六个时每格约 114 像素、七个约 98 像素：字和选中块跟着收。/ Six tabs give ~114 px cells and seven ~98 px: text
-    // and the indicator shrink with them.
+    tr_tab_t tabs[TR_TAB_MAX + 1];
+    int n = tr_tab_bar_tabs(tabs);
+    bool found = false;
+    for (int i = 0; i < n; i++) found |= tabs[i] == active;
+    tabs[n++] = TR_TAB_ALL;
+    if (!found) active = TR_TAB_ALL;
     const int px = n >= 7 ? 24 : n >= 6 ? 26 : 28, pill = n >= 7 ? 84 : n >= 6 ? 92 : 100;
     for (int i = 0; i < n; i++) {
         int cx = (2 * i + 1) * TR_W / (2 * n);
@@ -505,16 +514,17 @@ void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
             ui_fill_round_rect(fb, (EpdRect){cx - pill / 2, TAB_ICON_Y - 26, pill, 52}, 26, TR_GRAY_SELECTED);
             under = TR_GRAY_SELECTED;
         }
-        tr_icon_on(fb, TAB_ICONS[tabs[i]], cx, TAB_ICON_Y, UI_GRAY_BLACK, under);
-        tr_text_on(fb, cx, TAB_LABEL_Y, px, TAB_LABELS[tabs[i]], EPD_DRAW_ALIGN_CENTER, on,
+        tr_icon_on(fb, tr_tab_icon(tabs[i]), cx, TAB_ICON_Y, UI_GRAY_BLACK, under);
+        tr_text_on(fb, cx, TAB_LABEL_Y, px, tr_tab_label(tabs[i]), EPD_DRAW_ALIGN_CENTER, on,
                    on ? UI_GRAY_BLACK : TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
     }
 }
 
 int tr_tab_hit(uint16_t x, uint16_t y) {
     if (y < TR_TABS_Y || y >= TR_H || x >= TR_W) return -1;
-    tr_tab_t tabs[TR_TAB_MAX];
-    const int n = visible_tabs(tabs);
+    tr_tab_t tabs[TR_TAB_MAX + 1];
+    int n = tr_tab_bar_tabs(tabs);
+    tabs[n++] = TR_TAB_ALL;
     return tabs[x * n / TR_W];
 }
 

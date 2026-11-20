@@ -71,11 +71,11 @@ void app_main(void) {
     read_pico_handle_t hw;
     if (read_pico_init(&hw) != ESP_OK) return;
     app_settings_init();
-    // 显示的标签超过上限（比如升级后多了新标签）就关掉右边多出来的，并记下来。/ Over the shown-tab cap (say, a new
-    // tab after an upgrade): hide the extras from the right and remember it.
-    const uint8_t tabs_off = tr_tabs_limit(app_settings_hidden_tabs());
-    app_settings_set_hidden_tabs(tabs_off);
-    tr_tabs_set_hidden(tabs_off);
+    // 隐藏的功能和底部常用的顺序交给标签栏（放不下的由标签栏按显示大小留在“全部”里）。/ Hand the hidden features
+    // and the pinned order to the bar (pins that do not fit stay on the All page, per the display size).
+    uint8_t pins[TR_TAB_MAX];
+    const int pin_n = app_settings_tab_pins(pins);
+    tr_tabs_configure(app_settings_hidden_tabs(), pins, pin_n);
     const bool vcom_ok = resolve_vcom_at_boot();
     pmu_selftest_bind(hw.sensor);
     app_sleep_bind(hw.touch, hw.sensor);

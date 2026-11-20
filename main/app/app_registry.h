@@ -16,11 +16,6 @@
 extern "C" {
 #endif
 
-int app_count(void);
-const app_desc_t* app_at(int index);
-/// 找不到时返回 -1。/ Returns -1 when not found.
-int app_index_of(const app_desc_t* app);
-
 /// 开机默认页（书库）与设备功能自检页，供 app_main 与主循环引用。/ Boot default page (library) and device self-test page, for app_main and the loop.
 const app_desc_t* app_home_page(void);
 const app_desc_t* app_selftest_page(void);

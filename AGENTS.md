@@ -30,10 +30,10 @@ idf.py build
 | --- | --- |
 | `main/app_main.c` | 开机装配：板级 init、读设置、定 VCOM、开机图、字体，然后交给 `app_loop`。/ Boot wiring, then `app_loop`. |
 | `main/app/app.h` | `app_desc_t` / `app_ctx_t` / `app_redraw_t` 契约。/ Page contract. |
-| `main/app/app_loop.c` | 与页面无关的事件循环：触摸去抖、三键与菜单把手、切页、刷屏、锁屏、SD 字体延迟加载。/ Shared event loop. |
-| `main/app/app_registry.c` | 菜单顺序。加页只改这张表。/ Menu table. |
+| `main/app/app_loop.c` | 与页面无关的事件循环：触摸去抖、三键与菜单把手（KEY3 / 把手打开“全部”页）、切页、刷屏、锁屏、SD 字体延迟加载。/ Shared event loop; KEY3 and the handle open the All page. |
+| `main/app/app_registry.c` | 只剩开机首页和自检页两个入口；功能列表在 `tr_ui` 的 `tr_tab_t`，切页映射在 `tr_nav.c`。/ Only the boot and self-test entries; features are `tr_tab_t` in `tr_ui`, mapped to pages in `tr_nav.c`. |
 | `main/app/app_config.h` | 均衡 / ALL_DU 刷新档位。/ Refresh profile. |
-| `main/ui/` | `ui_kit` 排版常量与绘制原语；`ui_menu` 两层菜单。页面互不引用。/ Shared drawing; pages do not include each other. |
+| `main/ui/` | `ui_kit` 排版常量与绘制原语；`tr_ui` 新风格控件与底部标签栏；`ui_menu` 只剩菜单把手和屏下三键区。页面互不引用。/ Shared drawing, the tab bar, and the handle / key strip; pages do not include each other. |
 | `main/font/` | stb_truetype 字形缓存。`fallback.h` 是生成位图，勿手改。/ Glyph cache. Do not edit `fallback.h` by hand. |
 | `main/factory/` | 设备功能自检与出厂 VCOM 标定。/ Device self-test and factory VCOM. |
 | `main/display.*` `sleep.*` `settings.*` | 刷屏封装、睡眠/锁屏、NVS 设置。/ Present helpers, sleep/lock, NVS. |
@@ -68,9 +68,9 @@ Keep plans, checkpoints, review records, acceptance results and debug logs in ig
 
 ### demo 页 / Demo pages
 
-每个文件只导出 `app_desc_t`。顺序与 `app_registry.c` 一致。
+每个文件只导出 `app_desc_t`。
 
-One file, one `app_desc_t`. Order matches `app_registry.c`.
+One file, one `app_desc_t`.
 
 | 文件 / File | 演示 / Demo | 依赖 / Depends on |
 | --- | --- | --- |
@@ -92,12 +92,13 @@ One file, one `app_desc_t`. Order matches `app_registry.c`.
 | `app_tr_xhs.c` | 小红书标签：关注 / 推荐列表、一屏一张看图、正文与评论；只读自建 rednote 服务器写到 TF 卡 `rednote/` 的缓存。/ Xiaohongshu tab: following and recommendation lists, one image per screen, text and comments; reads only the `rednote/` cache fetched from the self-hosted rednote server. | `tomato`（`tomato_rednote.c`）, `hupu_img` |
 | `app_tr_weibo.c` | 微博标签：关注 / 热门列表（一行一条带缩略图）、全文、一屏一张看图、评论；只读自建 weibo 服务器写到 TF 卡 `weibo/` 的缓存。/ Weibo tab: following and hot lists (one post per row with a thumbnail), full text, one image per screen, comments; reads only the `weibo/` cache fetched from the self-hosted weibo server. | `tomato`（`tomato_weibo.c`）, `hupu_img` |
 | `app_tr_x.c` | X 标签（默认隐藏）：为你推荐 / 正在关注、全文、一屏一张看图、回复；服务器关掉正在关注时这一段变灰；只读自建 x 服务器写到 TF 卡 `x/` 的缓存。/ X tab (hidden by default): For You / Following, full text, one image per screen, replies; Following greys out when the server turns it off; reads only the `x/` cache fetched from the self-hosted x server. | `tomato`（`tomato_x.c`）, `hupu_img` |
+| `app_tr_all.c` | “全部”页：没隐藏的功能排成大图标网格、翻页；底部最后一格、KEY3、工具条“菜单”、老页面把手都打开它，最后一页 KEY3 回到来处。/ The All page: every visible feature as a paged large-icon grid; opened by the bar's last cell, KEY3, the toolbar Menu and the legacy handle; KEY3 on the last page returns. | `tr_ui`, `tr_nav` |
 | `app_usb.c` | USB 传书：开始前说明；开始后卸 TF 卡交给电脑当 U 盘，只显示这一页（接管三键、占 PMU、无标签栏）；结束一律重启。/ USB transfer: intro, then the TF card goes to the computer as a USB drive with only this page shown (owns keys and PMU, no tab bar); ending always restarts. | `read_pico_usb`, `read_pico_sd` |
 | `app_transfer.c` | 设备热点/已有 WiFi 传 TXT/EPUB 与 TF 卡 TTF 字体，触屏/网页配网与热点二维码，离页停止；停留期间不计空闲自动休眠；停止按钮返回进入前的位置。/ AP/STA book and TF font upload with touchscreen/web provisioning and hotspot QR; stops on exit; idle auto-sleep does not run while the page is current; the stop button returns to the entry origin. | `read_pico_transfer`, `book_store` |
 
-加页：在 `main/apps/` 新建文件，实现需要的回调，把它加入 `app_registry.c` 的 `s_apps[]`。不要改 `app_loop.c`。
+加页：在 `main/apps/` 新建文件，实现需要的回调，加进 `main/CMakeLists.txt`。要作为一个功能出现在底部和“全部”页，在 `tr_ui.h` 的 `tr_tab_t` 里加一项（标签名、图标在 `tr_ui.c`），在 `tr_nav.c` 的 `tr_nav_tab_app()` 映射到页面；页面内的子页由所属功能页用 `request_app` 打开。隐藏掩码是 `uint8_t`，功能超过 8 个时要先把它加宽。不要改 `app_loop.c`。
 
-To add a page: new file in `main/apps/`, implement the callbacks you need, append it to `s_apps[]` in `app_registry.c`. Leave `app_loop.c` alone.
+To add a page: new file in `main/apps/`, implement the callbacks you need, add it to `main/CMakeLists.txt`. To make it a feature in the bar and on the All page, add a `tr_tab_t` entry (label and icon in `tr_ui.c`) and map it in `tr_nav_tab_app()` in `tr_nav.c`; sub-pages are opened by their feature page with `request_app`. The hidden mask is a `uint8_t`; widen it before going past 8 features. Leave `app_loop.c` alone.
 
 ## `app_desc_t` 契约 / Contract
 
@@ -123,15 +124,15 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 - `on_touch()` / `on_gesture()` / `on_key()` / `on_tick()`：可有副作用，用返回值要刷屏。/ Side effects OK; return the redraw.
 - `on_key_long()` 可选：仅接管三键的页面在同键单指保持500ms后触发一次，原按下动作先执行；滑出、多点、读错、睡眠、字体重载或切页取消。/ Optional owned-key hold callback fires once at 500ms after the normal press; leaving, multitouch, read errors, sleep, font reload and page switches cancel.
 - `on_gesture()` 可选；提供后不再接收 `on_touch()`。主循环负责识别与全局中断取消，页面解释动作。/ Optional gesture callback replaces `on_touch`; the loop recognizes and cancels, the page interprets.
-- `on_key()` 默认只收 `UI_KEY_1`；`owns_keys` 页面在菜单关闭时接收 KEY1、KEY3（按下时）和 KEY2（短按松手时）。中键（home）短按默认回主页（书库）、长按 0.5 秒整屏刷新，都由主循环处理。/ Normally KEY1 only; `owns_keys` pages get KEY1/KEY3 on press and KEY2 on a short-press release outside the menu. The middle (home) key goes to the home page (the library) on a short press and refreshes on a 500 ms hold, both handled by the loop.
+- `on_key()` 默认只收 `UI_KEY_1`；`owns_keys` 页面接收 KEY1、KEY3（按下时）和 KEY2（短按松手时）。中键（home）短按默认回主页（书库）、长按 0.5 秒整屏刷新，都由主循环处理。/ Normally KEY1 only; `owns_keys` pages get KEY1/KEY3 on press and KEY2 on a short-press release outside the menu. The middle (home) key goes to the home page (the library) on a short press and refreshes on a 500 ms hold, both handled by the loop.
 
 标志：
 
 - `holds_pmu`：长时间独占 PMU（自检）。主循环的锁屏按键轮询让路。/ Page owns the PMU; lock-key poll yields.
-- `owns_keys`：接管三键；不影响菜单打开时的全局键和菜单把手。/ Own all three keys outside the menu; global menu keys and the handle remain.
+- `owns_keys`：接管三键；菜单把手仍归主循环。/ Own all three keys; the handle stays with the loop.
 - `enter_full`：进页走 `APP_REDRAW_FULL`，避免差分刷留边。/ Enter with a full refresh.
 
-`app_ctx_t.request_app` 非空时，主循环在本轮末尾切页；`request_menu` 请求打开根菜单。同时设置时切页优先。/ At tick end, `request_app` switches pages and `request_menu` opens the root menu; a page request takes priority.
+`app_ctx_t.request_app` 非空时，主循环在本轮末尾切页；`request_menu` 请求打开“全部”页。同时设置时切页优先。/ At tick end, `request_app` switches pages and `request_menu` opens the All page; a page request takes priority.
 
 ## 术语表 / Glossary
 
@@ -144,7 +145,7 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 | 连续 DU / continuous DU | 每轮只扫一个相位，软件记每像素剩余相位。帧率与黑度解耦。 | One DU phase per scan; software tracks leftover phases per pixel. |
 | 跟手 | 手指或传感器在动时用 DU/连续 DU 追画面。 | Live tracking with DU / continuous DU while the finger or sensor moves. |
 | 定稿 | 动作停下后用 GC16/GL16 整页（或指定区）清残影。 | Settle after motion with GC16/GL16 to clear ghosting. |
-| 把手 | 底栏菜单按钮或 KEY3。打开/关闭全屏一级菜单，不交给当前页。 | Menu handle (bottom-right or KEY3). Toggles the root menu; not dispatched to the page. |
+| 把手 | 没有标签栏的老页面右下角菜单按钮或 KEY3。打开“全部”页，不交给当前页。 | Menu handle (bottom-right on pages without a tab bar, or KEY3). Opens the All page; not dispatched to the page. |
 | 冻结 / Frozen | 文件头里的产品决策。agent 不得改行为去“优化”它。 | Product decisions in the file banner. Do not “improve” them. |
 | 均衡配置 | `APP_REFRESH_BALANCED`：整页 GL16，周期 GC16 压灰底，动态区 DU。 | Default refresh profile: GL16 pages, periodic GC16, DU for motion. |
 | ALL_DU | 实验档：整机都走 DU，只看速度。 | Experimental profile: everything is DU. |

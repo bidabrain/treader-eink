@@ -59,12 +59,20 @@ typedef struct {
 app_book_style_t app_settings_book_style(void);
 void app_settings_set_book_style(const app_book_style_t* style);
 
-/// 隐藏的底部标签，按 tr_tab_t 位号的掩码；隐藏的标签底栏和菜单都不列出。书库和设置的位总是 0。
+/// 隐藏的功能，按 tr_tab_t 位号的掩码；隐藏的功能底部和“全部”页都不出现，入口关闭。书库和设置的位总是 0。
 /// 旧版“隐藏虎扑”开着时，第一次读取换算成只隐藏虎扑。
-/// Hidden tabs as a mask by tr_tab_t bit; hidden tabs leave the tab bar and the menu. The library and settings bits
-/// are always 0. The old "hide Hupu" switch migrates to a mask hiding Hupu only.
+/// Hidden features as a mask by tr_tab_t bit; hidden ones appear neither in the bar nor on the All page. The library
+/// and settings bits are always 0. The old "hide Hupu" switch migrates to a mask hiding Hupu only.
 uint8_t app_settings_hidden_tabs(void);
 void app_settings_set_hidden_tabs(uint8_t mask);
+
+/// 放在底部的常用功能（书库固定第一格，不在这张表里），按顺序；返回个数。没存过时按旧版底部显示的标签迁移
+/// （除了书库和设置）。显示大小决定实际能放几个，放不下的照样留在表里，只是暂时只在“全部”里。
+/// Pinned features after the fixed library slot, in order; returns the count. When never saved, migrate from the tabs
+/// the old bar showed (minus the library and settings). The display size decides how many fit; the rest stay in the
+/// list and show only on the All page for now.
+int app_settings_tab_pins(uint8_t out[8]);
+void app_settings_set_tab_pins(const uint8_t* pins, int n);
 
 /// 自动翻页档位（0 关，1～10 对应 3～30 秒），阅读和漫画各存一份。/ Auto-turn level (0 off, 1-10 = 3-30 s), kept
 /// separately for the reader and comics.
