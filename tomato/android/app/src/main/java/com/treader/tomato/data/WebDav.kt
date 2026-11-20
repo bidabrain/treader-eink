@@ -148,7 +148,13 @@ class WebDav(private val prefs: Prefs, private val dirs: Dirs, private val shelf
                 books += TomatoBook(id, utf8Cut(o.optString("title"), Caps.TITLE), utf8Cut(o.optString("author"), Caps.AUTHOR),
                     0, if (total > 0) total else 1, "")
                 added++
-            } else if (total > books[at].remote) books[at] = books[at].copy(remote = total)
+            } else {
+                if (total > books[at].remote) books[at] = books[at].copy(remote = total)
+                // 另一台设备打开过的章节数，取大：在设备上看过，App 里的“+N 章”也消失。
+                // Chapters seen on the other device, larger wins: reading on the device clears the badge here too.
+                val seen = o.optInt("seen")
+                if (seen > books[at].seen) books[at] = books[at].copy(seen = seen)
+            }
         }
         // 另一台设备删掉的书，本机书架也去掉记录（文件不删）。/ Drop records another device removed; files stay.
         books.removeAll { it.bookId in removed }
@@ -156,7 +162,7 @@ class WebDav(private val prefs: Prefs, private val dirs: Dirs, private val shelf
         remote.put("tomato", JSONArray().apply {
             books.forEach {
                 put(JSONObject().put("book_id", it.bookId).put("title", it.title).put("author", it.author).put("file", it.file)
-                    .put("chapters", it.chapters).put("remote", it.remote))
+                    .put("chapters", it.chapters).put("remote", it.remote).put("seen", it.seen))
             }
         })
         remote.put("removed", JSONArray(removed))

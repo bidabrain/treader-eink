@@ -225,32 +225,71 @@ esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count) {
         tomato_json_str(it, "file", b->file, sizeof(b->file));
         b->chapters = (uint16_t)tomato_json_int(it, "chapters");
         b->remote = (uint16_t)tomato_json_int(it, "remote");
+        // 旧版本写的书架没有 seen：当作都看过，只留下待下载的提示。/ Older shelves lack seen: treat as seen, keeping only pending.
+        b->seen = cJSON_GetObjectItemCaseSensitive(it, "seen") ? (uint16_t)tomato_json_int(it, "seen") : b->chapters;
         (*count)++;
     }
     cJSON_Delete(root);
     return ESP_OK;
 }
 
+// 磁盘上书架里这本书的 seen；没有这本或旧格式返回 0。调用方持有 io 锁。
+// seen of this book in the shelf on disk; 0 when absent or in the old format. Caller holds the io lock.
+static int disk_seen(const cJSON* disk, const char* book_id) {
+    const cJSON* it;
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(disk, "books")) {
+        const cJSON* id = cJSON_GetObjectItemCaseSensitive(it, "book_id");
+        if (cJSON_IsString(id) && id->valuestring && !strcmp(id->valuestring, book_id)) return tomato_json_int(it, "seen");
+    }
+    return 0;
+}
+
 esp_err_t tomato_shelf_save(const tomato_book_t* books, int count) {
     cJSON* root = cJSON_CreateObject();
     cJSON* arr = root ? cJSON_AddArrayToObject(root, "books") : NULL;
     if (!arr) { cJSON_Delete(root); return ESP_ERR_NO_MEM; }
+    // 后台任务开始时读了一份书架，期间页面可能记过“已看”：seen 和磁盘取大，不能被旧副本冲掉。
+    // The worker read the shelf when it started and a page may have marked a book seen since: keep the larger seen.
+    io_lock();
+    cJSON* disk = read_json(TOMATO_SHELF_PATH);
     for (int i = 0; i < count; i++) {
         cJSON* o = cJSON_CreateObject();
         if (!o) break;
+        int seen = disk_seen(disk, books[i].book_id);
+        if (seen < books[i].seen) seen = books[i].seen;
         cJSON_AddStringToObject(o, "book_id", books[i].book_id);
         cJSON_AddStringToObject(o, "title", books[i].title);
         cJSON_AddStringToObject(o, "author", books[i].author);
         cJSON_AddStringToObject(o, "file", books[i].file);
         cJSON_AddNumberToObject(o, "chapters", books[i].chapters);
         cJSON_AddNumberToObject(o, "remote", books[i].remote);
+        cJSON_AddNumberToObject(o, "seen", seen > UINT16_MAX ? UINT16_MAX : seen);
         cJSON_AddItemToArray(arr, o);
     }
-    io_lock();
+    cJSON_Delete(disk);
     esp_err_t err = write_json(TOMATO_SHELF_PATH, root);
     io_unlock();
     cJSON_Delete(root);
     return err;
+}
+
+esp_err_t tomato_shelf_mark_seen(const char* file) {
+    if (!file || !file[0]) return ESP_OK;
+    tomato_book_t* books = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(*books), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!books) return ESP_ERR_NO_MEM;
+    io_lock();
+    int count = 0;
+    bool changed = false;
+    esp_err_t err = tomato_shelf_load(books, TOMATO_SHELF_MAX, &count);
+    for (int i = 0; err == ESP_OK && i < count; i++) {
+        if (strcmp(books[i].file, file) || books[i].seen >= books[i].chapters) continue;
+        books[i].seen = books[i].chapters;
+        changed = true;
+    }
+    if (changed) err = tomato_shelf_save(books, count);
+    io_unlock();
+    heap_caps_free(books);
+    return err == ESP_ERR_NOT_FOUND ? ESP_OK : err;
 }
 
 /* ---- 已删除清单 / Removed-books list ---- */

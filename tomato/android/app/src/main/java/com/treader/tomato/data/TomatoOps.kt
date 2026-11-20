@@ -137,7 +137,10 @@ class TomatoOps(
         onFileChanged(dest, oldSize, dest.length())
         var chapters = maxOf(book.chapters, chapterTotal)
         if (book.remote > chapters) chapters = book.remote
-        return book.copy(title = title, file = file, chapters = chapters)
+        // 本机第一次下载（新书，或同步来、还没下载的）：下完算看过，显示“未读”而不是“+全部章”。
+        // First download here (a new book, or one synced over WebDAV): count it as seen so it shows unread, not +all.
+        val first = book.file.isEmpty() || book.chapters == 0
+        return book.copy(title = title, file = file, chapters = chapters, seen = if (first) chapters else book.seen)
     }
 
     /* ---- 检查更新 / Check ---- */

@@ -229,6 +229,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                     if (start == null) it.px = ui.getInt("px", ReaderState.PX_DEFAULT)
                 }
                 openFile = b.name
+                markSeen(b.tomato?.file)
             } catch (e: Exception) {
                 libMessage = "打不开：${e.message ?: e.javaClass.simpleName}"
             } finally {
@@ -237,7 +238,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // 打开（或退出）番茄书算看过：书库和番茄书架上的“+N 章”消失。/ Opening (or leaving) a Tomato book counts as seen.
+    private suspend fun markSeen(file: String?) {
+        if (file.isNullOrEmpty()) return
+        if (!withContext(Dispatchers.IO) { shelfStore.markSeen(file) }) return
+        shelf = withContext(Dispatchers.IO) { shelfStore.load() }
+        books = withContext(Dispatchers.IO) { library.scan() }
+    }
+
     fun closeReader() {
+        // 阅读时后台可能刚下完新章节，退出时再记一次。/ New chapters may have landed while reading; mark again on leaving.
+        reader?.book?.tomato?.file?.let { f -> viewModelScope.launch { markSeen(f) } }
         reader?.save()
         reader = null
         openFile = null

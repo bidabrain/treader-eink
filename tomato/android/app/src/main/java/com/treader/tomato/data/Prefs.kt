@@ -56,9 +56,10 @@ class Prefs(context: Context) {
  * Files in the app's own folder, shaped like the firmware's TF card: books/ holds the books (Tomato TXT too), and
  * tomato/ holds shelf.json, removed.json, covers/ and the bookstore cache store/.
  */
-class Dirs(context: Context) {
-    val books = File(context.filesDir, "books").apply { mkdirs() }
-    val tomato = File(context.filesDir, "tomato").apply { mkdirs() }
+class Dirs(root: File) {
+    constructor(context: Context) : this(context.filesDir)
+    val books = File(root, "books").apply { mkdirs() }
+    val tomato = File(root, "tomato").apply { mkdirs() }
     val covers = File(tomato, "covers").apply { mkdirs() }
     val store = File(tomato, "store").apply { mkdirs() }
     val shelf = File(tomato, "shelf.json")

@@ -73,8 +73,18 @@ typedef struct {
     char author[TOMATO_AUTHOR_LEN];
     uint16_t chapters;       ///< 本地 TXT 对应的章节数 / Chapters in the local TXT
     uint16_t remote;         ///< 最近一次检查到的服务器章节数 / Server chapters at last check
+    uint16_t seen;           ///< 上次打开时的章节数；旧文件缺省为 chapters / Chapters when last opened; defaults to chapters
     char file[TOMATO_TITLE_LEN + 8]; ///< books 目录下的文件名 / File name under books dir
 } tomato_book_t;
+
+/// 检查到、还没下载的新章节数。/ New chapters found by a check but not downloaded yet.
+static inline int tomato_book_pending(const tomato_book_t* b) {
+    return b->remote > b->chapters ? b->remote - b->chapters : 0;
+}
+/// 已下载、打开后还没看的新章节数。/ New chapters downloaded but not opened since.
+static inline int tomato_book_fresh(const tomato_book_t* b) {
+    return b->chapters > b->seen ? b->chapters - b->seen : 0;
+}
 
 /// 搜索结果。/ Search result.
 typedef struct {
@@ -167,7 +177,12 @@ void tomato_rank_cover_path(const char* book_id, char* out, size_t cap);
 
 /// 书架读写。load 失败时 count 置 0。/ Shelf I/O. On load failure count is 0.
 esp_err_t tomato_shelf_load(tomato_book_t* books, int max, int* count);
+/// 保存时和磁盘上的书架合并 seen（取大），后台任务手里的旧副本不会冲掉“已看”。
+/// Saving merges seen with the shelf on disk (larger wins), so a stale copy held by the worker cannot undo "seen".
 esp_err_t tomato_shelf_save(const tomato_book_t* books, int count);
+/// 打开了这本书：seen 记成当前章节数（file 是 books 目录下的文件名）；不是番茄书时什么也不做。
+/// The book was opened: set seen to its chapters (file is the name under the books dir); no-op for other books.
+esp_err_t tomato_shelf_mark_seen(const char* file);
 /// 书库删了文件后，从番茄书架去掉对应记录（file 是 books 目录下的文件名）。
 /// After the library deletes a file, drop its Tomato shelf entry (file is the name under the books dir).
 esp_err_t tomato_shelf_remove_file(const char* file);

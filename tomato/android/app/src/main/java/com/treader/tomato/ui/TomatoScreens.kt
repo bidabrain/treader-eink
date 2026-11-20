@@ -120,7 +120,8 @@ private fun ShelfScreen(vm: AppVm, onOpenBook: (TomatoBook) -> Unit, onSettings:
 private fun ShelfRow(vm: AppVm, b: TomatoBook, onClick: () -> Unit) {
     val pct = vm.progressPct(b.file)
     val mark = when {
-        b.pending -> "+${b.remote - b.chapters} 章"
+        b.pending -> "+${b.pendingCount} 章 待下载"
+        b.freshCount > 0 -> "+${b.freshCount} 章"
         b.file.isEmpty() -> "未下载"
         pct < 0 -> "未读"
         pct >= 100 -> "读完"
@@ -129,10 +130,10 @@ private fun ShelfRow(vm: AppVm, b: TomatoBook, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().noRippleClick(onClick)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                T(b.title, 17.sp, bold = b.pending, maxLines = 1)
+                T(b.title, 17.sp, bold = b.pending || b.freshCount > 0, maxLines = 1)
                 T("${b.author} · ${b.chapters} 章", 13.sp, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
             }
-            T(mark, 14.sp, bold = b.pending, modifier = Modifier.padding(start = 12.dp))
+            T(mark, 14.sp, bold = b.pending || b.freshCount > 0, modifier = Modifier.padding(start = 12.dp))
         }
         HLine()
     }

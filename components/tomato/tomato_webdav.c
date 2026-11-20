@@ -190,9 +190,18 @@ static bool merge_shelf(cJSON* remote_list, tomato_book_t* shelf, int* count,
             b->remote = (uint16_t)(remote_total > 0 ? remote_total : 1);
             (*added)++;
             changed = true;
-        } else if (remote_total > shelf[at].remote) {
-            shelf[at].remote = (uint16_t)remote_total;
-            changed = true;
+        } else {
+            if (remote_total > shelf[at].remote) {
+                shelf[at].remote = (uint16_t)remote_total;
+                changed = true;
+            }
+            // 另一台设备打开过的章节数，取大：在手机上看过，设备上的“+N 章”也消失。
+            // Chapters seen on the other device, larger wins: reading on the phone clears the badge here too.
+            int seen = tomato_json_int(it, "seen");
+            if (seen > shelf[at].seen) {
+                shelf[at].seen = (uint16_t)(seen > UINT16_MAX ? UINT16_MAX : seen);
+                changed = true;
+            }
         }
     }
     // 另一台设备删掉的书，本机书架也去掉记录（文件不删）。/ Drop shelf records another device removed (files stay).
@@ -216,6 +225,7 @@ static cJSON* shelf_to_json(const tomato_book_t* shelf, int count) {
         cJSON_AddStringToObject(o, "file", shelf[i].file);
         cJSON_AddNumberToObject(o, "chapters", shelf[i].chapters);
         cJSON_AddNumberToObject(o, "remote", shelf[i].remote);
+        cJSON_AddNumberToObject(o, "seen", shelf[i].seen);
         cJSON_AddItemToArray(arr, o);
     }
     return arr;

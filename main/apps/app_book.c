@@ -114,7 +114,8 @@ typedef struct {
     uint32_t recent;
     bool selected, removed, search_match;
     bool tomato;               ///< 番茄下载的书 / Downloaded from Tomato
-    uint16_t new_chapters;     ///< 番茄检查到的新章节数 / New chapters found by a Tomato check
+    uint16_t new_chapters;     ///< 番茄检查到、还没下载的新章节数 / New chapters found by a Tomato check, not downloaded yet
+    uint16_t fresh_chapters;   ///< 已下载、打开后还没看的新章节数 / New chapters downloaded but not opened since
     char title[96];            ///< 番茄书名，空则用文件名 / Tomato title; empty means use the file name
     char author[48];
 } shelf_entry_t;
@@ -869,12 +870,13 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         tr_book_mini_cover(fb, (EpdRect){r.x + (s_view == BULK ? 8 : 0), r.y + 8, 70, 96}, e->path, title, done);
         if (s_view == BULK) copy_text(mark, sizeof(mark), e->selected ? "已选" : "未选");
         if (e->removed) copy_text(mark, sizeof(mark), "已删·待清理");
-        else if (s_view != BULK && e->new_chapters) snprintf(mark, sizeof(mark), "+%u 章", e->new_chapters);
+        else if (s_view != BULK && e->new_chapters) snprintf(mark, sizeof(mark), "+%u 章 待下载", e->new_chapters);
+        else if (s_view != BULK && e->fresh_chapters) snprintf(mark, sizeof(mark), "+%u 章", e->fresh_chapters);
         int mark_w = mark[0] ? ttf_text_width_px(28, mark) + 16 : 0;
         const int tx = r.x + 96, tw = r.x + r.width - tx;
         tr_fit(title, 34, tw - mark_w);
         tr_text(fb, tx, r.y + 4, 34, title, EPD_DRAW_ALIGN_LEFT, true);
-        if (mark[0]) tr_text(fb, r.x + r.width, r.y + 8, 28, mark, EPD_DRAW_ALIGN_RIGHT, e->new_chapters && s_view != BULK);
+        if (mark[0]) tr_text(fb, r.x + r.width, r.y + 8, 28, mark, EPD_DRAW_ALIGN_RIGHT, (e->new_chapters || e->fresh_chapters) && s_view != BULK);
         const char* ext = strrchr(e->name, '.');
         if (e->tomato) snprintf(meta, sizeof(meta), "番茄%s%s", e->author[0] ? " · " : "", e->author);
         else snprintf(meta, sizeof(meta), "%s%s", ext && !strcasecmp(ext, ".epub") ? "EPUB" : "TXT", e->is_flash ? " · 内置" : "");
@@ -1049,6 +1051,8 @@ static const char* book_error_message(esp_err_t err) {
 
 /* ---- 文件与进度 / Files and progress ---- */
 static void free_book(void) {
+    // 退出时再记一次“已看”：正在看的时候后台可能刚下完新章节。/ Mark seen again on close: new chapters may have landed while reading.
+    if (s_text && tomato_file_of(s_path)) tomato_shelf_mark_seen(tomato_file_of(s_path));
     pending_progress_t* pending = pending_find(s_path);
     if (pending && !pending->dirty) pending_discard(s_path);
     invalidate_prep();
@@ -1177,6 +1181,8 @@ static bool open_book(app_ctx_t* ctx, const char* path) {
     s_size_settle_ms = 0;
     pending_mark_latest(s_path);
     save_progress();
+    // 打开成功才算看过：书库和番茄书架上的“+N 章”消失。/ Only a successful open counts as seen and clears the badge.
+    if (tomato_file_of(s_path)) tomato_shelf_mark_seen(tomato_file_of(s_path));
     ESP_LOGI(TAG, "opened kind=%d chapters=%u pages=%u px=%d source=%lld chapter=%lld ms", book_kind(), (unsigned)book_chapter_count(), (unsigned)book_layout_page_count(), s_px,
              (long long)source_ms, (long long)((esp_timer_get_time() - open_started) / 1000 - source_ms));
     return true;
@@ -1254,7 +1260,7 @@ static void annotate_tomato(void) {
     for (int i = 0; i < s_count; ++i) {
         shelf_entry_t* e = &s_shelf[i];
         e->tomato = false;
-        e->new_chapters = 0;
+        e->new_chapters = e->fresh_chapters = 0;
         e->title[0] = e->author[0] = 0;
         if (e->is_flash || strncmp(e->path, TOMATO_BOOKS_DIR, dir_len) || e->path[dir_len] != '/') continue;
         const char* base = e->path + dir_len + 1;
@@ -1263,7 +1269,8 @@ static void annotate_tomato(void) {
             e->tomato = true;
             copy_text(e->title, sizeof(e->title), t[j].title);
             copy_text(e->author, sizeof(e->author), t[j].author);
-            if (t[j].remote > t[j].chapters) e->new_chapters = t[j].remote - t[j].chapters;
+            e->new_chapters = (uint16_t)tomato_book_pending(&t[j]);
+            e->fresh_chapters = (uint16_t)tomato_book_fresh(&t[j]);
             break;
         }
     }

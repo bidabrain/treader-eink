@@ -96,11 +96,13 @@ static void load_shelf(void) {
     if (s_shelf) tomato_shelf_load(s_shelf, TOMATO_SHELF_MAX, &s_count);
     s_pending = 0;
     int n = 0;
-    // 有新章节的排前面。/ Books with new chapters first.
+    // 有新章节的排前面（待下载的和下载了还没看的）；s_pending 只数待下载的。
+    // Books with new chapters first (pending or downloaded but unopened); s_pending counts pending only.
     for (int pass = 0; pass < 2; pass++) {
         for (int i = 0; i < s_count; i++) {
-            bool pending = s_shelf[i].remote > s_shelf[i].chapters;
-            if (pending != (pass == 0)) continue;
+            const bool pending = tomato_book_pending(&s_shelf[i]) > 0;
+            const bool marked = pending || tomato_book_fresh(&s_shelf[i]) > 0;
+            if (marked != (pass == 0)) continue;
             s_order[n++] = (uint8_t)i;
             s_pending += pending;
         }
@@ -237,20 +239,22 @@ static void draw_list(uint8_t* fb) {
         if (k >= s_count) break;
         const tomato_book_t* b = &s_shelf[s_order[k]];
         int y = top + row * ROW_H;
-        bool pending = b->remote > b->chapters;
-        char mark[24];
-        if (pending) snprintf(mark, sizeof(mark), "+%d 章", b->remote - b->chapters);
+        const int pending = tomato_book_pending(b), fresh = tomato_book_fresh(b);
+        const bool marked = pending || fresh;
+        char mark[32];
+        if (pending) snprintf(mark, sizeof(mark), "+%d 章 待下载", pending);
+        else if (fresh) snprintf(mark, sizeof(mark), "+%d 章", fresh);
         else if (s_pct[s_order[k]] < 0) snprintf(mark, sizeof(mark), "未读");
         else if (s_pct[s_order[k]] >= 100) snprintf(mark, sizeof(mark), "读完");
         else snprintf(mark, sizeof(mark), "已读 %d%%", s_pct[s_order[k]]);
         int mark_w = ttf_text_width_px(28, mark);
         snprintf(line, sizeof(line), "%s", b->title);
         tr_fit(line, 34, TR_W - 2 * TR_MARGIN - mark_w - 24);
-        tr_text(fb, TR_MARGIN, y + 8, 34, line, EPD_DRAW_ALIGN_LEFT, pending);
+        tr_text(fb, TR_MARGIN, y + 8, 34, line, EPD_DRAW_ALIGN_LEFT, marked);
         snprintf(line, sizeof(line), "%s · %d 章", b->author, b->chapters);
         tr_fit(line, 26, TR_W - 2 * TR_MARGIN - mark_w - 24);
         tr_text(fb, TR_MARGIN, y + 52, 26, line, EPD_DRAW_ALIGN_LEFT, false);
-        tr_text(fb, TR_W - TR_MARGIN, y + 24, 28, mark, EPD_DRAW_ALIGN_RIGHT, pending);
+        tr_text(fb, TR_W - TR_MARGIN, y + 24, 28, mark, EPD_DRAW_ALIGN_RIGHT, marked);
         tr_hline(fb, y + ROW_H - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_pager(fb, PAGER_Y, s_page, list_pages());

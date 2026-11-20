@@ -16,8 +16,15 @@ data class TomatoBook(
     val remote: Int,
     /** books/ 下的文件名；空表示还没下载（同步来的）。/ File name under books/; empty when not downloaded yet. */
     val file: String,
+    /** 上次打开时的章节数；旧文件缺省为 chapters。/ Chapters when last opened; defaults to chapters. */
+    val seen: Int = chapters,
 ) {
+    /** 检查到、还没下载。/ Found by a check, not downloaded yet. */
     val pending get() = remote > chapters
+    /** 待下载的章节数。/ Chapters waiting to download. */
+    val pendingCount get() = maxOf(0, remote - chapters)
+    /** 下载了、打开后还没看的章节数。/ Chapters downloaded but not opened since. */
+    val freshCount get() = maxOf(0, chapters - seen)
 }
 
 /** 搜索结果（固件 tomato_hit_t）。/ A search result (the firmware's tomato_hit_t). */
@@ -51,20 +58,47 @@ class ShelfStore(private val dirs: Dirs) {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = utf8Cut(o.optString("book_id"), Caps.ID)
                 if (id.isEmpty()) continue
+                val chapters = o.optInt("chapters")
+                // 旧版本写的书架没有 seen：当作都看过，只留下待下载的提示。/ Older shelves lack seen: treat as seen.
                 add(TomatoBook(id, utf8Cut(o.optString("title"), Caps.TITLE), utf8Cut(o.optString("author"), Caps.AUTHOR),
-                    o.optInt("chapters"), o.optInt("remote"), utf8Cut(o.optString("file"), Caps.FILE)))
+                    chapters, o.optInt("remote"), utf8Cut(o.optString("file"), Caps.FILE),
+                    if (o.has("seen")) o.optInt("seen") else chapters))
             }
         }
     }
 
+    /**
+     * 保存时和磁盘上的书架合并 seen（取大）：后台操作开始时读的旧副本不会冲掉期间记下的“已看”。
+     * Saving merges seen with the shelf on disk (larger wins), so a copy read when an operation started cannot undo a
+     * "seen" recorded meanwhile.
+     */
     @Synchronized
     fun save(books: List<TomatoBook>) {
+        val disk = read(dirs.shelf)?.optJSONArray("books")
+        val diskSeen = buildMap {
+            for (i in 0 until (disk?.length() ?: 0)) {
+                val o = disk!!.optJSONObject(i) ?: continue
+                if (o.has("seen")) put(o.optString("book_id"), o.optInt("seen"))
+            }
+        }
         val arr = JSONArray()
         books.forEach {
             arr.put(JSONObject().put("book_id", it.bookId).put("title", it.title).put("author", it.author)
-                .put("file", it.file).put("chapters", it.chapters).put("remote", it.remote))
+                .put("file", it.file).put("chapters", it.chapters).put("remote", it.remote)
+                .put("seen", maxOf(it.seen, diskSeen[it.bookId] ?: 0)))
         }
         write(dirs.shelf, JSONObject().put("books", arr))
+    }
+
+    /** 打开了这本书：seen 记成当前章节数；不是番茄书时什么也不做。返回书架是否变了。/ The book was opened: set seen
+     *  to its chapters; no-op for other books. Returns whether the shelf changed. */
+    @Synchronized
+    fun markSeen(file: String): Boolean {
+        if (file.isEmpty()) return false
+        val books = load()
+        if (books.none { it.file == file && it.seen < it.chapters }) return false
+        save(books.map { if (it.file == file && it.seen < it.chapters) it.copy(seen = it.chapters) else it })
+        return true
     }
 
     @Synchronized

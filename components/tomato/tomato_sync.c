@@ -294,6 +294,9 @@ static esp_err_t find_library_file(const tomato_config_t* cfg, const char* title
 // Have the server build the TXT and fetch it into the library; updates title/file/chapters on success.
 static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
     work_t* w = s_work;
+    // 本机第一次下载（新书，或 WebDAV 同步来、还没下载的）：下完算看过，书架显示“未读”而不是“+全部章”。
+    // First download on this device (a new book, or one synced over WebDAV): count it as seen so it shows unread, not +all.
+    const bool first = !book->file[0] || !book->chapters;
     char body[64];
     cJSON* root; int status = 0;
     int job = -1;
@@ -376,6 +379,7 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
     tomato_copy_utf8(book->file, sizeof(book->file), file);
     if (chapter_total > book->chapters) book->chapters = (uint16_t)chapter_total;
     if (book->remote > book->chapters) book->chapters = book->remote;
+    if (first) book->seen = book->chapters;
     return ESP_OK;
 }
 

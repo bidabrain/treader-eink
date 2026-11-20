@@ -96,4 +96,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     testImplementation("junit:junit:4.13.2")
+    // 单元测试里 Android 自带的 org.json 只是空壳，换成真的实现。/ Android's org.json is a stub in unit tests; use the real one.
+    testImplementation("org.json:json:20180813")
 }

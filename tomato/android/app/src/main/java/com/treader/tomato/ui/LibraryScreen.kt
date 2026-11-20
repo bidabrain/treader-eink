@@ -199,7 +199,14 @@ private fun BookRow(vm: AppVm, b: LibBook, manage: Boolean, picked: Boolean, onC
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T(b.title, 17.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-                    b.tomato?.takeIf { it.pending }?.let { T("+${it.remote - it.chapters} 章", 13.sp, bold = true) }
+                    // 待下载优先；下载了还没打开的也提示，打开后消失。/ Pending first; downloaded but unopened also shows.
+                    b.tomato?.let { t ->
+                        when {
+                            t.pendingCount > 0 -> "+${t.pendingCount} 章 待下载"
+                            t.freshCount > 0 -> "+${t.freshCount} 章"
+                            else -> null
+                        }
+                    }?.let { T(it, 13.sp, bold = true) }
                 }
                 T(source(b), 13.sp, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
                 Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
