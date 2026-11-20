@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 未发布 / Unreleased
+
+- 界面改成 Material 3 灰阶风格（底部标签栏、按钮、分段、卡片、弹窗、工具条、锁屏书卡等），功能和操作不变；会局部快速刷新的地方保持黑白。
+  The UI moves to a Material 3 grayscale style (tab bar, buttons, segments, cards, dialogs, toolbars, lock card and more); features and controls are unchanged, and areas refreshed by fast partial updates stay black and white.
+- 番茄搜索入口从书架搬到书城页最上面；从书城进的搜索返回时回书城，书架多显示一行。
+  The Tomato search entry moves from the shelf to the top of the bookstore page; searches started there return to the bookstore, and the shelf shows one more row.
+
 ## 2026-11-20 · 番茄安卓 App 1.0.3
 
 - 番茄新章节提示（番茄安卓 App 1.0.3；固件已在最新构建 treader-latest 里，下个固件版本号一起发布）：检查到还没下载的显示“+N 章 待下载”；下载以后不再消失，改成“+N 章”，一直留到打开这本书，书库和番茄书架都一样。WebDAV 同步后，在手机或设备上打开过的书两边都不再提示。升级前已经下载、还没打开的书不会补上提示。

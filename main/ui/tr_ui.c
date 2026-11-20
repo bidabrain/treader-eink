@@ -604,9 +604,16 @@ int tr_badge(uint8_t* fb, int right, int y, const char* label, bool filled, int 
     if (!label || !label[0]) return 0;
     const int w = ttf_text_width_px(px, label) + 24, h = px + 14;
     const EpdRect r = {right - w, y, w, h};
-    ui_fill_round_rect(fb, r, h / 2, filled ? UI_GRAY_BLACK : TR_GRAY_SELECTED);
-    tr_text_on(fb, r.x + w / 2, y + 5, px, label, EPD_DRAW_ALIGN_CENTER, true, filled ? UI_GRAY_WHITE : UI_GRAY_BLACK,
-               filled ? UI_GRAY_BLACK : TR_GRAY_SELECTED);
+    if (filled) {
+        ui_fill_round_rect(fb, r, h / 2, UI_GRAY_BLACK);
+        tr_text_inv(fb, r.x + w / 2, y + 5, px, label, EPD_DRAW_ALIGN_CENTER, true);
+    } else {
+        // 描边不用灰底：番茄书架下载时按 DU 局部刷新，灰底会被刷成白。/ Outline instead of a gray fill: the Tomato
+        // shelf refreshes by DU during downloads, which would turn a gray fill white.
+        ui_draw_round_rect(fb, r, h / 2, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), h / 2 - 1, TR_GRAY_OUTLINE);
+        tr_text(fb, r.x + w / 2, y + 5, px, label, EPD_DRAW_ALIGN_CENTER, true);
+    }
     return w;
 }
 

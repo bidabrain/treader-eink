@@ -477,6 +477,115 @@ static void screen_wifi(void) {
     ui_draw_button(s_fb, ui_bar_rect(0, 1), "停止并返回", false);
 }
 
+/* ---- 第四组：番茄（照 app_tr_tomato.c、app_tr_store.c）/ Group 4: Tomato ---- */
+
+// 番茄书架。坐标照 app_tr_tomato.c 的 draw_list（有待下载时）。/ Tomato shelf with pending updates; follows draw_list.
+static void screen_tomato_shelf(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "番茄小说");
+    tr_icon(s_fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 150, 116, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, 98, 30, "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
+    static const char* const seg[2] = {"书架", "书城"};
+    tr_segment(s_fb, TR_SEGMENT_RECT, seg, 2, 0);
+    const int sh = 78;
+    tr_text(s_fb, TR_MARGIN, 156 + sh + 6, 28, "5 本 · 1 本有新章节", EPD_DRAW_ALIGN_LEFT, false);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 316 + sh - 104, TR_W - 2 * TR_MARGIN, 80}, "下载全部更新（1 本）", true, 30);
+    struct { const char *t, *meta, *mark; int kind; } rows[6] = {
+        {"斗破苍穹", "天蚕土豆 · 1712 章", "+3 章 待下载", 2}, {"十日终焉", "杀虫队队员 · 980 章", "+2 章", 1},
+        {"我在精神病院学斩神", "三九音域 · 1420 章", "已读 64%", 0}, {"夜的命名术", "会说话的肘子 · 1100 章", "读完", 0},
+        {"深海余烬", "远瞳 · 1030 章", "未读", 0}, {"灵境行者", "卖报小郎君 · 900 章", "已读 12%", 0}};
+    for (int i = 0; i < 6; i++) {
+        const int y = 420 + sh - 104 + i * 92;
+        tr_text(s_fb, TR_MARGIN, y + 8, 34, rows[i].t, EPD_DRAW_ALIGN_LEFT, rows[i].kind > 0);
+        tr_text_dim(s_fb, TR_MARGIN, y + 52, 26, rows[i].meta, EPD_DRAW_ALIGN_LEFT);
+        if (rows[i].kind) tr_badge(s_fb, TR_W - TR_MARGIN, y + 22, rows[i].mark, rows[i].kind == 2, 24);
+        else tr_text_dim(s_fb, TR_W - TR_MARGIN, y + 24, 28, rows[i].mark, EPD_DRAW_ALIGN_RIGHT);
+        tr_hline(s_fb, y + 92 - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    tr_tab_bar(s_fb, TR_TAB_TOMATO);
+}
+
+// 番茄搜索结果详情。坐标照 draw_detail。/ Tomato search detail; follows draw_detail.
+static void screen_tomato_detail(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_text(s_fb, TR_MARGIN, 90, 30, "‹ 搜索结果", EPD_DRAW_ALIGN_LEFT, false);
+    tr_cover(s_fb, (EpdRect){232, 160, 220, 296}, "深海余烬", "远瞳", "番茄", false);
+    tr_text(s_fb, TR_W / 2, 488, 48, "深海余烬", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text_dim(s_fb, TR_W / 2, 554, 30, "远瞳", EPD_DRAW_ALIGN_CENTER);
+    const int top = 626, cell = (TR_W - 2 * TR_MARGIN) / 4;
+    ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN - 8, top, TR_W - 2 * TR_MARGIN + 16, 116}, 24, TR_GRAY_SURFACE);
+    const char* labels[4] = {"分类", "状态", "章节", "字数"};
+    const char* values[4] = {"科幻", "连载", "1030", "302 万"};
+    for (int i = 0; i < 4; i++) {
+        const int cx = TR_MARGIN + i * cell + cell / 2;
+        if (i) epd_fill_rect((EpdRect){TR_MARGIN + i * cell, top + 20, 2, 76}, TR_GRAY_LINE, s_fb);
+        tr_text_on(s_fb, cx, top + 16, 24, labels[i], EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, cx, top + 52, 32, values[i], EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    }
+    tr_wrap(s_fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, 28, 44,
+            "深海时代，人类文明在无尽的海洋中挣扎求生。一艘名为失乡号的幽灵船载着一个来自异乡的灵魂，驶入了这片被诅咒的海域……", 4);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 960, TR_W - 2 * TR_MARGIN, 88}, "下载到书库", true, 32);
+    tr_tab_bar(s_fb, TR_TAB_TOMATO);
+}
+
+// 书城首页：最上面是搜索栏。坐标照 app_tr_store.c 的 draw_home。/ Bookstore home with the search bar on top; follows
+// draw_home.
+static void screen_store_home(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "番茄小说");
+    static const char* const seg[2] = {"书架", "书城"};
+    tr_segment(s_fb, TR_SEGMENT_RECT, seg, 2, 1);
+    const EpdRect bar = {TR_MARGIN, 244, TR_W - 2 * TR_MARGIN, 80};
+    ui_fill_round_rect(s_fb, bar, bar.height / 2, TR_GRAY_SURFACE);
+    tr_icon_on(s_fb, TR_ICON_SEARCH, bar.x + 50, bar.y + 40, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, bar.x + 86, bar.y + 22, 30, "搜索书名或作者", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY,
+               TR_GRAY_SURFACE);
+    const int dy = 104;
+    tr_text(s_fb, TR_MARGIN, 258 + dy, 28, "榜单 2026-11-20", EPD_DRAW_ALIGN_LEFT, false);
+    tr_icon(s_fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 96, 274 + dy, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, 254 + dy, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 322 + dy, 120, 62}, "男频", true, 30);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN + 134, 322 + dy, 120, 62}, "女频", false, 30);
+    tr_hline(s_fb, 404 + dy, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    static const char* const cats[] = {"都市日常", "玄幻", "仙侠", "历史", "科幻末世", "悬疑灵异", "都市高武", "游戏体育",
+                                       "西方奇幻", "抗战谍战", "传统玄幻", "都市修真", "系统流", "穿越", "重生", "神豪"};
+    int x = TR_MARGIN, y = 430 + dy;
+    for (int i = 0; i < (int)(sizeof(cats) / sizeof(cats[0])); i++) {
+        const int w = ttf_text_width_px(30, cats[i]) + 44;
+        if (x + w > TR_W - TR_MARGIN + 10) { x = TR_MARGIN; y += 76; }
+        tr_pill(s_fb, (EpdRect){x, y, w, 62}, cats[i], i == 0, 30);
+        x += w + 12;
+    }
+    tr_tab_bar(s_fb, TR_TAB_TOMATO);
+}
+
+// 书城榜单网格。坐标照 app_tr_store.c 的 draw_rank。/ Bookstore rank grid; follows draw_rank.
+static void screen_store_rank(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_text(s_fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, 96, 96, 40, "都市日常", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_dim(s_fb, TR_W - TR_MARGIN, 104, 28, "男频 · 2026-11-20", EPD_DRAW_ALIGN_RIGHT);
+    tr_hline(s_fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    const int gap = (TR_W - 2 * TR_MARGIN - 3 * 150) / 2;
+    static const char* const t[9] = {"十日终焉", "深海余烬", "夜的命名术", "斗破苍穹", "宿命之环", "三体", "灵境行者",
+                                     "我在精神病院学斩神", "道诡异仙"};
+    for (int k = 0; k < 9; k++) {
+        const EpdRect r = {TR_MARGIN + (k % 3) * (150 + gap), 186 + (k / 3) * 284, 150, 200};
+        tr_cover(s_fb, r, t[k], "", "", k % 2 == 0);
+        char line[96];
+        snprintf(line, sizeof(line), "%d %s", k + 1, t[k]);
+        tr_fit(line, 24, 150);
+        tr_text(s_fb, r.x, r.y + r.height + 8, 24, line, EPD_DRAW_ALIGN_LEFT, true);
+        if (k == 1) tr_text(s_fb, r.x, r.y + r.height + 46, 22, "已在书架", EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(s_fb, r.x, r.y + r.height + 46, 22, "在读 25.4万", EPD_DRAW_ALIGN_LEFT);
+    }
+    tr_tab_bar(s_fb, TR_TAB_TOMATO);
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -488,9 +597,10 @@ int main(int argc, char** argv) {
     tr_tabs_set_hidden(1u << TR_TAB_X);
     char path[256];
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
-                               screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi};
+                               screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi,
+                               screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home};
     const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
-                           "usb", "wifi"};
+                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);

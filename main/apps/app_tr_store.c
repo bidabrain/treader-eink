@@ -43,8 +43,10 @@
 #define CHIP_H 62
 #define CHIP_GAP 12
 #define CHIP_STEP 76
-#define CHANNEL_Y 322
-#define CATS_Y 430
+#define SEARCH_BAR (EpdRect){TR_MARGIN, 244, TR_W - 2 * TR_MARGIN, 80}   // 搜索栏 / Search bar
+#define SEARCH_DY 104                                                  // 搜索栏让出来的高度 / Room the bar takes
+#define CHANNEL_Y (322 + SEARCH_DY)
+#define CATS_Y (430 + SEARCH_DY)
 #define RANK_TOP 176
 #define GRID_COLS 3
 #define GRID_PER 9                       // 每页 3×3 / 3x3 per page
@@ -57,6 +59,9 @@
 #define DETAIL_BTN (EpdRect){TR_MARGIN, 1000, TR_W - 2 * TR_MARGIN, 84}
 
 extern const app_desc_t app_tr_tomato;
+// 番茄页下次进来直接打开搜索，返回时回书城（定义在 app_tr_tomato.c）。/ Make the Tomato page open its search on the
+// next entry and come back here on return (defined in app_tr_tomato.c).
+void tr_tomato_open_search(void);
 extern const app_desc_t app_tr_store;
 
 typedef enum { V_HOME, V_RANK, V_DETAIL } view_t;
@@ -225,14 +230,22 @@ static void draw_home(uint8_t* fb) {
     else if (s_last == OP_RANK && s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%s", s_status.message);
     else if (s_cat_count >= 0) snprintf(line, sizeof(line), "榜单 %s", s_date[0] ? s_date : "已缓存");
     else snprintf(line, sizeof(line), "还没有榜单");
-    tr_message(fb, TR_MARGIN, 258, 246, TR_W - 2 * TR_MARGIN - 160, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    // 搜索栏（Material 3 灰底胶囊），点了进番茄搜索页。书城只用整页刷新，灰底安全。
+    // Search bar (Material 3 gray capsule) that opens the Tomato search; the bookstore only refreshes whole pages.
+    const EpdRect bar = SEARCH_BAR;
+    ui_fill_round_rect(fb, bar, bar.height / 2, TR_GRAY_SURFACE);
+    tr_icon_on(fb, TR_ICON_SEARCH, bar.x + 50, bar.y + 40, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(fb, bar.x + 86, bar.y + 22, 30, "搜索书名或作者", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY,
+               TR_GRAY_SURFACE);
+    tr_message(fb, TR_MARGIN, 258 + SEARCH_DY, 246 + SEARCH_DY, TR_W - 2 * TR_MARGIN - 160, 28, line,
+               EPD_DRAW_ALIGN_LEFT, false);
     if (!tomato_sync_busy() || s_op == OP_COVER) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 96, 274, false);
-        tr_text(fb, TR_W - TR_MARGIN, 254, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 96, 274 + SEARCH_DY, false);
+        tr_text(fb, TR_W - TR_MARGIN, 254 + SEARCH_DY, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     tr_pill(fb, (EpdRect){TR_MARGIN, CHANNEL_Y, 120, CHIP_H}, "男频", s_male, 30);
     tr_pill(fb, (EpdRect){TR_MARGIN + 134, CHANNEL_Y, 120, CHIP_H}, "女频", !s_male, 30);
-    tr_hline(fb, 404, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_hline(fb, 404 + SEARCH_DY, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     if (s_cat_count < 0) {
         tr_wrap(fb, TR_MARGIN, CATS_Y + 10, TR_W - 2 * TR_MARGIN, 30, 46,
                 "点右上角“刷新”联网获取榜单。之后打开会直接显示上次取到的内容，不用联网。", 4);
@@ -253,9 +266,9 @@ static void draw_rank(uint8_t* fb) {
     if (s_cur >= 0) {
         tr_text(fb, 96, 96, 40, s_cats[s_cur].name, EPD_DRAW_ALIGN_LEFT, true);
         snprintf(line, sizeof(line), "%s · %s", s_cats[s_cur].male ? "男频" : "女频", s_date);
-        tr_text(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text_dim(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT);
     }
-    tr_hline(fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
+    tr_hline(fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     const bool fetching = tomato_sync_busy() && s_op == OP_RANK;
     if (fetching || s_book_count <= 0) {
         const char* msg = fetching ? busy_text()
@@ -281,7 +294,9 @@ static void draw_rank(uint8_t* fb) {
         if (owned) snprintf(line, sizeof(line), "已在书架");
         else snprintf(line, sizeof(line), "在读 %s", b->reads[0] ? b->reads : "—");
         tr_fit(line, 22, CELL_W);
-        tr_text(fb, r.x, r.y + r.height + 46, 22, line, EPD_DRAW_ALIGN_LEFT, owned);
+        // 已在书架加粗黑字，在读人数深灰。/ "On shelf" is bold black; reader counts are dark gray.
+        if (owned) tr_text(fb, r.x, r.y + r.height + 46, 22, line, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(fb, r.x, r.y + r.height + 46, 22, line, EPD_DRAW_ALIGN_LEFT);
     }
     tr_pager(fb, PAGER_Y, s_page, rank_pages());
 }
@@ -291,7 +306,7 @@ static void draw_detail(uint8_t* fb) {
     char line[160];
     tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
     snprintf(line, sizeof(line), "%s · 第 %d 名", s_cur >= 0 ? s_cats[s_cur].name : "", s_detail + 1);
-    tr_text(fb, 96, 100, 30, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, 96, 100, 30, line, EPD_DRAW_ALIGN_LEFT);
     char cover[96];
     tr_book_cover(fb, COVER_RECT, cover_file(b, cover, sizeof(cover)) ? cover : NULL, b->title, b->author, "番茄", false);
     const int x = 292, w = TR_W - TR_MARGIN - x;
@@ -301,10 +316,10 @@ static void draw_detail(uint8_t* fb) {
     tr_fit(line, 30, w);
     tr_text(fb, x, y, 30, line, EPD_DRAW_ALIGN_LEFT, false);
     snprintf(line, sizeof(line), "在读 %s", b->reads[0] ? b->reads : "—");
-    tr_text(fb, x, y + 50, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, x, y + 50, 28, line, EPD_DRAW_ALIGN_LEFT);
     if (s_cur >= 0) {
         snprintf(line, sizeof(line), "%s · %s", s_cats[s_cur].male ? "男频" : "女频", s_cats[s_cur].name);
-        tr_text(fb, x, y + 94, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, x, y + 94, 28, line, EPD_DRAW_ALIGN_LEFT);
     }
     tr_hline(fb, 510, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     tr_wrap(fb, TR_MARGIN, 536, TR_W - 2 * TR_MARGIN, 30, 48, b->intro[0] ? b->intro : "暂无简介", 8);
@@ -328,9 +343,9 @@ static void draw_detail(uint8_t* fb) {
                    EPD_DRAW_ALIGN_LEFT, false);
     const bool owned = shelf_index_of(b->book_id) >= 0;
     tr_pill(fb, btn, owned ? "开始阅读" : "下载到书库", true, 32);
-    tr_text(fb, TR_W / 2, btn.y + btn.height + 26, 26,
-            owned ? "已在番茄书架和书库里" : "经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到",
-            EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, btn.y + btn.height + 26, 26,
+                owned ? "已在番茄书架和书库里" : "经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到",
+                EPD_DRAW_ALIGN_CENTER);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -402,7 +417,13 @@ static app_redraw_t download_or_read(app_ctx_t* ctx) {
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 0) { ctx->request_app = &app_tr_tomato; return APP_REDRAW_NONE; }
-    if (y >= 240 && y < 310 && x > TR_W - TR_MARGIN - 160 && (!tomato_sync_busy() || s_op == OP_COVER)) {
+    if (ui_rect_hit(SEARCH_BAR, x, y)) {
+        tr_tomato_open_search();
+        ctx->request_app = &app_tr_tomato;
+        return APP_REDRAW_NONE;
+    }
+    if (y >= 240 + SEARCH_DY && y < 310 + SEARCH_DY && x > TR_W - TR_MARGIN - 160 &&
+        (!tomato_sync_busy() || s_op == OP_COVER)) {
         if (claim_sync(Q_INDEX)) start_op(OP_RANK, tomato_sync_start_rank(NULL));
         return APP_REDRAW_PAGE;
     }
