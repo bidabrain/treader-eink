@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -46,7 +47,7 @@ fun StoreTab(vm: AppVm) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             T(if (index != null) "榜单 ${index.first}" else "榜单", 14.sp, modifier = Modifier.weight(1f))
             Row(Modifier.noRippleClick { vm.storeRefresh() }, verticalAlignment = Alignment.CenterVertically) {
-                SyncIcon(Modifier.padding(end = 4.dp))
+                SyncIcon(Modifier.padding(end = 8.dp).size(24.dp))
                 T(if (vm.storeBusy) "刷新中…" else "刷新", 14.sp)
             }
         }
@@ -55,9 +56,9 @@ fun StoreTab(vm: AppVm) {
             Chip("女频", !vm.storeMale) { vm.storeMale = false }
         }
         HLine(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
-        if (vm.storeMsg.isNotEmpty()) T(vm.storeMsg, 13.sp, modifier = Modifier.padding(20.dp))
+        if (vm.storeMsg.isNotEmpty()) T(vm.storeMsg, 13.sp, color = Mid, modifier = Modifier.padding(20.dp))
         if (index == null) {
-            if (vm.storeBusy) T("正在取榜单…", 14.sp, modifier = Modifier.padding(20.dp))
+            if (vm.storeBusy) T("正在取榜单…", 14.sp, color = Mid, modifier = Modifier.padding(20.dp))
             return
         }
         FlowRow(
@@ -78,11 +79,11 @@ private fun RankScreen(vm: AppVm) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             T("‹", 24.sp, modifier = Modifier.noRippleClick { vm.storeCat = null }.padding(end = 14.dp))
             T(cat.name, 18.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-            T("${if (cat.male) "男频" else "女频"} · ${vm.storeIndex?.first.orEmpty()}", 13.sp)
+            T("${if (cat.male) "男频" else "女频"} · ${vm.storeIndex?.first.orEmpty()}", 13.sp, color = Mid)
         }
-        HLine(soft = false, modifier = Modifier.padding(horizontal = 20.dp))
-        if (vm.storeMsg.isNotEmpty()) T(vm.storeMsg, 13.sp, modifier = Modifier.padding(20.dp))
-        if (vm.storeBooks.isEmpty() && vm.storeBusy) T("正在取榜单…", 14.sp, modifier = Modifier.padding(20.dp))
+        HLine(modifier = Modifier.padding(horizontal = 20.dp))
+        if (vm.storeMsg.isNotEmpty()) T(vm.storeMsg, 13.sp, color = Mid, modifier = Modifier.padding(20.dp))
+        if (vm.storeBooks.isEmpty() && vm.storeBusy) T("正在取榜单…", 14.sp, color = Mid, modifier = Modifier.padding(20.dp))
         LazyVerticalGrid(
             GridCells.Fixed(3), Modifier.fillMaxSize().padding(horizontal = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -93,7 +94,8 @@ private fun RankScreen(vm: AppVm) {
                         Cover(b.title, b.cover, Modifier.fillMaxSize(), 12.sp)
                     }
                     T("${i + 1} ${b.title}", 13.sp, bold = true, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
-                    T(if (vm.owned(b.bookId) != null) "已在书架" else "在读 ${b.reads}", 12.sp, maxLines = 1)
+                    if (vm.owned(b.bookId) != null) T("已在书架", 12.sp, bold = true, maxLines = 1)
+                    else T("在读 ${b.reads}", 12.sp, color = Mid, maxLines = 1)
                 }
             }
         }

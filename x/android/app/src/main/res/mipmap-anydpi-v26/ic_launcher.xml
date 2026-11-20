@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 白底黑线，和墨水屏一样；系统“主题图标”也用同一个图形。/ Black on white like the e-ink screen; themed icons use
-     the same glyph. -->
+<!-- #EEEEEE 底上画固件 X 标签的黑色小鸟，和“全部”页图块一样；系统“主题图标”也用同一个图形。/ The firmware X tab's
+     black bird on #EEEEEE, like an All-page tile; themed icons use the same glyph. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@android:color/white" />
+    <background android:drawable="@color/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

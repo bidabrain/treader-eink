@@ -4,11 +4,15 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +31,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -153,33 +158,32 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
 private fun Tools(vm: AppVm, r: ReaderState, autoLevel: Int, setAuto: (Int) -> Unit, show: (Panel) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().background(Paper).height(52.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            T("‹ 书库", 15.sp, modifier = Modifier.noRippleClick { vm.closeReader() }.padding(end = 12.dp))
+            T("‹ 书库", 14.sp, modifier = Modifier.noRippleClick { vm.closeReader() }.padding(end = 12.dp))
             T(r.book.title, 16.sp, bold = true, maxLines = 1, align = TextAlign.Center, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(56.dp))
         }
-        HLine(soft = false)
+        HLine()
         Box(Modifier.weight(1f).fillMaxWidth().noRippleClick { show(Panel.NONE) })
-        HLine(soft = false)
-        Column(Modifier.fillMaxWidth().background(Paper).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Sheet {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                T(r.source.chapterTitle(r.chapter), 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                T("字号 ${r.px}", 14.sp)
+                T(r.source.chapterTitle(r.chapter), 13.sp, color = Mid, maxLines = 1, modifier = Modifier.weight(1f))
+                T("字号 ${r.px}", 13.sp, color = Mid)
             }
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceAround) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ToolButton("目录", { TocIcon() }) { show(Panel.TOC) }
                 ToolButton("排版", { T("Aa", 17.sp, bold = true) }) { show(Panel.LAYOUT) }
                 ToolButton("书库", { BooksIcon() }) { vm.closeReader() }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Pill("A−", false, Modifier.weight(1f), height = 40.dp) { if (r.px > ReaderState.PX_MIN) { r.px -= 4; vm.setDefaultPx(r.px) } }
-                T("${r.px}", 18.sp, bold = true, align = TextAlign.Center, modifier = Modifier.width(72.dp))
-                Pill("A+", false, Modifier.weight(1f), height = 40.dp) { if (r.px < ReaderState.PX_MAX) { r.px += 4; vm.setDefaultPx(r.px) } }
+                Pill("A−", false, Modifier.weight(1f), height = 42.dp) { if (r.px > ReaderState.PX_MIN) { r.px -= 4; vm.setDefaultPx(r.px) } }
+                T("${r.px}", 20.sp, bold = true, align = TextAlign.Center, modifier = Modifier.width(72.dp))
+                Pill("A+", false, Modifier.weight(1f), height = 42.dp) { if (r.px < ReaderState.PX_MAX) { r.px += 4; vm.setDefaultPx(r.px) } }
             }
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 T("自动翻页", 14.sp, modifier = Modifier.weight(1f))
-                Pill("−", false, Modifier.width(52.dp), height = 34.dp) { setAuto((autoLevel - 1).coerceAtLeast(0)) }
-                T(if (autoLevel == 0) "关" else "${autoLevel * 3} 秒", 16.sp, bold = true, align = TextAlign.Center, modifier = Modifier.width(72.dp))
-                Pill("+", false, Modifier.width(52.dp), height = 34.dp) { setAuto((autoLevel + 1).coerceAtMost(10)) }
+                Pill("−", false, Modifier.width(52.dp), height = 32.dp) { setAuto((autoLevel - 1).coerceAtLeast(0)) }
+                T(if (autoLevel == 0) "关" else "${autoLevel * 3} 秒", 16.sp, align = TextAlign.Center, modifier = Modifier.width(72.dp))
+                Pill("+", false, Modifier.width(52.dp), height = 32.dp) { setAuto((autoLevel + 1).coerceAtMost(10)) }
             }
             Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).height(24.dp).pointerInput(r.chapter) {
@@ -190,19 +194,47 @@ private fun Tools(vm: AppVm, r: ReaderState, autoLevel: Int, setAuto: (Int) -> U
                         while (c + 1 < r.source.chapterCount && r.source.chapterSourceOffset(c + 1) <= at) c++
                         r.chapter = c; r.off = 0
                     }
-                }, contentAlignment = Alignment.Center) { ProgressBar(r.pct()) }
+                }, contentAlignment = Alignment.Center) { BookBar(r.pct()) }
                 T("全书 ${r.pct()}%", 13.sp, modifier = Modifier.padding(start = 10.dp))
             }
         }
     }
 }
 
+/** 工具条的底部面板：白底、上圆角、浅灰描边，顶上一根拖动把手。/ The toolbar's bottom sheet: white with rounded top
+ *  corners, a light gray outline and a drag handle on top. */
 @Composable
-private fun ToolButton(label: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
-    Column(Modifier.width(72.dp).noRippleClick(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun Sheet(content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(Paper).border(OutlineWidth, Line, shape)
+            .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 12.dp),
+    ) {
+        Box(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp).width(36.dp).height(4.dp)
+            .clip(RoundedCornerShape(50)).background(Selected))
+        content()
+    }
+}
+
+/** 工具条按钮：浅灰圆角格子，图标在上、名字在下。/ Toolbar button: a light gray rounded tile, icon above the label. */
+@Composable
+private fun RowScope.ToolButton(label: String, icon: @Composable () -> Unit, onClick: () -> Unit) {
+    Column(
+        Modifier.weight(1f).card().noRippleClick(onClick).padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Box(Modifier.height(26.dp), contentAlignment = Alignment.Center) { icon() }
         T(label, 13.sp, modifier = Modifier.padding(top = 2.dp))
     }
+}
+
+/** 全书进度条（阅读页样子）：黑色已读段接浅灰剩余段。/ Whole-book bar as in the reader: a black read part followed by a
+ *  light gray remainder. */
+@Composable
+private fun BookBar(pct: Int) = Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+    val w = size.width * pct.coerceIn(0, 100) / 100f
+    drawRect(Selected)
+    drawRect(Ink, size = androidx.compose.ui.geometry.Size(w, size.height))
 }
 
 @Composable
@@ -211,9 +243,9 @@ private fun Toc(r: ReaderState, onPick: (Int) -> Unit) {
     Column(Modifier.fillMaxSize().background(Paper)) {
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             T("目录", 18.sp, bold = true, modifier = Modifier.weight(1f))
-            T("${r.source.chapterCount} 章", 13.sp)
+            T("${r.source.chapterCount} 章", 13.sp, color = Mid)
         }
-        HLine(soft = false)
+        HLine()
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp), state = list) {
             items(r.source.chapterCount) { i ->
                 Column(Modifier.fillMaxWidth().noRippleClick { onPick(i) }) {
@@ -230,8 +262,7 @@ private fun LayoutPanel(vm: AppVm, onDone: () -> Unit) {
     val s = vm.style
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth().noRippleClick(onDone))
-        HLine(soft = false)
-        Column(Modifier.fillMaxWidth().background(Paper).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Sheet {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 T("排版", 17.sp, bold = true, modifier = Modifier.weight(1f))
                 Pill("完成", true, Modifier.width(80.dp), height = 34.dp, onClick = onDone)
@@ -246,27 +277,17 @@ private fun LayoutPanel(vm: AppVm, onDone: () -> Unit) {
             rows.forEachIndexed { row, (name, choices, value) ->
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     T(name, 14.sp, modifier = Modifier.width(80.dp))
-                    choices.forEachIndexed { opt, label ->
-                        Pill(label, opt == value, Modifier.weight(1f).padding(start = if (opt > 0) 8.dp else 0.dp), height = 34.dp) {
-                            vm.changeStyle(when (row) {
-                                0 -> s.copy(line = opt); 1 -> s.copy(para = opt); 2 -> s.copy(margin = opt)
-                                3 -> s.copy(indent = opt == 1); else -> s.copy(underline = opt == 1)
-                            })
-                        }
-                    }
-                    if (choices.size == 2) Spacer(Modifier.weight(1f).padding(start = 8.dp))
+                    // 每行是一个分段按钮（tr_segment）；两项的行和三项的行一样宽。/ Each row is a segmented button
+                    // (tr_segment); two-choice rows span the same width as three-choice rows.
+                    Segment(choices, value, { opt ->
+                        vm.changeStyle(when (row) {
+                            0 -> s.copy(line = opt); 1 -> s.copy(para = opt); 2 -> s.copy(margin = opt)
+                            3 -> s.copy(indent = opt == 1); else -> s.copy(underline = opt == 1)
+                        })
+                    }, Modifier.weight(1f))
                 }
             }
         }
     }
 }
 
-/** 目录图标：三个点三条线。/ TOC glyph: three dots and three lines. */
-@Composable
-fun TocIcon() = Canvas(Modifier.width(24.dp).height(24.dp)) {
-    val s = size.width / 40f
-    for (i in 0 until 3) {
-        drawCircle(Ink, 2.2f * s, androidx.compose.ui.geometry.Offset(8 * s, (10 + i * 10) * s))
-        drawLine(Ink, androidx.compose.ui.geometry.Offset(15 * s, (10 + i * 10) * s), androidx.compose.ui.geometry.Offset(34 * s, (10 + i * 10) * s), 2.6f * s)
-    }
-}

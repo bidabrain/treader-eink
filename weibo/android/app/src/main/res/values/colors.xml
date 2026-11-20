@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动图标底色，和固件“全部”页图块一样的卡片灰（TR_GRAY_SURFACE）。/ Launcher icon background: the card gray of
+         the firmware All-page tiles (TR_GRAY_SURFACE). -->
+    <color name="ic_launcher_background">#EEEEEE</color>
+</resources>

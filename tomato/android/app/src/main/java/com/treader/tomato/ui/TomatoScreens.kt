@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,9 +66,9 @@ fun TomatoTab(vm: AppVm, onOpenBook: (TomatoBook) -> Unit, onSettings: () -> Uni
 @Composable
 fun TitleRow(title: String, action: String? = null, onAction: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        T(title, 24.sp, bold = true, modifier = Modifier.weight(1f))
+        PageTitle(title, Modifier.weight(1f))
         if (action != null) Row(Modifier.noRippleClick(onAction), verticalAlignment = Alignment.CenterVertically) {
-            SyncIcon(Modifier.padding(end = 4.dp))
+            SyncIcon(Modifier.padding(end = 8.dp).size(24.dp))
             T(action, 14.sp)
         }
     }
@@ -86,7 +87,7 @@ private fun ShelfScreen(vm: AppVm, onOpenBook: (TomatoBook) -> Unit, onSettings:
                 "${vm.shelf.size} 本 · ${s.message}"
             else -> "${vm.shelf.size} 本 · ${vm.pending} 本有新章节"
         }
-        T(line, 13.sp, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp))
+        T(line, 13.sp, color = Mid, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp))
         SearchField(Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp)) { vm.tomatoView = TomatoView.Search }
         if (working) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -95,7 +96,7 @@ private fun ShelfScreen(vm: AppVm, onOpenBook: (TomatoBook) -> Unit, onSettings:
                     T(if (s.phase == Phase.DOWNLOADING) "正在下载 · %.1f MB".format(s.bytes / 1048576.0)
                       else if (s.phase == Phase.QUEUED) "服务器正在生成 TXT" else "", 13.sp, color = Mid)
                 }
-                T("取消", 15.sp, modifier = Modifier.noRippleClick { vm.cancel() }.padding(8.dp))
+                Pill("取消", false, Modifier.padding(start = 8.dp).width(72.dp), height = 34.dp) { vm.cancel() }
             }
         } else if (vm.pending > 0) {
             Pill("下载全部更新（${vm.pending} 本）", true, Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp)) {
@@ -105,7 +106,7 @@ private fun ShelfScreen(vm: AppVm, onOpenBook: (TomatoBook) -> Unit, onSettings:
         Spacer(Modifier.height(8.dp))
         if (vm.shelf.isEmpty()) {
             Column(Modifier.padding(20.dp)) {
-                T(if (vm.configured) "还没有番茄小说。点上面的搜索框找书。" else "还没设置番茄服务器。", 15.sp, lineHeight = 23.sp)
+                T(if (vm.configured) "还没有番茄小说。点上面的搜索框找书。" else "还没设置番茄服务器。", 15.sp, color = Mid, lineHeight = 23.sp)
                 if (!vm.configured) Pill("去设置", true, Modifier.padding(top = 16.dp).width(160.dp)) { onSettings() }
             }
             return
@@ -131,25 +132,21 @@ private fun ShelfRow(vm: AppVm, b: TomatoBook, onClick: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 T(b.title, 17.sp, bold = b.pending || b.freshCount > 0, maxLines = 1)
-                T("${b.author} · ${b.chapters} 章", 13.sp, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                T("${b.author} · ${b.chapters} 章", 13.sp, color = Mid, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
             }
-            T(mark, 14.sp, bold = b.pending || b.freshCount > 0, modifier = Modifier.padding(start = 12.dp))
+            // 有新章节用标记（待下载实心、已下载描边），其余是次要文字。/ New chapters get a badge (pending filled,
+            // downloaded outlined); the rest is secondary text.
+            if (b.pending || b.freshCount > 0) Badge(mark, b.pending, Modifier.padding(start = 12.dp))
+            else T(mark, 14.sp, color = Mid, modifier = Modifier.padding(start = 12.dp))
         }
         HLine()
     }
 }
 
-/** 假的搜索框：点了进搜索页。/ A fake search box that opens the search page. */
+/** 假的搜索框（浅灰搜索栏）：点了进搜索页。/ A fake search box (light gray search bar) that opens the search page. */
 @Composable
 fun SearchField(modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(
-        modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(21.dp)).border(1.5.dp, Ink, RoundedCornerShape(21.dp))
-            .noRippleClick(onClick).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SearchIcon(modifier = Modifier.padding(end = 10.dp))
-        T("搜索书名或作者", 15.sp, color = Mid)
-    }
+    SearchBar(modifier.noRippleClick(onClick)) { T("搜索书名或作者", 15.sp, color = Mid) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -161,12 +158,7 @@ private fun SearchScreen(vm: AppVm) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             T("‹", 26.sp, modifier = Modifier.noRippleClick { vm.tomatoView = TomatoView.Shelf }.padding(horizontal = 8.dp))
-            Row(
-                Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp)).border(1.5.dp, Ink, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SearchIcon(modifier = Modifier.padding(end = 10.dp))
+            SearchBar(Modifier.weight(1f)) {
                 BasicTextField(
                     text, { text = it }, singleLine = true, textStyle = TextStyle(fontSize = 17.sp, color = Ink),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -178,11 +170,11 @@ private fun SearchScreen(vm: AppVm) {
         }
         val recent = vm.prefs.recent
         if (recent.isNotEmpty()) {
-            T("最近搜索", 14.sp, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp))
+            T("最近搜索", 14.sp, color = Mid, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp))
             FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 recent.forEach { q ->
                     Box(
-                        Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).border(1.5.dp, Ink, RoundedCornerShape(16.dp))
+                        Modifier.height(32.dp).clip(RoundedCornerShape(50)).border(OutlineWidth, Outline, RoundedCornerShape(50))
                             .noRippleClick { text = q; vm.search(q) }.padding(horizontal = 14.dp),
                         contentAlignment = Alignment.Center,
                     ) { T(q, 14.sp) }
@@ -209,7 +201,7 @@ private fun ResultsScreen(vm: AppVm) {
             vm.hits.isEmpty() -> "没有找到"
             else -> "${vm.hits.size} 个结果"
         }
-        T(line, 13.sp, modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
+        T(line, 13.sp, color = Mid, modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             items(vm.hits, key = { it.bookId }) { h ->
                 Column(Modifier.fillMaxWidth().noRippleClick { vm.tomatoView = TomatoView.Detail(h) }) {
@@ -218,11 +210,11 @@ private fun ResultsScreen(vm: AppVm) {
                         Column(Modifier.weight(1f).padding(start = 14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 T(h.title, 17.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-                                if (vm.owned(h.bookId) != null) T("已在书库", 12.sp, modifier = Modifier.padding(start = 8.dp))
+                                if (vm.owned(h.bookId) != null) Badge("已在书库", false, Modifier.padding(start = 8.dp))
                             }
-                            T(h.author + if (h.category.isNotEmpty()) " · ${h.category}" else "", 13.sp, maxLines = 1,
+                            T(h.author + if (h.category.isNotEmpty()) " · ${h.category}" else "", 13.sp, color = Mid, maxLines = 1,
                                 modifier = Modifier.padding(top = 4.dp))
-                            T(meta(h), 13.sp, modifier = Modifier.padding(top = 2.dp))
+                            T(meta(h), 13.sp, color = Mid, modifier = Modifier.padding(top = 2.dp))
                         }
                     }
                     HLine()
@@ -247,8 +239,8 @@ private fun DetailScreen(vm: AppVm, h: Hit, fromStore: Boolean, onOpenBook: (Tom
             T(h.title, 22.sp, bold = true, align = TextAlign.Center, modifier = Modifier.padding(top = 14.dp))
             T(h.author, 15.sp, modifier = Modifier.padding(top = 6.dp))
             if (fromStore) {
-                if (h.reads.isNotEmpty()) T("在读 ${h.reads}", 14.sp, modifier = Modifier.padding(top = 6.dp))
-                if (h.channel.isNotEmpty()) T(h.channel, 14.sp, modifier = Modifier.padding(top = 4.dp))
+                if (h.reads.isNotEmpty()) T("在读 ${h.reads}", 14.sp, color = Mid, modifier = Modifier.padding(top = 6.dp))
+                if (h.channel.isNotEmpty()) T(h.channel, 14.sp, color = Mid, modifier = Modifier.padding(top = 4.dp))
             }
             Spacer(Modifier.height(16.dp))
             HLine()
@@ -258,7 +250,7 @@ private fun DetailScreen(vm: AppVm, h: Hit, fromStore: Boolean, onOpenBook: (Tom
                     "章节" to "${h.chapters}", "字数" to words).forEachIndexed { i, (k, v) ->
                     if (i > 0) Box(Modifier.width(1.dp).height(40.dp).background(Line).align(Alignment.CenterVertically))
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        T(k, 12.sp)
+                        T(k, 12.sp, color = Mid)
                         T(v, 16.sp, bold = true, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
@@ -273,19 +265,19 @@ private fun DetailScreen(vm: AppVm, h: Hit, fromStore: Boolean, onOpenBook: (Tom
                     else if (s.phase == Phase.DOWNLOADING) "正在下载 · %.1f MB".format(s.bytes / 1048576.0) else "正在下载…"
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        T(what, 14.sp)
+                        T(what, 14.sp, color = Mid)
                         ProgressBar(if (s.phase == Phase.DOWNLOADING) 80 else if (s.phase == Phase.QUEUED) 40 else 10,
                             Modifier.padding(top = 8.dp))
                     }
-                    T("取消", 15.sp, modifier = Modifier.noRippleClick { vm.cancel() }.padding(start = 16.dp))
+                    Pill("取消", false, Modifier.padding(start = 16.dp).width(72.dp), height = 34.dp) { vm.cancel() }
                 }
                 return@Column
             }
-            if (failed) T(s.message, 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+            if (failed) T(s.message, 13.sp, color = Mid, modifier = Modifier.padding(bottom = 8.dp))
             Pill(if (owned != null) "开始阅读" else "下载到书库", true, Modifier.fillMaxWidth().height(48.dp)) {
                 if (owned != null) onOpenBook(owned) else if (!vm.busy) vm.download(h)
             }
-            if (fromStore) T("经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到", 12.sp, align = TextAlign.Center,
+            if (fromStore) T("经番茄服务器生成 TXT，下载后在书库和番茄书架里都能看到", 12.sp, color = Mid, align = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
         }
     }

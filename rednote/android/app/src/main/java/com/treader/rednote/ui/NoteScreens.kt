@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,7 +79,7 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
             if (bar) SaveBar(vm.images, vm.api.imageUrl(n.id, s.index + 1), "xhs_${n.id}_${s.index + 1}.jpg", "Treader 小红书",
                 Modifier.align(Alignment.BottomCenter))
         }
-        HLine(soft = false)
+        HLine()
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             T("‹ 返回", 15.sp, modifier = Modifier.weight(1f).noRippleClick { vm.backToList() })
             T("${s.index + 1} / ${n.images}", 15.sp, bold = true)
@@ -100,7 +99,7 @@ fun TextScreen(vm: AppVm, s: Screen.Text) {
     val n = s.note
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Paper)) {
-        BackTitle(n.author.ifEmpty { "返回" }) { vm.backToList() }
+        BackTitle(n.author.ifEmpty { "返回" }, bold = false) { vm.backToList() }
         Segment(
             listOf("图片 ${n.images}", "正文", "评论 ${n.list.size}"), if (s.comments) 2 else 1,
             { i ->
@@ -122,29 +121,22 @@ fun TextScreen(vm: AppVm, s: Screen.Text) {
 
 @Composable
 private fun MoreDialog(vm: AppVm) {
-    Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.6f)).noRippleClick { vm.closeMore() }, contentAlignment = Alignment.Center) {
-        Column(
-            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (vm.moreError.isNotEmpty()) {
-                T("没能加载更多评论", 17.sp, bold = true)
-                T(vm.moreError, 13.sp, align = TextAlign.Center, lineHeight = 19.sp)
-                T("点框外关闭", 12.sp, color = Mid)
-            } else {
-                T("正在加载更多评论…", 17.sp, bold = true)
-                T("服务器要打开小红书往下翻，约 20～60 秒", 13.sp, color = Mid)
-                T("点框外取消", 13.sp)
-            }
+    TrDialog(onOutside = { vm.closeMore() }) {
+        if (vm.moreError.isNotEmpty()) {
+            T("没能加载更多评论", 17.sp, bold = true)
+            T(vm.moreError, 13.sp, align = TextAlign.Center, lineHeight = 19.sp)
+            T("点框外关闭", 12.sp, color = Mid)
+        } else {
+            T("正在加载更多评论…", 17.sp, bold = true)
+            T("服务器要打开小红书往下翻，约 20～60 秒", 13.sp)
+            T("点框外取消", 13.sp, color = Mid)
         }
     }
 }
 
 @Composable
 private fun Body(n: Note) {
-    T(n.title.ifEmpty { "（无标题）" }, 19.sp, bold = true, lineHeight = 25.sp)
+    T(n.title.ifEmpty { "（无标题）" }, 19.sp, lineHeight = 25.sp)
     val date = if (n.time > 1e9) {
         val sec = if (n.time > 1e11) n.time / 1000 else n.time
         " · " + SimpleDateFormat("MM-dd", Locale.CHINA).format(Date((sec * 1000).toLong()))
@@ -155,16 +147,16 @@ private fun Body(n: Note) {
     HLine()
     Spacer(Modifier.height(10.dp))
     if (n.body.isBlank()) T("这篇没有文字。", 15.sp)
-    else Text(n.body, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink))
+    else Text(n.body, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, color = Ink))
 }
 
 @Composable
 private fun Comments(n: Note, onMore: () -> Unit) {
-    if (n.list.isEmpty()) T("服务器没有存这篇的评论", 15.sp, modifier = Modifier.padding(bottom = 16.dp))
+    if (n.list.isEmpty()) T("服务器没有存这篇的评论", 15.sp, color = Mid, modifier = Modifier.padding(bottom = 16.dp))
     n.list.forEach { c ->
-        Row(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             T(c.user.ifEmpty { "小红书用户" }, 13.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-            if (c.likes.isNotEmpty() && c.likes != "0") T("赞 ${c.likes}", 12.sp, bold = true)
+            if (c.likes.isNotEmpty() && c.likes != "0") Badge("赞 ${c.likes}", false)
         }
         T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
         HLine()
@@ -173,15 +165,16 @@ private fun Comments(n: Note, onMore: () -> Unit) {
     MoreButton(n.more, onMore)
 }
 
-/** 评论末尾的“加载更多评论”；不能加载时灰色，点了没反应。/ "Load more comments" at the end; gray and inert when
- *  nothing more can be loaded. */
+/** 评论末尾的“加载更多评论”：能按时深灰描边、粗体黑字；不能按时浅灰底、深灰字，点了没反应（固件 draw_more_btn）。
+ *  "Load more comments" at the end: dark gray outline with bold black text when it works; a gray fill with dark gray
+ *  text, inert, when nothing more can be loaded (firmware draw_more_btn). */
 @Composable
 private fun MoreButton(enabled: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     Box(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier.width(220.dp).height(44.dp).clip(shape)
-                .then(if (enabled) Modifier.border(1.5.dp, Ink, shape).noRippleClick(onClick) else Modifier.background(Line)),
+                .then(if (enabled) Modifier.border(OutlineW, Outline, shape).noRippleClick(onClick) else Modifier.background(Surface)),
             contentAlignment = Alignment.Center,
         ) { T("加载更多评论", 15.sp, bold = enabled, color = if (enabled) Ink else Mid) }
     }

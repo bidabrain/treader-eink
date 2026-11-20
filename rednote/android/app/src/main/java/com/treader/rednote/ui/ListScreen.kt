@@ -51,7 +51,7 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
                     if (vm.configured) {
                         if (vm.loading) T("拉取中…", 15.sp)
                         else Row(Modifier.noRippleClick { vm.refresh() }, verticalAlignment = Alignment.CenterVertically) {
-                            SyncIcon(Modifier.padding(end = 4.dp))
+                            SyncIcon(Modifier.padding(end = 6.dp))
                             T(if (vm.seg == Seg.FOLLOW) "刷新" else "刷新推荐", 15.sp)
                         }
                     }
@@ -103,28 +103,26 @@ private fun statusLine(vm: AppVm): String {
     return if (r.left >= 0) "首页推荐$time · ${r.items.size} 篇 · 今天还能拉 ${r.left} 次" else "首页推荐$time · ${r.items.size} 篇"
 }
 
-/** 一张卡片：封面（原图比例、黑细框），标题两行，作者 · 赞；没看过的封面左上角标“新”。/ One card: cover (original
- *  ratio, thin black frame), two-line title, author · likes; unseen notes get a "new" tag on the cover. */
+/** 一张卡片：封面（原图比例、黑细框，没到时浅灰圆角块），标题两行，作者 · 赞；没看过的左上角黑底“新”，推荐里下好的
+ *  右下角描边“已下载”（和固件 draw_cards 一样）。/ One card: cover (original ratio, thin black frame; a gray rounded
+ *  block until it arrives), two-line title, author · likes; unseen notes get a black "new" badge top left and
+ *  downloaded recommendations an outlined "downloaded" badge bottom right (as in firmware draw_cards). */
 @Composable
 private fun Card(vm: AppVm, x: Item) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxWidth().noRippleClick { vm.open(x) }) {
         val url = if (vm.seg == Seg.FOLLOW) vm.api.imageUrl(x.id, 0) else if (x.thumb) vm.api.coverUrl(x.id) else null
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1f / x.ratio).clip(RoundedCornerShape(6.dp))
-                .border(1.dp, Ink, RoundedCornerShape(6.dp)).background(Line.copy(alpha = 0.35f))
+            Modifier.fillMaxWidth().aspectRatio(1f / x.ratio).clip(RoundedCornerShape(6.dp)).background(Surface)
         ) {
             if (url != null) AsyncImage(
                 model = ImageRequest.Builder(ctx).data(url).build(), imageLoader = vm.images,
-                contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                contentDescription = null, contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().border(1.dp, Ink),
             )
-            if (!x.seen) Box(Modifier.padding(6.dp).background(Ink, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp)) {
-                T("新", 11.sp, bold = true, color = Paper)
-            }
-            if (vm.seg == Seg.REC && vm.noteCached(x.id)) Box(
-                Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Paper, RoundedCornerShape(3.dp))
-                    .border(1.dp, Ink, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp)
-            ) { T("已下载", 10.sp, bold = true) }
+            if (!x.seen) Badge("新", true, Modifier.padding(6.dp))
+            if (vm.seg == Seg.REC && vm.noteCached(x.id))
+                Badge("已下载", false, Modifier.align(Alignment.BottomEnd).padding(6.dp), size = 10.sp)
         }
         T(x.title.ifEmpty { "（无标题）" }, 14.sp, bold = true, maxLines = 2, lineHeight = 19.sp,
             modifier = Modifier.padding(top = 7.dp, start = 2.dp, end = 2.dp))
@@ -137,22 +135,15 @@ private fun Card(vm: AppVm, x: Item) {
 
 @Composable
 private fun WaitDialog(vm: AppVm) {
-    Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.6f)).noRippleClick { vm.cancelWait() }, contentAlignment = Alignment.Center) {
-        Column(
-            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (vm.waitError.isNotEmpty()) {
-                T("没能打开这篇", 17.sp, bold = true)
-                T(vm.waitError, 13.sp, align = TextAlign.Center, lineHeight = 19.sp)
-                T("点框外关闭", 12.sp, color = Mid)
-            } else {
-                T("正在拉取这篇笔记…", 17.sp, bold = true)
-                T("服务器要打开小红书，约 6～12 秒", 13.sp, color = Mid)
-                T("点框外取消", 13.sp)
-            }
+    TrDialog(onOutside = { vm.cancelWait() }) {
+        if (vm.waitError.isNotEmpty()) {
+            T("没能打开这篇", 17.sp, bold = true)
+            T(vm.waitError, 13.sp, align = TextAlign.Center, lineHeight = 19.sp)
+            T("点框外关闭", 12.sp, color = Mid)
+        } else {
+            T("正在拉取这篇笔记…", 17.sp, bold = true)
+            T("服务器要打开小红书，约 6～12 秒", 13.sp)
+            T("点框外取消", 13.sp, color = Mid)
         }
     }
 }

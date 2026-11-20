@@ -74,7 +74,7 @@ fun SaveBar(loader: ImageLoader, url: String, name: String, album: String, modif
     }
     // 整条吃掉点按，免得点到下面的翻页区。/ The bar swallows taps so they do not reach the turn zones below.
     Column(modifier.fillMaxWidth().background(Paper).noRippleClick {}) {
-        HLine(soft = false)
+        HLine()
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             T(note.ifEmpty { "存进手机相册（灰度图）" }, 13.sp, color = Mid, maxLines = 2, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(12.dp))

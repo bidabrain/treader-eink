@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · 安卓 App：番茄 1.1.0、小红书 1.5.0、微博 1.4.0、X 1.1.0
+
+- 四个安卓 App 的界面都改成和固件 0.9.0 一样的 Material 3 灰阶：分段按钮、胶囊按钮、角标、卡片、对话框、线条图标；桌面图标换成固件对应标签的图标，浅灰底黑线条。功能和操作不变。
+  All four Android apps now use the firmware 0.9.0 Material 3 grayscale look: segmented buttons, pills, badges, cards, dialogs and line icons; launcher icons are the matching firmware tab icons in black on light gray. Features and controls are unchanged.
+- 番茄：书库 / 番茄 / 设置底部标签栏、继续阅读卡片、书城搜索栏、阅读工具条和排版面板都照固件样式。
+  Tomato: the library / Tomato / Settings tab bar, continue card, store search bar, reader toolbar and layout panel follow the firmware.
+
 ## 2026-11-21 · Treader 0.9.0
 
 - 番茄新章节提示（“+N 章 待下载” / “+N 章”，见下面番茄安卓 App 1.0.3 一节）随本版固件正式发布。

@@ -20,10 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -41,15 +39,16 @@ import com.treader.weibo.AppVm
  * repost box, the image grid and the three-column count bar.
  */
 
-val QuoteGray = Color(0xFFF1F1F1)
+/** 转发框的底，和固件 QUOTE_GRAY 一样是卡片灰。/ The repost box fill, the card gray like the firmware's QUOTE_GRAY. */
+val QuoteGray = Surface
 
-/** 头像：圆圈里写名字的第一个字；dot 时右上角一个黑点（没看过）。/ Avatar: the name's first character in a circle;
- *  dot adds a black dot at the top right (unseen). */
+/** 头像：浅灰实心圆里写名字的第一个字；dot 时右上角一个黑点（没看过）。/ Avatar: the name's first character on a
+ *  filled light gray circle; dot adds a black dot at the top right (unseen). */
 @Composable
 fun Avatar(name: String, size: Dp = 40.dp, dot: Boolean = false) {
     Box(Modifier.size(size)) {
         Box(
-            Modifier.fillMaxSize().clip(CircleShape).border(2.dp, Ink, CircleShape).background(Paper),
+            Modifier.fillMaxSize().clip(CircleShape).background(Selected),
             contentAlignment = Alignment.Center,
         ) {
             val first = name.ifEmpty { "微" }.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
@@ -77,7 +76,7 @@ fun PostHead(user: String, time: Double, source: String, long: Boolean = false, 
 /** 转发原文的灰框。/ The gray box holding the reposted original. */
 @Composable
 fun QuoteBox(user: String, text: String, maxLines: Int = Int.MAX_VALUE, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(QuoteGray).padding(horizontal = 10.dp, vertical = 8.dp)) {
+    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).background(QuoteGray).padding(horizontal = 10.dp, vertical = 8.dp)) {
         androidx.compose.material3.Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
@@ -103,7 +102,8 @@ fun PicGrid(vm: AppVm, id: String, images: Int, pics: Int, ratio: Float, onOpen:
     val ctx = LocalContext.current
     @Composable
     fun pic(url: String, k: Int, modifier: Modifier) = Box(
-        modifier.clip(RoundedCornerShape(4.dp)).background(Line.copy(alpha = 0.35f)).noRippleClick { onOpen(k) }
+        // 固件小图有一圈黑框，没下载时是卡片灰。/ Firmware thumbnails have a black frame and show card gray until loaded.
+        modifier.background(Surface).border(OutlineW, Ink).noRippleClick { onOpen(k) }
     ) {
         AsyncImage(
             model = ImageRequest.Builder(ctx).data(url).build(), imageLoader = vm.images, contentDescription = null,
@@ -130,42 +130,47 @@ fun PicGrid(vm: AppVm, id: String, images: Int, pics: Int, ratio: Float, onOpen:
     }
 }
 
-/** 转发、评论、赞的线条图标。/ Line glyphs for reposts, comments and likes. */
+/**
+ * 转发、评论、赞的深灰小图标，照固件 draw_glyph：两道带实心箭头的横线、方框带尾巴、实心心形。坐标以中心为原点，约 28 格。
+ * Dark gray repost, comment and like glyphs after the firmware's draw_glyph: two lines with solid arrowheads, a box
+ * with a tail, a solid heart. Coordinates are around the center on a grid of about 28 units.
+ */
 @Composable
-fun Glyph(kind: Int, size: Dp = 17.dp) {
+fun Glyph(kind: Int, size: Dp = 15.dp) {
     Canvas(Modifier.size(size)) {
-        val s = this.size.width / 24f
-        val stroke = Stroke(2f * s, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val path = Path()
+        val s = this.size.width / 28f
+        val c = Offset(this.size.width / 2, this.size.height / 2)
+        fun p(x: Float, y: Float) = Offset(c.x + x * s, c.y + y * s)
+        fun tri(a: Offset, b: Offset, q: Offset) =
+            drawPath(Path().apply { moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(q.x, q.y); close() }, Mid)
         when (kind) {
             0 -> {
-                path.moveTo(4 * s, 9 * s); path.lineTo(17 * s, 9 * s); path.lineTo(14 * s, 6 * s)
-                path.moveTo(20 * s, 15 * s); path.lineTo(7 * s, 15 * s); path.lineTo(10 * s, 18 * s)
+                drawLine(Mid, p(-12f, -4.5f), p(10f, -4.5f), 2 * s)
+                drawLine(Mid, p(12f, 5.5f), p(-10f, 5.5f), 2 * s)
+                tri(p(13f, -4f), p(6f, -10f), p(6f, 2f))
+                tri(p(-13f, 6f), p(-6f, 0f), p(-6f, 12f))
             }
             1 -> {
-                path.moveTo(4 * s, 5 * s); path.lineTo(20 * s, 5 * s); path.lineTo(20 * s, 16 * s)
-                path.lineTo(9 * s, 16 * s); path.lineTo(4 * s, 20 * s); path.close()
+                drawRect(Mid, p(-11f, -9f), androidx.compose.ui.geometry.Size(22 * s, 15 * s), style = Stroke(2 * s))
+                tri(p(-8f, 6f), p(-1f, 6f), p(-9f, 13f))
             }
             else -> {
-                path.moveTo(12 * s, 20 * s)
-                path.cubicTo(5 * s, 15.6f * s, 5 * s, 13 * s, 5 * s, 10 * s)
-                path.cubicTo(5 * s, 6.4f * s, 10 * s, 5 * s, 12 * s, 7.4f * s)
-                path.cubicTo(14 * s, 5 * s, 19 * s, 6.4f * s, 19 * s, 10 * s)
-                path.cubicTo(19 * s, 13 * s, 19 * s, 15.6f * s, 12 * s, 20 * s)
+                drawCircle(Mid, 6 * s, p(-5f, -3f))
+                drawCircle(Mid, 6 * s, p(5f, -3f))
+                tri(p(-11f, -1f), p(11f, -1f), p(0f, 11f))
             }
         }
-        drawPath(path, Ink, style = stroke)
     }
 }
 
-/** 底部三栏：转发、评论、赞。/ The three-column count bar: reposts, comments, likes. */
+/** 底部三栏：转发、评论、赞，深灰图标和数字。/ The three-column count bar: reposts, comments, likes in dark gray. */
 @Composable
 fun CountBar(reposts: Int, comments: Int, likes: Int) {
     Row(Modifier.fillMaxWidth().height(38.dp)) {
         listOf(reposts, comments, likes).forEachIndexed { k, v ->
             Row(Modifier.weight(1f).fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Glyph(k)
-                T(fmtCount(v), 12.5.sp, color = Ink, modifier = Modifier.padding(start = 5.dp))
+                T(fmtCount(v), 12.sp, color = Mid, modifier = Modifier.padding(start = 6.dp))
             }
         }
     }

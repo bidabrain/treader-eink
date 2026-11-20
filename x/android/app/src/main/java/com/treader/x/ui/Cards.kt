@@ -2,7 +2,6 @@ package com.treader.x.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -42,15 +42,17 @@ import com.treader.x.AppVm
  * quote box, the image grid, the reply / repost / like / view bar, and the small repost, reply and video marks.
  */
 
-val QuoteGray = Color(0xFFF1F1F1)
+/** 引用框的底，和固件 QUOTE_GRAY 一样是 #EEEEEE。/ The quote box fill, #EEEEEE like the firmware's QUOTE_GRAY. */
+val QuoteGray = Surface
 
-/** 头像：圆圈里写名字的第一个字；dot 时右上角一个黑点（没看过）。/ Avatar: the name's first character in a circle;
- *  dot adds a black dot at the top right (unseen). */
+/** 头像：#CCCCCC 实心圆里写名字的第一个字（固件 Material 3 头像）；dot 时右上角一个黑点（没看过）。/ Avatar: the
+ *  name's first character on a filled #CCCCCC circle (the firmware's Material 3 avatar); dot adds a black dot at the
+ *  top right (unseen). */
 @Composable
 fun Avatar(name: String, size: Dp = 40.dp, dot: Boolean = false) {
     Box(Modifier.size(size)) {
         Box(
-            Modifier.fillMaxSize().clip(CircleShape).border(2.dp, Ink, CircleShape).background(Paper),
+            Modifier.fillMaxSize().clip(CircleShape).background(Selected),
             contentAlignment = Alignment.Center,
         ) {
             val first = name.ifEmpty { "X" }.let { it.substring(0, it.offsetByCodePoints(0, 1)) }
@@ -96,7 +98,7 @@ fun ReplyTo(screen: String, modifier: Modifier = Modifier) {
  *  its text. */
 @Composable
 fun QuoteBox(user: String, text: String, maxLines: Int = Int.MAX_VALUE, modifier: Modifier = Modifier, screen: String = "") {
-    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(QuoteGray).padding(horizontal = 10.dp, vertical = 8.dp)) {
+    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).background(QuoteGray).padding(horizontal = 10.dp, vertical = 8.dp)) {
         androidx.compose.material3.Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
@@ -124,7 +126,9 @@ fun PicGrid(vm: AppVm, id: String, images: Int, pics: Int, ratio: Float, onOpen:
     val ctx = LocalContext.current
     @Composable
     fun pic(url: String, k: Int, modifier: Modifier) = Box(
-        modifier.clip(RoundedCornerShape(4.dp)).background(Line.copy(alpha = 0.35f)).noRippleClick { onOpen(k) }
+        // 没加载出来时是 #EEEEEE 圆角块，和固件 draw_pic 一样。/ An #EEEEEE rounded block until loaded, like the
+        // firmware's draw_pic.
+        modifier.clip(RoundedCornerShape(6.dp)).background(Surface).noRippleClick { onOpen(k) }
     ) {
         AsyncImage(
             model = ImageRequest.Builder(ctx).data(url).build(), imageLoader = vm.images, contentDescription = null,
@@ -151,49 +155,61 @@ fun PicGrid(vm: AppVm, id: String, images: Int, pics: Int, ratio: Float, onOpen:
     }
 }
 
-/** 转推、回复、赞、浏览的线条图标（kind 0 / 1 / 2 / 3）。/ Line glyphs for reposts, replies, likes and views
- *  (kind 0 / 1 / 2 / 3). */
+/**
+ * 转推、回复、赞、浏览的小图标（kind 0 / 1 / 2 / 3），#555555。前三个照固件 draw_glyph：两道横线带实心箭头、带尾巴
+ * 的方框、实心心形；浏览固件没有，用同样粗细的四根竖条。
+ * Small glyphs for reposts, replies, likes and views (kind 0 / 1 / 2 / 3) in #555555. The first three follow the
+ * firmware's draw_glyph: two bars with filled arrowheads, a box with a tail and a filled heart; views has no firmware
+ * glyph and uses four bars of the same weight.
+ */
 @Composable
-fun Glyph(kind: Int, size: Dp = 17.dp) {
+fun Glyph(kind: Int, size: Dp = 17.dp, color: Color = Mid) {
     Canvas(Modifier.size(size)) {
-        val s = this.size.width / 24f
-        val stroke = Stroke(2f * s, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val path = Path()
+        // 固件的图标约 28 像素宽，坐标以中心为原点。/ The firmware glyph is about 28 px wide, centered on the origin.
+        val s = this.size.width / 28f
+        val cx = this.size.width / 2
+        val cy = this.size.height / 2
+        fun o(x: Float, y: Float) = Offset(cx + x * s, cy + y * s)
+        fun tri(a: Offset, b: Offset, c: Offset) =
+            drawPath(Path().apply { moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(c.x, c.y); close() }, color)
+        val w = 2.2f * s
         when (kind) {
             0 -> {
-                path.moveTo(4 * s, 9 * s); path.lineTo(17 * s, 9 * s); path.lineTo(14 * s, 6 * s)
-                path.moveTo(20 * s, 15 * s); path.lineTo(7 * s, 15 * s); path.lineTo(10 * s, 18 * s)
+                drawLine(color, o(-12f, -4f), o(10f, -4f), w)
+                drawLine(color, o(12f, 6f), o(-10f, 6f), w)
+                tri(o(13f, -4f), o(6f, -10f), o(6f, 2f))
+                tri(o(-13f, 6f), o(-6f, 0f), o(-6f, 12f))
             }
             1 -> {
-                path.moveTo(4 * s, 5 * s); path.lineTo(20 * s, 5 * s); path.lineTo(20 * s, 16 * s)
-                path.lineTo(9 * s, 16 * s); path.lineTo(4 * s, 20 * s); path.close()
+                drawRect(color, o(-11f, -9f), androidx.compose.ui.geometry.Size(22f * s, 15f * s), style = Stroke(w))
+                tri(o(-8f, 6f), o(-1f, 6f), o(-9f, 13f))
             }
             3 -> {
-                path.moveTo(5 * s, 20 * s); path.lineTo(5 * s, 13 * s)
-                path.moveTo(10 * s, 20 * s); path.lineTo(10 * s, 6 * s)
-                path.moveTo(15 * s, 20 * s); path.lineTo(15 * s, 10 * s)
-                path.moveTo(20 * s, 20 * s); path.lineTo(20 * s, 15 * s)
+                val stroke = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val path = Path()
+                listOf(-9f to 3f, -3f to -9f, 3f to -4f, 9f to 6f).forEach { (x, top) ->
+                    path.moveTo(cx + x * s, cy + 11 * s); path.lineTo(cx + x * s, cy + top * s)
+                }
+                drawPath(path, color, style = stroke)
             }
             else -> {
-                path.moveTo(12 * s, 20 * s)
-                path.cubicTo(5 * s, 15.6f * s, 5 * s, 13 * s, 5 * s, 10 * s)
-                path.cubicTo(5 * s, 6.4f * s, 10 * s, 5 * s, 12 * s, 7.4f * s)
-                path.cubicTo(14 * s, 5 * s, 19 * s, 6.4f * s, 19 * s, 10 * s)
-                path.cubicTo(19 * s, 13 * s, 19 * s, 15.6f * s, 12 * s, 20 * s)
+                drawCircle(color, 6 * s, o(-5f, -3f))
+                drawCircle(color, 6 * s, o(5f, -3f))
+                tri(o(-11f, -1f), o(11f, -1f), o(0f, 11f))
             }
         }
-        drawPath(path, Ink, style = stroke)
     }
 }
 
-/** 底部四栏：回复、转推、赞、浏览。/ The four-column count bar: replies, reposts, likes, views. */
+/** 底部四栏：回复、转推、赞、浏览；图标和数字都是 #555555。/ The four-column count bar: replies, reposts, likes,
+ *  views; glyphs and numbers in #555555. */
 @Composable
 fun CountBar(reposts: Int, comments: Int, likes: Int, views: Int) {
     Row(Modifier.fillMaxWidth().height(38.dp)) {
         listOf(1 to comments, 0 to reposts, 2 to likes, 3 to views).forEach { (k, v) ->
             Row(Modifier.weight(1f).fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Glyph(k)
-                T(fmtCount(v), 12.5.sp, color = Ink, modifier = Modifier.padding(start = 5.dp))
+                T(fmtCount(v), 12.5.sp, color = Mid, modifier = Modifier.padding(start = 6.dp))
             }
         }
     }

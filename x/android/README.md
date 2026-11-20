@@ -1,6 +1,6 @@
 # X 安卓客户端
 
-独立的安卓 App，照[微博安卓 App](../../weibo/android/README.md) 的样子做：读你自己部署的 [x 服务器](../README.md)，看“为你推荐”和“正在关注”的推文。界面是和墨水屏一样的黑白风格，只读，不点赞、不回复、不转推。
+独立的安卓 App，照[微博安卓 App](../../weibo/android/README.md) 的样子做：读你自己部署的 [x 服务器](../README.md)，看“为你推荐”和“正在关注”的推文。界面和墨水屏固件一样是 Material 3 灰阶风格，只读，不点赞、不回复、不转推。
 
 | 页面 | 内容 |
 | --- | --- |
@@ -48,4 +48,4 @@ APK 在 `app/build/outputs/apk/release/app-release.apk`。
 | `app/src/main/java/com/treader/x/data/Api.kt` | x 设备接口、地址和令牌 |
 | `app/src/main/java/com/treader/x/data/Repo.kt` | 列表、全文和回复缓存、“看过”标记、正在关注总开关 |
 | `app/src/main/java/com/treader/x/AppVm.kt` | 页面状态和动作 |
-| `app/src/main/java/com/treader/x/ui/` | 黑白组件、列表、正文、看图、回复、设置 |
+| `app/src/main/java/com/treader/x/ui/` | Material 3 灰阶组件、列表、正文、看图、回复、设置 |

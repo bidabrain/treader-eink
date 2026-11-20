@@ -60,7 +60,7 @@ fun SettingsScreen(vm: AppVm) {
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            T("设置", 24.sp, bold = true, modifier = Modifier.padding(start = 20.dp, top = 14.dp, bottom = 8.dp))
+            PageTitle("设置", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 8.dp))
             Column(Modifier.padding(horizontal = 20.dp)) {
                 T("番茄小说", 13.sp, color = Mid, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                 SettingRow("番茄服务器", if (server.isEmpty()) "未设置 ›" else server.substringAfter("://") + " ›") { edit = "url" }
@@ -180,12 +180,12 @@ private fun EditDialog(
     var show by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.7f)).noRippleClick(onCancel), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(18.dp),
+            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Paper)
+                .border(OutlineWidth, Outline, RoundedCornerShape(20.dp)).noRippleClick {}.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             T(title, 18.sp, bold = true)
-            Box(Modifier.fillMaxWidth().border(1.5.dp, Ink, RoundedCornerShape(8.dp)).padding(12.dp)) {
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Surface).padding(horizontal = 14.dp, vertical = 12.dp)) {
                 BasicTextField(
                     value = text, onValueChange = { text = it; error = "" }, singleLine = true,
                     textStyle = TextStyle(fontSize = 16.sp, color = Ink),

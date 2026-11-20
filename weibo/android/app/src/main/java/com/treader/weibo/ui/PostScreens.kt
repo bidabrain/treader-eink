@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +92,7 @@ fun TextScreen(vm: AppVm, s: Screen.Text) {
 @Composable
 private fun Body(vm: AppVm, p: Post) {
     if (p.text.isNotBlank())
-        Text(p.text, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontFamily = FontFamily.Serif, color = Ink))
+        Text(p.text, style = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, color = Ink))
     else if (p.rtText.isEmpty()) T("这条没有文字。", 15.sp)
     if (p.rtText.isNotEmpty()) QuoteBox(p.rtUser, p.rtText, modifier = Modifier.padding(top = 10.dp))
     if (p.images > 0) Box(Modifier.padding(top = 12.dp)) {
@@ -121,7 +120,7 @@ private fun Comments(vm: AppVm) {
             Column(Modifier.weight(1f).padding(start = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T(c.user.ifEmpty { "微博用户" }, 13.sp, bold = true, maxLines = 1, modifier = Modifier.weight(1f))
-                    if (c.likes > 0) { Glyph(2, 14.dp); T(fmtCount(c.likes), 12.sp, modifier = Modifier.padding(start = 3.dp)) }
+                    if (c.likes > 0) { Glyph(2, 13.dp); T(fmtCount(c.likes), 12.sp, color = Mid, modifier = Modifier.padding(start = 4.dp)) }
                 }
                 T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 3.dp))
             }
@@ -169,7 +168,7 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
             if (bar) SaveBar(vm.images, vm.api.imageUrl(p.id, s.index + 1), "weibo_${p.id}_${s.index + 1}.jpg", "Treader 微博",
                 Modifier.align(Alignment.BottomCenter))
         }
-        HLine(soft = false)
+        HLine()
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             T("‹ 正文", 15.sp, modifier = Modifier.weight(1f).noRippleClick { vm.screen = Screen.Text(p, false) })
             T("${s.index + 1} / ${p.images}", 15.sp, bold = true)

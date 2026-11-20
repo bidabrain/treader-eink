@@ -68,7 +68,7 @@ fun TextScreen(vm: AppVm, s: Screen.Text) {
     val p = s.post
     Column(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.padding(horizontal = 16.dp)) {
-            T("‹ 返回", 16.sp, modifier = Modifier.padding(vertical = 10.dp).noRippleClick { vm.backToList() })
+            T("‹ 返回", 16.sp, modifier = Modifier.padding(vertical = 12.dp).noRippleClick { vm.backToList() })
             if (p.rtBy.isNotEmpty()) RepostedBy(p.rtBy, Modifier.padding(start = 26.dp, bottom = 6.dp))
             PostHead(p.user, p.screen, p.time, long = true)
             Segment(
@@ -126,7 +126,7 @@ private fun Comments(vm: AppVm) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T(c.user.ifEmpty { "X 用户" } + if (c.screen.isNotEmpty()) "  @${c.screen}" else "", 13.sp, bold = true,
                         maxLines = 1, modifier = Modifier.weight(1f))
-                    if (c.likes > 0) { Glyph(2, 14.dp); T(fmtCount(c.likes), 12.sp, modifier = Modifier.padding(start = 3.dp)) }
+                    if (c.likes > 0) { Glyph(2, 15.dp); T(fmtCount(c.likes), 12.sp, color = Mid, modifier = Modifier.padding(start = 4.dp)) }
                 }
                 T(c.text.ifEmpty { "（空）" }, 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 3.dp))
             }
@@ -174,7 +174,7 @@ fun ImagesScreen(vm: AppVm, s: Screen.Images) {
             if (bar) SaveBar(vm.images, vm.api.imageUrl(p.id, s.index + 1), "x_${p.id}_${s.index + 1}.jpg", "Treader X",
                 Modifier.align(Alignment.BottomCenter))
         }
-        HLine(soft = false)
+        HLine()
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             T("‹ 正文", 15.sp, modifier = Modifier.weight(1f).noRippleClick { vm.screen = Screen.Text(p, false) })
             T("${s.index + 1} / ${p.images}", 15.sp, bold = true)

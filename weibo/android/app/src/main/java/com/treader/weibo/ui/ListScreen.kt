@@ -97,10 +97,10 @@ private fun statusLine(vm: AppVm): String {
 }
 
 /** 一张卡片：头部（头像、名字、时间来源，没看过的头像上一个黑点）、正文最多 5 行、转发灰框、图片宫格、转评赞三栏；
- *  卡片之间一条浅灰粗分隔。点图片从那张开始看大图，点别处看全文。
+ *  卡片之间一条浅灰细线（和固件一样）。点图片从那张开始看大图，点别处看全文。
  *  One card: header (avatar, name, time and source; a black dot on unseen posts), up to five lines of text, the gray
- *  repost box, the image grid and the count bar, with a thick light-gray divider between cards. Tapping an image opens
- *  it; tapping elsewhere opens the full text. */
+ *  repost box, the image grid and the count bar, with a light gray hairline between cards (as on the firmware).
+ *  Tapping an image opens it; tapping elsewhere opens the full text. */
 @Composable
 private fun PostCard(vm: AppVm, x: Item) {
     Column(Modifier.fillMaxWidth().noRippleClick { vm.open(x) }) {
@@ -114,7 +114,7 @@ private fun PostCard(vm: AppVm, x: Item) {
             }
         }
         CountBar(x.reposts, x.comments, x.likes)
-        Box(Modifier.fillMaxWidth().height(8.dp).background(QuoteGray))
+        HLine(modifier = Modifier.padding(horizontal = 16.dp))
     }
 }
 
@@ -122,8 +122,8 @@ private fun PostCard(vm: AppVm, x: Item) {
 private fun WaitDialog(vm: AppVm) {
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.6f)).noRippleClick { vm.cancelWait() }, contentAlignment = Alignment.Center) {
         Column(
-            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
+            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Paper)
+                .border(OutlineW, Mid, RoundedCornerShape(14.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

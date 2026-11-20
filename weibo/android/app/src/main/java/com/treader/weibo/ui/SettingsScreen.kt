@@ -127,12 +127,12 @@ private fun EditDialog(
     var show by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.7f)).noRippleClick(onCancel), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(18.dp),
+            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Paper)
+                .border(OutlineW, Mid, RoundedCornerShape(14.dp)).noRippleClick {}.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             T(title, 18.sp, bold = true)
-            Box(Modifier.fillMaxWidth().border(1.5.dp, Ink, RoundedCornerShape(8.dp)).padding(12.dp)) {
+            Box(Modifier.fillMaxWidth().border(OutlineW, Mid, RoundedCornerShape(8.dp)).padding(12.dp)) {
                 BasicTextField(
                     value = text, onValueChange = { text = it; error = "" }, singleLine = true,
                     textStyle = TextStyle(fontSize = 16.sp, color = Ink),

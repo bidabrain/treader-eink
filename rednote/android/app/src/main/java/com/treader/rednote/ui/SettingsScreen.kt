@@ -54,7 +54,7 @@ fun SettingsScreen(vm: AppVm, onBack: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize()) {
-            BackTitle("设置", onBack)
+            BackTitle("设置", onBack = onBack)
             Column(Modifier.padding(horizontal = 20.dp)) {
                 T("小红书", 13.sp, color = Mid, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                 SettingRow("服务器地址", if (url.isEmpty()) "未设置 ›" else url.substringAfter("://") + " ›") { edit = "url" }
@@ -125,14 +125,17 @@ private fun EditDialog(
     var text by remember { mutableStateOf(initial) }
     var error by remember { mutableStateOf("") }
     var show by remember { mutableStateOf(false) }
+    // Material 3 对话框：白底大圆角、深灰细框，和固件一样。/ Material 3 dialog: white, large radius, thin dark gray
+    // outline, as on the firmware.
+    val shape = RoundedCornerShape(16.dp)
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.7f)).noRippleClick(onCancel), contentAlignment = Alignment.Center) {
         Column(
-            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(18.dp),
+            Modifier.padding(horizontal = 24.dp).fillMaxWidth().clip(shape).background(Paper)
+                .border(OutlineW, Outline, shape).noRippleClick {}.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             T(title, 18.sp, bold = true)
-            Box(Modifier.fillMaxWidth().border(1.5.dp, Ink, RoundedCornerShape(8.dp)).padding(12.dp)) {
+            Box(Modifier.fillMaxWidth().border(OutlineW, Outline, RoundedCornerShape(8.dp)).padding(12.dp)) {
                 BasicTextField(
                     value = text, onValueChange = { text = it; error = "" }, singleLine = true,
                     textStyle = TextStyle(fontSize = 16.sp, color = Ink),

@@ -44,11 +44,11 @@ fun ListScreen(vm: AppVm, onSettings: () -> Unit) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                    T("X", 26.sp, bold = true, modifier = Modifier.weight(1f))
+                    T("X", 28.sp, bold = true, modifier = Modifier.weight(1f))
                     if (vm.configured) {
                         if (vm.loading) T("拉取中…", 15.sp)
                         else Row(Modifier.noRippleClick { vm.refresh() }, verticalAlignment = Alignment.CenterVertically) {
-                            SyncIcon(Modifier.padding(end = 4.dp))
+                            SyncIcon(Modifier.padding(end = 6.dp))
                             T("刷新", 15.sp)
                         }
                     }
@@ -100,10 +100,10 @@ private fun statusLine(vm: AppVm): String {
 }
 
 /** 一张卡片：转推的话顶上一行“某某 转推”；头部（头像、名字、@用户名和时间，没看过的头像上一个黑点）、“回复 @某人”、
- *  正文最多 5 行、引用灰框、视频角标和图片宫格、四栏计数；卡片之间一条浅灰粗分隔。点图片从那张开始看大图，点别处看全文。
+ *  正文最多 5 行、引用灰框、视频角标和图片宫格、四栏计数；卡片之间一条 #CCCCCC 细线（和固件一样）。点图片从那张开始看大图，点别处看全文。
  *  One card: a "<name> 转推" line on top for reposts; header (avatar, name, @handle and time; a black dot on unseen
  *  posts), the "回复 @handle" line, up to five lines of text, the gray quote box, the video tag and image grid, and
- *  the count bar, with a thick light-gray divider between cards. Tapping an image opens it; tapping elsewhere opens
+ *  the count bar, with a #CCCCCC hairline between cards like the firmware. Tapping an image opens it; tapping elsewhere opens
  *  the full text. */
 @Composable
 private fun PostCard(vm: AppVm, x: Item) {
@@ -121,7 +121,7 @@ private fun PostCard(vm: AppVm, x: Item) {
             }
         }
         CountBar(x.reposts, x.comments, x.likes, x.views)
-        Box(Modifier.fillMaxWidth().height(8.dp).background(QuoteGray))
+        HLine(modifier = Modifier.padding(horizontal = 16.dp))
     }
 }
 
@@ -129,8 +129,10 @@ private fun PostCard(vm: AppVm, x: Item) {
 private fun WaitDialog(vm: AppVm) {
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.6f)).noRippleClick { vm.cancelWait() }, contentAlignment = Alignment.Center) {
         Column(
-            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Paper)
-                .border(2.dp, Ink, RoundedCornerShape(12.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
+            // Material 3 对话框：白底大圆角、#555555 细框（固件 draw_wait）。/ Material 3 dialog: white, large radius,
+            // thin #555555 outline (firmware draw_wait).
+            Modifier.padding(horizontal = 40.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Paper)
+                .border(OutlineW, Mid, RoundedCornerShape(16.dp)).noRippleClick {}.padding(vertical = 22.dp, horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -141,7 +143,7 @@ private fun WaitDialog(vm: AppVm) {
             } else {
                 T("正在加载这条推文…", 17.sp, bold = true)
                 T("从服务器取全文", 13.sp, color = Mid)
-                T("点框外取消", 13.sp)
+                T("点框外取消", 13.sp, color = Mid)
             }
         }
     }

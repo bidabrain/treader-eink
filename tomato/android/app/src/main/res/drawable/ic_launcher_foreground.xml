@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 固件番茄标签图标（tr_ui.c 的 TR_ICON_TOMATO）原样放大：40×40 网格按 1.65 倍放进 108 的自适应图标安全区（偏移 21）。
-     圆心 (20,22) 半径 12，两片叶子 (14,10)-(20,14)、(26,10)-(20,14)，果柄 (20,14)-(20,7)。
+<!-- 固件番茄标签图标（tr_ui.c 的 TR_ICON_TOMATO）原样放大：40×40 网格按 1.65 倍放进 108 的自适应图标安全区（偏移 21），
+     线宽 3 格。圆心 (20,22) 半径 12；两片叶子是设计稿 24 格的 (8.5,6.5)-(12,8.7)、(12,8.7)-(15.5,6.5)，果柄 (12,8.7)-(12,3.5)，
+     换到 40 格乘 5/3。
      The firmware Tomato tab icon (TR_ICON_TOMATO in tr_ui.c) scaled as is: the 40x40 grid at 1.65x inside the 108-unit
-     adaptive-icon safe zone (offset 21). Circle at (20,22) radius 12, two leaves (14,10)-(20,14) and (26,10)-(20,14),
-     and a stem (20,14)-(20,7). -->
+     adaptive-icon safe zone (offset 21), 3-unit strokes. Circle at (20,22) radius 12; the leaves are (8.5,6.5)-(12,8.7)
+     and (12,8.7)-(15.5,6.5) and the stem (12,8.7)-(12,3.5) on the design's 24 grid, times 5/3 on the 40 grid. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -12,12 +13,13 @@
     <path
         android:fillColor="#00000000"
         android:strokeColor="#000000"
-        android:strokeWidth="3.6"
+        android:strokeWidth="4.95"
         android:pathData="M34.2,57.3 A19.8,19.8 0 1 0 73.8,57.3 A19.8,19.8 0 1 0 34.2,57.3 Z" />
     <path
         android:fillColor="#00000000"
         android:strokeColor="#000000"
-        android:strokeWidth="3.6"
+        android:strokeWidth="4.95"
         android:strokeLineCap="round"
-        android:pathData="M44.1,37.5 L54,44.1 M63.9,37.5 L54,44.1 M54,44.1 L54,32.55" />
+        android:strokeLineJoin="round"
+        android:pathData="M44.375,38.875 L54,44.925 L63.625,38.875 M54,44.925 L54,30.625" />
 </vector>
