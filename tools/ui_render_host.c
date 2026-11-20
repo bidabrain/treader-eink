@@ -586,6 +586,104 @@ static void screen_store_rank(void) {
     tr_tab_bar(s_fb, TR_TAB_TOMATO);
 }
 
+/* ---- 第五组：虎扑（照 app_tr_hupu.c）/ Group 5: Hupu ---- */
+
+static void hupu_header(int seg) {
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "虎扑");
+    tr_icon(s_fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 86, 116, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, 98, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+    static const char* const s3[3] = {"推荐", "关注", "比分"};
+    tr_segment(s_fb, TR_SEGMENT_RECT, s3, 3, seg);
+}
+
+// 虎扑推荐。坐标照 draw_feed / draw_rows。/ Hupu feed; follows draw_feed and draw_rows.
+static void screen_hupu_feed(void) {
+    clear();
+    hupu_header(0);
+    tr_text_dim(s_fb, TR_MARGIN, 240, 26, "首页推荐 · 30 条", EPD_DRAW_ALIGN_LEFT);
+    static const char* const t[5] = {"詹姆斯赛后：我们需要更好地保护篮板，今天对手的二次进攻太多了",
+                                     "[流言板] 曼城官方：哈兰德完成续约，合同至 2034 年",
+                                     "虎扑评分：本赛季到目前为止最让你惊喜的新秀是谁？",
+                                     "步行街主干道：第一次自己装修，踩过的坑都在这里了",
+                                     "国足最新一期集训名单公布，三名归化球员入选"};
+    static const char* const m[5] = {"湿乎乎的话题 · 312 回复", "英超 · 1024 回复", "NBA · 586 回复", "步行街 · 233 回复",
+                                     "中国足球 · 871 回复"};
+    for (int i = 0; i < 5; i++) {
+        const int y = 284 + i * 148, thumb = i % 2 == 0;
+        const int tw = thumb ? TR_W - TR_MARGIN - 150 - TR_MARGIN - 20 : TR_W - 2 * TR_MARGIN;
+        tr_wrap(s_fb, TR_MARGIN, y + 10, tw, 30, 40, t[i], 2);
+        tr_text_dim(s_fb, TR_MARGIN, y + 100, 24, m[i], EPD_DRAW_ALIGN_LEFT);
+        if (thumb) ui_fill_round_rect(s_fb, (EpdRect){TR_W - TR_MARGIN - 150, y + 18, 150, 100}, 12, TR_GRAY_SURFACE);
+        tr_hline(s_fb, y + 148 - 6, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    tr_pager(s_fb, 1040, 0, 6);
+    tr_tab_bar(s_fb, TR_TAB_HUPU);
+}
+
+// 虎扑比分。坐标照 draw_scores。/ Hupu scores; follows draw_scores.
+static void screen_hupu_scores(void) {
+    clear();
+    hupu_header(2);
+    static const char* const lg[4] = {"NBA", "CBA", "英超", "中超"};
+    int x = TR_MARGIN;
+    for (int i = 0; i < 4; i++) {
+        const int w = ttf_text_width_px(28, lg[i]) + 48;
+        tr_pill(s_fb, (EpdRect){x, 244, w, 54}, lg[i], i == 0, 28);
+        x += w + 12;
+    }
+    tr_text(s_fb, TR_W / 2, 320, 30, "11月20日 星期四", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(s_fb, TR_MARGIN + 20, 320, 30, "‹", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(s_fb, TR_W - TR_MARGIN - 20, 320, 30, "›", EPD_DRAW_ALIGN_CENTER, true);
+    tr_hline(s_fb, 378, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    struct { const char *a, *b, *score, *st; } m[5] = {
+        {"湖人", "勇士", "112 : 108", "已结束 · 3.2万人评分 ›"}, {"凯尔特人", "热火", "98 : 101", "已结束 · 1.1万人评分 ›"},
+        {"掘金", "太阳", "56 : 49", "第二节 05:12"}, {"雄鹿", "尼克斯", "VS", "19:30 开赛"}, {"快船", "独行侠", "VS", "21:00 开赛"}};
+    for (int i = 0; i < 5; i++) {
+        const int y = 396 + i * 124;
+        ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN - 8, y, TR_W - 2 * TR_MARGIN + 16, 112}, 20, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, TR_MARGIN + 95, y + 16, 32, m[i].a, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, TR_W - TR_MARGIN - 95, y + 16, 32, m[i].b, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
+        tr_text_on(s_fb, TR_W / 2, y + 8, 40, m[i].score, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, TR_W / 2, y + 70, 24, m[i].st, EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+    }
+    tr_tab_bar(s_fb, TR_TAB_HUPU);
+}
+
+// 虎扑回复页。坐标照 draw_post / draw_reply。/ Hupu replies; follows draw_post and draw_reply.
+static void screen_hupu_post(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_text(s_fb, TR_MARGIN, 92, 30, "‹ 湿乎乎的话题", EPD_DRAW_ALIGN_LEFT, false);
+    static const char* const tabs[3] = {"正文", "亮了 12", "回复 312"};
+    tr_segment(s_fb, (EpdRect){TR_MARGIN, 150, TR_W - 2 * TR_MARGIN, 64}, tabs, 3, 1);
+    struct { const char *user, *quote, *text; int lights; } r[3] = {
+        {"篮板狂魔", NULL, "说得对，二次进攻给太多了，内线必须加强卡位，替补阵容也得提高对抗强度。", 356},
+        {"紫金王朝", "篮板狂魔：说得对，二次进攻给太多了", "关键还是轮换，主力打太久了，第四节明显腿软。", 128},
+        {"路人甲", NULL, "赢了就行，常规赛别要求太高。", 42}};
+    int y = 250;
+    for (int i = 0; i < 3; i++) {
+        tr_text(s_fb, TR_MARGIN, y, 26, r[i].user, EPD_DRAW_ALIGN_LEFT, true);
+        char l[16];
+        snprintf(l, sizeof(l), "亮 %d", r[i].lights);
+        tr_badge(s_fb, TR_W - TR_MARGIN, y - 4, l, false, 22);
+        int yy = y + 40;
+        if (r[i].quote) {
+            epd_fill_rect((EpdRect){TR_MARGIN, yy, 6, 30}, 0x90, s_fb);
+            char q[96];
+            snprintf(q, sizeof(q), "引用 %s", r[i].quote);
+            tr_text_dim(s_fb, TR_MARGIN + 22, yy, 24, q, EPD_DRAW_ALIGN_LEFT);
+            yy += 40;
+        }
+        yy += 46 * tr_wrap(s_fb, TR_MARGIN, yy, TR_W - 2 * TR_MARGIN, 32, 46, r[i].text, 4);
+        y = yy + 30;
+        tr_hline(s_fb, y - 16, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    tr_pager(s_fb, 1040, 0, 8);
+    tr_tab_bar(s_fb, TR_TAB_HUPU);
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -598,9 +696,10 @@ int main(int argc, char** argv) {
     char path[256];
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
                                screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi,
-                               screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home};
+                               screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home,
+                               screen_hupu_feed, screen_hupu_scores, screen_hupu_post};
     const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
-                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home"};
+                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);
