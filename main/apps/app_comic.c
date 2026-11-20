@@ -929,7 +929,7 @@ static void draw_reader(uint8_t* fb) {
             tr_text_on(fb, cx, TOOL_Y + TR_S(56), TR_S(28), s_vol_index >= 0 ? "话列表" : "详情", EPD_DRAW_ALIGN_CENTER,
                        false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
         } else if (i == 1) {
-            tr_text_on(fb, cx, TOOL_Y + TR_S(4), TR_S(36), s_rtl ? "⇠" : "⇢", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+            tr_text_on(fb, cx, TOOL_Y + TR_S(4), TR_S(36), s_rtl ? "←" : "→", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
                        TR_GRAY_SURFACE);
             tr_text_on(fb, cx, TOOL_Y + TR_S(56), TR_S(28), s_rtl ? "右→左" : "左→右", EPD_DRAW_ALIGN_CENTER, false,
                        UI_GRAY_BLACK, TR_GRAY_SURFACE);

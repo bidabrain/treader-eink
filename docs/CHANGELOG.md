@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - USB 传书页的提示把“点 ⏏”改成“点“推出””：默认字体里没有这个符号，以前显示成空方框。
   The USB transfer hint now says to click "推出" instead of showing the ⏏ symbol, which the default font lacks and drew as an empty box.
+- 漫画工具条的阅读方向箭头“⇠ / ⇢”改成“← / →”，Wi-Fi 传书密码提示里的“8–63”改成“8～63”：原来的字符字体里没有，显示成空方框。
+  The comic toolbar's reading-direction arrows "⇠ / ⇢" became "← / →" and the Wi-Fi password hint's "8–63" became "8～63"; the old characters were missing from the fonts and drew as empty boxes.
 
 ## 2026-11-21 · 安卓 App：番茄 1.1.0、小红书 1.5.0、微博 1.4.0、X 1.1.0
 
