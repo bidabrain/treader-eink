@@ -3,9 +3,9 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-20 · 番茄安卓 App 1.0.3
 
-- 番茄新章节提示（固件、番茄安卓 App）：检查到还没下载的显示“+N 章 待下载”；下载以后不再消失，改成“+N 章”，一直留到打开这本书，书库和番茄书架都一样。WebDAV 同步后，在手机或设备上打开过的书两边都不再提示。升级前已经下载、还没打开的书不会补上提示。
+- 番茄新章节提示（番茄安卓 App 1.0.3；固件已在最新构建 treader-latest 里，下个固件版本号一起发布）：检查到还没下载的显示“+N 章 待下载”；下载以后不再消失，改成“+N 章”，一直留到打开这本书，书库和番茄书架都一样。WebDAV 同步后，在手机或设备上打开过的书两边都不再提示。升级前已经下载、还没打开的书不会补上提示。
   Tomato new-chapter badges (firmware and the Tomato Android app): chapters found but not downloaded show "+N 章 待下载"; after downloading the badge no longer vanishes but shows "+N 章" until the book is opened, in both the library and the Tomato shelf. After a WebDAV sync, opening the book on either the phone or the device clears it on both. Books downloaded but not opened before upgrading get no badge.
 
 ## 2026-11-20 · Treader 0.8.0
