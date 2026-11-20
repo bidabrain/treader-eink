@@ -684,6 +684,93 @@ static void screen_hupu_post(void) {
     tr_tab_bar(s_fb, TR_TAB_HUPU);
 }
 
+/* ---- 第六组：微博、X、小红书（照 app_tr_weibo.c、app_tr_xhs.c）/ Group 6: Weibo, X, Xiaohongshu ---- */
+
+static void sns_header(const char* title, const char* a, const char* b, const char* refresh) {
+    tr_status_bar(s_fb);
+    tr_title(s_fb, title);
+    tr_icon(s_fb, TR_ICON_SYNC, TR_W - TR_MARGIN - ttf_text_width_px(30, refresh) - 26, 116, false);
+    tr_text(s_fb, TR_W - TR_MARGIN, 98, 30, refresh, EPD_DRAW_ALIGN_RIGHT, false);
+    const char* seg[2] = {a, b};
+    tr_segment(s_fb, TR_SEGMENT_RECT, seg, 2, 0);
+}
+
+static void sns_avatar(int x, int y, int d, const char* first, bool dot) {
+    const int cx = x + d / 2, cy = y + d / 2, px = d * 28 / 60;
+    epd_fill_circle(cx, cy, d / 2, TR_GRAY_SELECTED, s_fb);
+    tr_text_on(s_fb, cx, cy - px / 2 - 3, px, first, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SELECTED);
+    if (dot) {
+        epd_fill_circle(x + d - 6, y + 6, 10, UI_GRAY_WHITE, s_fb);
+        epd_fill_circle(x + d - 6, y + 6, 7, UI_GRAY_BLACK, s_fb);
+    }
+}
+
+static void sns_counts(int y, const char* a, const char* b, const char* c) {
+    const char* v[3] = {a, b, c};
+    const int cw = TR_W - 2 * TR_MARGIN;
+    for (int k = 0; k < 3; k++) {
+        const int w = ttf_text_width_px(24, v[k]) + 40, x0 = TR_MARGIN + k * cw / 3 + (cw / 3 - w) / 2;
+        epd_fill_circle(x0 + 14, y + 22, 9, TR_GRAY_SECONDARY, s_fb);
+        tr_text_dim(s_fb, x0 + 40, y + 8, 24, v[k], EPD_DRAW_ALIGN_LEFT);
+    }
+}
+
+// 微博关注列表：一条一张卡片。坐标照 draw_card。/ Weibo following list, one card per post; follows draw_card.
+static void screen_weibo(void) {
+    clear();
+    sns_header("微博", "关注", "热门", "刷新");
+    tr_text_dim(s_fb, TR_MARGIN, 240, 26, "关注的人 · 100 条 · 刷新于 21:05", EPD_DRAW_ALIGN_LEFT);
+    const int cw = TR_W - 2 * TR_MARGIN, sw = (cw - 22) / 3;
+    int y = 288;
+    sns_avatar(TR_MARGIN, y, 60, "科", true);
+    tr_text(s_fb, TR_MARGIN + 78, y + 2, 30, "科技美学", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_dim(s_fb, TR_MARGIN + 78, y + 40, 22, "10 分钟前 · 微博网页版", EPD_DRAW_ALIGN_LEFT);
+    tr_wrap(s_fb, TR_MARGIN, y + 80, cw, 30, 42,
+            "今天上手了新款电子书阅读器，4.7 寸墨水屏，前光可以调色温，整体做工比上一代好不少。续航还在测。", 3);
+    for (int k = 0; k < 3; k++) ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN + k * (sw + 11), y + 222, sw, 164}, 12,
+                                                   TR_GRAY_SURFACE);
+    const int bw = ttf_text_width_px(24, "+3") + 20;
+    ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN + 2 * (sw + 11) + sw - bw - 6, y + 222 + 164 - 40, bw, 34}, 17,
+                       UI_GRAY_BLACK);
+    tr_text_inv(s_fb, TR_MARGIN + 2 * (sw + 11) + sw - 6 - bw / 2, y + 222 + 164 - 36, 24, "+3", EPD_DRAW_ALIGN_CENTER, true);
+    sns_counts(y + 396, "128", "56", "1024");
+    y += 460;
+    tr_hline(s_fb, y - 9, TR_MARGIN, cw, true);
+    sns_avatar(TR_MARGIN, y, 60, "读", false);
+    tr_text(s_fb, TR_MARGIN + 78, y + 2, 30, "读书日记", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_dim(s_fb, TR_MARGIN + 78, y + 40, 22, "1 小时前 · iPhone", EPD_DRAW_ALIGN_LEFT);
+    tr_wrap(s_fb, TR_MARGIN, y + 80, cw, 30, 42, "转发：这本书读到第三遍才看懂结尾。", 3);
+    ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN, y + 134, cw, 58}, 14, 0xE0);
+    tr_text_on(s_fb, TR_MARGIN + 20, y + 144, 26, "@出版社：《长安的荔枝》精装版今天上市。", EPD_DRAW_ALIGN_LEFT, false,
+               UI_GRAY_BLACK, 0xE0);
+    sns_counts(y + 202, "12", "8", "230");
+    tr_pager(s_fb, 1040, 0, 34);
+    tr_tab_bar(s_fb, TR_TAB_WEIBO);
+}
+
+// 小红书关注：两列封面卡片。坐标照 draw_cards。/ Xiaohongshu following: two-column cover cards; follows draw_cards.
+static void screen_xhs(void) {
+    clear();
+    sns_header("小红书", "关注", "推荐", "刷新");
+    tr_text_dim(s_fb, TR_MARGIN, 240, 26, "关注的博主 · 36 篇", EPD_DRAW_ALIGN_LEFT);
+    const int cw = (TR_W - 2 * TR_MARGIN - 20) / 2;
+    static const char* const t[4] = {"周末去了一趟安吉，竹林真的太出片了", "极简书桌改造｜一千块搞定",
+                                     "秋天的第一锅关东煮，汤底这样熬", "Kindle 之外，我还在用的阅读器"};
+    static const char* const a[4] = {"山野小记 · 赞 2.3万", "Lin 的家 · 赞 8412", "厨房日记 · 赞 1.1万", "读书的猫 · 赞 5206"};
+    for (int k = 0; k < 4; k++) {
+        const int cx = TR_MARGIN + (k % 2) * (cw + 20), cy = 284 + (k / 2) * 376;
+        ui_fill_round_rect(s_fb, (EpdRect){cx, cy, cw, 262}, 12, TR_GRAY_SURFACE);
+        if (k % 3 == 0) {
+            ui_fill_round_rect(s_fb, (EpdRect){cx + 10, cy + 10, 48, 34}, 17, UI_GRAY_BLACK);
+            tr_text_inv(s_fb, cx + 34, cy + 13, 22, "新", EPD_DRAW_ALIGN_CENTER, true);
+        }
+        tr_wrap(s_fb, cx, cy + 262 + 10, cw, 26, 34, t[k], 2);
+        tr_text_dim(s_fb, cx, cy + 262 + 84, 22, a[k], EPD_DRAW_ALIGN_LEFT);
+    }
+    tr_pager(s_fb, 1040, 0, 9);
+    tr_tab_bar(s_fb, TR_TAB_XHS);
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -697,9 +784,9 @@ int main(int argc, char** argv) {
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
                                screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi,
                                screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home,
-                               screen_hupu_feed, screen_hupu_scores, screen_hupu_post};
+                               screen_hupu_feed, screen_hupu_scores, screen_hupu_post, screen_weibo, screen_xhs};
     const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
-                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post"};
+                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post", "weibo", "xhs"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);

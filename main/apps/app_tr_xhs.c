@@ -558,21 +558,23 @@ static void draw_cards(uint8_t* fb) {
         thumb_path(x, thumb, sizeof(thumb));
         const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, CELL_W, COVER_H) : NULL;
         if (px) hupu_img_draw(fb, cx, cy, CELL_W, COVER_H, px, true);
-        else epd_draw_rect((EpdRect){cx, cy, CELL_W, COVER_H}, TR_GRAY_LINE, fb);
+        // 封面还没到：浅灰圆角块（小红书只用整页刷新）。/ Cover not here yet: a light gray block (whole-page refresh only).
+        else ui_fill_round_rect(fb, (EpdRect){cx, cy, CELL_W, COVER_H}, 12, TR_GRAY_SURFACE);
         if (!x->seen) {
-            epd_fill_rect((EpdRect){cx + 10, cy + 10, 48, 34}, UI_GRAY_BLACK, fb);
+            ui_fill_round_rect(fb, (EpdRect){cx + 10, cy + 10, 48, 34}, 17, UI_GRAY_BLACK);
             tr_text_inv(fb, cx + 34, cy + 13, 22, "新", EPD_DRAW_ALIGN_CENTER, true);
         }
         if (s_seg == SEG_REC && note_cached(x->id)) {
             const EpdRect r = {cx + CELL_W - 98, cy + COVER_H - 44, 88, 34};
-            epd_fill_rect(r, UI_GRAY_WHITE, fb);
-            epd_draw_rect(r, UI_GRAY_BLACK, fb);
+            ui_fill_round_rect(fb, r, 17, UI_GRAY_WHITE);
+            ui_draw_round_rect(fb, r, 17, TR_GRAY_OUTLINE);
+            ui_draw_round_rect(fb, ui_inset_rect(r, 1), 16, TR_GRAY_OUTLINE);
             tr_text(fb, r.x + r.width / 2, r.y + 4, 20, "已下载", EPD_DRAW_ALIGN_CENTER, true);
         }
         tr_wrap(fb, cx, cy + COVER_H + 10, CELL_W, 26, 34, x->title[0] ? x->title : "（无标题）", 2);
         snprintf(line, sizeof(line), "%s%s%s", x->author, x->likes[0] ? " · 赞 " : "", x->likes);
         tr_fit(line, 22, CELL_W);
-        tr_text(fb, cx, cy + COVER_H + 84, 22, line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, cx, cy + COVER_H + 84, 22, line, EPD_DRAW_ALIGN_LEFT);
     }
 }
 
@@ -604,7 +606,9 @@ static void draw_list(uint8_t* fb) {
         if (s_rec_left >= 0) snprintf(line, sizeof(line), "首页推荐%s · 今天还能拉 %d 次", when, s_rec_left);
         else snprintf(line, sizeof(line), "首页推荐%s", when);
     }
-    tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+    // 平常的条数用深灰，加载和出错的提示保持黑字。/ The plain count is dark gray; loading and errors stay black.
+    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT);
+    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
     if (!s_item_count) {
         draw_empty(fb, LIST_TOP + 20, loading ? "加载中，请稍候。" : s_seg == SEG_FOLLOW ?
                    "还没有缓存。联网后点右上角“刷新”，从服务器取关注博主的笔记；之后不联网也能看。" :
@@ -617,39 +621,39 @@ static void draw_list(uint8_t* fb) {
 
 static void draw_wait(uint8_t* fb) {
     const EpdRect r = DIALOG_RECT;
+    // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     epd_fill_rect(r, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, r, 22, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 21, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 2), 20, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, r, 28, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 27, TR_GRAY_OUTLINE);
     const int cx = r.x + r.width / 2;
     const bool failed = !job_running(TOMATO_RED_NOTE) && s_msg[0];
     if (failed) {
         tr_text(fb, cx, r.y + 40, 32, "没能打开这篇", EPD_DRAW_ALIGN_CENTER, true);
         tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg, 2);
-        tr_text(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER, false);
+        tr_text_dim(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
         return;
     }
     tr_text(fb, cx, r.y + 44, 34, "正在拉取这篇笔记…", EPD_DRAW_ALIGN_CENTER, true);
     tr_text(fb, cx, r.y + 104, 26, loading_text("服务器要打开小红书，约 10～20 秒"), EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_more_wait(uint8_t* fb) {
     const EpdRect r = DIALOG_RECT;
+    // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     epd_fill_rect(r, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, r, 22, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 21, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 2), 20, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, r, 28, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 27, TR_GRAY_OUTLINE);
     const int cx = r.x + r.width / 2;
     if (s_more_failed) {
         tr_text(fb, cx, r.y + 40, 32, "没能加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
         tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg[0] ? s_msg : "稍后再试", 2);
-        tr_text(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER, false);
+        tr_text_dim(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
         return;
     }
     tr_text(fb, cx, r.y + 44, 34, "正在加载更多评论…", EPD_DRAW_ALIGN_CENTER, true);
     tr_text(fb, cx, r.y + 104, 26, loading_text("服务器要打开小红书往下翻，约 20～60 秒"), EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_image(uint8_t* fb) {
@@ -669,7 +673,7 @@ static void draw_image(uint8_t* fb) {
                 EPD_DRAW_ALIGN_CENTER, false);
     }
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, false);
+    tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
     char label[32];
     snprintf(label, sizeof(label), "%d / %d", s_image + 1, s_images);
     tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
@@ -706,11 +710,11 @@ static void draw_body(uint8_t* fb) {
         snprintf(meta, sizeof(meta), "%s%s%s%s%s%s", s_author, when, s_likes[0] ? " · 赞 " : "", s_likes,
                  s_comment_total[0] ? " · 评论 " : "", s_comment_total);
         tr_fit(meta, 24, CW);
-        tr_text(fb, TR_MARGIN, my, 24, meta, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, my, 24, meta, EPD_DRAW_ALIGN_LEFT);
         tr_hline(fb, my + 40, TR_MARGIN, CW, true);
     }
     if (!s_line_count) {
-        tr_text(fb, TR_MARGIN, y, 30, "这篇没有文字。", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, y, 30, "这篇没有文字。", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     const int start = s_pages[s_page];
@@ -724,22 +728,25 @@ static void draw_body(uint8_t* fb) {
     }
 }
 
-// 能按时黑框粗体；不能按时灰底。/ Black outline and bold when it can be pressed; a gray fill when it cannot.
+// 能按时深灰描边、粗体黑字；不能按时浅灰底、深灰字。/ A dark outline with bold black text when it can be pressed; a
+// light gray fill with dark gray text when it cannot.
 static void draw_more_btn(uint8_t* fb) {
     const EpdRect b = more_btn();
     if (s_comments_more) {
-        ui_draw_round_rect(fb, b, 38, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(b, 1), 37, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, b, 38, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(b, 1), 37, TR_GRAY_OUTLINE);
+        tr_text(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
     } else {
-        ui_fill_round_rect(fb, b, 38, TR_GRAY_LINE);
+        ui_fill_round_rect(fb, b, 38, TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, false,
+                   TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
     }
-    tr_text(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, s_comments_more);
 }
 
 static void draw_comments(uint8_t* fb) {
     if (s_page + 1 == s_comment_page_count) draw_more_btn(fb);
     if (!s_comment_count) {
-        tr_text(fb, TR_MARGIN, BODY_TOP + 20, 30, "服务器没有存这篇的评论", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, BODY_TOP + 20, 30, "服务器没有存这篇的评论", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     int y = BODY_TOP;
@@ -751,7 +758,7 @@ static void draw_comments(uint8_t* fb) {
         tr_text(fb, TR_MARGIN, y, 26, line, EPD_DRAW_ALIGN_LEFT, true);
         if (c->likes[0] && strcmp(c->likes, "0")) {
             snprintf(line, sizeof(line), "赞 %s", c->likes);
-            tr_text(fb, TR_W - TR_MARGIN, y, 24, line, EPD_DRAW_ALIGN_RIGHT, true);
+            tr_badge(fb, TR_W - TR_MARGIN, y - 4, line, false, 22);
         }
         tr_wrap(fb, TR_MARGIN, y + 40, CW, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
         y += comment_height(c);

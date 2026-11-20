@@ -31,10 +31,10 @@
 void tr_wallsave_draw(uint8_t* fb, const tr_wallsave_t* w) {
     if (w->shown) {
         epd_fill_rect((EpdRect){0, TR_WALLSAVE_TOP, TR_W, 184}, UI_GRAY_WHITE, fb);
-        tr_hline(fb, TR_WALLSAVE_TOP, 0, TR_W, false);
+        tr_hline(fb, TR_WALLSAVE_TOP, 0, TR_W, true);
         tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, BTN_W, BTN_H}, "存为壁纸", true, 32);
         tr_pill(fb, (EpdRect){SET_X, BTN_Y, BTN_W, BTN_H}, "存并设为锁屏", false, 32);
-        tr_text(fb, TR_MARGIN, BTN_Y + BTN_H + 22, 24, "存到 TF 卡 wallpapers/，点图片中间收起", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, BTN_Y + BTN_H + 22, 24, "存到 TF 卡 wallpapers/，点图片中间收起", EPD_DRAW_ALIGN_LEFT);
     }
     if (w->title[0]) {
         const EpdRect r = BOX;

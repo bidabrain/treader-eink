@@ -688,9 +688,10 @@ static void draw_header(uint8_t* fb) {
 
 // 头像：圆圈里写名字的第一个字。/ Avatar: the first character of the name in a circle.
 static void draw_avatar(uint8_t* fb, int x, int y, int d, const char* name) {
+    // Material 3 头像：浅灰实心圆里写首字（这些页只用整页刷新）。/ Material 3 avatar: the first character on a
+    // filled light gray circle (these pages refresh whole pages only).
     const int cx = x + d / 2, cy = y + d / 2;
-    epd_fill_circle(cx, cy, d / 2, UI_GRAY_WHITE, fb);
-    for (int k = 0; k < 3; k++) epd_draw_circle(cx, cy, d / 2 - k, UI_GRAY_BLACK, fb);
+    epd_fill_circle(cx, cy, d / 2, TR_GRAY_SELECTED, fb);
     char first[8] = "微";
     if (name && name[0]) {
         const unsigned char c = (unsigned char)name[0];
@@ -698,7 +699,7 @@ static void draw_avatar(uint8_t* fb, int x, int y, int d, const char* name) {
         if (strlen(name) >= n) { memcpy(first, name, n); first[n] = 0; }
     }
     const int px = d * 28 / 60;
-    tr_text(fb, cx, cy - px / 2 - 3, px, first, EPD_DRAW_ALIGN_CENTER, true);
+    tr_text_on(fb, cx, cy - px / 2 - 3, px, first, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SELECTED);
 }
 
 // 卡片和正文页共用的头部：头像、粗体名字、下一行时间和来源。/ Header shared by cards and the post page: avatar,
@@ -716,12 +717,12 @@ static void draw_head(uint8_t* fb, int y, const char* user, double t, const char
     fmt_time(when, sizeof(when), t, long_time);
     snprintf(line, sizeof(line), "%s%s%.60s", when, source && source[0] ? " · " : "", source ? source : "");
     tr_fit(line, 22, CW - 78);
-    tr_text(fb, TR_MARGIN + 78, y + 40, 22, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN + 78, y + 40, 22, line, EPD_DRAW_ALIGN_LEFT);
 }
 
 // 转发、评论、赞的小图标（约 28 像素）。/ Small repost, comment and like glyphs (about 28 px).
 static void draw_glyph(uint8_t* fb, int kind, int cx, int cy) {
-    const uint8_t c = UI_GRAY_BLACK;
+    const uint8_t c = TR_GRAY_SECONDARY;
     if (kind == 0) {
         for (int d = 0; d < 2; d++) {
             epd_draw_line(cx - 12, cy - 5 + d, cx + 10, cy - 5 + d, c, fb);
@@ -748,21 +749,21 @@ static void draw_counts(uint8_t* fb, int y, int reposts, int comments, int likes
         const int col = TR_MARGIN + k * CW / 3, w = ttf_text_width_px(24, n) + 40;
         const int x0 = col + (CW / 3 - w) / 2;
         draw_glyph(fb, k, x0 + 14, y + FOOT_H / 2);
-        tr_text(fb, x0 + 40, y + (FOOT_H - 24) / 2 - 2, 24, n, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, x0 + 40, y + (FOOT_H - 24) / 2 - 2, 24, n, EPD_DRAW_ALIGN_LEFT);
     }
 }
 
-// 一张小图：有就画，没有画个灰框。/ One small image: drawn when present, a gray frame otherwise.
+// 一张小图：有就画，没有画个浅灰圆角块。/ One small image: drawn when present, a light gray block otherwise.
 static void draw_pic(uint8_t* fb, const char* path, int x, int y, int w, int h) {
     const uint8_t* px = exists(path) ? hupu_img_get(path, w, h) : NULL;
     if (px) hupu_img_draw(fb, x, y, w, h, px, true);
-    else epd_draw_rect((EpdRect){x, y, w, h}, TR_GRAY_LINE, fb);
+    else ui_fill_round_rect(fb, (EpdRect){x, y, w, h}, 12, TR_GRAY_SURFACE);
 }
 
 // 黑底白字的小角标（“+3”）。/ A small black badge with white text ("+3").
 static void draw_badge(uint8_t* fb, int right, int bottom, const char* text) {
     const int w = ttf_text_width_px(24, text) + 20;
-    epd_fill_rect((EpdRect){right - w - 6, bottom - 40, w, 34}, UI_GRAY_BLACK, fb);
+    ui_fill_round_rect(fb, (EpdRect){right - w - 6, bottom - 40, w, 34}, 17, UI_GRAY_BLACK);
     tr_text_inv(fb, right - 6 - w / 2, bottom - 36, 24, text, EPD_DRAW_ALIGN_CENTER, true);
 }
 
@@ -834,7 +835,9 @@ static void draw_list(uint8_t* fb) {
         snprintf(line, sizeof(line), "%s · %d 条%s%s", s_seg == SEG_FOLLOW ? "关注的人" : "热门", s_item_count,
                  when[0] ? " · 刷新于 " : "", when);
     }
-    tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+    // 平常的条数用深灰，加载和出错的提示保持黑字。/ The plain count is dark gray; loading and errors stay black.
+    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT);
+    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
     if (!s_item_count) {
         draw_empty(fb, LIST_TOP + 20, loading ? "加载中，请稍候。" : s_seg == SEG_FOLLOW ?
                    "还没有缓存。联网后点右上角“刷新”，从服务器取关注的人的微博；之后不联网也能看。" :
@@ -847,21 +850,21 @@ static void draw_list(uint8_t* fb) {
 
 static void draw_wait(uint8_t* fb) {
     const EpdRect r = DIALOG_RECT;
+    // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     epd_fill_rect(r, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, r, 22, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 21, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 2), 20, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, r, 28, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 27, TR_GRAY_OUTLINE);
     const int cx = r.x + r.width / 2;
     const bool failed = !job_running(TOMATO_WB_POST) && s_msg[0];
     if (failed) {
         tr_text(fb, cx, r.y + 40, 32, "没能打开这条", EPD_DRAW_ALIGN_CENTER, true);
         tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg, 2);
-        tr_text(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER, false);
+        tr_text_dim(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
         return;
     }
     tr_text(fb, cx, r.y + 44, 34, "正在加载这条微博…", EPD_DRAW_ALIGN_CENTER, true);
     tr_text(fb, cx, r.y + 104, 26, loading_text("从服务器取全文和图片"), EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_image(uint8_t* fb) {
@@ -881,7 +884,7 @@ static void draw_image(uint8_t* fb) {
                 EPD_DRAW_ALIGN_CENTER, false);
     }
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, false);
+    tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
     char label[32];
     snprintf(label, sizeof(label), "%d / %d", s_image + 1, s_images);
     tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "‹ 正文", EPD_DRAW_ALIGN_LEFT, false);
@@ -915,7 +918,7 @@ static void tail_path(int k, char* out, size_t cap) {
 static void draw_body(uint8_t* fb) {
     int y = BODY_TOP;
     if (!s_line_count && s_page == 0 && !tail_count()) {
-        tr_text(fb, TR_MARGIN, y, 30, "这条没有文字。", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, y, 30, "这条没有文字。", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     const int start = s_pages[s_page];
@@ -966,7 +969,7 @@ static void draw_comments(uint8_t* fb) {
         return;
     }
     if (!s_comment_count) {
-        tr_text(fb, TR_MARGIN, BODY_TOP + 20, 30, "还没有评论", EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, TR_MARGIN, BODY_TOP + 20, 30, "还没有评论", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     // 每条：小头像圆、粗体名字、右边赞数（心形图标），文字从头像右边开始。/ Each: a small avatar circle, bold name,
@@ -982,7 +985,7 @@ static void draw_comments(uint8_t* fb) {
         if (c->likes > 0) {
             char n[16];
             fmt_count(n, sizeof(n), c->likes);
-            tr_text(fb, TR_W - TR_MARGIN, y + 8, 24, n, EPD_DRAW_ALIGN_RIGHT, false);
+            tr_text_dim(fb, TR_W - TR_MARGIN, y + 8, 24, n, EPD_DRAW_ALIGN_RIGHT);
             draw_glyph(fb, 2, TR_W - TR_MARGIN - ttf_text_width_px(24, n) - 20, y + 22);
         }
         tr_wrap(fb, COMMENT_X, y + 52, COMMENT_W, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
