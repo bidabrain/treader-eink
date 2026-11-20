@@ -94,6 +94,8 @@ extern "C" {
 #define UI_GRAY_WHITE 0xFF
 #define UI_GRAY_LIGHT 0xB0
 #define UI_GRAY_BLACK 0x00
+/// 深灰描边：Material 3 的描边按钮；DU 下按黑处理。/ Dark gray outline for Material 3 outlined buttons; black under DU.
+#define UI_GRAY_OUTLINE 0x50
 #define UI_INK_WHITE 15
 #define UI_INK_BLACK 0
 

@@ -350,6 +350,133 @@ static void screen_dialog(void) {
     }
 }
 
+/* ---- 第三组：漫画、传书（照 app_comic.c、app_usb.c、app_transfer.c）/ Group 3: comics and transfer ---- */
+
+// 漫画书架。坐标照 app_comic.c 的 draw_shelf。/ Comic shelf; coordinates follow draw_shelf in app_comic.c.
+static void screen_comics(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "漫画");
+    tr_icon(s_fb, TR_ICON_IMPORT, 612, 116, false);
+    tr_text_dim(s_fb, TR_MARGIN, 156, 28, "8 部 · 按最近", EPD_DRAW_ALIGN_LEFT);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 212, 150, 54}, "按最近", false, 28);
+    const EpdRect card = {TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 136};
+    ui_fill_round_rect(s_fb, card, 24, TR_GRAY_SURFACE);
+    tr_mini_cover(s_fb, (EpdRect){56, 304, 70, 96}, "海贼王", true);
+    tr_text_on(s_fb, 148, 298, 24, "继续看", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, TR_W - 60, 298, 24, "接着看 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, 148, 330, 32, "海贼王 · 第 32 话", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_progress(s_fb, 148, 392, TR_W - 170 - 148, 60);
+    tr_text_on(s_fb, TR_W - 60, 378, 26, "12 / 20", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    static const int cx[3] = {40, 267, 494}, cy[2] = {454, 748};
+    struct { const char *name, *state; bool series, done; } cells[6] = {
+        {"海贼王", "108 话 · 看完 31", true, false}, {"鬼灭之刃", "205 话 · 在看", true, false},
+        {"灌篮高手", "31 话 · 看完", true, true}, {"一拳超人", "单本 · 45%", false, false},
+        {"进击的巨人", "139 话 · 未看", true, false}, {"间谍过家家", "单本 · 未看", false, false}};
+    for (int k = 0; k < 6; k++) {
+        const int x = cx[k % 3], y = cy[k / 3];
+        if (cells[k].series)
+            for (int d = 2; d >= 1; d--) {
+                EpdRect r = {x + 5 * d, y - 5 * d, 150, 200};
+                epd_fill_rect(r, d == 2 ? TR_GRAY_SELECTED : TR_GRAY_SURFACE, s_fb);
+                epd_draw_rect(r, TR_GRAY_OUTLINE, s_fb);
+            }
+        tr_cover(s_fb, (EpdRect){x, y, 150, 200}, cells[k].name, "", "CBZ", k % 2 == 0);
+        tr_text(s_fb, x, y + 208, 24, cells[k].name, EPD_DRAW_ALIGN_LEFT, true);
+        if (cells[k].done) tr_text(s_fb, x, y + 246, 22, cells[k].state, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(s_fb, x, y + 246, 22, cells[k].state, EPD_DRAW_ALIGN_LEFT);
+    }
+    tr_pager(s_fb, 1040, 0, 2);
+    tr_tab_bar(s_fb, TR_TAB_COMIC);
+}
+
+// 漫画阅读工具条。坐标照 draw_reader。/ Comic reader toolbar; coordinates follow draw_reader.
+static void screen_comic_bar(void) {
+    clear();
+    for (int y = 140; y < 690; y += 6) epd_fill_rect((EpdRect){60, y, TR_W - 120, 3}, 0x90, s_fb);
+    epd_fill_rect((EpdRect){0, 0, TR_W, 120}, UI_GRAY_WHITE, s_fb);
+    tr_hline(s_fb, 118, 0, TR_W, true);
+    tr_text(s_fb, TR_MARGIN, 40, 32, "‹ 漫画", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, TR_W / 2, 38, 34, "海贼王 · 第 32 话", EPD_DRAW_ALIGN_CENTER, true);
+    const int bar = 700, tool = 840, col = (TR_W - 2 * TR_MARGIN) / 3;
+    epd_fill_rect((EpdRect){0, bar, TR_W, TR_H - bar}, UI_GRAY_WHITE, s_fb);
+    ui_draw_round_rect(s_fb, (EpdRect){0, bar, TR_W, 120}, 32, TR_GRAY_LINE);
+    ui_draw_round_rect(s_fb, (EpdRect){0, bar + 1, TR_W, 120}, 32, TR_GRAY_LINE);
+    epd_fill_rect((EpdRect){2, bar + 40, TR_W - 4, 82}, UI_GRAY_WHITE, s_fb);
+    ui_fill_round_rect(s_fb, (EpdRect){TR_W / 2 - 36, bar + 8, 72, 8}, 4, TR_GRAY_SELECTED);
+    tr_text_dim(s_fb, TR_MARGIN, bar + 32, 28, "第 12 / 20 页", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(s_fb, TR_W - TR_MARGIN, bar + 32, 28, "第 32 / 108 话", EPD_DRAW_ALIGN_RIGHT);
+    tr_progress(s_fb, TR_MARGIN, 786, TR_W - 2 * TR_MARGIN, 60);
+    static const char* const labels[3] = {"话列表", "右→左", "漫画"};
+    for (int i = 0; i < 3; i++) {
+        const int cx = TR_MARGIN + col * i + col / 2;
+        ui_fill_round_rect(s_fb, (EpdRect){TR_MARGIN + col * i + 10, tool - 12, col - 20, 108}, 24, TR_GRAY_SURFACE);
+        if (i == 1) tr_text_on(s_fb, cx, tool + 4, 36, "⇠", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        else tr_icon_on(s_fb, i == 0 ? TR_ICON_TOC : TR_ICON_COMIC, cx, tool + 24, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, cx, tool + 56, 28, labels[i], EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    }
+    tr_text(s_fb, TR_MARGIN, 962 + 14, 28, "自动翻页", EPD_DRAW_ALIGN_LEFT, false);
+    tr_pill(s_fb, (EpdRect){290, 962, 110, 56}, "−", false, 34);
+    tr_pill(s_fb, (EpdRect){TR_W - TR_MARGIN - 100, 962, 110, 56}, "+", false, 34);
+    tr_text(s_fb, 470, 972, 32, "关", EPD_DRAW_ALIGN_CENTER, true);
+    tr_hline(s_fb, 962 + 56 + 18, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    const int w = (TR_W - 2 * TR_MARGIN - 24) / 2;
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 1076, w, 76}, "‹ 上一话", false, 30);
+    tr_pill(s_fb, (EpdRect){TR_W - TR_MARGIN - w, 1076, w, 76}, "下一话 ›", false, 30);
+}
+
+// USB 传书说明页。坐标照 app_usb.c 的 draw_intro。/ USB transfer intro; coordinates follow draw_intro.
+static void screen_usb(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_text(s_fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, 96, 100, 36, "USB 传书", EPD_DRAW_ALIGN_LEFT, true);
+    tr_icon(s_fb, TR_ICON_USB, TR_W / 2, 250, false);
+    static const char* const steps[4] = {"用数据线连上电脑", "点“开始”，电脑上出现 U 盘", "拷完在电脑上“弹出”这个 U 盘",
+                                         "回到设备点“结束传输”"};
+    for (int i = 0; i < 4; i++) {
+        const int y = 350 + i * 46;
+        epd_fill_circle(TR_MARGIN + 21, y + 21, 21, UI_GRAY_BLACK, s_fb);
+        char n[4];
+        snprintf(n, sizeof(n), "%d", i + 1);
+        tr_text_inv(s_fb, TR_MARGIN + 21, y + 6, 24, n, EPD_DRAW_ALIGN_CENTER, true);
+        tr_text(s_fb, TR_MARGIN + 58, y + 2, 28, steps[i], EPD_DRAW_ALIGN_LEFT, false);
+    }
+    const EpdRect w = {TR_MARGIN, 580, TR_W - 2 * TR_MARGIN, 210};
+    ui_fill_round_rect(s_fb, w, 24, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, w.x + 26, w.y + 20, 28, "开始后：", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, w.x + 26, w.y + 62, 28, "· 设备其他功能全部暂停，只显示传输页", EPD_DRAW_ALIGN_LEFT, false,
+               UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, w.x + 26, w.y + 104, 28, "· 换成内置字体，结束后自动换回", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
+               TR_GRAY_SURFACE);
+    tr_text_on(s_fb, w.x + 26, w.y + 146, 28, "· Wi-Fi 和后台加载都会停掉", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
+               TR_GRAY_SURFACE);
+    tr_wrap(s_fb, TR_MARGIN, 836, TR_W - 2 * TR_MARGIN, 24, 36,
+            "TF 卡可用 27.4 GB。书放 books/，漫画放 comics/（一部一个文件夹），字体放 fonts/，壁纸放 wallpapers/。", 3);
+    tr_pill(s_fb, (EpdRect){TR_MARGIN, 1000, TR_W - 2 * TR_MARGIN, 96}, "开始", true, 34);
+}
+
+// Wi-Fi 传书首页的页头和按钮（ui_kit）。坐标照 app_transfer.c 的 render。/ Wi-Fi transfer header and buttons
+// (ui_kit); coordinates follow render in app_transfer.c.
+static void screen_wifi(void) {
+    clear();
+    ui_draw_header(s_fb, "传书", "浏览器上传图书或 TTF 字体");
+    ui_draw_button(s_fb, ui_row_rect(0, 2, UI_CONTENT_TOP, UI_BTN_H), "设备热点", true);
+    ui_draw_button(s_fb, ui_row_rect(1, 2, UI_CONTENT_TOP, UI_BTN_H), "已有 WiFi", false);
+    ui_text(s_fb, UI_MARGIN, 274, UI_PX_CAPTION, "TreaderPico-1A2B", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(s_fb, UI_MARGIN, 326, UI_PX_CAPTION, "口令：12345678", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(s_fb, UI_MARGIN, 370, UI_PX_CAPTION, "http://192.168.4.1", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(s_fb, UI_MARGIN, 412, 24, "扫码连接 WiFi", EPD_DRAW_ALIGN_LEFT, false);
+    ui_draw_button(s_fb, (EpdRect){UI_MARGIN, 454, 350, 60}, "切换为网页码", false);
+    epd_fill_rect((EpdRect){404, 274, 240, 240}, UI_GRAY_BLACK, s_fb);
+    epd_fill_rect((EpdRect){424, 294, 200, 200}, UI_GRAY_WHITE, s_fb);
+    ui_text(s_fb, UI_MARGIN, 528, UI_PX_CAPTION, "TF 卡 · 可上传 27.4 GB（预留 1515 MB）", EPD_DRAW_ALIGN_LEFT, false);
+    ui_hairline(s_fb, 578, UI_MARGIN, ui_content_width(), UI_GRAY_BLACK);
+    ui_text(s_fb, UI_MARGIN, 610, UI_PX_BODY, "等待上传", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(s_fb, UI_MARGIN, 674, UI_PX_CAPTION, "已连接 1 台 · 已完成 2 个文件", EPD_DRAW_ALIGN_LEFT, false);
+    ui_draw_button(s_fb, ui_bar_rect(0, 1), "停止并返回", false);
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -361,8 +488,9 @@ int main(int argc, char** argv) {
     tr_tabs_set_hidden(1u << TR_TAB_X);
     char path[256];
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
-                               screen_dialog};
-    const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog"};
+                               screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi};
+    const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
+                           "usb", "wifi"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);

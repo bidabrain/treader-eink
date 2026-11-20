@@ -371,10 +371,11 @@ static void scan(void) {
 }
 
 static void draw_series_stack(uint8_t* fb, int x, int y) {
+    // 系列封面后面垫两张浅灰卡片，表示一叠。/ Two light gray cards behind a series cover show a stack.
     for (int k = 2; k >= 1; k--) {
         EpdRect r = {x + 5 * k, y - 5 * k, CELL_W, COVER_H};
-        epd_fill_rect(r, UI_GRAY_WHITE, fb);
-        epd_draw_rect(r, UI_GRAY_BLACK, fb);
+        epd_fill_rect(r, k == 2 ? TR_GRAY_SELECTED : TR_GRAY_SURFACE, fb);
+        epd_draw_rect(r, TR_GRAY_OUTLINE, fb);
     }
 }
 
@@ -383,7 +384,7 @@ static void draw_shelf(uint8_t* fb) {
     tr_icon(fb, TR_ICON_IMPORT, IMPORT_X + 20, 116, false);
     char line[96];
     snprintf(line, sizeof(line), "%d 部 · %s", s_count, s_sort_name ? "按名字" : "按最近");
-    tr_text(fb, TR_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT);
     tr_pill(fb, SORT_PILL, s_sort_name ? "按名字" : "按最近", false, 28);
     if (s_message[0]) tr_message(fb, TR_W - TR_MARGIN, 220, 210, 400, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
     if (!s_count) {
@@ -396,18 +397,20 @@ static void draw_shelf(uint8_t* fb) {
     // 继续看。/ Continue reading.
     const EpdRect card = CARD;
     if (s_last[0]) {
-        ui_draw_round_rect(fb, card, 16, UI_GRAY_BLACK);
+        // Material 3 填充卡片（漫画只用整页刷新，灰底安全）。/ Material 3 filled card (comics refresh whole pages, so
+        // the gray is safe).
+        ui_fill_round_rect(fb, card, 24, TR_GRAY_SURFACE);
         draw_cover(fb, (EpdRect){56, 304, MINI_W, MINI_H}, s_last_owner, s_last_title, true);
-        tr_text(fb, 148, 298, 24, "继续看", EPD_DRAW_ALIGN_LEFT, false);
-        tr_text(fb, TR_W - 60, 298, 24, "接着看 →", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text_on(fb, 148, 298, 24, "继续看", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W - 60, 298, 24, "接着看 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
         char title[200];
         snprintf(title, sizeof(title), "%s", s_last_title);
         tr_fit(title, 32, TR_W - 60 - 148);
-        tr_text(fb, 148, 330, 32, title, EPD_DRAW_ALIGN_LEFT, true);
+        tr_text_on(fb, 148, 330, 32, title, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
         const int pct = s_last_pages ? (s_last_page + 1) * 100 / s_last_pages : 0;
         tr_progress(fb, 148, 392, TR_W - 170 - 148, pct);
         snprintf(line, sizeof(line), "%u / %u", (unsigned)s_last_page + 1, (unsigned)s_last_pages);
-        tr_text(fb, TR_W - 60, 378, 26, line, EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text_on(fb, TR_W - 60, 378, 26, line, EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
     }
     for (int k = 0; k < PER_PAGE; k++) {
         const int i = s_page * PER_PAGE + k;
@@ -431,7 +434,9 @@ static void draw_shelf(uint8_t* fb) {
             else snprintf(line, sizeof(line), "单本 · 未看");
         }
         tr_fit(line, 22, CELL_W);
-        tr_text(fb, x, y + 246, 22, line, EPD_DRAW_ALIGN_LEFT, done);
+        // 看完的加粗黑字，其余深灰。/ Finished ones are bold black, the rest dark gray.
+        if (done) tr_text(fb, x, y + 246, 22, line, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(fb, x, y + 246, 22, line, EPD_DRAW_ALIGN_LEFT);
     }
     tr_pager(fb, PAGER_Y, s_page, shelf_pages());
     tr_tab_bar(fb, TR_TAB_COMIC);
@@ -485,12 +490,12 @@ static void draw_series(uint8_t* fb) {
     tr_text(fb, 96, 96, 40, title, EPD_DRAW_ALIGN_LEFT, true);
     char line[96];
     snprintf(line, sizeof(line), "%d 话", s_vol_count);
-    tr_text(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT, false);
-    tr_hline(fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT);
+    tr_hline(fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     draw_cover(fb, (EpdRect){TR_MARGIN, 196, CELL_W, COVER_H}, e->path, e->name, false);
     char path[COMIC_PATH_MAX + COMIC_NAME_MAX];
     snprintf(line, sizeof(line), "共 %d 话 · 看完 %d 话", s_vol_count, s_ser_done);
-    tr_text(fb, 222, 204, 30, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, 222, 204, 30, line, EPD_DRAW_ALIGN_LEFT, true);
     const int resume = s_ser_resume;
     char vol[COMIC_NAME_MAX], text[COMIC_NAME_MAX + 48];
     if (s_vol_count) {
@@ -502,9 +507,9 @@ static void draw_series(uint8_t* fb) {
         utf8_append(text, sizeof(text), vol);
         utf8_append(text, sizeof(text), line);
         tr_fit(text, 28, TR_W - TR_MARGIN - 222);
-        tr_text(fb, 222, 256, 28, text, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_dim(fb, 222, 256, 28, text, EPD_DRAW_ALIGN_LEFT);
     }
-    tr_text(fb, 222, 304, 28, s_ser_dir == 1 ? "翻页：从右往左" : "翻页：从左往右", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, 222, 304, 28, s_ser_dir == 1 ? "翻页：从右往左" : "翻页：从左往右", EPD_DRAW_ALIGN_LEFT);
     if (s_vol_count) {
         text[0] = 0;
         utf8_append(text, sizeof(text), "继续看 ");
@@ -528,7 +533,8 @@ static void draw_series(uint8_t* fb) {
         else snprintf(state, sizeof(state), "%s%u / %u", now ? "在看 " : "", (unsigned)p.page + 1, (unsigned)p.pages);
         tr_fit(vol, 32, TR_W - 2 * TR_MARGIN - 200);
         tr_text(fb, TR_MARGIN, y + 14, 32, vol, EPD_DRAW_ALIGN_LEFT, now);
-        tr_text(fb, TR_W - TR_MARGIN, y + 18, 28, state, EPD_DRAW_ALIGN_RIGHT, now);
+        if (now) tr_text(fb, TR_W - TR_MARGIN, y + 18, 28, state, EPD_DRAW_ALIGN_RIGHT, true);
+        else tr_text_dim(fb, TR_W - TR_MARGIN, y + 18, 28, state, EPD_DRAW_ALIGN_RIGHT);
         tr_hline(fb, y + ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_pager(fb, SERIES_PAGER_Y, s_vol_page, vol_pages());
@@ -794,34 +800,43 @@ static void draw_reader(uint8_t* fb) {
     if (!s_toolbar) return;
     // 工具条：顶部返回和标题，底部页码、进度、按钮。/ Toolbar: back and title on top; pages, progress and buttons below.
     epd_fill_rect((EpdRect){0, 0, TR_W, 120}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, 118, 0, TR_W, false);
+    tr_hline(fb, 118, 0, TR_W, true);
     tr_text(fb, TR_MARGIN, 40, 32, "‹ 漫画", EPD_DRAW_ALIGN_LEFT, false);
     char title[200];
     if (s_vol_index >= 0 && s_series >= 0) snprintf(title, sizeof(title), "%.80s · %.80s", s_shelf[s_series].name, s_book_title);
     else snprintf(title, sizeof(title), "%s", s_book_title);
     tr_fit(title, 34, TR_W - 2 * 170);
     tr_text(fb, TR_W / 2, 38, 34, title, EPD_DRAW_ALIGN_CENTER, true);
+    // Material 3 底部面板：圆角上沿和拖动条。/ Material 3 bottom sheet: rounded top edge and a drag handle.
     epd_fill_rect((EpdRect){0, BAR_TOP, TR_W, TR_H - BAR_TOP}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, BAR_TOP, 0, TR_W, false);
+    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP, TR_W, 120}, 32, TR_GRAY_LINE);
+    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP + 1, TR_W, 120}, 32, TR_GRAY_LINE);
+    epd_fill_rect((EpdRect){2, BAR_TOP + 40, TR_W - 4, 82}, UI_GRAY_WHITE, fb);
+    ui_fill_round_rect(fb, (EpdRect){TR_W / 2 - 36, BAR_TOP + 8, 72, 8}, 4, TR_GRAY_SELECTED);
     snprintf(label, sizeof(label), "第 %d / %d 页", s_cur + 1, s_page_count);
-    tr_text(fb, TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_LEFT);
     if (s_vol_index >= 0) {
         snprintf(label, sizeof(label), "第 %d / %d 话", s_vol_index + 1, s_vol_count);
-        tr_text(fb, TR_W - TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text_dim(fb, TR_W - TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_RIGHT);
     }
     tr_progress(fb, TR_MARGIN, SEEK_Y, TR_W - 2 * TR_MARGIN, s_page_count ? (s_cur + 1) * 100 / s_page_count : 0);
     const int col = (TR_W - 2 * TR_MARGIN) / 3;
     for (int i = 0; i < 3; i++) {
         const int cx = TR_MARGIN + col * i + col / 2;
+        // 每个按钮垫一块浅灰圆角方块。/ Each tool sits on a light gray rounded tile.
+        ui_fill_round_rect(fb, (EpdRect){TR_MARGIN + col * i + 10, TOOL_Y - 12, col - 20, 108}, 24, TR_GRAY_SURFACE);
         if (i == 0) {
-            tr_icon(fb, TR_ICON_TOC, cx, TOOL_Y + 24, false);
-            tr_text(fb, cx, TOOL_Y + 56, 28, s_vol_index >= 0 ? "话列表" : "详情", EPD_DRAW_ALIGN_CENTER, false);
+            tr_icon_on(fb, TR_ICON_TOC, cx, TOOL_Y + 24, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + 56, 28, s_vol_index >= 0 ? "话列表" : "详情", EPD_DRAW_ALIGN_CENTER, false,
+                       UI_GRAY_BLACK, TR_GRAY_SURFACE);
         } else if (i == 1) {
-            tr_text(fb, cx, TOOL_Y + 4, 36, s_rtl ? "⇠" : "⇢", EPD_DRAW_ALIGN_CENTER, true);
-            tr_text(fb, cx, TOOL_Y + 56, 28, s_rtl ? "右→左" : "左→右", EPD_DRAW_ALIGN_CENTER, false);
+            tr_text_on(fb, cx, TOOL_Y + 4, 36, s_rtl ? "⇠" : "⇢", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                       TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + 56, 28, s_rtl ? "右→左" : "左→右", EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK,
+                       TR_GRAY_SURFACE);
         } else {
-            tr_icon(fb, TR_ICON_COMIC, cx, TOOL_Y + 24, false);
-            tr_text(fb, cx, TOOL_Y + 56, 28, "漫画", EPD_DRAW_ALIGN_CENTER, false);
+            tr_icon_on(fb, TR_ICON_COMIC, cx, TOOL_Y + 24, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + 56, 28, "漫画", EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
         }
     }
     auto_turn_draw_row(fb, AUTO_Y, s_auto_level);
@@ -870,10 +885,10 @@ static void draw_detail(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(fb, 96, 100, 36, s_detail_series ? "系列详情" : "漫画详情", EPD_DRAW_ALIGN_LEFT, true);
     tr_wrap(fb, TR_MARGIN, 190, TR_W - 2 * TR_MARGIN, 40, 56, s_detail_name, 3);
-    tr_text(fb, TR_MARGIN, 380, 30, s_detail_info[0], EPD_DRAW_ALIGN_LEFT, false);
-    if (s_detail_info[1][0]) tr_text(fb, TR_MARGIN, 430, 30, s_detail_info[1], EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_MARGIN, 520, 26, s_detail_series ? "删除会删掉这个文件夹里的全部 CBZ。" : "删除只删这一个 CBZ 文件。",
-            EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, 380, 30, s_detail_info[0], EPD_DRAW_ALIGN_LEFT);
+    if (s_detail_info[1][0]) tr_text_dim(fb, TR_MARGIN, 430, 30, s_detail_info[1], EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, 520, 26, s_detail_series ? "删除会删掉这个文件夹里的全部 CBZ。" : "删除只删这一个 CBZ 文件。",
+                EPD_DRAW_ALIGN_LEFT);
     tr_pill(fb, DETAIL_CLEAR, s_detail_series ? "清除这部的全部进度" : "清除进度", false, 32);
     tr_pill(fb, DETAIL_DELETE, s_confirm_delete ? "再点一次确认删除" : "删除", s_confirm_delete, 32);
     if (s_message[0]) tr_text(fb, TR_W / 2, 870, 28, s_message, EPD_DRAW_ALIGN_CENTER, false);

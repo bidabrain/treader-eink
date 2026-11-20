@@ -397,9 +397,10 @@ int ui_draw_header_skel(
         EPD_DRAW_ALIGN_LEFT, false
     );
     if (subtitle != NULL && subtitle[0] != '\0') {
-        ui_text(
-            framebuffer, UI_MARGIN, UI_HEADER_SUB_Y, UI_PX_SUB, subtitle,
-            EPD_DRAW_ALIGN_LEFT, false
+        // 副标题用深灰，和 Material 3 的次要文字一致。/ The subtitle is dark gray, as Material 3 secondary text.
+        ttf_draw_text_px(
+            framebuffer, UI_MARGIN, UI_HEADER_SUB_Y + ttf_ascender_px(UI_PX_SUB), UI_PX_SUB, subtitle,
+            EPD_DRAW_ALIGN_LEFT, UI_GRAY_OUTLINE >> 4, UI_INK_WHITE
         );
     }
     if (skel != NULL && skel->text.width < ui_content_width()) {
@@ -411,7 +412,7 @@ int ui_draw_header_skel(
         });
     }
     ui_hairline(
-        framebuffer, UI_HEADER_RULE_Y, UI_MARGIN, ui_content_width(), UI_GRAY_BLACK
+        framebuffer, UI_HEADER_RULE_Y, UI_MARGIN, ui_content_width(), UI_GRAY_LIGHT
     );
     return UI_CONTENT_TOP;
 }
@@ -507,10 +508,18 @@ int ui_draw_hero(
 void ui_draw_button(
     uint8_t* framebuffer, EpdRect rect, const char* label, bool on
 ) {
-    ui_draw_choice_round_rect(framebuffer, rect, UI_BTN_RADIUS, on);
+    // Material 3：选中是黑底白字的实心按钮，否则是 2 像素深灰描边（DU 下按黑处理，按下态照样画得出）。
+    // Material 3: selected is a filled black button with white text, otherwise a 2 px dark gray outline (black under
+    // DU, so pressed states still draw).
+    if (on) {
+        ui_fill_round_rect(framebuffer, rect, UI_BTN_RADIUS, UI_GRAY_BLACK);
+    } else {
+        ui_draw_round_rect(framebuffer, rect, UI_BTN_RADIUS, UI_GRAY_OUTLINE);
+        ui_draw_round_rect(framebuffer, ui_inset_rect(rect, 1), UI_BTN_RADIUS - 1, UI_GRAY_OUTLINE);
+    }
     ui_text_vc(
         framebuffer, rect.x + rect.width / 2, rect.y + rect.height / 2,
-        UI_PX_BTN, label, EPD_DRAW_ALIGN_CENTER, false
+        UI_PX_BTN, label, EPD_DRAW_ALIGN_CENTER, on
     );
 }
 

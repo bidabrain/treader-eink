@@ -173,7 +173,8 @@ static void draw_networks(uint8_t* fb) {
         const read_pico_transfer_network_t* network = &s_networks[index];
         EpdRect rect = network_control_rect(row);
         if (s_pressed == row) ui_draw_pressed_round_rect(fb, rect, UI_BTN_RADIUS);
-        ui_draw_round_rect(fb, rect, UI_BTN_RADIUS, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, rect, UI_BTN_RADIUS, UI_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(rect, 1), UI_BTN_RADIUS - 1, UI_GRAY_OUTLINE);
         char name[33], detail[64];
         snprintf(name, sizeof(name), "%s", network->ssid);
         fit_label(name, UI_PX_BTN, rect.width - 2 * UI_PAD);

@@ -106,14 +106,17 @@ static void draw_intro(uint8_t* fb) {
         tr_text_inv(fb, TR_MARGIN + 21, y + 6, 24, n, EPD_DRAW_ALIGN_CENTER, true);
         tr_text(fb, TR_MARGIN + 58, y + 2, 28, STEPS[i], EPD_DRAW_ALIGN_LEFT, false);
     }
+    // 注意事项放在浅灰填充卡片里（说明页整页刷新）。/ The notes sit on a light gray filled card (the intro refreshes
+    // as a whole page).
     const EpdRect w = {TR_MARGIN, 580, CW, 210};
-    ui_draw_round_rect(fb, w, 18, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(w, 1), 17, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(w, 2), 16, UI_GRAY_BLACK);
-    tr_text(fb, w.x + 26, w.y + 20, 28, "开始后：", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, w.x + 26, w.y + 62, 28, "· 设备其他功能全部暂停，只显示传输页", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, w.x + 26, w.y + 104, 28, "· 换成内置字体，结束后自动换回", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, w.x + 26, w.y + 146, 28, "· Wi-Fi 和后台加载都会停掉", EPD_DRAW_ALIGN_LEFT, false);
+    ui_fill_round_rect(fb, w, 24, TR_GRAY_SURFACE);
+    tr_text_on(fb, w.x + 26, w.y + 20, 28, "开始后：", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(fb, w.x + 26, w.y + 62, 28, "· 设备其他功能全部暂停，只显示传输页", EPD_DRAW_ALIGN_LEFT, false,
+               UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(fb, w.x + 26, w.y + 104, 28, "· 换成内置字体，结束后自动换回", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
+               TR_GRAY_SURFACE);
+    tr_text_on(fb, w.x + 26, w.y + 146, 28, "· Wi-Fi 和后台加载都会停掉", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
+               TR_GRAY_SURFACE);
     uint64_t free_bytes = 0;
     const bool card = card_ready(&free_bytes);
     char line[200], size[24];
@@ -165,7 +168,7 @@ static void draw_run(uint8_t* fb) {
                       s_st.state == READ_PICO_USB_WAITING ? "用数据线连上电脑，电脑上会出现 U 盘" :
                       s_st.state == READ_PICO_USB_CONNECTED ? "在电脑上打开新出现的 U 盘" :
                       s_power ? "电脑可能在睡眠或省电，等它恢复" : "马上自动结束…";
-    tr_text(fb, TR_W / 2, 430, 28, sub, EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, 430, 28, sub, EPD_DRAW_ALIGN_CENTER);
     (void)gone;
     if (!s_failed) draw_meters(fb);
     tr_wrap(fb, TR_MARGIN, 800, CW, 26, 40,
@@ -176,11 +179,11 @@ static void draw_run(uint8_t* fb) {
 
 static void draw_confirm(uint8_t* fb) {
     draw_run(fb);
+    // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     const EpdRect d = DIALOG_RECT;
     epd_fill_rect(d, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, d, 22, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(d, 1), 21, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(d, 2), 20, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, d, 28, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(d, 1), 27, TR_GRAY_OUTLINE);
     tr_text(fb, TR_W / 2, d.y + 40, 36, "电脑还没弹出 U 盘", EPD_DRAW_ALIGN_CENTER, true);
     tr_wrap(fb, d.x + 36, d.y + 108, d.width - 72, 28, 42, "现在结束，电脑上还没写完的文件可能会坏掉。建议先在电脑上弹出。", 3);
     tr_pill(fb, BACK_BTN, "返回", false, 30);
@@ -189,8 +192,8 @@ static void draw_confirm(uint8_t* fb) {
 
 static void draw_restart(uint8_t* fb) {
     tr_text(fb, TR_W / 2, 470, 44, "正在恢复…", EPD_DRAW_ALIGN_CENTER, true);
-    tr_text(fb, TR_W / 2, 550, 28, "重启后检查 TF 卡、重新扫描书库和漫画", EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, TR_W / 2, 594, 28, "约 5 秒", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, 550, 28, "重启后检查 TF 卡、重新扫描书库和漫画", EPD_DRAW_ALIGN_CENTER);
+    tr_text_dim(fb, TR_W / 2, 594, 28, "约 5 秒", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
