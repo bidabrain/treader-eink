@@ -39,6 +39,15 @@ void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum E
     if (text && text[0]) text_with_weight(fb, x, y_top, px, text, align, bold, true);
 }
 
+void tr_text_on(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold,
+                uint8_t fg, uint8_t bg) {
+    if (!text || !text[0]) return;
+    int old = ttf_get_weight();
+    if (bold) ttf_set_weight(TR_WGHT_BOLD);
+    ttf_draw_text_px(fb, x, y_top + ttf_ascender_px(px), px, text, align, fg >> 4, bg >> 4);
+    if (bold) ttf_set_weight(old);
+}
+
 static size_t u8_len(const char* s) {
     unsigned char c = (unsigned char)*s;
     size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
@@ -222,9 +231,33 @@ static void thick_circle(uint8_t* fb, int cx, int cy, int r, uint8_t c) {
     for (int d = -1; d <= 1; d++) epd_draw_circle(cx, cy, r + d, c, fb);
 }
 
+// 3 像素粗的圆，只画 y < y_max 的点。/ A 3 px circle, plotting only points with y < y_max.
+static void thick_arc_above(uint8_t* fb, int cx, int cy, int r, int y_max, uint8_t c) {
+    for (int rr = r - 1; rr <= r + 1; rr++) {
+        int f = 1 - rr, ddx = 1, ddy = -2 * rr, px = 0, py = rr;
+        for (;;) {
+            const int pts[8][2] = {{px, py}, {-px, py}, {px, -py}, {-px, -py}, {py, px}, {-py, px}, {py, -px}, {-py, -px}};
+            for (int k = 0; k < 8; k++)
+                if (cy + pts[k][1] < y_max) epd_draw_pixel(cx + pts[k][0], cy + pts[k][1], c, fb);
+            if (px >= py) break;
+            if (f >= 0) { py--; ddy += 2; f += ddy; }
+            px++; ddx += 2; f += ddx;
+        }
+    }
+}
+
+// 设计稿图标用 24 格的线条路径画；这里坐标是 24 格的十分之一，换算到 40 像素格。
+// The design's icons are line paths on a 24-unit grid; coordinates here are tenths of that grid, mapped onto 40 px.
+#define G(v) ((v) * 40 / 240)
+static void seg24(uint8_t* fb, int x, int y, int ax, int ay, int bx, int by, uint8_t c) {
+    thick_line(fb, x + G(ax), y + G(ay), x + G(bx), y + G(by), c);
+}
+
 void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
-    const uint8_t c = white ? UI_GRAY_WHITE : UI_GRAY_BLACK;
-    const uint8_t bg = white ? UI_GRAY_BLACK : UI_GRAY_WHITE;
+    tr_icon_on(fb, icon, cx, cy, white ? UI_GRAY_WHITE : UI_GRAY_BLACK, white ? UI_GRAY_BLACK : UI_GRAY_WHITE);
+}
+
+void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t bg) {
     const int x = cx - 20, y = cy - 20;   // 40×40 网格 / 40x40 grid
     switch (icon) {
     case TR_ICON_HOME:
@@ -238,38 +271,45 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 17, y + 24, x + 23, y + 24, c);
         break;
     case TR_ICON_BOOKS:
-        thick_line(fb, x + 7, y + 8, x + 7, y + 33, c);
-        thick_line(fb, x + 13, y + 8, x + 13, y + 33, c);
-        thick_line(fb, x + 19, y + 9, x + 26, y + 33, c);
-        thick_line(fb, x + 27, y + 8, x + 33, y + 33, c);
+        // 书架：三本竖书和一本斜靠的。/ Shelf: three upright books and one leaning.
+        seg24(fb, x, y, 50, 40, 50, 200, c);
+        seg24(fb, x, y, 90, 40, 90, 200, c);
+        seg24(fb, x, y, 130, 40, 130, 200, c);
+        seg24(fb, x, y, 165, 45, 200, 195, c);
         break;
     case TR_ICON_TOMATO:
+        // 番茄：圆果子、两片叶子和果柄。/ Tomato: round fruit, two leaves and a stem.
         thick_circle(fb, cx, y + 22, 12, c);
-        thick_line(fb, x + 14, y + 10, x + 20, y + 14, c);
-        thick_line(fb, x + 26, y + 10, x + 20, y + 14, c);
-        thick_line(fb, x + 20, y + 14, x + 20, y + 7, c);
+        seg24(fb, x, y, 85, 65, 120, 87, c);
+        seg24(fb, x, y, 120, 87, 155, 65, c);
+        seg24(fb, x, y, 120, 87, 120, 35, c);
         break;
     case TR_ICON_BALL:
         // 篮球：圆、横竖两线、两条弧。/ Basketball: circle, cross lines and two curves.
-        thick_circle(fb, cx, cy, 13, c);
-        thick_line(fb, x + 7, cy, x + 33, cy, c);
-        thick_line(fb, cx, y + 7, cx, y + 33, c);
-        thick_line(fb, x + 11, y + 10, x + 15, y + 20, c);
-        thick_line(fb, x + 15, y + 20, x + 11, y + 30, c);
-        thick_line(fb, x + 29, y + 10, x + 25, y + 20, c);
-        thick_line(fb, x + 25, y + 20, x + 29, y + 30, c);
+        thick_circle(fb, cx, cy, 15, c);
+        seg24(fb, x, y, 30, 120, 210, 120, c);
+        seg24(fb, x, y, 120, 30, 120, 210, c);
+        seg24(fb, x, y, 60, 55, 84, 90, c);
+        seg24(fb, x, y, 84, 90, 84, 150, c);
+        seg24(fb, x, y, 84, 150, 60, 185, c);
+        seg24(fb, x, y, 180, 55, 156, 90, c);
+        seg24(fb, x, y, 156, 90, 156, 150, c);
+        seg24(fb, x, y, 156, 150, 180, 185, c);
         break;
     case TR_ICON_SETTINGS:
-        thick_line(fb, x + 7, y + 12, x + 33, y + 12, c);
-        thick_line(fb, x + 7, y + 28, x + 33, y + 28, c);
-        epd_fill_circle(x + 15, y + 12, 5, bg, fb);
-        thick_circle(fb, x + 15, y + 12, 4, c);
-        epd_fill_circle(x + 26, y + 28, 5, bg, fb);
-        thick_circle(fb, x + 26, y + 28, 4, c);
+        // 两根滑杆，各一个圆钮。/ Two sliders, each with a round knob.
+        seg24(fb, x, y, 40, 70, 125, 70, c);
+        seg24(fb, x, y, 175, 70, 200, 70, c);
+        seg24(fb, x, y, 40, 170, 65, 170, c);
+        seg24(fb, x, y, 115, 170, 200, 170, c);
+        epd_fill_circle(x + G(150), y + G(70), 5, bg, fb);
+        thick_circle(fb, x + G(150), y + G(70), 4, c);
+        epd_fill_circle(x + G(90), y + G(170), 5, bg, fb);
+        thick_circle(fb, x + G(90), y + G(170), 4, c);
         break;
     case TR_ICON_SEARCH:
-        thick_circle(fb, x + 17, y + 17, 10, c);
-        thick_line(fb, x + 25, y + 25, x + 34, y + 34, c);
+        thick_circle(fb, x + G(110), y + G(110), 11, c);
+        seg24(fb, x, y, 157, 157, 200, 200, c);
         break;
     case TR_ICON_SYNC:
         thick_circle(fb, cx, cy, 12, c);
@@ -298,23 +338,21 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 20, y + 14, x + 20, y + 26, c);
         break;
     case TR_ICON_COMIC:
-        // 一页分格漫画：外框、横分格、斜分格，上格一个对白气泡。/ A manga page: frame, a horizontal and a slanted
-        // gutter, and a speech bubble in the top panel.
-        for (int d = 0; d < 3; d++) epd_draw_rect((EpdRect){x + 7 + d, y + 5 + d, 26 - 2 * d, 30 - 2 * d}, c, fb);
-        thick_line(fb, x + 7, y + 18, x + 33, y + 18, c);
-        thick_line(fb, x + 22, y + 18, x + 18, y + 34, c);
-        epd_draw_rect((EpdRect){x + 13, y + 8, 13, 5}, c, fb);
-        epd_draw_rect((EpdRect){x + 14, y + 9, 11, 3}, c, fb);
-        epd_draw_line(x + 16, y + 13, x + 14, y + 15, c, fb);
-        epd_draw_line(x + 17, y + 13, x + 15, y + 15, c, fb);
+        // 一页分格漫画：圆角外框、横分格和竖分格。/ A manga page: rounded frame with a horizontal and a vertical gutter.
+        ui_draw_round_rect(fb, (EpdRect){x + 5, y + 5, 30, 30}, 4, c);
+        ui_draw_round_rect(fb, (EpdRect){x + 6, y + 6, 28, 28}, 3, c);
+        ui_draw_round_rect(fb, (EpdRect){x + 7, y + 7, 26, 26}, 2, c);
+        seg24(fb, x, y, 30, 120, 130, 120, c);
+        seg24(fb, x, y, 130, 30, 130, 210, c);
         break;
     case TR_ICON_XHS:
-        // 小红书：圆角卡片里一颗心。/ Xiaohongshu: a heart on a rounded card.
+        // 小红书：圆角卡片上三行字。/ Xiaohongshu: a rounded card with three text lines.
         ui_draw_round_rect(fb, (EpdRect){x + 7, y + 5, 26, 30}, 5, c);
         ui_draw_round_rect(fb, (EpdRect){x + 8, y + 6, 24, 28}, 4, c);
-        epd_fill_circle(x + 16, y + 18, 4, c, fb);
-        epd_fill_circle(x + 24, y + 18, 4, c, fb);
-        epd_fill_triangle(x + 12, y + 20, x + 28, y + 20, x + 20, y + 28, c, fb);
+        ui_draw_round_rect(fb, (EpdRect){x + 9, y + 7, 22, 26}, 3, c);
+        seg24(fb, x, y, 80, 80, 160, 80, c);
+        seg24(fb, x, y, 80, 120, 160, 120, c);
+        seg24(fb, x, y, 80, 160, 130, 160, c);
         break;
     case TR_ICON_FONT:
         // “Aa”：大 A 和小 a 的笔画。/ "Aa": strokes of a large and a small A.
@@ -335,11 +373,12 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         thick_line(fb, x + 9, y + 14, x + 23, y + 14, c);
         break;
     case TR_ICON_WIFI:
-        // 三道弧：画整圆再把下半边涂掉。/ Three arcs: full circles with the lower half painted over.
-        thick_circle(fb, cx, y + 33, 26, c);
-        thick_circle(fb, cx, y + 33, 18, c);
-        thick_circle(fb, cx, y + 33, 10, c);
-        epd_fill_rect((EpdRect){x - 8, y + 24, 56, 24}, bg, fb);
+        // 三道弧：只画圆在 y+24 以上的部分（以前画整圆再涂掉下半边，涂得不够，底下露出两段弧）。
+        // Three arcs: only the parts of the circles above y+24 (painting the lower half over used to leave two
+        // stray arcs showing below).
+        thick_arc_above(fb, cx, y + 33, 26, y + 24, c);
+        thick_arc_above(fb, cx, y + 33, 18, y + 24, c);
+        thick_arc_above(fb, cx, y + 33, 10, y + 24, c);
         epd_fill_rect((EpdRect){x - 8, y - 2, 6, 30}, bg, fb);
         epd_fill_rect((EpdRect){x + 42, y - 2, 6, 30}, bg, fb);
         epd_fill_circle(cx, y + 31, 3, c, fb);
@@ -366,14 +405,16 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         epd_fill_circle(cx, y + 33, 4, c, fb);
         break;
     case TR_ICON_WEIBO:
-        // 微博：对话气泡里一个话题“#”。/ Weibo: a speech bubble holding a topic "#".
-        ui_draw_round_rect(fb, (EpdRect){x + 4, y + 6, 32, 24}, 7, c);
-        ui_draw_round_rect(fb, (EpdRect){x + 5, y + 7, 30, 22}, 6, c);
-        epd_fill_triangle(x + 10, y + 28, x + 19, y + 28, x + 9, y + 36, c, fb);
-        thick_line(fb, x + 17, y + 11, x + 15, y + 25, c);
-        thick_line(fb, x + 25, y + 11, x + 23, y + 25, c);
-        thick_line(fb, x + 12, y + 15, x + 29, y + 15, c);
-        thick_line(fb, x + 11, y + 21, x + 28, y + 21, c);
+        // 微博：带尾巴的对话框里一个话题“#”。/ Weibo: a speech bubble with a tail holding a topic "#".
+        seg24(fb, x, y, 40, 50, 200, 50, c);
+        seg24(fb, x, y, 200, 50, 200, 160, c);
+        seg24(fb, x, y, 200, 160, 100, 160, c);
+        seg24(fb, x, y, 100, 160, 40, 200, c);
+        seg24(fb, x, y, 40, 200, 40, 50, c);
+        seg24(fb, x, y, 100, 75, 90, 135, c);
+        seg24(fb, x, y, 140, 75, 130, 135, c);
+        seg24(fb, x, y, 80, 95, 155, 95, c);
+        seg24(fb, x, y, 75, 115, 150, 115, c);
         break;
     case TR_ICON_X:
         // X：一只简化的小鸟（圆身子、圆头、尖嘴、上扬的翅膀、短尾巴）。/ X: a simple bird (round body and head, a
@@ -400,6 +441,7 @@ void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white) {
         break;
     }
 }
+#undef G
 
 /* ---- 标签栏 / Tab bar ---- */
 
@@ -442,19 +484,26 @@ int tr_tab_count(void) {
 }
 
 void tr_tab_bar(uint8_t* fb, tr_tab_t active) {
-    epd_fill_rect(tr_tab_area(), UI_GRAY_WHITE, fb);
-    tr_hline(fb, TR_TABS_Y, 0, TR_W, false);
+    // Material 3 导航栏：浅灰底，选中的图标垫一块灰胶囊，名字加粗变黑，其余名字深灰。
+    // Material 3 navigation bar: light gray surface; the active icon sits on a gray capsule with a bold black label,
+    // the others have dark gray labels.
+    epd_fill_rect(tr_tab_area(), TR_GRAY_SURFACE, fb);
     tr_tab_t tabs[TR_TAB_MAX];
     const int n = visible_tabs(tabs);
-    // 六个时每格约 114 像素、七个约 98 像素：字和高亮块跟着收。/ Six tabs give ~114 px cells and seven ~98 px: text
-    // and the pill shrink with them.
-    const int px = n >= 7 ? 24 : n >= 6 ? 26 : 28, pill = n >= 7 ? 76 : n >= 6 ? 84 : 92;
+    // 六个时每格约 114 像素、七个约 98 像素：字和选中块跟着收。/ Six tabs give ~114 px cells and seven ~98 px: text
+    // and the indicator shrink with them.
+    const int px = n >= 7 ? 24 : n >= 6 ? 26 : 28, pill = n >= 7 ? 84 : n >= 6 ? 92 : 100;
     for (int i = 0; i < n; i++) {
         int cx = (2 * i + 1) * TR_W / (2 * n);
         bool on = tabs[i] == active;
-        if (on) ui_fill_round_rect(fb, (EpdRect){cx - pill / 2, TAB_ICON_Y - 26, pill, 52}, 26, UI_GRAY_BLACK);
-        tr_icon(fb, TAB_ICONS[tabs[i]], cx, TAB_ICON_Y, on);
-        tr_text(fb, cx, TAB_LABEL_Y, px, TAB_LABELS[tabs[i]], EPD_DRAW_ALIGN_CENTER, on);
+        uint8_t under = TR_GRAY_SURFACE;
+        if (on) {
+            ui_fill_round_rect(fb, (EpdRect){cx - pill / 2, TAB_ICON_Y - 26, pill, 52}, 26, TR_GRAY_SELECTED);
+            under = TR_GRAY_SELECTED;
+        }
+        tr_icon_on(fb, TAB_ICONS[tabs[i]], cx, TAB_ICON_Y, UI_GRAY_BLACK, under);
+        tr_text_on(fb, cx, TAB_LABEL_Y, px, TAB_LABELS[tabs[i]], EPD_DRAW_ALIGN_CENTER, on,
+                   on ? UI_GRAY_BLACK : TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
     }
 }
 
@@ -540,8 +589,11 @@ void tr_progress(uint8_t* fb, int x, int y, int w, int pct) {
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     int done = w * pct / 100;
-    epd_fill_rect((EpdRect){x, y, done, 8}, UI_GRAY_BLACK, fb);
-    for (int dx = done + 4; dx < w; dx += 7) epd_fill_rect((EpdRect){x + dx, y + 3, 2, 2}, UI_GRAY_BLACK, fb);
+    // 轨道是 2 像素深灰细线，DU 下按黑画也不难看；已读部分是圆头黑条。
+    // The track is a 2 px dark gray line that still reads under DU; the read part is a round-capped black bar.
+    if (done < w) epd_fill_rect((EpdRect){x + done, y + 3, w - done, 2}, TR_GRAY_OUTLINE, fb);
+    if (done >= 8) ui_fill_round_rect(fb, (EpdRect){x, y, done, 8}, 4, UI_GRAY_BLACK);
+    else if (done > 0) epd_fill_rect((EpdRect){x, y, done, 8}, UI_GRAY_BLACK, fb);
 }
 
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px) {
@@ -550,24 +602,55 @@ void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px) {
         ui_fill_round_rect(fb, r, radius, UI_GRAY_BLACK);
         tr_text_inv(fb, r.x + r.width / 2, r.y + (r.height - px) / 2 - 2, px, label, EPD_DRAW_ALIGN_CENTER, true);
     } else {
-        ui_draw_round_rect(fb, r, radius, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), radius - 1, UI_GRAY_BLACK);
+        // Material 3 描边按钮：深灰细框（DU 下按黑处理），黑字。/ Material 3 outlined button: a thin dark gray frame
+        // (black under DU) with black text.
+        ui_draw_round_rect(fb, r, radius, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), radius - 1, TR_GRAY_OUTLINE);
         tr_text(fb, r.x + r.width / 2, r.y + (r.height - px) / 2 - 2, px, label, EPD_DRAW_ALIGN_CENTER, false);
     }
 }
 
+// 选中段的勾。/ The check mark on the active segment.
+static void check_mark(uint8_t* fb, int x, int cy, uint8_t c) {
+    thick_line(fb, x, cy, x + 7, cy + 7, c);
+    thick_line(fb, x + 7, cy + 7, x + 20, cy - 7, c);
+}
+
 void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int active) {
     const int radius = r.height / 2, w = r.width / n;
-    ui_draw_round_rect(fb, r, radius, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), radius - 1, UI_GRAY_BLACK);
+    const int ty = r.y + (r.height - 30) / 2 - 2;
+    // 先铺选中段的灰底（两头的段跟着外框的圆角），再画外框和分隔线。
+    // Fill the active segment first (end segments follow the outer rounding), then the frame and dividers.
+    if (active >= 0 && active < n) {
+        EpdRect cell = {r.x + active * w, r.y, active == n - 1 ? r.width - active * w : w, r.height};
+        if (n == 1) {
+            ui_fill_round_rect(fb, r, radius, TR_GRAY_SELECTED);
+        } else if (active == 0) {
+            ui_fill_round_rect(fb, (EpdRect){cell.x, cell.y, cell.width + radius, cell.height}, radius,
+                               TR_GRAY_SELECTED);
+            epd_fill_rect((EpdRect){cell.x + cell.width, cell.y, radius + 1, cell.height}, UI_GRAY_WHITE, fb);
+        } else if (active == n - 1) {
+            ui_fill_round_rect(fb, (EpdRect){cell.x - radius, cell.y, cell.width + radius, cell.height}, radius,
+                               TR_GRAY_SELECTED);
+            epd_fill_rect((EpdRect){cell.x - radius - 1, cell.y, radius + 1, cell.height}, UI_GRAY_WHITE, fb);
+        } else {
+            epd_fill_rect(cell, TR_GRAY_SELECTED, fb);
+        }
+    }
+    ui_draw_round_rect(fb, r, radius, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), radius - 1, TR_GRAY_OUTLINE);
+    for (int i = 1; i < n; i++) epd_fill_rect((EpdRect){r.x + i * w - 1, r.y, 2, r.height}, TR_GRAY_OUTLINE, fb);
     for (int i = 0; i < n; i++) {
         EpdRect cell = {r.x + i * w, r.y, i == n - 1 ? r.width - i * w : w, r.height};
-        const int ty = r.y + (r.height - 30) / 2 - 2;
+        const int mid = cell.x + cell.width / 2;
         if (i == active) {
-            ui_fill_round_rect(fb, cell, radius, UI_GRAY_BLACK);
-            tr_text_inv(fb, cell.x + cell.width / 2, ty, 30, labels[i], EPD_DRAW_ALIGN_CENTER, true);
+            // 勾在字左边，两者一起居中。/ The check sits left of the label; together they are centered.
+            const int tw = ttf_text_width_px(30, labels[i]) + 30;
+            const int left = mid - tw / 2;
+            check_mark(fb, left, r.y + r.height / 2, UI_GRAY_BLACK);
+            tr_text_on(fb, left + 30, ty, 30, labels[i], EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SELECTED);
         } else {
-            tr_text(fb, cell.x + cell.width / 2, ty, 30, labels[i], EPD_DRAW_ALIGN_CENTER, false);
+            tr_text(fb, mid, ty, 30, labels[i], EPD_DRAW_ALIGN_CENTER, false);
         }
     }
 }
@@ -582,9 +665,16 @@ void tr_pager(uint8_t* fb, int y, int page, int pages) {
     if (pages <= 1) return;
     char label[32];
     snprintf(label, sizeof(label), "%d / %d", page + 1, pages);
-    tr_text(fb, TR_W / 2, y, 30, label, EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, TR_W / 2 - 120, y, 30, "‹", EPD_DRAW_ALIGN_CENTER, false);
-    tr_text(fb, TR_W / 2 + 120, y, 30, "›", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text(fb, TR_W / 2, y, 30, label, EPD_DRAW_ALIGN_CENTER, true);
+    // 两侧灰底圆钮里画箭头；位置和以前的“‹ ›”一样，热区不变。
+    // Arrows inside gray round buttons, where "‹ ›" used to be; the hit zones are unchanged.
+    const int cy = y + 17;
+    for (int k = -1; k <= 1; k += 2) {
+        const int cx = TR_W / 2 + k * 120;
+        epd_fill_circle(cx, cy, 34, TR_GRAY_SURFACE, fb);
+        thick_line(fb, cx - 5 * k, cy - 11, cx + 6 * k, cy, UI_GRAY_BLACK);
+        thick_line(fb, cx + 6 * k, cy, cx - 5 * k, cy + 11, UI_GRAY_BLACK);
+    }
 }
 
 int tr_pager_hit(int y, uint16_t x, uint16_t y_touch) {

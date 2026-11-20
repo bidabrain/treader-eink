@@ -2,11 +2,14 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Treader 界面原语：状态栏、底部标签栏、文字封面、虚线进度条、胶囊按钮、线条图标、自动换行。
- * 版式见 docs/design/ui.html。只用黑、白和一级浅灰；图片封面交给 book_cover 画。
+ * Treader 界面原语：状态栏、底部标签栏、文字封面、进度条、胶囊按钮、线条图标、自动换行。
+ * 风格是 Material 3 灰阶，版式见 docs/design/ui.html；灰色只用下面的 TR_GRAY_* 几级。图片封面交给 book_cover 画。
+ * 会被 DU 局部刷新的控件（进度条、按下态、描边按钮）只用 DU 下也能分清的深色，浅灰只做整页刷新的底色。
  *
- * Treader UI primitives: status bar, tab bar, text covers, dotted progress, pills, line icons,
- * wrapped text. Layout follows docs/design/ui.html. Black, white and one light gray only; image covers come from book_cover.
+ * Treader UI primitives: status bar, tab bar, text covers, progress, pills, line icons, wrapped text. The style is
+ * Material 3 in grays, laid out per docs/design/ui.html, using only the TR_GRAY_* levels below; image covers come from
+ * book_cover. Controls that DU area updates touch (progress, pressed states, outlined pills) use only dark tones that
+ * survive DU; light grays are backgrounds for page refreshes.
  *
  * 冻结：纯绘制，不读文件、不碰 I2C；页面在 on_enter/on_tick 里准备数据。
  * Frozen: drawing only, no file or I2C access; pages prepare data in on_enter/on_tick.
@@ -30,6 +33,12 @@ extern "C" {
 #define TR_TITLE_Y 88
 #define TR_TABS_Y 1094
 #define TR_GRAY_LINE 0xC0
+/// Material 3 灰阶：底色、选中、描边与次要文字（8 位，高 4 位是墨水级）。/ Material 3 grays: surface, selected,
+/// outline and secondary text (8-bit; the high nibble is the ink level).
+#define TR_GRAY_SURFACE 0xE0     ///< #EEE 卡片、标签栏、圆按钮底 / Cards, tab bar, round buttons
+#define TR_GRAY_SELECTED 0xC0    ///< #CCC 选中的标签底、分段选中 / Selected tab indicator and segment
+#define TR_GRAY_OUTLINE 0x50     ///< #555 描边（DU 下按黑处理）/ Outlines (black under DU)
+#define TR_GRAY_SECONDARY 0x50   ///< #555 次要文字 / Secondary text
 
 /// 标签的身份（不是位置），也是“隐藏标签”位掩码里的位号；显示的标签平分宽度。
 /// Tab identity, not position, and the bit number in the hidden-tab mask; visible tabs share the width.
@@ -52,6 +61,10 @@ typedef enum {
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.
 void tr_text(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
+/// 画在灰底上的文字：fg、bg 是 8 位灰，抗锯齿边缘向 bg 过渡，不出白边。/ Text on a gray fill: fg and bg are 8-bit
+/// grays and anti-aliased edges blend toward bg, so no white fringe.
+void tr_text_on(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold,
+                uint8_t fg, uint8_t bg);
 /// 白字（画在黑底上）。/ White text for black fills.
 void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
 /// 截断到 max_w 像素并加省略号，按 UTF-8 边界。/ Fit into max_w with an ellipsis on UTF-8 boundaries.
@@ -99,6 +112,8 @@ int tr_tab_hit(uint16_t x, uint16_t y);
 EpdRect tr_tab_area(void);
 
 void tr_icon(uint8_t* fb, tr_icon_t icon, int cx, int cy, bool white);
+/// 画在灰底上的图标：ink 是线条色，bg 是镂空处要补的底色。/ Icon on a gray fill: ink for strokes, bg for cut-outs.
+void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t ink, uint8_t bg);
 
 /// 文字封面：双线框，作者、书名、格式。dark 为黑底白字。/ Text cover: double frame, author, title, format; dark = inverted.
 void tr_cover(uint8_t* fb, EpdRect r, const char* title, const char* author, const char* format, bool dark);
@@ -111,17 +126,19 @@ void tr_book_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, 
 /// 书架行里的小封面版本。/ Small shelf-row variant.
 void tr_book_mini_cover(uint8_t* fb, EpdRect r, const char* path, const char* title, bool done);
 
-/// 进度：已读部分实心，剩余部分点线。/ Progress: solid read part, dotted remainder.
+/// 进度：已读部分是圆头实心条，剩余部分是一条细轨道（DU 下也看得见）。/ Progress: a round-capped solid bar for the read
+/// part on a thin track that stays visible under DU.
 void tr_progress(uint8_t* fb, int x, int y, int w, int pct);
-/// 胶囊按钮。filled 为黑底白字。/ Pill button; filled = black with white text.
+/// 胶囊按钮。filled 为黑底白字，否则深灰描边。/ Pill button; filled = black with white text, else a dark outline.
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px);
 /// 番茄页“书架 / 书城”分段按钮的位置。/ Where the Tomato "shelf / store" segment sits.
 #define TR_SEGMENT_RECT (EpdRect){TR_MARGIN, 160, TR_W - 2 * TR_MARGIN, 64}
-/// 分段按钮，active 那段黑底白字。/ Segmented control; the active segment is filled.
+/// 分段按钮（Material 3）：描边胶囊，选中段灰底加勾、粗体。/ Material 3 segmented button: outlined capsule; the active
+/// segment gets a gray fill, a check mark and bold text.
 void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int active);
 /// 命中的段，未命中返回 -1。/ Hit segment, or -1.
 int tr_segment_hit(EpdRect r, int n, uint16_t x, uint16_t y);
-/// 分页指示“‹ 1 / 5 ›”。/ Pager "‹ 1 / 5 ›".
+/// 分页指示：两侧灰底圆钮，中间“1 / 5”。/ Pager: gray round buttons either side of "1 / 5".
 void tr_pager(uint8_t* fb, int y, int page, int pages);
 /// 分页指示的左右热区。返回 -1 上一页、1 下一页、0 未命中。/ Pager hit: -1 prev, 1 next, 0 none.
 int tr_pager_hit(int y, uint16_t x, uint16_t y_touch);
