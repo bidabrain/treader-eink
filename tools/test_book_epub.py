@@ -43,7 +43,7 @@ def main():
                         '-I' + str(ROOT / 'tools/book_epub_stubs'), '-I' + str(ROOT / 'tools/zip_host_stubs'),
                         '-I' + str(ROOT / 'main/book'), str(ROOT / 'tools/book_epub_host_test.c'),
                         str(ROOT / 'main/book/book_epub.c'), str(ROOT / 'main/book/zip_reader.c'),
-                        str(ROOT / 'main/book/html_text.c'), str(ROOT / 'main/book/book_image.c'), str(ROOT / 'main/book/vendor/tjpgd.c'), str(ROOT / 'tools/book_heap_track.c'), '-lz', '-o', str(exe)], check=True)
+                        str(ROOT / 'main/book/html_text.c'), str(ROOT / 'main/book/book_image.c'), str(ROOT / 'tools/book_epub_stubs/book_jpegdec_host.c'), str(ROOT / 'main/book/vendor/tjpgd.c'), str(ROOT / 'tools/book_heap_track.c'), '-lz', '-o', str(exe)], check=True)
         cases = []
 
         def case(name, edit=None):

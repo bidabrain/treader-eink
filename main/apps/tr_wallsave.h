@@ -14,6 +14,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "tr_ui.h"
+
 /// 一个看图页的工具条状态。/ Toolbar state of one image view.
 typedef struct {
     bool shown;               ///< 工具条开着 / Toolbar open
@@ -22,8 +24,9 @@ typedef struct {
     int64_t until_ms;         ///< 提示框到这个时间消失 / Notice disappears at this time
 } tr_wallsave_t;
 
-/// 工具条顶边；看图页在它下面画自己的底栏。/ Toolbar top edge; the image view draws its own band below it.
-#define TR_WALLSAVE_TOP 936
+/// 工具条顶边；看图页在它下面画自己的底栏（TR_S(96) 高）。随显示大小变，正常档 936。/ Toolbar top edge; the image
+/// view draws its own band (TR_S(96) tall) below it. Moves with the display size; 936 at the normal size.
+#define TR_WALLSAVE_TOP (TR_H - TR_S(96) - TR_S(184))
 
 /// 画工具条（开着时）和提示框（没过期时）；在看图页最后调用。/ Draw the toolbar (when open) and the notice (when
 /// active); call last in the image view.

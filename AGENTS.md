@@ -33,7 +33,7 @@ idf.py build
 | `main/app/app_loop.c` | 与页面无关的事件循环：触摸去抖、三键与菜单把手（KEY3 / 把手打开“全部”页）、切页、刷屏、锁屏、SD 字体延迟加载。/ Shared event loop; KEY3 and the handle open the All page. |
 | `main/app/app_registry.c` | 只剩开机首页和自检页两个入口；功能列表在 `tr_ui` 的 `tr_tab_t`，切页映射在 `tr_nav.c`。/ Only the boot and self-test entries; features are `tr_tab_t` in `tr_ui`, mapped to pages in `tr_nav.c`. |
 | `main/app/app_config.h` | 均衡 / ALL_DU 刷新档位。/ Refresh profile. |
-| `main/ui/` | `ui_kit` 排版常量与绘制原语；`tr_ui` 新风格控件与底部标签栏；`ui_menu` 只剩菜单把手和屏下三键区。页面互不引用。/ Shared drawing, the tab bar, and the handle / key strip; pages do not include each other. |
+| `main/ui/` | `ui_scale.h` 显示大小（`UI_S`/`TR_S`）；`ui_kit` 排版常量与绘制原语；`tr_ui` 新风格控件与底部标签栏；`ui_menu` 只剩菜单把手和屏下三键区。页面互不引用。/ Shared drawing, the tab bar, and the handle / key strip; pages do not include each other. |
 | `main/font/` | stb_truetype 字形缓存。`fallback.h` 是生成位图，勿手改。/ Glyph cache. Do not edit `fallback.h` by hand. |
 | `main/factory/` | 设备功能自检与出厂 VCOM 标定。/ Device self-test and factory VCOM. |
 | `main/display.*` `sleep.*` `settings.*` | 刷屏封装、睡眠/锁屏、NVS 设置。/ Present helpers, sleep/lock, NVS. |
@@ -120,6 +120,7 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 - `on_enter()`：上电、唤醒传感器、拉一次数据。/ Power-up and first sample.
 - `on_media_lost()` 可选：主循环检测已挂载卡失效时调用，先停止文件/后台消费者，不画屏、不重挂载；返回后主循环回退字体并重绘。/ Optional mounted-media-loss callback: stop file/background consumers without drawing or remounting; the loop then falls back fonts and redraws.
 - `on_exit()`：掉电、停传感器。/ Power-down.
+- `on_lock()` 可选：每次锁屏前调用（浅睡也调），只存进度这类收尾，不画屏、不切页。/ Optional: before every lock (light sleep too); only wind-down such as saving progress, no drawing or page switch.
 - `present()`：自定义推屏。返回 true 表示已经刷过，主循环不再推。/ Custom present; true means done.
 - `on_touch()` / `on_gesture()` / `on_key()` / `on_tick()`：可有副作用，用返回值要刷屏。/ Side effects OK; return the redraw.
 - `on_key_long()` 可选：仅接管三键的页面在同键单指保持500ms后触发一次，原按下动作先执行；滑出、多点、读错、睡眠、字体重载或切页取消。/ Optional owned-key hold callback fires once at 500ms after the normal press; leaving, multitouch, read errors, sleep, font reload and page switches cancel.
@@ -131,6 +132,7 @@ Defined in [`main/app/app.h`](main/app/app.h). The loop presents via `app_presen
 - `holds_pmu`：长时间独占 PMU（自检）。主循环的锁屏按键轮询让路。/ Page owns the PMU; lock-key poll yields.
 - `owns_keys`：接管三键；菜单把手仍归主循环。/ Own all three keys; the handle stays with the loop.
 - `enter_full`：进页走 `APP_REDRAW_FULL`，避免差分刷留边。/ Enter with a full refresh.
+- `fixed_scale`：不跟显示大小，始终按 100% 画（出厂、演示页）。/ Ignore the display size and draw at 100% (factory and demo pages).
 
 `app_ctx_t.request_app` 非空时，主循环在本轮末尾切页；`request_menu` 请求打开“全部”页。同时设置时切页优先。/ At tick end, `request_app` switches pages and `request_menu` opens the All page; a page request takes priority.
 
@@ -169,6 +171,7 @@ A `冻结 / Frozen:` block is a decision, not a hint. Change the behavior only a
 - 不要改 `components/epdiy/**` 来“整理注释”。/ Do not touch `components/epdiy/**` for comment cleanup.
 - 不要手改 `main/font/fallback.h`、`main/font/stb_truetype.h`、`components/e0470_epaper_waveform/waveforms/*.h`。/ Do not hand-edit generated or vendored tables.
 - 不改 UI 字面量或日志字符串，除非任务明确要求。/ Do not change UI strings or log text unless asked.
+- 界面长度（字号、行高、间距、图标、按钮）一律经 `TR_S()` / `UI_S()` 随显示大小放大，左右边距和细线除外；改页面后用 `tools/page_render`（`run.sh` 画三档并检查，`compare.sh` 确认 100% 逐像素不变）。/ UI lengths (font sizes, row heights, gaps, icons, buttons) go through `TR_S()` / `UI_S()` so they follow the display size, except side margins and hairlines; after changing a page, run `tools/page_render` (`run.sh` draws and checks three sizes, `compare.sh` proves 100% is pixel-identical).
 
 ## 注释规范 / Comment style
 

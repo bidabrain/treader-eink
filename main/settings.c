@@ -36,8 +36,10 @@
 #define NVS_KEY_BOOK_AUTO "bk_auto"
 #define NVS_KEY_COMIC_AUTO "cm_auto"
 #define NVS_KEY_LOCK_IDLE "lock_idle"
+#define NVS_KEY_DISPLAY "disp_size"   // 显示大小档位 / Display size level
 #define NVS_KEY_TIME_AUTO "time_auto"
 #define NVS_KEY_TZ "tz"
+#define NVS_KEY_PIN_FAILS "pin_fails" // 连续输错次数 / Consecutive wrong PIN tries
 #define NVS_KEY_PIN "pin_hash"      // 8 字节盐 + 32 字节 SHA-256 / 8-byte salt + 32-byte SHA-256
 #define PIN_SALT_LEN 8
 #define PIN_HASH_LEN 32
@@ -60,6 +62,8 @@ static uint8_t s_pins[TR_TAB_MAX];
 static int s_pin_n = -1;
 static uint8_t s_book_auto, s_comic_auto;
 static uint8_t s_lock_idle = 1;
+static uint8_t s_display;
+static uint8_t s_pin_fails;
 static bool s_time_auto = true;
 static uint8_t s_tz;
 static bool s_pin_on;
@@ -153,6 +157,10 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_LOCK_IDLE, &lock_idle) == ESP_OK && lock_idle < APP_LOCK_IDLE_LEVELS) {
         s_lock_idle = lock_idle;
     }
+    uint8_t pin_fails = 0;
+    if (nvs_get_u8(h, NVS_KEY_PIN_FAILS, &pin_fails) == ESP_OK) s_pin_fails = pin_fails;
+    uint8_t display = 0;
+    if (nvs_get_u8(h, NVS_KEY_DISPLAY, &display) == ESP_OK && display < APP_DISPLAY_SIZES) s_display = display;
     uint8_t time_auto = 1, tz = 0;
     if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
     if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
@@ -165,14 +173,6 @@ void app_settings_init(void) {
         pins_blob[0] <= TR_TAB_MAX && pins_len >= 1u + pins_blob[0]) {
         s_pin_n = pins_blob[0];
         for (int i = 0; i < s_pin_n; i++) s_pins[i] = pins_blob[1 + i];
-    } else {
-        // 没存过：旧版底部显示的标签（书库、设置除外）按原顺序放到底部，隐藏的不放。
-        // Never saved: pin the tabs the old bar showed (minus the library and settings) in order; hidden ones stay out.
-        s_pin_n = 0;
-        for (int t = 0; t < TR_TAB_MAX; t++) {
-            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || (s_tabs_off & (1u << t))) continue;
-            s_pins[s_pin_n++] = (uint8_t)t;
-        }
     }
     nvs_close(h);
     if (migrate_x) {
@@ -293,7 +293,18 @@ uint8_t app_settings_hidden_tabs(void) {
 }
 
 int app_settings_tab_pins(uint8_t out[8]) {
-    const int n = s_pin_n > 0 ? s_pin_n : 0;
+    // 没存过（包括新机 NVS 里还没有本命名空间、读设置提前返回时）：旧版底部显示的标签（书库、设置除外）按原顺序
+    // 放到底部，隐藏的不放。
+    // Never saved (including a fresh device whose NVS namespace does not exist yet, where loading returns early):
+    // pin the tabs the old bar showed (minus the library and settings) in order; hidden ones stay out.
+    if (s_pin_n < 0) {
+        s_pin_n = 0;
+        for (int t = 0; t < TR_TAB_MAX; t++) {
+            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || (s_tabs_off & (1u << t))) continue;
+            s_pins[s_pin_n++] = (uint8_t)t;
+        }
+    }
+    const int n = s_pin_n;
     for (int i = 0; i < n; i++) out[i] = s_pins[i];
     return n;
 }
@@ -339,6 +350,25 @@ void app_settings_set_book_shake(bool on) {
     if (s_book_shake == on) return;
     s_book_shake = on;
     nvs_put_u8(NVS_KEY_BOOK_SHAKE, on ? 1 : 0);
+}
+
+/* ---- 显示大小 / Display size ---- */
+
+static const int DISPLAY_PCT[APP_DISPLAY_SIZES] = {100, 115, 130};
+static const char* const DISPLAY_LABEL[APP_DISPLAY_SIZES] = {"正常", "大", "特大"};
+
+uint8_t app_settings_display_size(void) { return s_display; }
+
+void app_settings_set_display_size(uint8_t level) {
+    if (level >= APP_DISPLAY_SIZES || level == s_display) return;
+    s_display = level;
+    nvs_put_u8(NVS_KEY_DISPLAY, level);
+}
+
+int app_settings_display_pct(void) { return DISPLAY_PCT[s_display]; }
+
+const char* app_settings_display_label(uint8_t level) {
+    return level < APP_DISPLAY_SIZES ? DISPLAY_LABEL[level] : "";
 }
 
 /* ---- 自动锁屏 / Idle lock ---- */
@@ -419,6 +449,14 @@ esp_err_t app_settings_pin_set(const char* pin) {
     nvs_close(h);
     if (err == ESP_OK) { memcpy(s_pin, rec, sizeof(rec)); s_pin_on = true; }
     return err;
+}
+
+uint8_t app_settings_pin_fails(void) { return s_pin_fails; }
+
+void app_settings_set_pin_fails(uint8_t fails) {
+    if (fails == s_pin_fails) return;
+    s_pin_fails = fails;
+    nvs_put_u8(NVS_KEY_PIN_FAILS, fails);
 }
 
 /* ---- 时间与时区 / Time and zone ---- */

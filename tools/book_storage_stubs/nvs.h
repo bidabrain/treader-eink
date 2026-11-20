@@ -16,3 +16,11 @@ esp_err_t nvs_erase_key(nvs_handle_t, const char*);
 esp_err_t nvs_commit(nvs_handle_t);
 esp_err_t nvs_get_u32(nvs_handle_t, const char*, uint32_t*);
 esp_err_t nvs_set_u32(nvs_handle_t, const char*, uint32_t);
+// 键遍历（书库“最近读过”用）。/ Key iteration (used by the library's recent list).
+typedef enum { NVS_TYPE_BLOB = 0x42, NVS_TYPE_ANY = 0xff } nvs_type_t;
+typedef struct { char namespace_name[16]; char key[16]; nvs_type_t type; } nvs_entry_info_t;
+typedef struct nvs_host_iter* nvs_iterator_t;
+esp_err_t nvs_entry_find_in_handle(nvs_handle_t, nvs_type_t, nvs_iterator_t*);
+esp_err_t nvs_entry_next(nvs_iterator_t*);
+esp_err_t nvs_entry_info(nvs_iterator_t, nvs_entry_info_t*);
+void nvs_release_iterator(nvs_iterator_t);

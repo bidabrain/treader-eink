@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include "epdiy.h"
+#include "ui_scale.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,10 +29,12 @@ extern "C" {
 
 #define TR_W 684
 #define TR_H 1216
-#define TR_MARGIN 40
-#define TR_STATUS_Y 22
-#define TR_TITLE_Y 88
-#define TR_TABS_Y 1094
+#define TR_MARGIN 40   // 页边距不随显示大小放大 / Side margins do not scale
+/// 按显示大小换算长度，见 ui_scale.h。/ Scale a length by the display size; see ui_scale.h.
+#define TR_S(v) UI_S(v)
+#define TR_STATUS_Y TR_S(22)
+#define TR_TITLE_Y TR_S(88)
+#define TR_TABS_Y (TR_H - TR_S(122))
 #define TR_GRAY_LINE 0xC0
 /// Material 3 灰阶：底色、选中、描边与次要文字（8 位，高 4 位是墨水级）。/ Material 3 grays: surface, selected,
 /// outline and secondary text (8-bit; the high nibble is the ink level).
@@ -98,7 +101,8 @@ void tr_title(uint8_t* fb, const char* title);
 /// Tell this file which features are hidden and which are pinned after the library, in order. Callers set it at boot
 /// and on change; this file never reads settings.
 void tr_tabs_configure(uint8_t hidden, const uint8_t* pins, int n);
-/// 底部一共几格（含书库和“全部”）。/ Bar cells in total, the library and "All" included.
+/// 底部一共几格（含书库和“全部”）：正常 6、大 5、特大 4。/ Bar cells in total, the library and "All" included:
+/// 6 normal, 5 large, 4 largest.
 int tr_tab_slots(void);
 /// 底部实际显示的功能（书库加放得下的常用，不含“全部”），按位置顺序；返回个数。/ Features actually in the bar
 /// (the library plus the pins that fit, "All" excluded), in position order; returns the count.
@@ -144,7 +148,7 @@ int tr_badge(uint8_t* fb, int right, int y, const char* label, bool filled, int 
 /// 胶囊按钮。filled 为黑底白字，否则深灰描边。/ Pill button; filled = black with white text, else a dark outline.
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px);
 /// 番茄页“书架 / 书城”分段按钮的位置。/ Where the Tomato "shelf / store" segment sits.
-#define TR_SEGMENT_RECT (EpdRect){TR_MARGIN, 160, TR_W - 2 * TR_MARGIN, 64}
+#define TR_SEGMENT_RECT (EpdRect){TR_MARGIN, TR_S(160), TR_W - 2 * TR_MARGIN, TR_S(64)}
 /// 分段按钮（Material 3）：描边胶囊，选中段灰底加勾、粗体。/ Material 3 segmented button: outlined capsule; the active
 /// segment gets a gray fill, a check mark and bold text.
 void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int active);

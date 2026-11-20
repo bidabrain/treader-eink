@@ -92,44 +92,48 @@ int main(void) {
     int n = -1;
     assert(!book_store_flash_ready());
     assert(book_store_roots(NULL, &n) == ESP_ERR_INVALID_ARG);
-    mount_error = ESP_FAIL;
-    assert(book_store_roots(roots, &n) == ESP_FAIL && n == 0);
-    assert(book_store_roots_degraded());
+    // 96c67df 起不再有内置 flash 书架：没卡就没有书架，也不传书，更不会去挂 flash。
+    // Since 96c67df there is no built-in flash shelf: no card means no shelf and no upload, and flash is never mounted.
+    assert(book_store_roots(roots, &n) == ESP_ERR_NOT_FOUND && n == 0 && !book_store_roots_degraded());
+    assert(book_store_upload_root(&upload) == ESP_ERR_NOT_FOUND && !upload.path[0]);
+    // 卡在但挂载失效：书架标成降级，传书要求先重新挂载。/ Card present but invalid: the shelf is degraded and
+    // uploads ask for a remount first.
+    sd_invalid_present = true;
+    assert(book_store_roots(roots, &n) == ESP_ERR_NOT_FOUND && n == 0 && book_store_roots_degraded());
+    assert(book_store_upload_root(&upload) == ESP_ERR_INVALID_STATE && !upload.path[0]);
+    sd_invalid_present = false;
+    // 有卡：只有卡上的 books/。/ With a card: only the card's books/.
     sd_mounted = true;
     assert(book_store_roots(roots, &n) == ESP_OK && n == 1 && !roots[0].is_flash);
-    assert(book_store_roots_degraded());
+    assert(!strcmp(roots[0].path, "/sdcard/books") && !book_store_roots_degraded());
     assert(book_store_upload_root(&upload) == ESP_OK && !upload.is_flash);
-    mount_error = 0;
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 2);
-    assert(!book_store_roots_degraded());
-    assert(!roots[0].is_flash && roots[1].is_flash && book_store_flash_ready());
-    int calls = mount_calls;
-    assert(book_store_roots(roots, &n) == ESP_OK && mount_calls == calls);
+    assert(!mount_calls && !book_store_flash_ready());
+    // 卡上建不了目录：没有书架、标成降级；目录已存在算成功；同名的是文件则失败。
+    // The card directory cannot be made: no shelf, degraded; an existing directory is fine; a file of that name fails.
     sd_mkdir_error = EACCES;
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 1 && roots[0].is_flash && book_store_roots_degraded());
+    assert(book_store_roots(roots, &n) == ESP_ERR_NOT_FOUND && n == 0 && book_store_roots_degraded());
+    assert(book_store_upload_root(&upload) != ESP_OK);
     sd_mkdir_error = 0;
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 2 && !book_store_roots_degraded());
-    assert(book_store_file_limit(&roots[0]) == SIZE_MAX);
-    assert(book_store_file_limit(&roots[1]) == 1024 * 1024);
-    assert(book_store_free_bytes(&roots[1]) == 1234);
-    fat_error = ESP_FAIL; assert(book_store_free_bytes(&roots[0]) == 0);
     mkdir_error = EEXIST;
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 2);
+    assert(book_store_roots(roots, &n) == ESP_OK && n == 1 && !book_store_roots_degraded());
     is_directory = 0;
-    assert(book_store_roots(roots, &n) == ESP_FAIL && n == 0);
+    assert(book_store_roots(roots, &n) == ESP_ERR_NOT_FOUND && n == 0 && book_store_roots_degraded());
     assert(book_store_upload_root(&upload) == ESP_FAIL);
-    mkdir_error = EACCES;
-    assert(book_store_upload_root(&upload) == ESP_FAIL);
-    mkdir_error = 0; sd_mounted = false;
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 1 && roots[0].is_flash);
-    assert(!book_store_roots_degraded());
-    assert(book_store_upload_root(&upload) == ESP_OK && upload.is_flash);
-    sd_invalid_present = true;
-    assert(book_store_upload_root(&upload) == ESP_ERR_INVALID_STATE && !upload.path[0]);
-    assert(book_store_roots(roots, &n) == ESP_OK && n == 1 && book_store_roots_degraded());
+    mkdir_error = 0; is_directory = 1;
+    assert(book_store_roots(roots, &n) == ESP_OK && n == 1);
+    // 容量：卡上不限单个文件，内置目录（旧书）仍按 1 MB 算；读不到容量按 0。
+    // Capacity: no per-file limit on the card, the old flash directory still counts 1 MB; unreadable capacity is 0.
+    const book_store_root_t flash_books = {.path = "/flash/books", .is_flash = true};
+    assert(book_store_file_limit(&roots[0]) == SIZE_MAX);
+    assert(book_store_file_limit(&flash_books) == 1024 * 1024);
+    assert(book_store_free_bytes(&roots[0]) == 1234);
+    fat_error = ESP_FAIL; assert(book_store_free_bytes(&roots[0]) == 0); fat_error = 0;
+    sd_mounted = false;
     book_store_root_t removed_root = {.path = "/sdcard/books", .is_flash = false};
     assert(book_store_free_bytes(&removed_root) == 0);
-    sd_invalid_present = false;
+    // 删除测试里还要删内置目录里的旧书：当作 flash 已挂好。/ The delete checks also remove old books from the flash
+    // directory: treat flash as mounted.
+    s_wl = 1;
     // 取消由调用方不调用删除实现；以下计数从零开始。/ Cancellation is represented by no delete call; counters start at zero.
     assert(!unlinks && !forgets);
     sd_mounted = true; is_directory = 1;
@@ -193,6 +197,6 @@ int main(void) {
     assert(book_store_delete("/flash/books/同名.epub", &removed) == ESP_ERR_INVALID_STATE && !removed);
     assert(book_store_delete(NULL, &removed) == ESP_ERR_INVALID_ARG && !removed);
     assert(book_store_delete(path, NULL) == ESP_ERR_INVALID_ARG);
-    puts("book store: mount fallback, precedence, capacity, lazy init and directory errors passed");
+    puts("book store: card-only roots, degraded media, upload target, capacity and directory errors passed");
     puts("book delete: path bounds, symlinks, unlink failure, partial cleanup, retry and root isolation passed");
 }

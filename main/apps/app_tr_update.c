@@ -55,12 +55,15 @@
 #define CHUNKS_PER_TICK 8
 #define MERGED_APP_OFFSET 0x10000
 #define MIN_BATTERY 30
-#define ONLINE_Y 466
-#define TF_TITLE_Y 646
-#define LIST_TOP 700
-#define ROW_H 120
-#define BTN_Y 980
-#define BTN_H 84
+// 长度随显示大小放大。按钮行不低于屏幕下沿；放大后 TF 卡文件行收紧一点，多放一行。/ Lengths scale with the display
+// size. The button row never goes past the screen bottom; at larger sizes TF file rows are a little tighter so one
+// more fits.
+#define ONLINE_Y TR_S(466)
+#define TF_TITLE_Y TR_S(646)
+#define LIST_TOP TR_S(700)
+#define ROW_H (ui_scale_pct == 100 ? 120 : TR_S(108))
+#define BTN_H TR_S(84)
+#define BTN_Y (TR_S(980) < TR_H - BTN_H - TR_S(40) ? TR_S(980) : TR_H - BTN_H - TR_S(40))
 #define SHA_KEEP 8   // NVS 里记升级包 ELF 摘要的前几个字节 / Leading ELF digest bytes kept in NVS
 #define OTA_NVS_NS "tr_ota"
 
@@ -81,7 +84,22 @@ typedef struct {
     const char* problem;   // 非空就不能用 / Unusable when set
 } fw_file_t;
 
-static const EpdRect ONLINE_BTN = {TR_W - TR_MARGIN - 250, ONLINE_Y - 6, 250, 72};
+#define ONLINE_BTN ((EpdRect){TR_W - TR_MARGIN - TR_S(250), ONLINE_Y - TR_S(6), TR_S(250), TR_S(72)})
+
+// 两个并排按钮的宽：放大后不超过半行。/ Width of the two side-by-side buttons: at larger sizes at most half a row.
+static int btn_w(void) {
+    const int half = (TR_W - 2 * TR_MARGIN - TR_S(24)) / 2;
+    return TR_S(290) < half ? TR_S(290) : half;
+}
+
+static void draw_buttons(uint8_t* fb, const char* right) {
+    const int w = btn_w();
+    tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, w, BTN_H}, "取消", false, TR_S(32));
+    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - w, BTN_Y, w, BTN_H}, right, true, TR_S(32));
+}
+
+// 第 i 个文件行是否完整在屏幕里。/ Whether file row i fits on screen.
+static bool row_fits(int i) { return LIST_TOP + (i + 1) * ROW_H <= TR_H - 20; }
 
 static view_t s_view;
 static fw_file_t* s_files;   // PSRAM
@@ -481,18 +499,18 @@ void tr_update_boot_cleanup(void) {
 /* ---- 绘制 / Drawing ---- */
 
 static void info_row(uint8_t* fb, int y, const char* label, const char* value) {
-    tr_text(fb, TR_MARGIN, y, 30, label, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, y, TR_S(30), label, EPD_DRAW_ALIGN_LEFT, false);
     char v[96];
     snprintf(v, sizeof(v), "%s", value);
-    tr_fit(v, 28, TR_W - 2 * TR_MARGIN - 170);
-    tr_text(fb, TR_W - TR_MARGIN, y + 2, 28, v, EPD_DRAW_ALIGN_RIGHT, false);
-    tr_hline(fb, y + 54, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_fit(v, TR_S(28), TR_W - 2 * TR_MARGIN - TR_S(170));
+    tr_text(fb, TR_W - TR_MARGIN, y + TR_S(2), TR_S(28), v, EPD_DRAW_ALIGN_RIGHT, false);
+    tr_hline(fb, y + TR_S(54), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 }
 
 static void draw_header(uint8_t* fb, bool back) {
     tr_status_bar(fb);
-    if (back) tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, "系统升级", EPD_DRAW_ALIGN_LEFT, true);
+    if (back) tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(100), TR_S(36), "系统升级", EPD_DRAW_ALIGN_LEFT, true);
 }
 
 static const char* online_button(void) {
@@ -507,9 +525,9 @@ static const char* online_button(void) {
 }
 
 static void draw_online(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, ONLINE_Y + 4, 32, "在线升级", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, ONLINE_Y + TR_S(4), TR_S(32), "在线升级", EPD_DRAW_ALIGN_LEFT, true);
     const char* button = online_button();
-    if (button) tr_pill(fb, ONLINE_BTN, button, s_on == O_AVAILABLE, 28);
+    if (button) tr_pill(fb, ONLINE_BTN, button, s_on == O_AVAILABLE, TR_S(28));
     char line[128];
     const char* note = NULL;
     switch (s_on) {
@@ -530,20 +548,20 @@ static void draw_online(uint8_t* fb) {
         if (s_dl_phase == TOMATO_CONNECTING) { snprintf(line, sizeof(line), "连接 Wi-Fi…"); break; }
         const int pct = s_dl_total ? (int)((uint64_t)s_dl_done * 100 / s_dl_total) : 0;
         snprintf(line, sizeof(line), "下载中 %d%% · %.1f / %.1f MB", pct, s_dl_done / 1048576.0, s_dl_total / 1048576.0);
-        tr_progress(fb, TR_MARGIN, ONLINE_Y + 104, TR_W - 2 * TR_MARGIN, pct);
+        tr_progress(fb, TR_MARGIN, ONLINE_Y + TR_S(104), TR_W - 2 * TR_MARGIN, pct);
         break;
     }
     case O_FAILED: snprintf(line, sizeof(line), "%s", s_on_msg); break;
     }
-    tr_fit(line, 26, TR_W - 2 * TR_MARGIN);
-    tr_text(fb, TR_MARGIN, ONLINE_Y + 62, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_fit(line, TR_S(26), TR_W - 2 * TR_MARGIN);
+    tr_text(fb, TR_MARGIN, ONLINE_Y + TR_S(62), TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
     if (note) {
         char n[128];
         snprintf(n, sizeof(n), "%s", note);
-        tr_fit(n, 24, TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, ONLINE_Y + 106, 24, n, EPD_DRAW_ALIGN_LEFT, false);
+        tr_fit(n, TR_S(24), TR_W - 2 * TR_MARGIN);
+        tr_text(fb, TR_MARGIN, ONLINE_Y + TR_S(106), TR_S(24), n, EPD_DRAW_ALIGN_LEFT, false);
     }
-    tr_hline(fb, TF_TITLE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_hline(fb, TF_TITLE_Y - TR_S(20), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 }
 
 static void draw_list(uint8_t* fb) {
@@ -552,39 +570,39 @@ static void draw_list(uint8_t* fb) {
     const esp_partition_t* running = esp_ota_get_running_partition();
     char line[96];
     snprintf(line, sizeof(line), "%s（%s %s）", app->version, app->date, app->time);
-    info_row(fb, 190, "当前版本", line);
-    info_row(fb, 266, "运行位置", running ? running->label : "—");
+    info_row(fb, TR_S(190), "当前版本", line);
+    info_row(fb, TR_S(266), "运行位置", running ? running->label : "—");
     int pct;
     bool ok = battery_ok(&pct);
     if (pct >= 0) snprintf(line, sizeof(line), "%d%%%s", pct, ok ? "" : " · 低于 30%，请先充电");
     else snprintf(line, sizeof(line), "未知");
-    info_row(fb, 342, "电量", line);
-    if (s_msg[0]) tr_text(fb, TR_MARGIN, 410, 28, s_msg, EPD_DRAW_ALIGN_LEFT, true);
+    info_row(fb, TR_S(342), "电量", line);
+    if (s_msg[0]) tr_text(fb, TR_MARGIN, TR_S(410), TR_S(28), s_msg, EPD_DRAW_ALIGN_LEFT, true);
     draw_online(fb);
-    tr_text(fb, TR_MARGIN, TF_TITLE_Y, 32, "TF 卡升级", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, TF_TITLE_Y, TR_S(32), "TF 卡升级", EPD_DRAW_ALIGN_LEFT, true);
     if (!s_target) {
-        tr_wrap(fb, TR_MARGIN, LIST_TOP, TR_W - 2 * TR_MARGIN, 30, 46,
+        tr_wrap(fb, TR_MARGIN, LIST_TOP, TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 "当前分区表不支持 TF 卡升级。请先用电脑或网页刷机做一次“完整安装”。", 3);
         return;
     }
     if (!s_count) {
-        tr_wrap(fb, TR_MARGIN, LIST_TOP, TR_W - 2 * TR_MARGIN, 30, 46,
+        tr_wrap(fb, TR_MARGIN, LIST_TOP, TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 "把编译出的 Read_Pico.bin（或 treader-full.bin）放进 TF 卡的 update 文件夹，再回到这里。", 4);
         return;
     }
     for (int i = 0; i < s_count; i++) {
         const fw_file_t* fw = &s_files[i];
         const int y = LIST_TOP + i * ROW_H;
-        if (y + ROW_H > TR_H - 20) break;
+        if (!row_fits(i)) break;
         snprintf(line, sizeof(line), "%s", fw->name);
-        tr_fit(line, 32, TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, y + 12, 32, line, EPD_DRAW_ALIGN_LEFT, !fw->problem);
+        tr_fit(line, TR_S(32), TR_W - 2 * TR_MARGIN);
+        tr_text(fb, TR_MARGIN, y + TR_S(12), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, !fw->problem);
         if (fw->problem) snprintf(line, sizeof(line), "%s", fw->problem);
         else snprintf(line, sizeof(line), "版本 %s · %s · %.1f MB%s", fw->version, fw->date, fw->app_size / 1048576.0,
                       strcmp(fw->version, app->version) ? "" : " · 与当前相同");
-        tr_fit(line, 26, TR_W - 2 * TR_MARGIN);
-        if (fw->problem) tr_text(fb, TR_MARGIN, y + 60, 26, line, EPD_DRAW_ALIGN_LEFT, false);
-        else tr_text_dim(fb, TR_MARGIN, y + 60, 26, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(26), TR_W - 2 * TR_MARGIN);
+        if (fw->problem) tr_text(fb, TR_MARGIN, y + TR_S(60), TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
+        else tr_text_dim(fb, TR_MARGIN, y + TR_S(60), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
         tr_hline(fb, y + ROW_H - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }
@@ -594,14 +612,13 @@ static void draw_confirm(uint8_t* fb) {
     const fw_file_t* fw = s_fw;
     char line[160];
     snprintf(line, sizeof(line), "升级到 %s？", fw->version);
-    tr_text(fb, TR_MARGIN, 200, 44, line, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, TR_S(200), TR_S(44), line, EPD_DRAW_ALIGN_LEFT, true);
     snprintf(line, sizeof(line), "文件：%s（%s %s）", fw->name, fw->date, fw->time);
-    tr_wrap(fb, TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 28, 42, line, 2);
-    tr_wrap(fb, TR_MARGIN, 400, TR_W - 2 * TR_MARGIN, 30, 48,
+    tr_wrap(fb, TR_MARGIN, TR_S(284), TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(42), line, 2);
+    tr_wrap(fb, TR_MARGIN, TR_S(400), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(48),
             "写入约 1 分钟，期间不要拔 TF 卡。完成后自动重启。设置、阅读进度和 TF 卡上的书都会保留。"
             "新固件启动失败时会自动退回当前版本。", 6);
-    tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "取消", false, 32);
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BTN_Y, 290, BTN_H}, "开始升级", true, 32);
+    draw_buttons(fb, "开始升级");
 }
 
 static void draw_ota_confirm(uint8_t* fb) {
@@ -609,20 +626,19 @@ static void draw_ota_confirm(uint8_t* fb) {
     char line[160];
     if (s_reinstall) snprintf(line, sizeof(line), "重新安装 %s？", s_info.version);
     else snprintf(line, sizeof(line), "升级到 %s？", s_info.version);
-    tr_text(fb, TR_MARGIN, 200, 44, line, EPD_DRAW_ALIGN_LEFT, true);
-    int y = 290;
+    tr_text(fb, TR_MARGIN, TR_S(200), TR_S(44), line, EPD_DRAW_ALIGN_LEFT, true);
+    int y = TR_S(290);
     if (s_reinstall)
-        y += 48 * tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, 30, 48,
-                          "会装上 GitHub 上这个版本号的最新构建，替换当前固件。", 3) + 24;
+        y += TR_S(48) * tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(48),
+                                "会装上 GitHub 上这个版本号的最新构建，替换当前固件。", 3) + TR_S(24);
     if (tomato_config_has_builtin())
-        y += 48 * tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, 30, 48,
+        y += TR_S(48) * tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(48),
                           "当前是带内置番茄服务器的本地版本。升级后换成公开版，公开版没有内置服务器；"
-                          "设置里自己填的服务器不受影响。", 4) + 24;
+                                "设置里自己填的服务器不受影响。", 4) + TR_S(24);
     snprintf(line, sizeof(line), "先下载 %.1f MB 到 TF 卡 update 文件夹，校验通过后自动写入并重启。网络断了可以接着下。",
              s_info.size / 1048576.0);
-    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, 30, 48, line, 4);
-    tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "取消", false, 32);
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BTN_Y, 290, BTN_H}, "开始", true, 32);
+    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(48), line, 4);
+    draw_buttons(fb, "开始");
 }
 
 static void draw_writing(uint8_t* fb) {
@@ -631,16 +647,16 @@ static void draw_writing(uint8_t* fb) {
     const int pct = fw->app_size ? (int)((uint64_t)s_done * 100 / fw->app_size) : 0;
     char line[64];
     snprintf(line, sizeof(line), "正在写入 %s", fw->version);
-    tr_text(fb, TR_MARGIN, 420, 40, line, EPD_DRAW_ALIGN_LEFT, true);
-    tr_progress(fb, TR_MARGIN, 520, TR_W - 2 * TR_MARGIN, pct);
+    tr_text(fb, TR_MARGIN, TR_S(420), TR_S(40), line, EPD_DRAW_ALIGN_LEFT, true);
+    tr_progress(fb, TR_MARGIN, TR_S(520), TR_W - 2 * TR_MARGIN, pct);
     snprintf(line, sizeof(line), "%d%% · %.1f / %.1f MB", pct, s_done / 1048576.0, fw->app_size / 1048576.0);
-    tr_text(fb, TR_MARGIN, 560, 30, line, EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_MARGIN, 640, 30, "不要拔 TF 卡，也不要关机。", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(560), TR_S(30), line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(640), TR_S(30), "不要拔 TF 卡，也不要关机。", EPD_DRAW_ALIGN_LEFT, false);
 }
 
 static void draw_done(uint8_t* fb) {
     draw_header(fb, false);
-    tr_text(fb, TR_W / 2, 520, 40, "升级完成，正在重启…", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, TR_W / 2, TR_S(520), TR_S(40), "升级完成，正在重启…", EPD_DRAW_ALIGN_CENTER, true);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -680,7 +696,7 @@ static app_redraw_t touch_online(void) {
 static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     const int x = touch->x, y = touch->y;
     if (s_view == V_WRITING || s_view == V_DONE) return APP_REDRAW_NONE;
-    if (y < 160 && x < 120) {
+    if (y < TR_S(160) && x < TR_S(120)) {
         if (s_view == V_CONFIRM || s_view == V_OTA_CONFIRM) { s_view = V_LIST; return APP_REDRAW_PAGE; }
         ctx->request_app = &app_tr_settings;
         return APP_REDRAW_NONE;
@@ -703,13 +719,14 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         return APP_REDRAW_PAGE;
     }
     // 按钮热区上下各放宽一点。/ Pad the button's hit area a little.
-    const EpdRect hit = {ONLINE_BTN.x - 20, ONLINE_BTN.y - 16, ONLINE_BTN.width + 20, ONLINE_BTN.height + 32};
+    const EpdRect btn = ONLINE_BTN;
+    const EpdRect hit = {btn.x - TR_S(20), btn.y - TR_S(16), btn.width + TR_S(20), btn.height + TR_S(32)};
     if (ui_rect_hit(hit, (uint16_t)x, (uint16_t)y)) return touch_online();
     if (!s_target || y < LIST_TOP) return APP_REDRAW_NONE;
     // 在线升级在跑时不碰 TF 卡列表。/ Leave the TF list alone while the online upgrade runs.
     if (s_on == O_CHECKING || s_on == O_DOWNLOADING) return APP_REDRAW_NONE;
     const int i = (y - LIST_TOP) / ROW_H;
-    if (i >= s_count || s_files[i].problem) return APP_REDRAW_NONE;
+    if (i >= s_count || !row_fits(i) || s_files[i].problem) return APP_REDRAW_NONE;
     s_fw = &s_files[i];
     s_msg[0] = 0;
     s_view = V_CONFIRM;
@@ -727,8 +744,8 @@ static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
     // 列表里只刷在线升级的状态行和进度条；写入页刷进度条。
     // On the list refresh the online status line and bar; on the write view, its bar.
-    if (s_view == V_LIST) return (EpdRect){0, ONLINE_Y + 56, TR_W, 84};
-    return (EpdRect){0, 500, TR_W, 120};
+    if (s_view == V_LIST) return (EpdRect){0, ONLINE_Y + TR_S(56), TR_W, TR_S(84)};
+    return (EpdRect){0, TR_S(500), TR_W, TR_S(120)};
 }
 
 static app_redraw_t tick_online(app_ctx_t* ctx) {
@@ -810,6 +827,10 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    // 已经写完并切好启动分区：离页（比如按了 KEY3）也要马上重启，不能留到下次关机才悄悄换版本。
+    // Written and the boot slot already switched: leaving (e.g. KEY3) must restart now rather than switch versions
+    // silently at the next power-off.
+    if (s_view == V_DONE) esp_restart();
     stop_write();
     stop_online();
     s_view = V_LIST;

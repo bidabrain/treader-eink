@@ -128,6 +128,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
 const app_desc_t app_selftest = {
     .title = ST_TITLE,
     .detail = "探活与命令",
+    .fixed_scale = true,
     .holds_pmu = true,
     .render = render,
     .on_exit = st_on_exit,

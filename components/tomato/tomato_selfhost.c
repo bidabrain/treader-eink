@@ -341,8 +341,15 @@ static uint64_t strip_images(const char* dir) {
     struct stat st;
     while ((e = readdir(d))) {
         const size_t n = strlen(e->d_name);
+        // 留下正文、封面缩略图（t.*、t_*）和微博 / X 列表卡片用的小方图（s1.jpg、s1_宽x高.g 这类），只删大图：
+        // 否则还在列表里的多图卡片会变成灰块，下次刷新又全部重下。
+        // Keep the text, cover thumbnails (t.*, t_*) and the small squares Weibo / X list cards use (s1.jpg,
+        // s1_WxH.g and the like); delete only large images, or listed multi-image cards turn gray and are all
+        // downloaded again on the next refresh.
+        const bool square = e->d_name[0] == 's' && e->d_name[1] >= '0' && e->d_name[1] <= '9' &&
+                            (e->d_name[2] == '.' || e->d_name[2] == '_');
         if (e->d_name[0] == '.' || (n > 5 && !strcmp(e->d_name + n - 5, ".json")) || !strncmp(e->d_name, "t.", 2) ||
-            !strncmp(e->d_name, "t_", 2)) continue;
+            !strncmp(e->d_name, "t_", 2) || square) continue;
         snprintf(path, sizeof(path), "%s/%.100s", dir, e->d_name);
         if (stat(path, &st) == 0 && remove(path) == 0) freed += (uint64_t)st.st_size;
     }

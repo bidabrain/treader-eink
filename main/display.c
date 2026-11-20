@@ -17,6 +17,7 @@
 #include "e0470_epaper_waveform.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "read_pico_board.h"
 
 static const char* TAG = "read_pico";
 static bool s_bulk_io;
@@ -36,14 +37,26 @@ void display_set_bulk_io(bool active) {
 // 0 表示轨道已断电；否则是到期时间（ms），到点后主循环断电。
 // 0 means the rails are off; otherwise a deadline (ms) after which the loop powers them down.
 static int64_t rails_deadline_ms;
+// 撤驱动的 I2C 写失败时下次重试的时刻，0 表示不用重试。/ When to retry a failed drive release; 0 means none pending.
+static int64_t drive_retry_ms;
 
+// 每次推屏后都调（包括没有变化、刷新失败）：高压轨保留到空闲超时，面板驱动和 VCOM 马上撤掉。
+// Called after every update (unchanged or failed ones too): the rails stay until the idle timeout, but the panel
+// drive and VCOM are released at once.
 void rails_keepalive(void) {
-    rails_deadline_ms = esp_timer_get_time() / 1000 + RAILS_IDLE_TIMEOUT_MS;
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    rails_deadline_ms = now_ms + RAILS_IDLE_TIMEOUT_MS;
+    drive_retry_ms = read_pico_epd_release_drive() ? 0 : now_ms + 50;
 }
 
 void rails_idle_check(int64_t now_ms) {
+    // I2C 偶发失败：每 50 ms 再撤一次驱动。/ Transient I2C failure: retry the drive release every 50 ms.
+    if (drive_retry_ms != 0 && now_ms >= drive_retry_ms) {
+        drive_retry_ms = read_pico_epd_release_drive() ? 0 : now_ms + 50;
+    }
     if (rails_deadline_ms != 0 && now_ms >= rails_deadline_ms) {
         rails_deadline_ms = 0;
+        drive_retry_ms = 0;
         epd_poweroff();
     }
 }

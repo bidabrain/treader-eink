@@ -22,28 +22,39 @@
 #include "ui_kit.h"
 
 #define NOTICE_MS 2000
-#define BTN_Y (TR_WALLSAVE_TOP + 32)
-#define BTN_H 80
-#define BTN_W 290
+// 长度随显示大小放大；两个按钮放大后不超过半行宽。/ Lengths scale with the display size; at larger sizes the two
+// buttons are no wider than half a row.
+#define BTN_Y (TR_WALLSAVE_TOP + TR_S(32))
+#define BTN_H TR_S(80)
+#define BTN_W btn_w()
 #define SET_X (TR_W - TR_MARGIN - BTN_W)
-#define BOX (EpdRect){60, 860, TR_W - 120, 190}
+// 提示框底边和正常档一样离工具条顶边 -114（框盖住工具条上半）。/ The notice keeps its normal-size offset from the
+// toolbar top (its bottom overlaps the toolbar).
+#define BOX (EpdRect){60, TR_WALLSAVE_TOP - TR_S(76), TR_W - 120, TR_S(190)}
+
+static int btn_w(void) {
+    const int half = (TR_W - 2 * TR_MARGIN - TR_S(24)) / 2;
+    return TR_S(290) < half ? TR_S(290) : half;
+}
 
 void tr_wallsave_draw(uint8_t* fb, const tr_wallsave_t* w) {
     if (w->shown) {
-        epd_fill_rect((EpdRect){0, TR_WALLSAVE_TOP, TR_W, 184}, UI_GRAY_WHITE, fb);
+        epd_fill_rect((EpdRect){0, TR_WALLSAVE_TOP, TR_W, TR_S(184)}, UI_GRAY_WHITE, fb);
         tr_hline(fb, TR_WALLSAVE_TOP, 0, TR_W, true);
-        tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, BTN_W, BTN_H}, "存为壁纸", true, 32);
-        tr_pill(fb, (EpdRect){SET_X, BTN_Y, BTN_W, BTN_H}, "存并设为锁屏", false, 32);
-        tr_text_dim(fb, TR_MARGIN, BTN_Y + BTN_H + 22, 24, "存到 TF 卡 wallpapers/，点图片中间收起", EPD_DRAW_ALIGN_LEFT);
+        tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, BTN_W, BTN_H}, "存为壁纸", true, TR_S(32));
+        tr_pill(fb, (EpdRect){SET_X, BTN_Y, BTN_W, BTN_H}, "存并设为锁屏", false, TR_S(32));
+        tr_text_dim(fb, TR_MARGIN, BTN_Y + BTN_H + TR_S(22), TR_S(24), "存到 TF 卡 wallpapers/，点图片中间收起",
+                    EPD_DRAW_ALIGN_LEFT);
     }
     if (w->title[0]) {
         const EpdRect r = BOX;
         epd_fill_rect(r, UI_GRAY_WHITE, fb);
-        ui_draw_round_rect(fb, r, 22, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 21, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 2), 20, UI_GRAY_BLACK);
-        tr_text(fb, r.x + r.width / 2, r.y + 28, 32, w->title, EPD_DRAW_ALIGN_CENTER, true);
-        tr_wrap(fb, r.x + 24, r.y + 88, r.width - 48, 24, 38, w->line, 2);
+        const int rad = TR_S(22);
+        ui_draw_round_rect(fb, r, rad, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), rad - 1, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 2), rad - 2, UI_GRAY_BLACK);
+        tr_text(fb, r.x + r.width / 2, r.y + TR_S(28), TR_S(32), w->title, EPD_DRAW_ALIGN_CENTER, true);
+        tr_wrap(fb, r.x + TR_S(24), r.y + TR_S(88), r.width - 2 * TR_S(24), TR_S(24), TR_S(38), w->line, 2);
     }
 }
 

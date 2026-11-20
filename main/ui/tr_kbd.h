@@ -16,12 +16,17 @@
 
 #include "epdiy.h"
 #include "pinyin_ime.h"
+#include "ui_scale.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define TR_KBD_TOP 580
+/// 键盘顶边：按键随显示大小变高，键盘往上长；底下 60 像素留白不放大（100% 时 580）。
+/// Keyboard top edge: keys grow taller with the display size, so the keyboard grows upward; the 60 px bottom margin
+/// does not scale (580 at 100%).
+static inline int tr_kbd_top(void) { return 1216 - 60 - UI_S(576); }
+#define TR_KBD_TOP tr_kbd_top()
 #define TR_KBD_TEXT_MAX 128
 #define TR_KBD_CANDS 24
 

@@ -15,6 +15,10 @@
 #include "datamatrix.h"
 #include "ttf_font.h"
 
+int ui_scale_pct = 100;
+
+void ui_set_scale(int pct) { ui_scale_pct = pct == 115 || pct == 130 ? pct : 100; }
+
 #define UI_SEL_INSET 4
 #define UI_SEL_RING 3
 
@@ -429,9 +433,9 @@ int ui_draw_section(uint8_t* framebuffer, int y, const char* title) {
         framebuffer, UI_MARGIN, y, UI_PX_SECTION, title,
         EPD_DRAW_ALIGN_LEFT, false
     );
-    int rule_y = y + UI_PX_SECTION + 8;
+    int rule_y = y + UI_PX_SECTION + UI_S(8);
     ui_hairline(framebuffer, rule_y, UI_MARGIN, ui_content_width(), UI_GRAY_BLACK);
-    return rule_y + 10;
+    return rule_y + UI_S(10);
 }
 
 int ui_draw_row(
@@ -495,14 +499,14 @@ int ui_draw_hero(
     uint8_t* framebuffer, int y, const char* label, const char* value
 ) {
     ui_text(
-        framebuffer, UI_MARGIN, y + 22, UI_PX_LABEL, label,
+        framebuffer, UI_MARGIN, y + UI_S(22), UI_PX_LABEL, label,
         EPD_DRAW_ALIGN_LEFT, false
     );
     ui_text(
-        framebuffer, ui_content_right(), y - 8, UI_PX_HERO, value,
+        framebuffer, ui_content_right(), y - UI_S(8), UI_PX_HERO, value,
         EPD_DRAW_ALIGN_RIGHT, false
     );
-    return y + UI_PX_HERO + 10;
+    return y + UI_PX_HERO + UI_S(10);
 }
 
 void ui_draw_button(

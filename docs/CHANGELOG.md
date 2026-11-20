@@ -3,14 +3,37 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-21 · Treader 0.9.0
 
+- 番茄新章节提示（“+N 章 待下载” / “+N 章”，见下面番茄安卓 App 1.0.3 一节）随本版固件正式发布。
+  The Tomato new-chapter badges ("+N 章 待下载" / "+N 章", see Tomato Android app 1.0.3 below) ship with this firmware release.
 - 界面改成 Material 3 灰阶风格（底部标签栏、按钮、分段、卡片、弹窗、工具条、锁屏书卡等），功能和操作不变；会局部快速刷新的地方保持黑白。
   The UI moves to a Material 3 grayscale style (tab bar, buttons, segments, cards, dialogs, toolbars, lock card and more); features and controls are unchanged, and areas refreshed by fast partial updates stay black and white.
 - 番茄搜索入口从书架搬到书城页最上面；从书城进的搜索返回时回书城，书架多显示一行。
   The Tomato search entry moves from the shelf to the top of the bookstore page; searches started there return to the bookstore, and the shelf shows one more row.
 - 底部标签栏改成“书库 + 常用 + 全部”：最后一格“全部”打开所有功能的大图标页（一页放不下就翻页）；KEY3、工具条的“菜单”也打开这一页，代替原来的列表菜单。设置 → 底部标签里挑哪几个放底部、排顺序、隐藏。升级后原来底部的标签按原顺序放进常用，放不下的（默认是微博和设置）在“全部”里。
   The tab bar becomes "library + pinned + All": the last cell opens a large-icon page of every feature (paged when it overflows); KEY3 and the toolbar "Menu" open it too, replacing the old list menu. Settings > Tab bar picks which features sit in the bar, their order, and which are hidden. After upgrading, the old bar's tabs become the pins in order; those that do not fit (Weibo and Settings by default) are on the All page.
+
+- 设置 → 显示与阅读 → 显示大小：正常、大、特大（100% / 115% / 130%），像安卓一样把字、图标、按钮和间距一起放大，固定的界面文字都完整显示；放不下的列表每页少几行，底部标签栏变成 5 格 / 4 格。阅读正文、漫画和图片不受影响。
+  Settings > Display and reading > Display size: normal, large, largest (100% / 115% / 130%) scales text, icons, buttons and spacing together like Android, with every fixed UI label shown in full; lists that no longer fit show fewer rows per page and the tab bar drops to 5 / 4 cells. Reading text, comics and images are unaffected.
+
+- 修正一批问题：
+  - 锁屏密码输错 5 次后的等待时间，关机再开不再清零。
+  - “睡眠与锁屏”里的“试一下”：醒来要过锁屏密码；关机和深睡前先停下后台下载，免得写坏 TF 卡上的文件。
+  - 每次锁屏前（包括浅睡）先保存书和漫画的阅读进度，锁屏书卡显示最新进度；TF 卡短暂失联时漫画进度也先存下。
+  - 阅读工具条上点进度条跳到章节中间时，不再跳回本章开头；用内置字体时，工具条顶部的“‹ 书库”不再误开字体页。
+  - 清掉进度后，书库的“继续阅读”和漫画的“继续看”卡片跟着更新。
+  - 选了打不开的字体文件不再写进设置。
+  - 系统升级写完、准备重启时离开页面也会马上重启，不会等到下次关机才悄悄换版本。
+  - 番茄：离开页面期间完成的搜索或下载结果不再丢；状态行不再显示别的页面的后台消息；搜索结果页左上角“‹”能返回；正在下载的书和其他书的详情页分开显示；后台忙时点“下载全部更新”会说明原因。
+  - 书城：排队中的下载只属于点下载的那本书，“取消”能撤掉排队。
+  - 番茄和书城：一本书在下载时，点另一本的“下载到书库”会提示“正在下载另一本，下完再点”（后台忙别的也会说明原因），不再没反应。
+  - 微博、X：列表还没加载时点空白处不再打开旧帖子；清理缓存不再删掉列表卡片的小图；X 等服务器取回复时不再每 3 秒整页重刷。
+  Fixes: the PIN wait after five wrong tries survives a restart; the sleep page's trial asks for the PIN on wake and stops background downloads before powering off; reading progress for books and comics is saved before every lock and on a transient card loss; tapping the reader's progress track keeps the position inside the chapter, and the toolbar's back button no longer opens the font page with the built-in font; continue cards follow cleared progress; an unopenable font is not saved; leaving the upgrade page after writing restarts at once; Tomato keeps results finished while away, shows only its own status, lets "‹" leave results, separates the downloading book's detail from others, and explains a busy "download all updates"; the store ties a queued download to its book and lets 取消 drop it; tapping download on another book while one downloads now says to wait instead of doing nothing; Weibo / X no longer open an old post from an empty list, keep list thumbnails when pruning, and X no longer redraws every 3 s while waiting for replies.
+- 修正：锁屏选“关机”或“深睡”时，屏幕放着会慢慢变黑（像渗墨）。原因是画完锁屏后没先关屏幕高压电就断了主机，高压和 VCOM 一直开着；现在断电前先关掉，进睡眠前还会读引脚确认屏幕真的断电了（没断就再关一次）；平时每次刷完屏也马上撤掉面板驱动和 VCOM，只留高压电等下一次刷新。
+  Fix: with the lock set to power off or deep sleep, the screen slowly darkened while left alone (like ink bleeding), because the host powered down without first turning off the panel's high-voltage rails and VCOM after drawing the lock face; they are now switched off first, and before sleeping the pins are read to confirm the panel is really off (powering it off again if not); after every refresh the panel drive and VCOM are also released at once, leaving only the rails up for the next refresh.
+- 修正：Wi-Fi 传书结束后字体一直停在内置字库，要重新插卡才恢复；现在离开传书页几秒内自动换回设置里选的字体。漫画书架右上角的传书按钮改成和书库一样，先到“设置 › 传书”选 Wi-Fi 还是 USB。
+  Fix: after Wi-Fi transfer the font stayed on the built-in one until the card was reinserted; it now returns to the chosen font within seconds of leaving the transfer page. The comics shelf's transfer button now goes to Settings > Transfer to pick Wi-Fi or USB first, like the library's.
 
 ## 2026-11-20 · 番茄安卓 App 1.0.3
 

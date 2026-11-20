@@ -150,7 +150,22 @@ static bool pickup_wait_quiet(sc7a20h_handle_t acc, int quiet_ms, int timeout_ms
     return false;
 }
 
+// 睡前确认面板真的断电了：读引脚，没断就再关一次（I2C 偶发失败时关电命令可能没生效），最多试三次。
+// Confirm before sleeping that the panel is really off: read the pins and power it off again if not (a transient I2C
+// failure can drop the power-off command), up to three tries.
+static void ensure_panel_off(void) {
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (read_pico_epd_verify_poweroff() == ESP_OK) return;
+        // 刚关完 PGOOD 可能还没落下，等一下再看。/ PGOOD may not have fallen yet right after power-off; look again.
+        vTaskDelay(pdMS_TO_TICKS(20));
+        if (read_pico_epd_verify_poweroff() == ESP_OK) return;
+        epd_poweroff();
+    }
+    if (read_pico_epd_verify_poweroff() != ESP_OK) ESP_LOGE(TAG, "panel power-off not confirmed before sleep");
+}
+
 app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
+    ensure_panel_off();
     bool pickup = acc != NULL && app_settings_pickup_wake();
     bool acc_armed = false;
     periph_suspend(false);
@@ -265,6 +280,13 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
 }
 
 esp_err_t app_enter_host_sleep(app_sleep_mode_t mode) {
+    // 先关屏轨和 VCOM 再让 PMU 断主机：SY_EN / VCOM_EN 在常开的 IO 扩展器上，主机断电后电平还保持着，
+    // 刚画完锁屏的高压轨会一直开着，面板慢慢变黑（像渗墨）。关掉以后 IO 扩展器休眠时也会把 MODE 一起拉低。
+    // Drop the panel rails and VCOM before the PMU cuts the host: SY_EN / VCOM_EN sit on the always-on IO expander and
+    // keep their level after the host powers off, so the rails left up by the lock-face refresh would stay on and the
+    // panel would slowly darken (like ink bleeding). With the rails off, the expander's sleep also parks MODE low.
+    epd_poweroff();
+    ensure_panel_off();
     periph_suspend(true);
     pmu_selftest_prepare_powerdown();
     esp_err_t err = mode == APP_SLEEP_OFF

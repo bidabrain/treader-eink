@@ -105,6 +105,9 @@ struct app_desc_s {
     /// true = 页面自带底部标签栏，右下角菜单按钮的点击区让给标签栏；中键仍打开菜单。
     /// true = the page draws the bottom tab bar, so the corner menu-handle hit area yields to it; KEY3 still opens the menu.
     bool tab_nav;
+    /// true = 不跟显示大小，始终按 100% 画（出厂、演示页）。/ true = ignore the display size and always draw at 100%
+    /// (factory and demo pages).
+    bool fixed_scale;
     /// 进页/离页。on_enter 里做上电、唤醒传感器、拉一次数据这类副作用。
     /// / Enter/exit. on_enter powers up, wakes sensors, takes a first sample.
     /// 锁屏走软睡/关机前也调 on_exit；下电失败回来再调 on_enter。
@@ -114,6 +117,10 @@ struct app_desc_s {
     /// TF 挂载失效：停止并等待后台任务、关闭文件；主循环随后回退字体并重绘，菜单打开时也通知。
     /// On TF mount loss, join background work and close files before font fallback/redraw; also called behind menus.
     void (*on_media_lost)(app_ctx_t* ctx);
+    /// 可选：锁屏前调用，不管会不会断电（浅睡也调）。只做保存进度这类收尾，不画屏、不停传感器、不切页。
+    /// Optional: called before every lock, whether or not power is cut (light sleep too). Only wind-down such as
+    /// saving progress; no drawing, no sensor shutdown, no page switch.
+    void (*on_lock)(app_ctx_t* ctx);
     /// 纯绘制，不做 I2C 写、蜂鸣这类副作用，整屏强刷才能安全复用它。
     /// / Paint only. No I2C writes or buzzer. KEY2 full redraw reuses this.
     void (*render)(app_ctx_t* ctx, uint8_t* fb);

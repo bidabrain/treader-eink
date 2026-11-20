@@ -25,9 +25,11 @@ static void draw_menu_arrow(
     uint8_t* framebuffer, int cx, int cy, bool up, uint8_t color
 ) {
     if (up) {
-        epd_fill_triangle(cx, cy - 11, cx - 14, cy + 10, cx + 14, cy + 10, color, framebuffer);
+        epd_fill_triangle(cx, cy - UI_S(11), cx - UI_S(14), cy + UI_S(10), cx + UI_S(14), cy + UI_S(10), color,
+                          framebuffer);
     } else {
-        epd_fill_triangle(cx, cy + 11, cx - 14, cy - 10, cx + 14, cy - 10, color, framebuffer);
+        epd_fill_triangle(cx, cy + UI_S(11), cx - UI_S(14), cy - UI_S(10), cx + UI_S(14), cy - UI_S(10), color,
+                          framebuffer);
     }
 }
 

@@ -111,6 +111,16 @@ esp_err_t read_pico_ioe_sleep(bool host_off);
 /// 恢复运行时的方向配置并清 INT#。/ Restore running directions and clear INT#.
 esp_err_t read_pico_ioe_wake(void);
 
+/// 撤掉面板驱动（MODE、XOE、VCOM_EN），高压轨照旧保持。每次推屏后调：差分没变化时扫描器不运行，上电时打开的驱动
+/// 不会自己落下，空闲保轨期间 VCOM 一直加在面板上会把画面压黑。下一帧开始时 epdiy 会重新打开。I2C 失败返回 false。
+/// Release the panel drive (MODE, XOE, VCOM_EN) while the high-voltage rails stay up. Call after every update: an
+/// unchanged differential never runs the scanner, so the drive raised at power-on would stay up and VCOM held on the
+/// panel through the idle rail window darkens the image. epdiy raises it again at the next frame. False on I2C error.
+bool read_pico_epd_release_drive(void);
+/// 直接读 9555 引脚确认面板已断电（XOE、VCOM_EN、SY_EN、PGOOD 都是低）。ESP_OK 表示确认断电。
+/// Read the 9555 pins to confirm the panel is off (XOE, VCOM_EN, SY_EN and PGOOD all low). ESP_OK means confirmed.
+esp_err_t read_pico_epd_verify_poweroff(void);
+
 #ifdef __cplusplus
 }
 #endif

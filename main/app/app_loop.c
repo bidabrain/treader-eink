@@ -149,6 +149,11 @@ static void present_page(app_ctx_t* ctx, const app_desc_t* app,
     app_present(ctx, app, redraw);
 }
 
+// 当前页按哪一档显示大小画、算点击区。/ The display size the current page draws and hit-tests at.
+static void apply_scale(const app_desc_t* page) {
+    ui_set_scale(page->fixed_scale ? 100 : app_settings_display_pct());
+}
+
 // 切页：先让上一页收尾，再给新页一次 on_enter，最后整页画出来。
 // Leave the old page, enter the new one, then present a full page.
 static void switch_to(
@@ -157,6 +162,7 @@ static void switch_to(
     if (next == NULL || next == *current) return;
     if ((*current)->on_exit != NULL) (*current)->on_exit(ctx);
     *current = next;
+    apply_scale(next);
     if (next->on_enter != NULL) next->on_enter(ctx);
     app_present(ctx, next, next->enter_full ? APP_REDRAW_FULL : APP_REDRAW_PAGE);
     ESP_LOGI(TAG, "page -> %s", next->title);
@@ -194,6 +200,10 @@ static char s_font_fail_path[160];
 static bool try_load_saved_sd_font(bool allow_probe) {
     const char* path = app_settings_font_path();
     if (ttf_font_path_is_builtin(path)) return false;
+    // 传书期间暂停读卡上字体：这时打不开不算失败，否则停服后不会再重试，一直停在内置字库。
+    // SD fonts are suspended during transfer: a refusal then is not a failure, or the font would never be retried
+    // after the server stops and the built-in font would stay.
+    if (ttf_font_sd_suspended()) return false;
     if (s_font_fail_gen == s_media_gen && strcmp(s_font_fail_path, path) == 0) return false;
     if (ttf_font_ready() && !ttf_font_is_builtin()
         && strcmp(ttf_font_path(), path) == 0) {
@@ -279,6 +289,10 @@ static void lock_and_resume(
 ) {
     *held_key = -1;
     cancel_gesture(ctx, current, gesture);
+    // 每次锁屏都先让页面存好进度（浅睡也是）：锁屏书卡读到的是最新进度，锁着时没电也不丢。
+    // Let the page save progress before every lock (light sleep too): the lock card shows the latest progress and
+    // nothing is lost if the battery dies while locked.
+    if (current->on_lock != NULL) current->on_lock(ctx);
     // 要断主机电时先让页面收尾（停网络、关传感器、存进度）；只有下电失败才会回到这里重新进页。
     // Before the host loses power let the page wind down (network, sensors, progress); re-enter only if power-down failed.
     const bool powers_down = app_lock_powers_down();
@@ -353,6 +367,7 @@ void app_loop_run(const app_loop_config_t* config) {
     tr_time_restore();
     // 开机也要过锁屏密码（深睡、关机醒来都是重新开机）；过关之前不进任何页面。
     // Boot passes the lock PIN too (waking from deep sleep or power-off is a fresh boot); no page opens before it.
+    apply_scale(current);
     tr_pin_gate(ctx.hl, ctx.tp, ctx.acc, &s_lock_ignore_until_ms);
 
     if (current->on_enter != NULL) current->on_enter(&ctx);
@@ -363,6 +378,8 @@ void app_loop_run(const app_loop_config_t* config) {
     ESP_LOGI(TAG, "UI ready on %s", current->title);
 
     while (true) {
+        // 设置页改了显示大小也在下一轮生效。/ A display-size change in settings applies from the next tick too.
+        apply_scale(current);
         cst836u_touch_t touch = { 0 };
         esp_err_t err = cst836u_read(config->tp, &touch);
         if (err != ESP_OK) {
@@ -374,6 +391,7 @@ void app_loop_run(const app_loop_config_t* config) {
         const bool released = !touch.touched && was_touched;
         debounce_touch(&latest, &touch, released);
         ctx.now_ms = esp_timer_get_time() / 1000;
+        const int64_t tick_start_ms = ctx.now_ms;
         // 触摸、独占 PMU、以及声明不自动休眠的页都算活动。页面自己的轮询刷新不重置。
         // Touch, PMU-owning pages, and pages that block idle sleep count as activity. A page's own poll does not reset it.
         if (current->holds_pmu || current->blocks_idle_sleep
@@ -462,6 +480,10 @@ void app_loop_run(const app_loop_config_t* config) {
         }
 
         ctx.now_ms = esp_timer_get_time() / 1000;
+        // 页面在这一轮里阻塞了 5 秒以上（比如设置锁屏密码时自己读触摸的键盘）：那段时间是用户在操作，不算空闲。
+        // A page blocked for long in this tick (over 5 s, e.g. the PIN pad reading touch itself while setting a PIN): the user
+        // was active then, so it does not count as idle.
+        if (ctx.now_ms - tick_start_ms > 5000) last_input_ms = ctx.now_ms;
         rails_idle_check(ctx.now_ms);
 
         // 电源键短按或空闲超时 = 锁屏。自检页要连着占用 PMU，这时不抢它的事件队列。
@@ -555,6 +577,8 @@ void app_loop_run(const app_loop_config_t* config) {
             held_key = -1;
             const app_desc_t* next = ctx.request_app;
             const bool go_back = ctx.request_return;
+            // 下面会清掉请求标志，先记下是不是要开“全部”页。/ The flags are cleared below; remember the menu request first.
+            const bool want_menu = ctx.request_menu;
             cancel_gesture(&ctx, current, &gesture);
             ctx.request_app = NULL;
             ctx.request_menu = false;
@@ -562,7 +586,7 @@ void app_loop_run(const app_loop_config_t* config) {
             ctx.consumed = true;
             // 打开“全部”页（菜单）：记下从哪来，按普通切页处理。/ Opening the All page (the menu): note the origin,
             // then switch like any page.
-            const bool to_all = !next && (ctx.request_menu || (go_back && !return_app));
+            const bool to_all = !next && (want_menu || (go_back && !return_app));
             if (to_all) {
                 tr_all_open_from(current);
                 next = tr_nav_tab_app(TR_TAB_ALL);
@@ -571,6 +595,7 @@ void app_loop_run(const app_loop_config_t* config) {
                 if (current->on_exit) current->on_exit(&ctx);
                 current = return_app;
                 return_app = NULL;
+                apply_scale(current);
                 if (current->on_enter) current->on_enter(&ctx);
                 // 初始化后恢复通用页码，避免 on_enter 的默认页码覆盖来源。
                 // Restore the shared leaf after initialization overrides its default.

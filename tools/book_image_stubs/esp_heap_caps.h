@@ -16,3 +16,4 @@ static inline int image_allow(void) {
 static inline void* heap_caps_malloc(size_t n, int caps) { (void)caps; return image_allow() ? malloc(n) : NULL; }
 static inline void* heap_caps_calloc(size_t n, size_t s, int caps) { (void)caps; return image_allow() ? calloc(n,s) : NULL; }
 static inline void* heap_caps_realloc(void* p, size_t n, int caps) { (void)caps; return image_allow() ? realloc(p,n) : NULL; }
+static inline void heap_caps_free(void *p) { free(p); }

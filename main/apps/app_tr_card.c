@@ -31,8 +31,11 @@
 #include "ui_menu.h"
 
 #define TAG "tr_card"
-#define BTN_Y 900
-#define BTN_H 84
+// 长度随显示大小放大；按钮行放在说明下面，放大后跟着往下让。/ Lengths scale with the display size; the button
+// row sits below the notes and moves down with them at larger sizes.
+#define BTN_Y btn_y()
+#define BTN_H TR_S(84)
+#define BTN_W TR_S(290)
 
 extern const app_desc_t app_tr_settings;
 
@@ -60,12 +63,32 @@ static bool card_ok(void) {
     return s_info_err == ESP_OK && s_info.mounted;
 }
 
+// 正常档 900；放大后放在说明之后，但不低于屏幕下沿。/ 900 at the normal size; at larger sizes after the notes but
+// never past the screen bottom.
+static int btn_y(void) {
+    const int low = TR_H - BTN_H - TR_S(40);
+    return TR_S(900) < low ? TR_S(900) : low;
+}
+
+// 两个按钮并排：放大后宽度不超过半行。/ Two buttons side by side: at larger sizes no wider than half a row.
+static int btn_w(void) {
+    const int half = (TR_W - 2 * TR_MARGIN - TR_S(24)) / 2;
+    return BTN_W < half ? BTN_W : half;
+}
+
+static void draw_buttons(uint8_t* fb, const char* left, bool left_filled, int left_px, const char* right,
+                         bool right_filled, int right_px) {
+    const int w = btn_w();
+    tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, w, BTN_H}, left, left_filled, left_px);
+    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - w, BTN_Y, w, BTN_H}, right, right_filled, right_px);
+}
+
 /* ---- 绘制 / Drawing ---- */
 
 static void info_row(uint8_t* fb, int y, const char* label, const char* value) {
-    tr_text(fb, TR_MARGIN, y, 30, label, EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_W - TR_MARGIN, y + 2, 28, value, EPD_DRAW_ALIGN_RIGHT, false);
-    tr_hline(fb, y + 54, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_text(fb, TR_MARGIN, y, TR_S(30), label, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W - TR_MARGIN, y + TR_S(2), TR_S(28), value, EPD_DRAW_ALIGN_RIGHT, false);
+    tr_hline(fb, y + TR_S(54), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 }
 
 static const char* state_text(void) {
@@ -78,14 +101,18 @@ static const char* state_text(void) {
 
 static void draw_info(uint8_t* fb) {
     char line[96];
-    info_row(fb, 200, "状态", state_text());
+    info_row(fb, TR_S(200), "状态", state_text());
     if (card_ok()) {
         snprintf(line, sizeof(line), "%.1f GB", s_info.capacity_bytes / 1073741824.0);
-        info_row(fb, 276, "容量", line);
+        info_row(fb, TR_S(276), "容量", line);
         snprintf(line, sizeof(line), "%.1f GB", s_info.free_bytes / 1073741824.0);
-        info_row(fb, 352, "可用", line);
+        info_row(fb, TR_S(352), "可用", line);
     }
-    tr_text_dim(fb, TR_MARGIN, 460, 26, "Treader 用到的文件夹", EPD_DRAW_ALIGN_LEFT);
+    // 放大后文件夹说明往上提、行距收紧，给提示和按钮留出位置。/ At larger sizes the folder notes move up with
+    // tighter lines, leaving room for the message and buttons.
+    const bool tight = ui_scale_pct != 100;
+    const int head = TR_S(460) - (tight ? TR_S(40) : 0), step = tight ? TR_S(34) : TR_S(40);
+    tr_text_dim(fb, TR_MARGIN, head, TR_S(26), "Treader 用到的文件夹", EPD_DRAW_ALIGN_LEFT);
     static const char* const LINES[] = {
         "books　书籍（TXT、EPUB，番茄下载也放这里）",
         "comics　漫画（CBZ，一部多话放一个子文件夹）",
@@ -95,36 +122,41 @@ static void draw_info(uint8_t* fb) {
         "tomato　番茄书架、封面和设置",
     };
     // 文件夹说明放进浅灰卡片（这一页整页刷新）。/ The folder notes sit on a light gray card (whole-page refresh).
-    ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 16, 494, TR_W - 2 * TR_MARGIN + 32, 6 * 40 + 20}, 24, TR_GRAY_SURFACE);
+    const int card_y = head + TR_S(34), card_h = 6 * step + TR_S(20);
+    ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - TR_S(16), card_y, TR_W - 2 * TR_MARGIN + 2 * TR_S(16), card_h},
+                       TR_S(24), TR_GRAY_SURFACE);
     for (int i = 0; i < 6; i++)
-        tr_text_on(fb, TR_MARGIN, 506 + i * 40, 28, LINES[i], EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-    tr_text_dim(fb, TR_MARGIN, 760, 26, "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT);
-    if (s_msg[0]) tr_wrap(fb, TR_MARGIN, 806, TR_W - 2 * TR_MARGIN, 28, 40, s_msg, 2);
-    if (s_info.present) {
-        tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "重新挂载", false, 30);
-        tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BTN_Y, 290, BTN_H}, "格式化 TF 卡", true, 30);
-    }
+        tr_text_on(fb, TR_MARGIN, card_y + TR_S(12) + i * step, TR_S(28), LINES[i], EPD_DRAW_ALIGN_LEFT, false,
+                   UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    const int note = card_y + card_h + TR_S(6);
+    tr_text_dim(fb, TR_MARGIN, note, TR_S(26), "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT);
+    if (s_msg[0]) tr_wrap(fb, TR_MARGIN, note + TR_S(46), TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(40), s_msg, 2);
+    if (s_info.present) draw_buttons(fb, "重新挂载", false, TR_S(30), "格式化 TF 卡", true, TR_S(30));
 }
 
 static void draw_ask(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 200, 44, "格式化 TF 卡？", EPD_DRAW_ALIGN_LEFT, true);
-    tr_wrap(fb, TR_MARGIN, 290, TR_W - 2 * TR_MARGIN, 32, 48,
+    tr_text(fb, TR_MARGIN, TR_S(200), TR_S(44), "格式化 TF 卡？", EPD_DRAW_ALIGN_LEFT, true);
+    tr_wrap(fb, TR_MARGIN, TR_S(290), TR_W - 2 * TR_MARGIN, TR_S(32), TR_S(48),
             "TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的文件、字体、拼音词库、壁纸、番茄书架和服务器设置。", 5);
-    tr_wrap(fb, TR_MARGIN, 560, TR_W - 2 * TR_MARGIN, 28, 42,
+    tr_wrap(fb, TR_MARGIN, TR_S(560), TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(42),
             "格式化后会建好 Treader 需要的文件夹。字体和拼音词库要从电脑重新复制到 fonts 和 ime。", 3);
-    tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "取消", true, 32);
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 290, BTN_Y, 290, BTN_H}, s_armed ? "再点一次确认" : "清空并格式化", false, 30);
-    if (s_armed) tr_text(fb, TR_W / 2, BTN_Y + BTN_H + 30, 28, "这一步不能撤销", EPD_DRAW_ALIGN_CENTER, true);
+    draw_buttons(fb, "取消", true, TR_S(32), s_armed ? "再点一次确认" : "清空并格式化", false, TR_S(30));
+    if (!s_armed) return;
+    // 按钮下面放不下这行提醒时放到按钮上面。/ When the warning does not fit below the buttons it goes above them.
+    int y = BTN_Y + BTN_H + TR_S(30);
+    if (y + TR_S(28) > TR_H - TR_S(8)) y = BTN_Y - TR_S(30) - TR_S(28);
+    tr_text(fb, TR_W / 2, y, TR_S(28), "这一步不能撤销", EPD_DRAW_ALIGN_CENTER, true);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
     (void)ctx;
     ui_clear_page(fb);
     tr_status_bar(fb);
-    if (s_view != V_WORKING) tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, "TF 卡", EPD_DRAW_ALIGN_LEFT, true);
+    if (s_view != V_WORKING) tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(100), TR_S(36), "TF 卡", EPD_DRAW_ALIGN_LEFT, true);
     if (s_view == V_ASK) draw_ask(fb);
-    else if (s_view == V_WORKING) tr_text(fb, TR_W / 2, 560, 36, "正在格式化，请勿拔卡…", EPD_DRAW_ALIGN_CENTER, true);
+    else if (s_view == V_WORKING)
+        tr_text(fb, TR_W / 2, TR_S(560), TR_S(36), "正在格式化，请勿拔卡…", EPD_DRAW_ALIGN_CENTER, true);
     else draw_info(fb);
 }
 
@@ -175,7 +207,7 @@ static void do_format(void) {
 static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     const int x = touch->x, y = touch->y;
     if (s_view == V_WORKING) return APP_REDRAW_NONE;
-    if (y < 160 && x < 120) {
+    if (y < TR_S(160) && x < TR_S(120)) {
         if (s_view == V_ASK) { s_view = V_INFO; s_armed = false; return APP_REDRAW_PAGE; }
         ctx->request_app = &app_tr_settings;
         return APP_REDRAW_NONE;

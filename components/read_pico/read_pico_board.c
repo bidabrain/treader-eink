@@ -404,6 +404,31 @@ static void board_set_ctrl(epd_ctrl_state_t* state, const epd_ctrl_state_t* cons
     }
 }
 
+bool read_pico_epd_release_drive(void) {
+    if (!rails_on || s_ioe == NULL) return true;
+    epd_ctrl_state_t* state = epd_ctrl_state();
+    state->ep_mode = false;
+    state->ep_output_enable = false;
+    const uint8_t drive = IOE_MODE | IOE_XOE | IOE_SY_VCOM_EN;
+    if (!(ioe_output & drive)) return true;
+    ioe_output &= (uint8_t)~drive;
+    return ioe_commit() == ESP_OK;
+}
+
+esp_err_t read_pico_epd_verify_poweroff(void) {
+    if (s_ioe == NULL) return ESP_ERR_INVALID_STATE;
+    uint8_t pins = 0;
+    // 读引脚电平而不是本地缓存；PGOOD 不反映 VCOM，所以 VCOM_EN 单独看。/ Read pin levels, not the cached command;
+    // PGOOD does not cover VCOM, so VCOM_EN is checked on its own.
+    esp_err_t err = fca9555_read_input(s_ioe, 0, &pins);
+    if (err != ESP_OK) return err;
+    const uint8_t live = pins & (IOE_XOE | IOE_SY_VCOM_EN | IOE_SY_EN | IOE_SY_PGOOD);
+    if (!live) return ESP_OK;
+    ESP_LOGW(TAG, "panel still powered: XOE=%d VCOM_EN=%d EN=%d PGOOD=%d", !!(live & IOE_XOE),
+             !!(live & IOE_SY_VCOM_EN), !!(live & IOE_SY_EN), !!(live & IOE_SY_PGOOD));
+    return ESP_ERR_INVALID_STATE;
+}
+
 // 面板源/栅驱动的逻辑电源接常开 SYS_VDD；IDF 默认把睡眠中的 GPIO 隔离成悬空，这里改为浅睡下拉。
 // Panel source/gate driver logic sits on always-on SYS_VDD; IDF isolates sleeping GPIOs as floating, so pull them down in light sleep instead.
 static void sleep_pulldown_pins(void) {

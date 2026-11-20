@@ -23,6 +23,7 @@
 #include "read_pico_pmu.h"
 #include "tomato.h"
 #include "tr_ui.h"
+#include "ttf_font.h"
 #include "ui_kit.h"
 
 static struct {
@@ -182,23 +183,25 @@ static void draw_wallpaper(uint8_t* fb) {
     book_screen_draw(fb, s_wall);
     heap_caps_free(s_wall);
     s_wall = NULL;
-    const int top = s_card.ok ? 1056 : 1120;
+    // 白条高度和字号随显示大小放大，从屏幕底往上量。/ The strip height and text scale with the display size, measured
+    // up from the screen bottom.
+    const int top = TR_H - (s_card.ok ? TR_S(160) : TR_S(96));
     epd_fill_rect((EpdRect){0, top, TR_W, TR_H - top}, UI_GRAY_WHITE, fb);
     tr_hline(fb, top, 0, TR_W, false);
     char line[160];
     if (s_card.ok) {
         snprintf(line, sizeof(line), "%s", s_card.title);
-        tr_fit(line, 32, TR_W - 2 * TR_MARGIN - 150);
-        tr_text(fb, TR_MARGIN, top + 20, 32, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(line, TR_S(32), TR_W - 2 * TR_MARGIN - TR_S(150));
+        tr_text(fb, TR_MARGIN, top + TR_S(20), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, true);
         if (s_card.has_progress) {
             if (s_card.pct >= 100) snprintf(line, sizeof(line), "读完");
             else snprintf(line, sizeof(line), "已读 %u%%", s_card.pct);
-            tr_text(fb, TR_W - TR_MARGIN, top + 22, 28, line, EPD_DRAW_ALIGN_RIGHT, false);
+            tr_text(fb, TR_W - TR_MARGIN, top + TR_S(22), TR_S(28), line, EPD_DRAW_ALIGN_RIGHT, false);
         }
     }
     if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
     else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
-    tr_text_dim(fb, TR_W / 2, TR_H - 66, 26, line, EPD_DRAW_ALIGN_CENTER);
+    tr_text_dim(fb, TR_W / 2, TR_H - TR_S(66), TR_S(26), line, EPD_DRAW_ALIGN_CENTER);
 }
 
 bool tr_lock_draw(uint8_t* fb) {
@@ -208,25 +211,41 @@ bool tr_lock_draw(uint8_t* fb) {
     // Material 3 填充卡片：封面、书名、作者和进度都在浅灰底的大卡片里；锁屏整屏刷新，灰底不受 DU 影响。
     // A Material 3 filled card: cover, title, author and progress on one light gray card; the lock screen refreshes
     // as a whole page, so DU never touches the gray.
-    tr_text_dim(fb, TR_MARGIN, 120, 30, "正在读", EPD_DRAW_ALIGN_LEFT);
-    const EpdRect card = {TR_MARGIN - 16, 164, TR_W - 2 * TR_MARGIN + 32, 680};
-    ui_fill_round_rect(fb, card, 28, TR_GRAY_SURFACE);
-    tr_book_cover(fb, (EpdRect){TR_MARGIN, 180, BOOK_COVER_W, BOOK_COVER_H}, s_card.path, s_card.title, s_card.author,
-                  s_card.format, false);
+    // 文字和间距随显示大小放大，封面是缓存的图片，大小不变；卡片下面的标语放不下原位置时，挪到卡片和底部提示的正中。
+    // Text and gaps scale with the display size; the cover is a cached image and keeps its size. When the motto no
+    // longer fits at its usual offset, it moves halfway between the card and the bottom hint.
+    tr_text_dim(fb, TR_MARGIN, TR_S(120), TR_S(30), "正在读", EPD_DRAW_ALIGN_LEFT);
+    const int cover_y = TR_S(164) + TR_S(16), title_y = cover_y + BOOK_COVER_H + TR_S(50);
+    const EpdRect card = {TR_MARGIN - 16, TR_S(164), TR_W - 2 * TR_MARGIN + 32, title_y + TR_S(214) - TR_S(164)};
+    ui_fill_round_rect(fb, card, TR_S(28), TR_GRAY_SURFACE);
+    tr_book_cover(fb, (EpdRect){TR_MARGIN, cover_y, BOOK_COVER_W, BOOK_COVER_H}, s_card.path, s_card.title,
+                  s_card.author, s_card.format, false);
     char line[128];
     snprintf(line, sizeof(line), "%s", s_card.title);
-    tr_fit(line, 54, TR_W - 2 * TR_MARGIN);
-    tr_text_on(fb, TR_MARGIN, 630, 54, line, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_fit(line, TR_S(54), TR_W - 2 * TR_MARGIN);
+    tr_text_on(fb, TR_MARGIN, title_y, TR_S(54), line, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
     if (s_card.has_progress) {
         const char* sep = s_card.author[0] ? " · " : "";
-        if (s_card.pct >= 100) snprintf(line, sizeof(line), "%s%s读完", s_card.author, sep);
-        else snprintf(line, sizeof(line), "%s%s已读 %u%%", s_card.author, sep, s_card.pct);
-        tr_text_on(fb, TR_MARGIN, 704, 32, line, EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
-        tr_progress(fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, s_card.pct);
+        char tail[32];
+        if (s_card.pct >= 100) snprintf(tail, sizeof(tail), "%s读完", sep);
+        else snprintf(tail, sizeof(tail), "%s已读 %u%%", sep, s_card.pct);
+        // 作者名太长时只截作者，进度一定完整显示。/ A long author name is cut; the progress always shows in full.
+        char author[64];
+        snprintf(author, sizeof(author), "%s", s_card.author);
+        tr_fit(author, TR_S(32), TR_W - 2 * TR_MARGIN - ttf_text_width_px(TR_S(32), tail));
+        snprintf(line, sizeof(line), "%s%s", author, tail);
+        tr_text_on(fb, TR_MARGIN, title_y + TR_S(74), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY,
+                   TR_GRAY_SURFACE);
+        tr_progress(fb, TR_MARGIN, title_y + TR_S(142), TR_W - 2 * TR_MARGIN, s_card.pct);
     }
-    tr_text(fb, TR_W / 2, 960, 34, "慢一点，读几页。", EPD_DRAW_ALIGN_CENTER, false);
+    const int card_bottom = card.y + card.height, hint_y = TR_H - TR_S(96);
+    int motto_y = card_bottom + TR_S(116);
+    const int mid = (card_bottom + hint_y - TR_S(34)) / 2;
+    if (motto_y > mid) motto_y = mid;
+    tr_text(fb, TR_W / 2, motto_y, TR_S(34), "慢一点，读几页。", EPD_DRAW_ALIGN_CENTER, false);
     if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
     else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
-    tr_text_dim(fb, TR_W / 2, 1120, 26, line, EPD_DRAW_ALIGN_CENTER);
+    tr_text_dim(fb, TR_W / 2, hint_y, TR_S(26), line, EPD_DRAW_ALIGN_CENTER);
+
     return true;
 }

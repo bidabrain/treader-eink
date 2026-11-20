@@ -1931,6 +1931,8 @@ static esp_err_t open_builtin_unlocked(void) {
     return load_opened_font();
 }
 
+bool ttf_font_sd_suspended(void) { return sd_suspended; }
+
 esp_err_t ttf_font_suspend_sd(bool suspend) {
     sd_suspended = suspend;
     if (suspend && (!font_ready || !ttf_font_is_builtin())) return ttf_font_open_builtin();

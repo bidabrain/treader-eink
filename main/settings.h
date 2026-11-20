@@ -82,6 +82,14 @@ void app_settings_set_auto_turn(bool comic, uint8_t level);
 /// 不操作多久自动锁屏的档位：0～3 对应 1、2、5、10 分钟，4 是从不；默认 1（2 分钟）。
 /// Idle auto-lock level: 0-3 are 1, 2, 5 and 10 minutes, 4 is never; 1 (2 minutes) by default.
 #define APP_LOCK_IDLE_LEVELS 5
+/// 显示大小：0 正常、1 大、2 特大。/ Display size: 0 normal, 1 large, 2 largest.
+#define APP_DISPLAY_SIZES 3
+uint8_t app_settings_display_size(void);
+void app_settings_set_display_size(uint8_t level);
+/// 这一档的百分比（100 / 115 / 130）和名字。/ The level's percentage (100 / 115 / 130) and name.
+int app_settings_display_pct(void);
+const char* app_settings_display_label(uint8_t level);
+
 uint8_t app_settings_lock_idle(void);
 void app_settings_set_lock_idle(uint8_t level);
 /// 当前档位的毫秒数，从不返回 0。/ Milliseconds for the current level; 0 means never.
@@ -112,5 +120,9 @@ bool app_settings_pin_enabled(void);
 bool app_settings_pin_check(const char* pin);
 /// 设新密码；NULL 或空串关闭密码。/ Set a new PIN; NULL or empty turns the PIN off.
 esp_err_t app_settings_pin_set(const char* pin);
+/// 连续输错次数，存在 NVS 里，重启不清零（关机再开不能重置等待时间）。/ Consecutive wrong tries, kept in NVS so a
+/// restart does not clear them (power-cycling must not reset the wait).
+uint8_t app_settings_pin_fails(void);
+void app_settings_set_pin_fails(uint8_t fails);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);

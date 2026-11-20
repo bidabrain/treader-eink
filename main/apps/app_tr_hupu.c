@@ -42,60 +42,63 @@
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 #define CW (TR_W - 2 * TR_MARGIN)
 
+// 长度都随显示大小放大（TR_S）；侧边距和整行宽度不变。一页几行按分页条上面剩下的高度算。
+// Lengths scale with the display size (TR_S); side margins and full-width spans do not. Rows per page follow the
+// height left above the pager.
+
 // 列表（推荐、关注、专区帖子共用）/ Lists (feed, following and zone posts share them)
 #define LIST_MAX 200
-#define LIST_TOP 284
-#define ZONE_LIST_TOP 248
-#define ROW_H 148
-#define ROWS 5
-#define PAGER_Y 1040
-#define THUMB_W 150
-#define THUMB_H 100
+#define LIST_TOP TR_S(284)
+#define ZONE_LIST_TOP TR_S(248)
+#define ROW_H TR_S(148)
+#define PAGER_Y (TR_TABS_Y - TR_S(54))
+#define THUMB_W TR_S(150)
+#define THUMB_H TR_S(100)
 #define THUMB_X (TR_W - TR_MARGIN - THUMB_W)
-#define STATUS_Y 240
-#define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - 200, 70, 200, 80}
+#define STATUS_Y TR_S(240)
+#define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - TR_S(200), TR_S(70), TR_S(200), TR_S(80)}
 
 // 专区 / Zones
 #define ZONES_MAX 320
 #define CATS_MAX 20
 #define FOLLOWS_MAX 12   // 和关注流一次取的专区数一致 / Matches the zones the follow feed reads
-#define CELL_W 192
-#define CELL_H 88
+#define CELL_W 192              // 三列占满内容宽，不放大 / Three columns fill the content width; not scaled
+#define CELL_H TR_S(88)
 #define CELL_STEP_X 206
-#define CELL_STEP_Y 102
+#define CELL_STEP_Y (CELL_H + TR_S(14))
 
 // 帖子 / Post
-#define POST_SEG (EpdRect){TR_MARGIN, 150, CW, 64}
-#define TITLE_Y 240
-#define TITLE_PX 38
-#define TITLE_LH 50
-#define BODY_TOP 240
-#define BODY_BOTTOM 1100
-#define BODY_PX 32
-#define BODY_LH 52
-#define PARA_GAP 18
-#define IMAGE_MAX_H 680         // 第一页标题占两行时也放得下 / Fits page one even with a two-line title
-#define POST_PAGER_Y 1124
+#define POST_SEG (EpdRect){TR_MARGIN, TR_S(150), CW, TR_S(64)}
+#define TITLE_Y TR_S(240)
+#define TITLE_PX TR_S(38)
+#define TITLE_LH TR_S(50)
+#define BODY_TOP TR_S(240)
+#define BODY_BOTTOM (TR_H - TR_S(116))
+#define BODY_PX TR_S(32)
+#define BODY_LH TR_S(52)
+#define PARA_GAP TR_S(18)
+#define IMAGE_MAX_H 680         // 再受第一页剩余高度限制，见 image_max_h / Also capped by page one, see image_max_h
+#define POST_PAGER_Y (TR_H - TR_S(92))
 #define BLOCKS_MAX 240
 #define REPLIES_MAX 60
 #define LINES_MAX 3000
 #define PAGES_MAX 400
 #define REPLY_LINES 4
-#define REPLY_PX 30
-#define REPLY_LH 44
-#define IMAGE_BAND 96           // 看大图底部的白条 / White strip under the full-screen image
+#define REPLY_PX TR_S(30)
+#define REPLY_LH TR_S(44)
+#define IMAGE_BAND TR_S(96)          // 看大图底部的白条 / White strip under the full-screen image
 
 // 比分 / Scores
 #define DAYS_MAX 90
 #define MATCHES_MAX 420
-#define CHIP_Y 244
-#define DATE_Y 320
-#define MATCH_TOP 396
-#define MATCH_H 124
+#define CHIP_Y TR_S(244)
+#define DATE_Y TR_S(320)
+#define MATCH_TOP TR_S(396)
+#define MATCH_H TR_S(124)
 #define PLAYERS_MAX 70
-#define RATE_TOP 300
-#define RATE_H 112
-#define RATE_ROWS 7
+#define RATE_TOP TR_S(300)
+#define RATE_H TR_S(112)
+#define RATE_SCORE_X 370        // 评分列中心，名字和统计在两边让开 / Score column center; name and stats keep clear
 
 typedef enum { V_HOME, V_ZONES, V_ZONE, V_POST, V_REPLY, V_IMAGE, V_RATE } view_t;
 typedef enum { SEG_FEED, SEG_FOLLOW, SEG_SCORE } seg_t;
@@ -400,7 +403,18 @@ static const char* loading_text(const char* what) {
 
 /* ---- 列表数据 / List data ---- */
 
-static int list_pages(void) { return s_item_count ? (s_item_count + ROWS - 1) / ROWS : 1; }
+// 列表顶部；专区帖子没有分段条，起得高一些。/ List top; zone posts have no segments and start higher.
+static int list_top(void) { return s_view == V_ZONE ? ZONE_LIST_TOP : LIST_TOP; }
+
+// 一页几行：首页留出分页条上方的空，专区还要留一行提示。100% 都是 5 行。
+// Rows per page: home leaves room above the pager; zones also keep a message line. Both are 5 at 100%.
+static int list_rows(void) {
+    const int bottom = PAGER_Y - (s_view == V_ZONE ? TR_S(52) : TR_S(16));
+    const int n = (bottom - list_top()) / ROW_H;
+    return n > 1 ? n : 1;
+}
+
+static int list_pages(void) { return s_item_count ? (s_item_count + list_rows() - 1) / list_rows() : 1; }
 
 // 读推荐（home.json）或关注流（feed.json）。/ Load the feed (home.json) or following feed (feed.json).
 static void load_list_file(const char* path, bool with_thumbs) {
@@ -630,9 +644,15 @@ static const player_t* rate_at(int k) {
     return NULL;
 }
 
+// 评分一页几行（100% 是 7 行）。/ Rating rows per page (7 at 100%).
+static int rate_rows(void) {
+    const int n = (POST_PAGER_Y - TR_S(40) - RATE_TOP) / RATE_H;
+    return n > 1 ? n : 1;
+}
+
 static int rate_pages(void) {
     const int n = rate_count();
-    return n ? (n + RATE_ROWS - 1) / RATE_ROWS : 1;
+    return n ? (n + rate_rows() - 1) / rate_rows() : 1;
 }
 
 /* ---- 帖子数据与排版 / Post data and layout ---- */
@@ -656,7 +676,14 @@ static int title_lines(void) {
 }
 
 static int body_top(int page) {
-    return page ? BODY_TOP : TITLE_Y + s_title_lines * TITLE_LH + 10 + 44 + 18;
+    return page ? BODY_TOP : TITLE_Y + s_title_lines * TITLE_LH + TR_S(10) + TR_S(44) + TR_S(18);
+}
+
+// 正文图最高多少：两行标题时第一页也放得下（100% 仍是 680）。/ Tallest body image: still fits page one under a
+// two-line title (680 at 100%).
+static int image_max_h(void) {
+    const int room = BODY_BOTTOM - (TITLE_Y + 2 * TITLE_LH + TR_S(10) + TR_S(44) + TR_S(18));
+    return room < IMAGE_MAX_H ? room : IMAGE_MAX_H;
 }
 
 static void add_line(int block, uint32_t off, int len, int h, int kind) {
@@ -711,7 +738,7 @@ static int reply_lines(const reply_t* r, int max) {
 }
 
 static int reply_height(const reply_t* r) {
-    return 40 + (r->quote ? 40 : 0) + reply_lines(r, REPLY_LINES) * REPLY_LH + 32;
+    return TR_S(40) + (r->quote ? TR_S(40) : 0) + reply_lines(r, REPLY_LINES) * REPLY_LH + TR_S(32);
 }
 
 static void layout_replies(int which) {
@@ -772,7 +799,8 @@ static bool load_post(const char* tid) {
             int iw = 4, ih = 3;
             tomato_hupu_img_size(img->valuestring, &iw, &ih);
             int w = CW, h = (int)((int64_t)CW * ih / iw);
-            if (h > IMAGE_MAX_H) { h = IMAGE_MAX_H; w = (int)((int64_t)IMAGE_MAX_H * iw / ih); }
+            const int max_h = image_max_h();
+            if (h > max_h) { h = max_h; w = (int)((int64_t)max_h * iw / ih); }
             x->w = (int16_t)(w < 40 ? 40 : w);
             x->h = (int16_t)(h < 40 ? 40 : h);
         } else {
@@ -821,24 +849,25 @@ static const block_t* image_at(int k) {
 
 static void draw_rows(uint8_t* fb, int top) {
     char line[160];
-    for (int row = 0; row < ROWS; row++) {
-        const int i = s_list_page * ROWS + row;
+    const int rows = list_rows();
+    for (int row = 0; row < rows; row++) {
+        const int i = s_list_page * rows + row;
         if (i >= s_item_count) break;
         const item_t* x = &s_items[i];
         const int y = top + row * ROW_H;
-        const int tw = x->jpg[0] ? THUMB_X - TR_MARGIN - 20 : CW;
-        tr_wrap(fb, TR_MARGIN, y + 10, tw, 30, 40, x->title, 2);
+        const int tw = x->jpg[0] ? THUMB_X - TR_MARGIN - TR_S(20) : CW;
+        tr_wrap(fb, TR_MARGIN, y + TR_S(10), tw, TR_S(30), TR_S(40), x->title, 2);
         snprintf(line, sizeof(line), "%s", x->meta);
-        tr_fit(line, 24, tw);
-        tr_text_dim(fb, TR_MARGIN, y + 100, 24, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(24), tw);
+        tr_text_dim(fb, TR_MARGIN, y + TR_S(100), TR_S(24), line, EPD_DRAW_ALIGN_LEFT);
         if (x->jpg[0]) {
             const uint8_t* px = hupu_img_get(x->jpg, THUMB_W, THUMB_H);
-            if (px) hupu_img_draw(fb, THUMB_X, y + 18, THUMB_W, THUMB_H, px, true);
+            if (px) hupu_img_draw(fb, THUMB_X, y + TR_S(18), THUMB_W, THUMB_H, px, true);
             // 缩略图还没到：浅灰圆角占位（虎扑只用整页刷新）。/ Thumbnail not here yet: a light gray placeholder
             // (Hupu refreshes whole pages only).
-            else ui_fill_round_rect(fb, (EpdRect){THUMB_X, y + 18, THUMB_W, THUMB_H}, 12, TR_GRAY_SURFACE);
+            else ui_fill_round_rect(fb, (EpdRect){THUMB_X, y + TR_S(18), THUMB_W, THUMB_H}, TR_S(12), TR_GRAY_SURFACE);
         }
-        tr_hline(fb, y + ROW_H - 6, TR_MARGIN, CW, true);
+        tr_hline(fb, y + ROW_H - TR_S(6), TR_MARGIN, CW, true);
     }
 }
 
@@ -851,15 +880,34 @@ static int list_pages_shown(void) {
 static void draw_header(uint8_t* fb) {
     tr_title(fb, "虎扑");
     if (!tomato_sync_busy()) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 86, 116, false);
-        tr_text(fb, TR_W - TR_MARGIN, 98, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(86), TR_S(116), false);
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     static const char* const SEG[3] = {"推荐", "关注", "比分"};
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 3, (int)s_seg);
 }
 
+// 放大后字更大，多给两行，提示不被截断。/ Larger sizes get two more lines so notes are not cut.
+static int empty_max_lines(void) { return ui_scale_pct > 100 ? 6 : 4; }
+
 static void draw_empty(uint8_t* fb, int y, const char* text) {
-    tr_wrap(fb, TR_MARGIN, y, CW, 30, 46, text, 4);
+    tr_wrap(fb, TR_MARGIN, y, CW, TR_S(30), TR_S(46), text, empty_max_lines());
+}
+
+// 提示占几行（和 draw_empty 一样折行）。/ Lines a note takes (wrapped like draw_empty).
+static int empty_lines(const char* text) {
+    const char* p = text;
+    int n = 0;
+    while (*p && n < empty_max_lines()) { p += tr_line_bytes(p, TR_S(30), CW); if (*p == '\n') p++; n++; }
+    return n ? n : 1;
+}
+
+#define FOLLOW_NONE_TEXT "还没有关注的专区。关注后，这里按回复时间混排各专区的最新帖子。关注只存在设备上，不用登录。"
+
+// “去选专区”按钮放在提示下面；100% 在 440。/ The "pick zones" button sits under the note; 440 at 100%.
+static EpdRect follow_pill_rect(void) {
+    const int below = STATUS_Y + TR_S(20) + empty_lines(FOLLOW_NONE_TEXT) * TR_S(46) + TR_S(42);
+    return (EpdRect){TR_MARGIN, below > TR_S(440) ? below : TR_S(440), CW, TR_S(84)};
 }
 
 static void draw_feed(uint8_t* fb) {
@@ -869,10 +917,10 @@ static void draw_feed(uint8_t* fb) {
     else if (s_msg[0]) snprintf(line, sizeof(line), "%s", s_msg);
     else snprintf(line, sizeof(line), "首页推荐 · %d 条", s_item_count);
     // 平常的条数用深灰，加载和出错的提示保持黑字。/ The plain count is dark gray; loading and errors stay black.
-    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT);
-    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
+    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - TR_S(12), CW, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
     if (!s_item_count) {
-        draw_empty(fb, LIST_TOP + 20, loading ? "加载中，请稍候。" :
+        draw_empty(fb, LIST_TOP + TR_S(20), loading ? "加载中，请稍候。" :
                    "还没有缓存。联网后点右上角“刷新”加载虎扑推荐；之后不联网也能看上次的内容。");
         return;
     }
@@ -883,8 +931,8 @@ static void draw_feed(uint8_t* fb) {
 static void draw_follow(uint8_t* fb) {
     char line[200];
     if (!s_follow_count) {
-        draw_empty(fb, STATUS_Y + 20, "还没有关注的专区。关注后，这里按回复时间混排各专区的最新帖子。关注只存在设备上，不用登录。");
-        tr_pill(fb, (EpdRect){TR_MARGIN, 440, CW, 84}, "去选专区", true, 32);
+        draw_empty(fb, STATUS_Y + TR_S(20), FOLLOW_NONE_TEXT);
+        tr_pill(fb, follow_pill_rect(), "去选专区", true, TR_S(32));
         return;
     }
     const bool loading = job_running(TOMATO_HUPU_FOLLOW);
@@ -897,17 +945,18 @@ static void draw_follow(uint8_t* fb) {
         for (int i = 0; i < s_follow_count && i < 3 && n > 0 && (size_t)n < sizeof(line); i++)
             n += snprintf(line + n, sizeof(line) - n, "%s%s", i ? "、" : "", s_follows[i].name);
     }
-    const int manage_w = ttf_text_width_px(26, "管理 ›") + 20;
+    const int manage_w = ttf_text_width_px(TR_S(26), "管理 ›") + TR_S(20);
     if (loading || !s_msg[0]) {
-        tr_fit(line, 26, CW - manage_w);
-        if (loading) tr_text(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT, false);
-        else tr_text_dim(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(26), CW - manage_w);
+        if (loading) tr_text(fb, TR_MARGIN, STATUS_Y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
+        else tr_text_dim(fb, TR_MARGIN, STATUS_Y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
     } else {
-        tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW - manage_w, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - TR_S(12), CW - manage_w, TR_S(26), line, EPD_DRAW_ALIGN_LEFT,
+                   false);
     }
-    tr_text(fb, TR_W - TR_MARGIN, STATUS_Y, 26, "管理 ›", EPD_DRAW_ALIGN_RIGHT, true);
+    tr_text(fb, TR_W - TR_MARGIN, STATUS_Y, TR_S(26), "管理 ›", EPD_DRAW_ALIGN_RIGHT, true);
     if (!s_item_count) {
-        draw_empty(fb, LIST_TOP + 20, loading ? "加载中，请稍候。" : "关注流还没有缓存。联网后点右上角“刷新”。");
+        draw_empty(fb, LIST_TOP + TR_S(20), loading ? "加载中，请稍候。" : "关注流还没有缓存。联网后点右上角“刷新”。");
         return;
     }
     draw_rows(fb, LIST_TOP);
@@ -916,15 +965,33 @@ static void draw_follow(uint8_t* fb) {
 
 /* ---- 绘制：比分 / Drawing: scores ---- */
 
+// 一行放不下五个赛事胶囊时，缩小胶囊左右的留白（字不缩），正好排满一行。
+// When the five league chips do not fit on one row, shrink the padding beside the text (never the text) to fill it.
+static int league_pad(void) {
+    int text = 0;
+    for (int k = 0; k < LEAGUE_COUNT; k++) text += ttf_text_width_px(TR_S(28), LEAGUES[k].name);
+    const int gaps = (LEAGUE_COUNT - 1) * TR_S(12);
+    const int pad = TR_S(48);
+    if (text + LEAGUE_COUNT * pad + gaps <= CW) return pad;
+    return (CW - text - gaps) / LEAGUE_COUNT;
+}
+
 static EpdRect league_rect(int i) {
+    const int pad = league_pad();
     int x = TR_MARGIN;
-    for (int k = 0; k < i; k++) x += ttf_text_width_px(28, LEAGUES[k].name) + 48 + 12;
-    return (EpdRect){x, CHIP_Y, ttf_text_width_px(28, LEAGUES[i].name) + 48, 54};
+    for (int k = 0; k < i; k++) x += ttf_text_width_px(TR_S(28), LEAGUES[k].name) + pad + TR_S(12);
+    return (EpdRect){x, CHIP_Y, ttf_text_width_px(TR_S(28), LEAGUES[i].name) + pad, TR_S(54)};
+}
+
+// 比分一页几场（100% 是 5 场）。/ Matches per page (5 at 100%).
+static int match_rows(void) {
+    const int n = (PAGER_Y - TR_S(24) - MATCH_TOP) / MATCH_H;
+    return n > 1 ? n : 1;
 }
 
 static int day_pages(void) {
     const int n = s_day_count ? s_days[s_day].count : 0;
-    return n ? (n + ROWS - 1) / ROWS : 1;
+    return n ? (n + match_rows() - 1) / match_rows() : 1;
 }
 
 // 开赛时间：时间戳是毫秒，按北京时间显示，不依赖时区设置。/ Start time from ms, shown in Beijing time without TZ.
@@ -936,95 +1003,113 @@ static void start_time(const char* ts, char* out, size_t cap) {
 }
 
 static void draw_scores(uint8_t* fb) {
-    for (int i = 0; i < LEAGUE_COUNT; i++) tr_pill(fb, league_rect(i), LEAGUES[i].name, i == s_league, 28);
+    for (int i = 0; i < LEAGUE_COUNT; i++) tr_pill(fb, league_rect(i), LEAGUES[i].name, i == s_league, TR_S(28));
     char line[96];
     const bool loading = job_running(TOMATO_HUPU_SCHEDULE);
     if (loading) snprintf(line, sizeof(line), "%s", loading_text("正在加载赛程…"));
     else if (s_msg[0]) snprintf(line, sizeof(line), "%s", s_msg);
     else if (s_day_count) snprintf(line, sizeof(line), "%s", s_days[s_day].label);
     else line[0] = 0;
-    tr_message(fb, TR_W / 2, DATE_Y, DATE_Y - 4, CW - 160, 30, line, EPD_DRAW_ALIGN_CENTER, true);
+    tr_message(fb, TR_W / 2, DATE_Y, DATE_Y - TR_S(4), CW - TR_S(160), TR_S(30), line, EPD_DRAW_ALIGN_CENTER, true);
     if (s_day_count && !loading) {
-        if (s_day > 0) tr_text(fb, TR_MARGIN + 20, DATE_Y, 30, "‹", EPD_DRAW_ALIGN_CENTER, true);
-        if (s_day + 1 < s_day_count) tr_text(fb, TR_W - TR_MARGIN - 20, DATE_Y, 30, "›", EPD_DRAW_ALIGN_CENTER, true);
+        if (s_day > 0) tr_text(fb, TR_MARGIN + TR_S(20), DATE_Y, TR_S(30), "‹", EPD_DRAW_ALIGN_CENTER, true);
+        if (s_day + 1 < s_day_count)
+            tr_text(fb, TR_W - TR_MARGIN - TR_S(20), DATE_Y, TR_S(30), "›", EPD_DRAW_ALIGN_CENTER, true);
     }
-    tr_hline(fb, DATE_Y + 58, TR_MARGIN, CW, true);
+    tr_hline(fb, DATE_Y + TR_S(58), TR_MARGIN, CW, true);
     if (!s_day_count) {
-        draw_empty(fb, MATCH_TOP + 20, loading ? "加载中，请稍候。" : "这个赛事还没有缓存。联网后点右上角“刷新”。");
+        draw_empty(fb, MATCH_TOP + TR_S(20), loading ? "加载中，请稍候。" : "这个赛事还没有缓存。联网后点右上角“刷新”。");
         return;
     }
     const day_t* d = &s_days[s_day];
-    if (!d->count) { draw_empty(fb, MATCH_TOP + 20, "这一天没有比赛"); return; }
-    for (int row = 0; row < ROWS; row++) {
-        const int k = s_day_page * ROWS + row;
+    if (!d->count) { draw_empty(fb, MATCH_TOP + TR_S(20), "这一天没有比赛"); return; }
+    const int rows = match_rows();
+    for (int row = 0; row < rows; row++) {
+        const int k = s_day_page * rows + row;
         if (k >= d->count) break;
         const match_t* m = &s_matches[d->first + k];
         const int y = MATCH_TOP + row * MATCH_H;
+        if (m->st && m->as[0]) snprintf(line, sizeof(line), "%s : %s", m->as, m->bs[0] ? m->bs : "0");
+        else snprintf(line, sizeof(line), "VS");
+        // 队名给比分让出位置；100% 时宽 186、中心距边 95。/ Team names keep clear of the score; 186 wide and centered
+        // 95 from the edge at 100%.
+        int tw = (CW - ttf_text_width_px(TR_S(40), line)) / 2 - TR_S(12);
+        if (tw > TR_S(186)) tw = TR_S(186);
+        const int tx = TR_S(2) + tw / 2;
         char a[32], b[32];
         snprintf(a, sizeof(a), "%s", m->a);
         snprintf(b, sizeof(b), "%s", m->b);
-        tr_fit(a, 32, 186);
-        tr_fit(b, 32, 186);
+        tr_fit(a, TR_S(32), tw);
+        tr_fit(b, TR_S(32), tw);
         // 每场一张浅灰卡片。/ One light gray card per match.
-        ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 8, y, CW + 16, MATCH_H - 12}, 20, TR_GRAY_SURFACE);
-        tr_text_on(fb, TR_MARGIN + 95, y + 16, 32, a, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-        tr_text_on(fb, TR_W - TR_MARGIN - 95, y + 16, 32, b, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-        if (m->st && m->as[0]) snprintf(line, sizeof(line), "%s : %s", m->as, m->bs[0] ? m->bs : "0");
-        else snprintf(line, sizeof(line), "VS");
-        tr_text_on(fb, TR_W / 2, y + 8, 40, line, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 8, y, CW + 16, MATCH_H - TR_S(12)}, TR_S(20), TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_MARGIN + tx, y + TR_S(16), TR_S(32), a, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W - TR_MARGIN - tx, y + TR_S(16), TR_S(32), b, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W / 2, y + TR_S(8), TR_S(40), line, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
         if (m->st == 2) snprintf(line, sizeof(line), "%s%s%s%s", m->desc[0] ? m->desc : "已结束",
                                  m->count[0] ? " · " : "", m->count, m->k[0] ? " ›" : "");
         else if (m->st == 1) snprintf(line, sizeof(line), "%s", m->desc[0] ? m->desc : "进行中");
         else start_time(m->ts, line, sizeof(line));
-        tr_fit(line, 24, CW);
-        tr_text_on(fb, TR_W / 2, y + 70, 24, line, EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+        tr_fit(line, TR_S(24), CW);
+        tr_text_on(fb, TR_W / 2, y + TR_S(70), TR_S(24), line, EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY,
+                   TR_GRAY_SURFACE);
     }
     tr_pager(fb, PAGER_Y, s_day_page, day_pages());
 }
 
 static void draw_rate(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 92, 30, "‹ 比分", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(30), "‹ 比分", EPD_DRAW_ALIGN_LEFT, false);
     const match_t* m = &s_matches[s_rate_match];
     char line[96];
     if (m->as[0]) snprintf(line, sizeof(line), "%s %s : %s %s", m->a, m->as, m->bs, m->b);
     else snprintf(line, sizeof(line), "%s", s_rate_title);
-    tr_fit(line, 30, 400);
-    tr_text(fb, TR_W - TR_MARGIN, 92, 30, line, EPD_DRAW_ALIGN_RIGHT, true);
+    // 比分标题给左边的返回让位（100% 宽 400）。/ The score title keeps clear of Back (400 wide at 100%).
+    int title_w = CW - ttf_text_width_px(TR_S(30), "‹ 比分") - TR_S(24);
+    if (title_w > TR_S(400)) title_w = TR_S(400);
+    tr_fit(line, TR_S(30), title_w);
+    tr_text(fb, TR_W - TR_MARGIN, TR_S(92), TR_S(30), line, EPD_DRAW_ALIGN_RIGHT, true);
     if (!s_player_count) {
         const char* msg = job_running(TOMATO_HUPU_RATING) ? loading_text("正在加载评分…") : s_msg[0] ? s_msg : "没有评分数据";
-        draw_empty(fb, 200, msg);
+        draw_empty(fb, TR_S(200), msg);
         return;
     }
     if (s_rate_team) {
         const char* labels[2] = {m->a, m->b};
-        tr_segment(fb, (EpdRect){TR_MARGIN, 150, CW, 64}, labels, 2, s_rate_team - 1);
+        tr_segment(fb, (EpdRect){TR_MARGIN, TR_S(150), CW, TR_S(64)}, labels, 2, s_rate_team - 1);
     }
-    tr_text_dim(fb, TR_MARGIN, 250, 24, "球员", EPD_DRAW_ALIGN_LEFT);
-    tr_text_dim(fb, 370, 250, 24, "评分", EPD_DRAW_ALIGN_CENTER);
-    tr_text_dim(fb, TR_W - TR_MARGIN, 250, 24, "技术统计", EPD_DRAW_ALIGN_RIGHT);
-    tr_hline(fb, 288, TR_MARGIN, CW, true);
-    for (int row = 0; row < RATE_ROWS; row++) {
-        const player_t* p = rate_at(s_rate_page * RATE_ROWS + row);
+    tr_text_dim(fb, TR_MARGIN, TR_S(250), TR_S(24), "球员", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, RATE_SCORE_X, TR_S(250), TR_S(24), "评分", EPD_DRAW_ALIGN_CENTER);
+    tr_text_dim(fb, TR_W - TR_MARGIN, TR_S(250), TR_S(24), "技术统计", EPD_DRAW_ALIGN_RIGHT);
+    tr_hline(fb, TR_S(288), TR_MARGIN, CW, true);
+    // 名字和技术统计离评分列各留 60（放大时随之加宽）。/ Name and stats stay 60 (scaled) clear of the score column.
+    const int name_w = RATE_SCORE_X - TR_MARGIN - TR_S(60);
+    const int stats_w = TR_W - TR_MARGIN - RATE_SCORE_X - TR_S(60);
+    const int rows = rate_rows();
+    for (int row = 0; row < rows; row++) {
+        const player_t* p = rate_at(s_rate_page * rows + row);
         if (!p) break;
         const int y = RATE_TOP + row * RATE_H;
         snprintf(line, sizeof(line), "%s", p->name);
-        tr_fit(line, 30, 270);
-        tr_text(fb, TR_MARGIN, y + 10, 30, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(line, TR_S(30), name_w);
+        tr_text(fb, TR_MARGIN, y + TR_S(10), TR_S(30), line, EPD_DRAW_ALIGN_LEFT, true);
         if (!strcmp(p->type, "coach")) snprintf(line, sizeof(line), "教练");
         else if (!strcmp(p->type, "referee")) snprintf(line, sizeof(line), "裁判");
         else if (p->min[0]) snprintf(line, sizeof(line), "出场 %s", p->min);
         else line[0] = 0;
-        tr_fit(line, 24, 270);
-        tr_text_dim(fb, TR_MARGIN, y + 56, 24, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(24), name_w);
+        tr_text_dim(fb, TR_MARGIN, y + TR_S(56), TR_S(24), line, EPD_DRAW_ALIGN_LEFT);
         snprintf(line, sizeof(line), "%.1f", (double)p->score);
-        tr_text(fb, 370, y + 16, 40, line, EPD_DRAW_ALIGN_CENTER, true);
+        tr_text(fb, RATE_SCORE_X, y + TR_S(16), TR_S(40), line, EPD_DRAW_ALIGN_CENTER, true);
         snprintf(line, sizeof(line), "%s", p->stats);
-        tr_fit(line, 24, 214);
-        tr_text(fb, TR_W - TR_MARGIN, y + 14, 24, line, EPD_DRAW_ALIGN_RIGHT, false);
+        tr_fit(line, TR_S(24), stats_w);
+        tr_text(fb, TR_W - TR_MARGIN, y + TR_S(14), TR_S(24), line, EPD_DRAW_ALIGN_RIGHT, false);
         if (p->count >= 10000) snprintf(line, sizeof(line), "%.1f 万人评", p->count / 10000.0);
         else snprintf(line, sizeof(line), "%d 人评", p->count);
-        tr_text_dim(fb, TR_W - TR_MARGIN, y + 56, 24, line, EPD_DRAW_ALIGN_RIGHT);
-        tr_hline(fb, y + RATE_H - 6, TR_MARGIN, CW, true);
+        tr_text_dim(fb, TR_W - TR_MARGIN, y + TR_S(56), TR_S(24), line, EPD_DRAW_ALIGN_RIGHT);
+        tr_hline(fb, y + RATE_H - TR_S(6), TR_MARGIN, CW, true);
     }
     tr_pager(fb, POST_PAGER_Y, s_rate_page, rate_pages());
 }
@@ -1033,25 +1118,25 @@ static void draw_rate(uint8_t* fb) {
 
 // 分类胶囊按顺序排，返回第 i 个的位置。/ Lay category chips out in order; returns chip i.
 static EpdRect cat_rect(int i, int* bottom) {
-    int x = TR_MARGIN, y = 170;
+    int x = TR_MARGIN, y = TR_S(170);
     EpdRect r = {0};
     for (int k = 0; k < s_cat_count; k++) {
-        const int w = ttf_text_width_px(26, s_cats[k].name) + 32;
-        if (x + w > TR_W - TR_MARGIN) { x = TR_MARGIN; y += 60; }
-        if (k == i) r = (EpdRect){x, y, w, 50};
-        x += w + 10;
+        const int w = ttf_text_width_px(TR_S(26), s_cats[k].name) + TR_S(32);
+        if (x + w > TR_W - TR_MARGIN) { x = TR_MARGIN; y += TR_S(60); }
+        if (k == i) r = (EpdRect){x, y, w, TR_S(50)};
+        x += w + TR_S(10);
     }
-    if (bottom) *bottom = y + 50;
+    if (bottom) *bottom = y + TR_S(50);
     return r;
 }
 
 static int grid_top(void) {
-    int bottom = 170;
+    int bottom = TR_S(170);
     if (s_cat_count) cat_rect(-1, &bottom);
-    return bottom + 40;
+    return bottom + TR_S(40);
 }
 
-static int grid_rows(void) { return (PAGER_Y - 20 - grid_top() + (CELL_STEP_Y - CELL_H)) / CELL_STEP_Y; }
+static int grid_rows(void) { return (PAGER_Y - TR_S(20) - grid_top() + (CELL_STEP_Y - CELL_H)) / CELL_STEP_Y; }
 
 static int zone_pages(void) {
     const int per = grid_rows() * 3;
@@ -1060,22 +1145,22 @@ static int zone_pages(void) {
 }
 
 static void draw_zones(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 96, 40, "全部专区", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(96), TR_S(40), "全部专区", EPD_DRAW_ALIGN_LEFT, true);
     char line[64];
     snprintf(line, sizeof(line), "已关注 %d", s_follow_count);
-    tr_text_dim(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT);
+    tr_text_dim(fb, TR_W - TR_MARGIN, TR_S(104), TR_S(28), line, EPD_DRAW_ALIGN_RIGHT);
     if (!s_zone_count) {
         const char* msg = job_running(TOMATO_HUPU_ZONES) ? loading_text("正在加载专区…") :
                           s_msg[0] ? s_msg : "专区列表还没有缓存，联网后再进来。";
-        draw_empty(fb, 200, msg);
+        draw_empty(fb, TR_S(200), msg);
         return;
     }
     for (int i = 0; i < s_cat_count; i++) {
-        tr_pill(fb, cat_rect(i, NULL), s_cats[i].name, i == s_cat, 26);
+        tr_pill(fb, cat_rect(i, NULL), s_cats[i].name, i == s_cat, TR_S(26));
     }
     const int top = grid_top(), rows = grid_rows(), per = rows * 3;
-    tr_hline(fb, top - 22, TR_MARGIN, CW, true);
+    tr_hline(fb, top - TR_S(22), TR_MARGIN, CW, true);
     const cat_t* c = &s_cats[s_cat];
     for (int k = 0; k < per; k++) {
         const int i = s_zone_page * per + k;
@@ -1084,33 +1169,40 @@ static void draw_zones(uint8_t* fb) {
         const bool on = follow_index(z->id) >= 0;
         char name[64];
         snprintf(name, sizeof(name), "%s%s", on ? "✓ " : "", z->name);
-        tr_fit(name, 28, CELL_W - 16);
-        tr_pill(fb, (EpdRect){TR_MARGIN + (k % 3) * CELL_STEP_X, top + (k / 3) * CELL_STEP_Y, CELL_W, CELL_H}, name, on, 28);
+        tr_fit(name, TR_S(28), CELL_W - TR_S(16));
+        tr_pill(fb, (EpdRect){TR_MARGIN + (k % 3) * CELL_STEP_X, top + (k / 3) * CELL_STEP_Y, CELL_W, CELL_H}, name, on,
+                TR_S(28));
     }
     tr_pager(fb, PAGER_Y, s_zone_page, zone_pages());
 }
 
 static void draw_zone(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     char line[96];
     snprintf(line, sizeof(line), "%s", s_zone_name);
-    tr_fit(line, 40, 360);
-    tr_text(fb, 96, 96, 40, line, EPD_DRAW_ALIGN_LEFT, true);
+    // 专区名给右边的关注按钮让位（100% 宽 360）。/ The zone name keeps clear of the follow button (360 at 100%).
+    int name_w = TR_W - TR_MARGIN - TR_S(160) - TR_S(24) - (TR_MARGIN + TR_S(56));
+    if (name_w > TR_S(360)) name_w = TR_S(360);
+    tr_fit(line, TR_S(40), name_w);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(96), TR_S(40), line, EPD_DRAW_ALIGN_LEFT, true);
     const bool on = follow_index(s_zone_id) >= 0;
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 160, 92, 160, 56}, on ? "✓ 已关注" : "+ 关注", !on, 28);
-    tr_pill(fb, (EpdRect){TR_MARGIN, 176, 170, 54}, "最新回复", s_zone_sort == 0, 28);
-    tr_pill(fb, (EpdRect){TR_MARGIN + 182, 176, 170, 54}, "最新发布", s_zone_sort == 1, 28);
+    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - TR_S(160), TR_S(92), TR_S(160), TR_S(56)}, on ? "✓ 已关注" : "+ 关注", !on,
+            TR_S(28));
+    tr_pill(fb, (EpdRect){TR_MARGIN, TR_S(176), TR_S(170), TR_S(54)}, "最新回复", s_zone_sort == 0, TR_S(28));
+    tr_pill(fb, (EpdRect){TR_MARGIN + TR_S(182), TR_S(176), TR_S(170), TR_S(54)}, "最新发布", s_zone_sort == 1, TR_S(28));
     const bool loading = job_running(TOMATO_HUPU_THREADS);
-    if (!loading) tr_text(fb, TR_W - TR_MARGIN, 186, 30, "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+    if (!loading) tr_text(fb, TR_W - TR_MARGIN, TR_S(186), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     const int pages = list_pages();
     if (s_list_page >= pages || !s_item_count) {
         // 翻到了还没取的一页，或者整个专区还没缓存。/ A page not fetched yet, or the zone has no cache.
         const char* msg = loading ? loading_text(s_item_count ? "正在加载更多…" : "正在加载专区帖子…")
                         : s_msg[0] ? s_msg : s_item_count ? "没有更多了" : "这个专区还没有缓存，联网后点“刷新”。";
-        draw_empty(fb, ZONE_LIST_TOP + 20, msg);
+        draw_empty(fb, ZONE_LIST_TOP + TR_S(20), msg);
     } else {
         draw_rows(fb, ZONE_LIST_TOP);
-        if (s_msg[0]) tr_message(fb, TR_W / 2, 996, 988, CW, 24, s_msg, EPD_DRAW_ALIGN_CENTER, false);
+        if (s_msg[0])
+            tr_message(fb, TR_W / 2, PAGER_Y - TR_S(44), PAGER_Y - TR_S(52), CW, TR_S(24), s_msg, EPD_DRAW_ALIGN_CENTER,
+                       false);
     }
     tr_pager(fb, PAGER_Y, s_list_page, list_pages_shown());
 }
@@ -1120,8 +1212,8 @@ static void draw_zone(uint8_t* fb) {
 static void draw_post_header(uint8_t* fb) {
     char back[80];
     snprintf(back, sizeof(back), "‹ %s", s_post_loaded && s_zone[0] ? s_zone : "返回");
-    tr_fit(back, 30, 360);
-    tr_text(fb, TR_MARGIN, 92, 30, back, EPD_DRAW_ALIGN_LEFT, false);
+    tr_fit(back, TR_S(30), TR_S(360));
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(30), back, EPD_DRAW_ALIGN_LEFT, false);
     if (!s_post_loaded) return;
     char l1[24], l2[24];
     snprintf(l1, sizeof(l1), "亮了 %d", s_light_count);
@@ -1135,11 +1227,11 @@ static void draw_body(uint8_t* fb) {
     if (s_page == 0) {
         tr_wrap(fb, TR_MARGIN, TITLE_Y, CW, TITLE_PX, TITLE_LH, s_title, 2);
         char meta[160];
-        const int my = TITLE_Y + s_title_lines * TITLE_LH + 10;
+        const int my = TITLE_Y + s_title_lines * TITLE_LH + TR_S(10);
         snprintf(meta, sizeof(meta), "%s · %s · %d 回复", s_author, s_time, s_reply_total);
-        tr_fit(meta, 24, CW);
-        tr_text_dim(fb, TR_MARGIN, my, 24, meta, EPD_DRAW_ALIGN_LEFT);
-        tr_hline(fb, my + 40, TR_MARGIN, CW, true);
+        tr_fit(meta, TR_S(24), CW);
+        tr_text_dim(fb, TR_MARGIN, my, TR_S(24), meta, EPD_DRAW_ALIGN_LEFT);
+        tr_hline(fb, my + TR_S(40), TR_MARGIN, CW, true);
     }
     const int start = s_body_pages[s_page];
     const int end = s_page + 1 < s_body_page_count ? s_body_pages[s_page + 1] : s_line_count;
@@ -1159,8 +1251,8 @@ static void draw_body(uint8_t* fb) {
                 hupu_img_draw(fb, x, y, b->w, b->h, px, true);
             } else {
                 // 图片占位：浅灰圆角块，提示字画在灰底上。/ Image placeholder: a light gray block with the note on it.
-                ui_fill_round_rect(fb, (EpdRect){x, y, b->w, b->h}, 12, TR_GRAY_SURFACE);
-                tr_text_on(fb, TR_W / 2, y + b->h / 2 - 14, 26, exists(b->jpg) ? "图片处理中" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片未下载",
+                ui_fill_round_rect(fb, (EpdRect){x, y, b->w, b->h}, TR_S(12), TR_GRAY_SURFACE);
+                tr_text_on(fb, TR_W / 2, y + b->h / 2 - TR_S(14), TR_S(26), exists(b->jpg) ? "图片处理中" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片未下载",
                            EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
             }
         }
@@ -1171,19 +1263,19 @@ static void draw_body(uint8_t* fb) {
 static void draw_reply(uint8_t* fb, const reply_t* r, int y, int max_lines) {
     char line[200];
     snprintf(line, sizeof(line), "%s", r->user[0] ? r->user : "虎扑JR");
-    tr_fit(line, 26, CW - 160);
-    tr_text(fb, TR_MARGIN, y, 26, line, EPD_DRAW_ALIGN_LEFT, true);
+    tr_fit(line, TR_S(26), CW - TR_S(160));
+    tr_text(fb, TR_MARGIN, y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, true);
     if (r->lights > 0) {
         snprintf(line, sizeof(line), "亮 %d", r->lights);
-        tr_badge(fb, TR_W - TR_MARGIN, y - 4, line, false, 22);
+        tr_badge(fb, TR_W - TR_MARGIN, y - TR_S(4), line, false, TR_S(22));
     }
-    y += 40;
+    y += TR_S(40);
     if (r->quote) {
-        epd_fill_rect((EpdRect){TR_MARGIN, y, 6, 30}, 0x90, fb);
+        epd_fill_rect((EpdRect){TR_MARGIN, y, TR_S(6), TR_S(30)}, 0x90, fb);
         snprintf(line, sizeof(line), "引用 %s", r->quote);
-        tr_fit(line, 24, CW - 22);
-        tr_text_dim(fb, TR_MARGIN + 22, y, 24, line, EPD_DRAW_ALIGN_LEFT);
-        y += 40;
+        tr_fit(line, TR_S(24), CW - TR_S(22));
+        tr_text_dim(fb, TR_MARGIN + TR_S(22), y, TR_S(24), line, EPD_DRAW_ALIGN_LEFT);
+        y += TR_S(40);
     }
     tr_wrap(fb, TR_MARGIN, y, CW, REPLY_PX, REPLY_LH, r->text[0] ? r->text : "（空）", max_lines);
 }
@@ -1193,18 +1285,18 @@ static void draw_replies(uint8_t* fb) {
     const reply_t* list = which ? s_list : s_lights;
     const int count = which ? s_list_count : s_light_count;
     if (!count) {
-        tr_text_dim(fb, TR_MARGIN, BODY_TOP + 20, 30, which ? "还没有回复" : "还没有亮了的回复", EPD_DRAW_ALIGN_LEFT);
+        tr_text_dim(fb, TR_MARGIN, BODY_TOP + TR_S(20), TR_S(30), which ? "还没有回复" : "还没有亮了的回复", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     int y = BODY_TOP;
     for (int i = s_reply_pages[which][s_page]; i < s_reply_pages[which][s_page + 1]; i++) {
         draw_reply(fb, &list[i], y, REPLY_LINES);
         y += reply_height(&list[i]);
-        tr_hline(fb, y - 16, TR_MARGIN, CW, true);
+        tr_hline(fb, y - TR_S(16), TR_MARGIN, CW, true);
     }
     // 最后一页有空位才写提示，不压到回复上。/ Only add the note when the last page has room, never over a reply.
-    if (which && s_page + 1 == s_reply_page_count[1] && s_reply_total > s_list_count && y + 34 <= BODY_BOTTOM)
-        tr_text_dim(fb, TR_W / 2, y, 24, "设备上只显示前面的回复", EPD_DRAW_ALIGN_CENTER);
+    if (which && s_page + 1 == s_reply_page_count[1] && s_reply_total > s_list_count && y + TR_S(34) <= BODY_BOTTOM)
+        tr_text_dim(fb, TR_W / 2, y, TR_S(24), "设备上只显示前面的回复", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_post(uint8_t* fb) {
@@ -1212,7 +1304,7 @@ static void draw_post(uint8_t* fb) {
     if (!s_post_loaded) {
         const char* msg = job_running(TOMATO_HUPU_POST) ? loading_text("正在加载帖子…") :
                           s_msg[0] ? s_msg : "帖子还没有缓存，联网后再打开。";
-        draw_empty(fb, 260, msg);
+        draw_empty(fb, TR_S(260), msg);
         return;
     }
     if (s_tab == T_BODY) draw_body(fb);
@@ -1221,9 +1313,9 @@ static void draw_post(uint8_t* fb) {
 }
 
 static void draw_reply_full(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 92, 30, "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(30), "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
     const reply_t* r = &(s_tab == T_LIST ? s_list : s_lights)[s_reply_open];
-    draw_reply(fb, r, 170, (BODY_BOTTOM - 170 - 80) / REPLY_LH);
+    draw_reply(fb, r, TR_S(170), (BODY_BOTTOM - TR_S(170) - TR_S(80)) / REPLY_LH);
 }
 
 static void image_fit(const block_t* b, int* w, int* h) {
@@ -1239,15 +1331,16 @@ static void draw_image(uint8_t* fb) {
         image_fit(b, &w, &h);
         const uint8_t* px = hupu_img_get(b->jpg, w, h);
         if (px) hupu_img_draw(fb, (TR_W - w) / 2, (TR_H - IMAGE_BAND - h) / 2, w, h, px, false);
-        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, 30, exists(b->jpg) ? "正在处理图片…" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片还没下载",
+        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), exists(b->jpg) ? "正在处理图片…" : job_running(TOMATO_HUPU_POST) ? "图片下载中…" : "图片还没下载",
                      EPD_DRAW_ALIGN_CENTER, false);
     }
     char label[48];
     snprintf(label, sizeof(label), "图 %d / %d", s_image + 1, image_count());
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
-    tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + 26, 30, label, EPD_DRAW_ALIGN_LEFT, true);
-    tr_text_dim(fb, TR_W - TR_MARGIN, TR_H - IMAGE_BAND + 28, 28, "左右翻图 · 点中间返回", EPD_DRAW_ALIGN_RIGHT);
+    tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + TR_S(26), TR_S(30), label, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_dim(fb, TR_W - TR_MARGIN, TR_H - IMAGE_BAND + TR_S(28), TR_S(28), "左右翻图 · 点中间返回",
+                EPD_DRAW_ALIGN_RIGHT);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -1256,7 +1349,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     if (!s_items) {
         tr_status_bar(fb);
         tr_title(fb, "虎扑");
-        draw_empty(fb, 240, "内存不足，打不开虎扑页。");
+        draw_empty(fb, TR_S(240), "内存不足，打不开虎扑页。");
         tr_tab_bar(fb, TR_TAB_HUPU);
         return;
     }
@@ -1433,7 +1526,7 @@ static app_redraw_t tap_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             s_league = i;
             return show_seg(SEG_SCORE);
         }
-        if (y >= DATE_Y - 10 && y < DATE_Y + 50 && s_day_count) {
+        if (y >= DATE_Y - TR_S(10) && y < DATE_Y + TR_S(50) && s_day_count) {
             const int next = s_day + (x < TR_W / 3 ? -1 : x >= TR_W * 2 / 3 ? 1 : 0);
             if (next == s_day || next < 0 || next >= s_day_count) return APP_REDRAW_NONE;
             s_day = next;
@@ -1441,18 +1534,21 @@ static app_redraw_t tap_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             s_msg[0] = 0;
             return APP_REDRAW_PAGE;
         }
-        if (s_day_count && y >= MATCH_TOP && y < MATCH_TOP + ROWS * MATCH_H) {
-            const int k = s_day_page * ROWS + (y - MATCH_TOP) / MATCH_H;
+        const int rows = match_rows();
+        if (s_day_count && y >= MATCH_TOP && y < MATCH_TOP + rows * MATCH_H) {
+            const int k = s_day_page * rows + (y - MATCH_TOP) / MATCH_H;
             if (k < s_days[s_day].count) return open_rate(s_days[s_day].first + k);
         }
         return APP_REDRAW_NONE;
     }
     if (s_seg == SEG_FOLLOW) {
-        if (!s_follow_count && ui_rect_hit((EpdRect){TR_MARGIN, 440, CW, 84}, x, y)) return open_zones();
-        if (s_follow_count && y >= STATUS_Y - 10 && y < STATUS_Y + 40 && x > TR_W - TR_MARGIN - 140) return open_zones();
+        if (!s_follow_count && ui_rect_hit(follow_pill_rect(), x, y)) return open_zones();
+        if (s_follow_count && y >= STATUS_Y - TR_S(10) && y < STATUS_Y + TR_S(40) && x > TR_W - TR_MARGIN - TR_S(140))
+            return open_zones();
     }
-    if (y >= LIST_TOP && y < LIST_TOP + ROWS * ROW_H) {
-        const int i = s_list_page * ROWS + (y - LIST_TOP) / ROW_H;
+    const int rows = list_rows();
+    if (y >= LIST_TOP && y < LIST_TOP + rows * ROW_H) {
+        const int i = s_list_page * rows + (y - LIST_TOP) / ROW_H;
         if (i < s_item_count) return open_post(s_items[i].tid, V_HOME);
     }
     return APP_REDRAW_NONE;
@@ -1460,7 +1556,7 @@ static app_redraw_t tap_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 
 static app_redraw_t tap_zones(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_HUPU)) return APP_REDRAW_NONE;
-    if (y < 160 && x < 360) return go_back();
+    if (y < TR_S(160) && x < TR_S(360)) return go_back();
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
     for (int i = 0; i < s_cat_count; i++) {
@@ -1482,17 +1578,22 @@ static app_redraw_t tap_zones(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 
 static app_redraw_t tap_zone(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_HUPU)) return APP_REDRAW_NONE;
-    if (y < 160 && x < 360) return go_back();
-    if (ui_rect_hit((EpdRect){TR_W - TR_MARGIN - 160, 86, 160, 68}, x, y)) {
+    // 关注按钮先判，返回区不再盖到它。/ Check the follow button first so the back zone never covers it.
+    if (ui_rect_hit((EpdRect){TR_W - TR_MARGIN - TR_S(160), TR_S(86), TR_S(160), TR_S(68)}, x, y)) {
         toggle_follow(s_zone_id, s_zone_name);
         return APP_REDRAW_PAGE;
     }
-    if (y >= 170 && y < 236) {
-        if (x > TR_W - TR_MARGIN - 120) {
+    if (y < TR_S(160) && x < TR_S(360)) return go_back();
+    if (y >= TR_S(170) && y < TR_S(236)) {
+        // 刷新区从排序胶囊右边开始，特大时也不压到“最新发布”。/ The refresh zone starts right of the sort pills, so it
+        // never covers "最新发布" even at the largest size.
+        const int refresh_x = TR_W - TR_MARGIN - TR_S(120) > TR_MARGIN + TR_S(352) ? TR_W - TR_MARGIN - TR_S(120)
+                                                                                   : TR_MARGIN + TR_S(352);
+        if (x > refresh_x) {
             { s_list_page = 0; start_job(TOMATO_HUPU_THREADS, s_zone_id, NULL, s_zone_sort, false); }
             return APP_REDRAW_PAGE;
         }
-        const int sort = x < TR_MARGIN + 176 ? 0 : x < TR_MARGIN + 352 ? 1 : -1;
+        const int sort = x < TR_MARGIN + TR_S(176) ? 0 : x < TR_MARGIN + TR_S(352) ? 1 : -1;
         if (sort < 0 || sort == s_zone_sort) return APP_REDRAW_NONE;
         s_zone_sort = sort;
         s_list_page = 0;
@@ -1503,8 +1604,9 @@ static app_redraw_t tap_zone(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
-    if (s_list_page < list_pages() && y >= ZONE_LIST_TOP && y < ZONE_LIST_TOP + ROWS * ROW_H) {
-        const int i = s_list_page * ROWS + (y - ZONE_LIST_TOP) / ROW_H;
+    const int rows = list_rows();
+    if (s_list_page < list_pages() && y >= ZONE_LIST_TOP && y < ZONE_LIST_TOP + rows * ROW_H) {
+        const int i = s_list_page * rows + (y - ZONE_LIST_TOP) / ROW_H;
         if (i < s_item_count) return open_post(s_items[i].tid, V_ZONE);
     }
     return APP_REDRAW_NONE;
@@ -1529,7 +1631,7 @@ static int image_hit(uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t tap_post(uint16_t x, uint16_t y) {
-    if (y < 140 && x < 360) return go_back();
+    if (y < TR_S(140) && x < TR_S(360)) return go_back();
     if (!s_post_loaded) return APP_REDRAW_NONE;
     const int seg = tr_segment_hit(POST_SEG, 3, x, y);
     if (seg >= 0) {
@@ -1563,9 +1665,9 @@ static app_redraw_t tap_post(uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t tap_rate(uint16_t x, uint16_t y) {
-    if (y < 140 && x < 300) return go_back();
-    if (s_rate_team && y >= 150 && y < 214) {
-        const int team = tr_segment_hit((EpdRect){TR_MARGIN, 150, CW, 64}, 2, x, y) + 1;
+    if (y < TR_S(140) && x < TR_S(300)) return go_back();
+    if (s_rate_team && y >= TR_S(150) && y < TR_S(214)) {
+        const int team = tr_segment_hit((EpdRect){TR_MARGIN, TR_S(150), CW, TR_S(64)}, 2, x, y) + 1;
         if (team <= 0 || team == s_rate_team) return APP_REDRAW_NONE;
         s_rate_team = team;
         s_rate_page = 0;
@@ -1614,8 +1716,9 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 static void queue_visible_images(void) {
     if (s_view == V_HOME && s_seg == SEG_FEED) {
-        for (int row = 0; row < ROWS; row++) {
-            const int i = s_list_page * ROWS + row;
+        const int rows = list_rows();
+        for (int row = 0; row < rows; row++) {
+            const int i = s_list_page * rows + row;
             if (i < s_item_count && s_items[i].jpg[0]) hupu_img_get(s_items[i].jpg, THUMB_W, THUMB_H);
         }
     } else if (s_view == V_POST && s_post_loaded && s_tab == T_BODY) {

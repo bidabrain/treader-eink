@@ -1,0 +1,2 @@
+@SRC@/main/apps/tr_wallsave.c
+managed_components/espressif__cjson/cJSON/cJSON.c

@@ -1,0 +1,2 @@
+@SRC@/main/ui/ui_menu.c
+managed_components/espressif__qrcode/qrcodegen.c

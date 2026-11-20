@@ -18,15 +18,18 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 
-#define COMP_Y (TR_KBD_TOP + 18)
-#define CAND_Y (TR_KBD_TOP + 66)
-#define CAND_H 70
-#define CAND_PX 36
-#define KEYS_Y (TR_KBD_TOP + 172)
-#define KEY_W 56
-#define KEY_H 92
-#define KEY_GAP 6
-#define ROW_GAP 12
+// 高度和字号随显示大小放大；横向受屏宽限制，见 key_w() 和 layout()。/ Heights and font sizes scale with the
+// display size; widths are capped by the screen, see key_w() and layout().
+#define COMP_Y (TR_KBD_TOP + TR_S(18))
+#define CAND_Y (TR_KBD_TOP + TR_S(66))
+#define CAND_H TR_S(70)
+#define CAND_PX TR_S(36)
+#define KEYS_Y (TR_KBD_TOP + TR_S(172))
+#define KEY_H TR_S(92)
+#define KEY_GAP TR_S(6)
+#define ROW_GAP TR_S(12)
+#define FN_GAP TR_S(12)   // 字母行两侧功能键和字母之间 / Between the side function keys and the letters
+#define KB_EDGE 24        // 键盘左右边距，不放大 / Keyboard side margin; does not scale
 #define KEY_GRAY 0xE0
 
 enum {
@@ -49,6 +52,13 @@ EpdRect tr_kbd_area(void) { return (EpdRect){0, TR_KBD_TOP, TR_W, TR_H - TR_KBD_
 
 static int row_y(int row) { return KEYS_Y + row * (KEY_H + ROW_GAP); }
 
+// 字母键宽：放大后一行十个键放不下，就按屏宽均分（100% 时是 56）。
+// Letter key width: when ten scaled keys no longer fit, share the screen width instead (56 at 100%).
+static int key_w(void) {
+    const int fit = (TR_W - 16 - 9 * KEY_GAP) / 10;
+    return TR_S(56) < fit ? TR_S(56) : fit;
+}
+
 static bool composing_mode(const tr_kbd_t* kbd) { return kbd->mode == TR_KBD_PINYIN || kbd->mode == TR_KBD_T9; }
 
 // 生成当前布局的全部按键。/ Build every key for the current layout.
@@ -56,31 +66,42 @@ static int layout(const tr_kbd_t* kbd, kb_key_t* keys) {
     int n = 0;
     if (kbd->mode == TR_KBD_T9) {
         // 3×3 宫格：左上是分词，其余是 2-9；右侧一列删除、清空。/ 3x3 grid: separator top-left, digits 2-9; delete and clear on the right.
-        const int w = 170, gap = 12, x0 = 24;
+        // 九键横向不放大（已占满屏宽），只变高。/ T9 widths stay as they are (already full width); only heights grow.
+        const int w = 170, gap = 12, x0 = KB_EDGE;
         for (int i = 0; i < 9; i++) {
             EpdRect r = {x0 + (i % 3) * (w + gap), row_y(i / 3), w, KEY_H};
             keys[n++] = (kb_key_t){r, i == 0 ? K_FN_LEFT : '1' + i};
         }
         const int rx = x0 + 3 * (w + gap);
-        keys[n++] = (kb_key_t){{rx, row_y(0), TR_W - 24 - rx, KEY_H}, K_BACK};
-        keys[n++] = (kb_key_t){{rx, row_y(1), TR_W - 24 - rx, KEY_H}, K_CLEAR};
+        keys[n++] = (kb_key_t){{rx, row_y(0), TR_W - KB_EDGE - rx, KEY_H}, K_BACK};
+        keys[n++] = (kb_key_t){{rx, row_y(1), TR_W - KB_EDGE - rx, KEY_H}, K_CLEAR};
     } else {
         const char* const* rows = kbd->mode == TR_KBD_SYMBOL ? ROWS_SYMBOLS : ROWS_LETTERS;
+        const int kw = key_w();
+        int x3 = 0;   // 第三行第一个字母键的 x / x of the third row's first letter key
         for (int r = 0; r < 3; r++) {
             int count = (int)strlen(rows[r]);
-            int total = count * KEY_W + (count - 1) * KEY_GAP;
+            int total = count * kw + (count - 1) * KEY_GAP;
             int x0 = (TR_W - total) / 2;
+            if (r == 2) x3 = x0;
             for (int i = 0; i < count; i++) {
-                keys[n++] = (kb_key_t){{x0 + i * (KEY_W + KEY_GAP), row_y(r), KEY_W, KEY_H}, rows[r][i]};
+                keys[n++] = (kb_key_t){{x0 + i * (kw + KEY_GAP), row_y(r), kw, KEY_H}, rows[r][i]};
             }
         }
-        keys[n++] = (kb_key_t){{24, row_y(2), 92, KEY_H}, K_FN_LEFT};
-        keys[n++] = (kb_key_t){{TR_W - 24 - 92, row_y(2), 92, KEY_H}, K_BACK};
+        // 两侧功能键占满字母行留下的空（100% 时 92 宽）。/ The side keys fill what the letter row leaves (92 at 100%).
+        const int fw = x3 - FN_GAP - KB_EDGE;
+        keys[n++] = (kb_key_t){{KB_EDGE, row_y(2), fw, KEY_H}, K_FN_LEFT};
+        keys[n++] = (kb_key_t){{TR_W - KB_EDGE - fw, row_y(2), fw, KEY_H}, K_BACK};
     }
-    keys[n++] = (kb_key_t){{24, row_y(3), 120, KEY_H}, K_MODE};
-    keys[n++] = (kb_key_t){{156, row_y(3), 120, KEY_H}, K_LANG};
-    keys[n++] = (kb_key_t){{288, row_y(3), 200, KEY_H}, K_SPACE};
-    keys[n++] = (kb_key_t){{500, row_y(3), TR_W - 24 - 500, KEY_H}, K_GO};
+    // 底行四个键按 120 : 120 : 200 : 160 分屏宽，间隙放大（100% 时正好是原来的宽度）。
+    // The bottom row splits the width 120 : 120 : 200 : 160 with scaled gaps (exactly the old widths at 100%).
+    const int gap = TR_S(12), avail = TR_W - 2 * KB_EDGE - 3 * gap;
+    const int mode_w = avail * 120 / 600, go_w = avail * 160 / 600, space_w = avail - 2 * mode_w - go_w;
+    const int x_lang = KB_EDGE + mode_w + gap, x_space = x_lang + mode_w + gap, x_go = x_space + space_w + gap;
+    keys[n++] = (kb_key_t){{KB_EDGE, row_y(3), mode_w, KEY_H}, K_MODE};
+    keys[n++] = (kb_key_t){{x_lang, row_y(3), mode_w, KEY_H}, K_LANG};
+    keys[n++] = (kb_key_t){{x_space, row_y(3), space_w, KEY_H}, K_SPACE};
+    keys[n++] = (kb_key_t){{x_go, row_y(3), TR_W - KB_EDGE - x_go, KEY_H}, K_GO};
     return n;
 }
 
@@ -121,9 +142,9 @@ static void refresh_cands(tr_kbd_t* kbd) {
 // 从 cand_first 开始能放下几个；more 表示前后还有。/ How many fit from cand_first; more if others exist.
 static int cand_visible(const tr_kbd_t* kbd, int xs[], int ws[], bool* more) {
     int x = TR_MARGIN, n = 0;
-    const int limit = TR_W - TR_MARGIN - 60;
+    const int limit = TR_W - TR_MARGIN - TR_S(60);
     for (int i = kbd->cand_first; i < kbd->cand_count; i++) {
-        int w = ttf_text_width_px(CAND_PX, kbd->cands[i].text) + 48;
+        int w = ttf_text_width_px(CAND_PX, kbd->cands[i].text) + TR_S(48);
         if (x + w > limit && n) break;
         if (x + w > limit) w = limit - x;   // 一个就太宽：截到可用宽度 / A single over-wide one is clipped
         xs[n] = x;
@@ -187,32 +208,43 @@ void tr_kbd_open(tr_kbd_t* kbd, const char* initial, bool chinese, const char* g
 
 /* ---- 绘制 / Drawing ---- */
 
+// 键宽受屏宽限制：放大后字比键宽就缩一点字号，不截断（100% 时都放得下，不变）。
+// Key widths are capped by the screen: a scaled label wider than its key steps its size down instead of being cut
+// (everything fits at 100%, so nothing changes there).
+static int label_px(const char* label, int px, int key_w) {
+    while (px > 20 && ttf_text_width_px(px, label) > key_w - TR_S(8)) px -= 2;
+    return px;
+}
+
 void tr_kbd_draw(uint8_t* fb, const tr_kbd_t* kbd) {
     epd_fill_rect(tr_kbd_area(), UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_KBD_TOP, 0, TR_W, false);
     if (composing_mode(kbd)) {
-        tr_text(fb, TR_MARGIN, COMP_Y, 30, kbd->comp, EPD_DRAW_ALIGN_LEFT, true);
+        tr_text(fb, TR_MARGIN, COMP_Y, TR_S(30), kbd->comp, EPD_DRAW_ALIGN_LEFT, true);
         int xs[TR_KBD_CANDS], ws[TR_KBD_CANDS];
         bool more = false;
         int n = cand_visible(kbd, xs, ws, &more);
         for (int i = 0; i < n; i++) {
             const pinyin_ime_cand_t* c = &kbd->cands[kbd->cand_first + i];
-            if (i) epd_fill_rect((EpdRect){xs[i], CAND_Y + 16, 2, CAND_H - 32}, TR_GRAY_LINE, fb);
+            if (i) epd_fill_rect((EpdRect){xs[i], CAND_Y + TR_S(16), 2, CAND_H - TR_S(32)}, TR_GRAY_LINE, fb);
             char shown[PINYIN_IME_CAND_TEXT];
             memcpy(shown, c->text, sizeof(shown));
-            tr_fit(shown, CAND_PX, ws[i] - 24);
-            tr_text(fb, xs[i] + ws[i] / 2, CAND_Y + (CAND_H - CAND_PX) / 2 - 2, CAND_PX, shown,
+            tr_fit(shown, CAND_PX, ws[i] - TR_S(24));
+            tr_text(fb, xs[i] + ws[i] / 2, CAND_Y + (CAND_H - CAND_PX) / 2 - TR_S(2), CAND_PX, shown,
                     EPD_DRAW_ALIGN_CENTER, i == 0 && kbd->cand_first == 0);
         }
-        if (more) tr_text(fb, TR_W - TR_MARGIN, CAND_Y + 14, CAND_PX, "›", EPD_DRAW_ALIGN_RIGHT, false);
+        if (more) tr_text(fb, TR_W - TR_MARGIN, CAND_Y + TR_S(14), CAND_PX, "›", EPD_DRAW_ALIGN_RIGHT, false);
         if (!kbd->comp[0]) {
-            tr_text(fb, TR_MARGIN, CAND_Y + 18, 28, kbd->mode == TR_KBD_T9 ? "按字母所在的键，点候选上屏" : "输入拼音，点候选上屏",
-                    EPD_DRAW_ALIGN_LEFT, false);
+            tr_text(fb, TR_MARGIN, CAND_Y + TR_S(18), TR_S(28),
+                    kbd->mode == TR_KBD_T9 ? "按字母所在的键，点候选上屏" : "输入拼音，点候选上屏", EPD_DRAW_ALIGN_LEFT,
+                    false);
         }
     } else if (kbd->want_ime && !kbd->ime_ok && kbd->mode == TR_KBD_ENGLISH) {
-        tr_text(fb, TR_MARGIN, CAND_Y + 18, 26, "没有拼音词库：把 ime/pinyin-v1.bin 放进 TF 卡", EPD_DRAW_ALIGN_LEFT, false);
+        // 放大后一行放不下就分两行，仍在候选条里。/ When too wide once scaled it takes two lines, still in the bar.
+        tr_message(fb, TR_MARGIN, CAND_Y + TR_S(18), CAND_Y + TR_S(6), TR_W - 2 * TR_MARGIN, TR_S(26),
+                   "没有拼音词库：把 ime/pinyin-v1.bin 放进 TF 卡", EPD_DRAW_ALIGN_LEFT, false);
     }
-    tr_hline(fb, CAND_Y + CAND_H + 10, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_hline(fb, CAND_Y + CAND_H + TR_S(10), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 
     kb_key_t keys[48];
     int n = layout(kbd, keys);
@@ -220,18 +252,21 @@ void tr_kbd_draw(uint8_t* fb, const tr_kbd_t* kbd) {
     for (int i = 0; i < n; i++) {
         const kb_key_t* k = &keys[i];
         const char* label = key_label(kbd, k->id, buf);
+        const int cx = k->r.x + k->r.width / 2;
         if (k->id == K_GO) {
-            ui_fill_round_rect(fb, k->r, 12, UI_GRAY_BLACK);
-            tr_text_inv(fb, k->r.x + k->r.width / 2, k->r.y + (k->r.height - 30) / 2 - 2, 30, label, EPD_DRAW_ALIGN_CENTER, true);
+            ui_fill_round_rect(fb, k->r, TR_S(12), UI_GRAY_BLACK);
+            const int px = label_px(label, TR_S(30), k->r.width);
+            tr_text_inv(fb, cx, k->r.y + (k->r.height - px) / 2 - TR_S(2), px, label, EPD_DRAW_ALIGN_CENTER, true);
         } else if (k->id >= K_FN_LEFT && k->id != K_SPACE) {
-            ui_draw_round_rect(fb, k->r, 12, UI_GRAY_BLACK);
-            ui_draw_round_rect(fb, ui_inset_rect(k->r, 1), 11, UI_GRAY_BLACK);
-            tr_text(fb, k->r.x + k->r.width / 2, k->r.y + (k->r.height - 28) / 2 - 2, 28, label, EPD_DRAW_ALIGN_CENTER, false);
+            ui_draw_round_rect(fb, k->r, TR_S(12), UI_GRAY_BLACK);
+            ui_draw_round_rect(fb, ui_inset_rect(k->r, 1), TR_S(12) - 1, UI_GRAY_BLACK);
+            const int px = label_px(label, TR_S(28), k->r.width);
+            tr_text(fb, cx, k->r.y + (k->r.height - px) / 2 - TR_S(2), px, label, EPD_DRAW_ALIGN_CENTER, false);
         } else {
-            ui_fill_round_rect(fb, k->r, 12, KEY_GRAY);
+            ui_fill_round_rect(fb, k->r, TR_S(12), KEY_GRAY);
             bool t9 = kbd->mode == TR_KBD_T9 && k->id != K_SPACE;
-            int px = k->id == K_SPACE || t9 ? 30 : 36;
-            tr_text(fb, k->r.x + k->r.width / 2, k->r.y + (k->r.height - px) / 2 - 2, px, label, EPD_DRAW_ALIGN_CENTER, t9);
+            const int px = label_px(label, k->id == K_SPACE || t9 ? TR_S(30) : TR_S(36), k->r.width);
+            tr_text(fb, cx, k->r.y + (k->r.height - px) / 2 - TR_S(2), px, label, EPD_DRAW_ALIGN_CENTER, t9);
         }
     }
 }
@@ -260,7 +295,7 @@ tr_kbd_result_t tr_kbd_touch(tr_kbd_t* kbd, uint16_t x, uint16_t y) {
         int xs[TR_KBD_CANDS], ws[TR_KBD_CANDS];
         bool more = false;
         int n = cand_visible(kbd, xs, ws, &more);
-        if (more && x >= TR_W - TR_MARGIN - 60) {
+        if (more && x >= TR_W - TR_MARGIN - TR_S(60)) {
             kbd->cand_first += n;
             if (kbd->cand_first >= kbd->cand_count) kbd->cand_first = 0;
             return TR_KBD_CHANGED;
@@ -281,7 +316,7 @@ tr_kbd_result_t tr_kbd_touch(tr_kbd_t* kbd, uint16_t x, uint16_t y) {
         int d = dx * dx + dy * dy;
         if (d < best_d) { best_d = d; best = i; }
     }
-    if (best < 0 || best_d > 12 * 12) return TR_KBD_NONE;
+    if (best < 0 || best_d > TR_S(12) * TR_S(12)) return TR_KBD_NONE;
     int id = keys[best].id;
     switch (id) {
     case K_FN_LEFT:

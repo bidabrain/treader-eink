@@ -1,0 +1,2 @@
+@SRC@/main/app/auto_turn.c
+@SRC@/main/book/book_layout.c

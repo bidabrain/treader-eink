@@ -5,6 +5,7 @@
  */
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "book_progress.h"
 #include "book_store.h"
@@ -51,6 +52,24 @@ esp_err_t nvs_erase_key(nvs_handle_t h,const char* key){
     record_t*r=record(key,false);if(!r)return ESP_ERR_NVS_NOT_FOUND;r->len=0;return ESP_OK;
 }
 esp_err_t nvs_commit(nvs_handle_t h){(void)h;++commits;return commit_failure;}
+// 按记录表顺序遍历还在的条目。/ Walk the live records in table order.
+struct nvs_host_iter { int i; };
+static esp_err_t iter_seek(nvs_iterator_t it){
+    for(;it->i<8;++it->i)if(records[it->i].len)return ESP_OK;
+    return ESP_ERR_NVS_NOT_FOUND;
+}
+esp_err_t nvs_entry_find_in_handle(nvs_handle_t h,nvs_type_t type,nvs_iterator_t* out){
+    (void)h;(void)type;*out=calloc(1,sizeof(**out));assert(*out);
+    if(iter_seek(*out)!=ESP_OK){free(*out);*out=NULL;return ESP_ERR_NVS_NOT_FOUND;}
+    return ESP_OK;
+}
+esp_err_t nvs_entry_next(nvs_iterator_t* it){
+    ++(*it)->i;if(iter_seek(*it)!=ESP_OK){free(*it);*it=NULL;return ESP_ERR_NVS_NOT_FOUND;}return ESP_OK;
+}
+esp_err_t nvs_entry_info(nvs_iterator_t it,nvs_entry_info_t* info){
+    memset(info,0,sizeof(*info));strcpy(info->key,records[it->i].key);info->type=NVS_TYPE_BLOB;return ESP_OK;
+}
+void nvs_release_iterator(nvs_iterator_t it){free(it);}
 int main(void){
     const char*sd="/sdcard/books/同名.txt",*flash="/flash/books/同名.txt";
     book_progress_watch_t* watch_a=book_progress_watch_create(sd);

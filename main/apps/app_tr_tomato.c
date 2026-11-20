@@ -38,17 +38,25 @@
 #define POLL_MS 400
 #define BUSY_REDRAW_MS 1500
 #define DU_SETTLE_MAX 12
-#define ROW_H 92
-#define LIST_BOTTOM 1030
-#define RESULT_ROW_H 140
-#define RESULT_TOP 254
-#define RESULTS_PER_PAGE 5
-#define PAGER_Y 1040
-#define DETAIL_BTN (EpdRect){TR_MARGIN, 960, TR_W - 2 * TR_MARGIN, 88}
-#define FIELD_RECT (EpdRect){96, 84, TR_W - 96 - TR_MARGIN, 80}
+// 长度都随显示大小放大；靠下的位置跟着标签栏走，每页几行按剩下的高度算。
+// Lengths scale with the display size; positions near the bottom follow the tab bar and rows per page follow the
+// height that is left.
+#define ROW_H TR_S(92)
+#define LIST_BOTTOM (TR_TABS_Y - TR_S(64))
+#define RESULT_ROW_H TR_S(140)
+#define RESULT_TOP TR_S(254)
+#define PAGER_Y (TR_TABS_Y - TR_S(54))
+#define RESULTS_PER_PAGE results_per_page()
+#define DETAIL_BTN (EpdRect){TR_MARGIN, TR_TABS_Y - TR_S(134), TR_W - 2 * TR_MARGIN, TR_S(88)}
+#define FIELD_X TR_S(96)
+#define FIELD_RECT (EpdRect){FIELD_X, TR_S(84), TR_W - FIELD_X - TR_MARGIN, TR_S(80)}
+#define RESULT_TEXT_X (TR_MARGIN + TR_S(96))   // 结果行封面右边的文字 / Result text right of the mini cover
 #define RECENT_QUERIES 3
 // 分段按钮下面的内容整体下移。/ Everything below the segment moves down by this much.
 #define SEG_SHIFT 78
+
+// 100% 时 5 行。/ Five rows at 100%.
+static int results_per_page(void) { return (PAGER_Y - RESULT_TOP + TR_S(20)) / RESULT_ROW_H; }
 
 extern const app_desc_t app_tr_store;
 extern const app_desc_t app_tr_tomato;
@@ -82,6 +90,15 @@ static op_t s_last;       // 刚结束的操作，用于显示结果或失败 / 
 static tomato_status_t s_status;
 static uint32_t s_seen_revision;
 static int64_t s_poll_ms, s_busy_draw_ms;
+// 点了做不了时给的一句提示（后台忙），下次成功开始或进页时清掉。
+// One-line feedback when a tap cannot run (worker busy); cleared on the next successful start or page entry.
+static char s_note[64];
+// 详情页点“下载到书库”没能开始时的原因（另一本在下、后台在忙）。/ Why "下载到书库" on a detail page could not start
+// (another book downloading, the worker busy).
+static char s_detail_note[64];
+// 正在下载（或刚下载完）的那本书；进度、“取消”和失败原因只显示在这本的详情上。
+// The book downloading (or just downloaded); progress, "cancel" and the failure show on its detail only.
+static char s_dl_id[sizeof(((tomato_hit_t*)0)->book_id)];
 static int s_du_count;
 static EpdRect s_area;
 
@@ -144,8 +161,13 @@ static bool start_op(op_t op, esp_err_t err) {
     s_op_seq = tomato_sync_seq();
     s_last = OP_NONE;
     s_seen_revision = 0;
+    s_note[0] = 0;
     return true;
 }
+
+// 刚结束的是本页的这个任务、之后也没有别的任务开始：这时全局状态才是它的结果。
+// The op that just ended is ours and no other job started since: only then is the global status its result.
+static bool last_is(op_t op) { return op != OP_NONE && s_last == op && tomato_sync_seq() == s_op_seq; }
 
 // 最近搜索存 NVS，重启后还在。/ Recent searches live in NVS so they survive restarts.
 static void load_recent(void) {
@@ -165,11 +187,21 @@ static void save_recent(void) {
 }
 
 static void remember_query(const char* q) {
+    // 先按字符边界截到存得下的长度，查重也用截过的。/ Cut to the stored size on a character boundary first; the
+    // duplicate check uses the cut form too.
+    char cut[sizeof(s_recent[0])];
+    size_t n = strlen(q);
+    if (n >= sizeof(cut)) {
+        n = sizeof(cut) - 1;
+        while (n > 0 && ((unsigned char)q[n] & 0xC0) == 0x80) n--;
+    }
+    memcpy(cut, q, n);
+    cut[n] = 0;
     int at = RECENT_QUERIES - 1;
-    for (int i = 0; i < RECENT_QUERIES; i++) if (!strcmp(s_recent[i], q)) { at = i; break; }
+    for (int i = 0; i < RECENT_QUERIES; i++) if (!strcmp(s_recent[i], cut)) { at = i; break; }
     // 用过的词移到最前。/ Move a reused query to the front.
     memmove(s_recent[1], s_recent[0], sizeof(s_recent[0]) * (size_t)at);
-    snprintf(s_recent[0], sizeof(s_recent[0]), "%.47s", q);
+    memcpy(s_recent[0], cut, sizeof(cut));
     save_recent();
 }
 
@@ -178,8 +210,8 @@ static void remember_query(const char* q) {
 // 搜索栏搬到书城以后，书架上的东西整体上移这么多。/ How far the shelf content moved up once search went to the store.
 #define NO_FIELD_DY 104
 static int list_top(void) {
-    if (tomato_sync_busy() && (s_op == OP_CHECK || s_op == OP_UPDATE)) return 460 + SEG_SHIFT - NO_FIELD_DY;
-    return (s_pending ? 420 : 320) + SEG_SHIFT - NO_FIELD_DY;
+    if (tomato_sync_busy() && (s_op == OP_CHECK || s_op == OP_UPDATE)) return TR_S(460 + SEG_SHIFT - NO_FIELD_DY);
+    return TR_S((s_pending ? 420 : 320) + SEG_SHIFT - NO_FIELD_DY);
 }
 
 static int rows_per_page(void) { return (LIST_BOTTOM - list_top()) / ROW_H; }
@@ -193,18 +225,21 @@ static void draw_list(uint8_t* fb) {
     tr_title(fb, "番茄小说");
     bool busy = tomato_sync_busy();
     if (!busy) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - 150, 116, false);
-        tr_text(fb, TR_W - TR_MARGIN, 98, 30, "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(150), TR_S(116), false);
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     static const char* const SEG[2] = {"书架", "书城"};
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, 0);
     char line[160];
     if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) snprintf(line, sizeof(line), "正在%s，可以先去看书", s_op == OP_CHECK ? "检查" : "更新");
-    else if (s_status.phase == TOMATO_DONE || s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_status.message);
+    else if (s_note[0]) snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_note);
+    else if (last_is(s_last) && (s_status.phase == TOMATO_DONE || s_status.phase == TOMATO_FAILED))
+        snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_status.message);
     else snprintf(line, sizeof(line), "%d 本 · %d 本有新章节", s_count, s_pending);
     // 放不下（多半是带原因的失败提示）就两行：分段按钮下面到搜索框上面正好放得下。
     // Too long (usually a failure with its cause): two lines fit between the segment and the search field.
-    tr_message(fb, TR_MARGIN, 156 + SEG_SHIFT + 6, 150 + SEG_SHIFT, TR_W - 2 * TR_MARGIN, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_message(fb, TR_MARGIN, TR_S(156 + SEG_SHIFT + 6), TR_S(150 + SEG_SHIFT), TR_W - 2 * TR_MARGIN, TR_S(28), line,
+               EPD_DRAW_ALIGN_LEFT, false);
 
     // 搜索入口在书城页最上面（用户要求），书架这里不再放搜索栏。/ The search entry lives at the top of the bookstore
     // page (user request); the shelf no longer has a search bar.
@@ -212,27 +247,28 @@ static void draw_list(uint8_t* fb) {
     if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) {
         if (s_status.total) snprintf(line, sizeof(line), "%d / %d　%s", s_status.current, s_status.total, s_status.message);
         else snprintf(line, sizeof(line), "%s", s_status.message);
-        tr_fit(line, 40, TR_W - 2 * TR_MARGIN);
+        tr_fit(line, TR_S(40), TR_W - 2 * TR_MARGIN);
         const int b = SEG_SHIFT - NO_FIELD_DY;
-        tr_text(fb, TR_MARGIN, 316 + b, 40, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_text(fb, TR_MARGIN, TR_S(316 + b), TR_S(40), line, EPD_DRAW_ALIGN_LEFT, true);
         if (s_status.phase == TOMATO_DOWNLOADING) {
             snprintf(line, sizeof(line), "正在下载 · %.1f MB", s_status.bytes / 1048576.0);
-            tr_text(fb, TR_MARGIN, 370 + b, 28, line, EPD_DRAW_ALIGN_LEFT, false);
+            tr_text(fb, TR_MARGIN, TR_S(370 + b), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
         } else if (s_status.phase == TOMATO_QUEUED) {
-            tr_text(fb, TR_MARGIN, 370 + b, 28, "服务器正在生成 TXT", EPD_DRAW_ALIGN_LEFT, false);
+            tr_text(fb, TR_MARGIN, TR_S(370 + b), TR_S(28), "服务器正在生成 TXT", EPD_DRAW_ALIGN_LEFT, false);
         }
         int pct = s_status.total ? (s_status.current - 1) * 100 / s_status.total : 0;
-        tr_progress(fb, TR_MARGIN, 412 + b, TR_W - 2 * TR_MARGIN - 110, pct);
-        tr_text(fb, TR_W - TR_MARGIN, 396 + b, 30, "取消", EPD_DRAW_ALIGN_RIGHT, true);
-        tr_hline(fb, 446 + b, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        tr_progress(fb, TR_MARGIN, TR_S(412 + b), TR_W - 2 * TR_MARGIN - TR_S(110), pct);
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(396 + b), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, true);
+        tr_hline(fb, TR_S(446 + b), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     } else if (s_pending) {
         snprintf(line, sizeof(line), "下载全部更新（%d 本）", s_pending);
-        tr_pill(fb, (EpdRect){TR_MARGIN, 316 + SEG_SHIFT - NO_FIELD_DY, TR_W - 2 * TR_MARGIN, 80}, line, true, 30);
+        tr_pill(fb, (EpdRect){TR_MARGIN, TR_S(316 + SEG_SHIFT - NO_FIELD_DY), TR_W - 2 * TR_MARGIN, TR_S(80)}, line, true,
+                TR_S(30));
     }
 
     int top = list_top();
     if (!s_count) {
-        tr_wrap(fb, TR_MARGIN, top + 20, TR_W - 2 * TR_MARGIN, 30, 46,
+        tr_wrap(fb, TR_MARGIN, top + TR_S(20), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 s_has_config ? "还没有番茄小说。到“书城”点最上面的搜索栏找书。"
                              : "还没设置番茄服务器。在 TF 卡 tomato/config.json 里填写服务器地址和密码，格式见“设置”。", 4);
         return;
@@ -253,16 +289,16 @@ static void draw_list(uint8_t* fb) {
         else snprintf(mark, sizeof(mark), "已读 %d%%", s_pct[s_order[k]]);
         // 新章节是小胶囊（待下载黑底、已下载没看描边），阅读进度是深灰字。/ New chapters are badges (black when
         // pending, outlined when downloaded but unopened); reading progress is dark gray text.
-        int mark_w = marked ? ttf_text_width_px(24, mark) + 24 : ttf_text_width_px(28, mark);
+        int mark_w = marked ? ttf_text_width_px(TR_S(24), mark) + TR_S(24) : ttf_text_width_px(TR_S(28), mark);
         snprintf(line, sizeof(line), "%s", b->title);
-        tr_fit(line, 34, TR_W - 2 * TR_MARGIN - mark_w - 24);
-        tr_text(fb, TR_MARGIN, y + 8, 34, line, EPD_DRAW_ALIGN_LEFT, marked);
+        tr_fit(line, TR_S(34), TR_W - 2 * TR_MARGIN - mark_w - TR_S(24));
+        tr_text(fb, TR_MARGIN, y + TR_S(8), TR_S(34), line, EPD_DRAW_ALIGN_LEFT, marked);
         snprintf(line, sizeof(line), "%s · %d 章", b->author, b->chapters);
-        tr_fit(line, 26, TR_W - 2 * TR_MARGIN - mark_w - 24);
-        tr_text_dim(fb, TR_MARGIN, y + 52, 26, line, EPD_DRAW_ALIGN_LEFT);
-        if (marked) tr_badge(fb, TR_W - TR_MARGIN, y + 22, mark, pending > 0, 24);
-        else tr_text_dim(fb, TR_W - TR_MARGIN, y + 24, 28, mark, EPD_DRAW_ALIGN_RIGHT);
-        tr_hline(fb, y + ROW_H - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        tr_fit(line, TR_S(26), TR_W - 2 * TR_MARGIN - mark_w - TR_S(24));
+        tr_text_dim(fb, TR_MARGIN, y + TR_S(52), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
+        if (marked) tr_badge(fb, TR_W - TR_MARGIN, y + TR_S(22), mark, pending > 0, TR_S(24));
+        else tr_text_dim(fb, TR_W - TR_MARGIN, y + TR_S(24), TR_S(28), mark, EPD_DRAW_ALIGN_RIGHT);
+        tr_hline(fb, y + ROW_H - TR_S(4), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_pager(fb, PAGER_Y, s_page, list_pages());
 }
@@ -270,43 +306,55 @@ static void draw_list(uint8_t* fb) {
 /* ---- 搜索 / Search ---- */
 
 static void draw_field(uint8_t* fb, const char* text, bool caret) {
-    tr_text(fb, TR_MARGIN, 94, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(94), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     EpdRect f = FIELD_RECT;
-    tr_pill(fb, f, "", false, 30);
-    tr_icon(fb, TR_ICON_SEARCH, f.x + 44, f.y + 40, false);
+    tr_pill(fb, f, "", false, TR_S(30));
+    tr_icon(fb, TR_ICON_SEARCH, f.x + TR_S(44), f.y + TR_S(40), false);
     char shown[TR_KBD_TEXT_MAX];
     // 太长时显示末尾，按字符边界。/ Show the tail when too long, on a character boundary.
-    snprintf(shown, sizeof(shown), "%s", tr_tail_fit(text, 34, f.width - 120));
-    tr_text(fb, f.x + 78, f.y + 20, 34, shown, EPD_DRAW_ALIGN_LEFT, false);
+    snprintf(shown, sizeof(shown), "%s", tr_tail_fit(text, TR_S(34), f.width - TR_S(120)));
+    tr_text(fb, f.x + TR_S(78), f.y + TR_S(20), TR_S(34), shown, EPD_DRAW_ALIGN_LEFT, false);
     if (caret) {
-        int cx = f.x + 80 + ttf_text_width_px(34, shown);
-        epd_fill_rect((EpdRect){cx, f.y + 18, 3, 44}, UI_GRAY_BLACK, fb);
+        int cx = f.x + TR_S(80) + ttf_text_width_px(TR_S(34), shown);
+        epd_fill_rect((EpdRect){cx, f.y + TR_S(18), 3, TR_S(44)}, UI_GRAY_BLACK, fb);
     }
+}
+
+// 最近搜索胶囊：绘制和命中共用。键盘放大后往上长，胶囊仍在它上面。/ Recent-search chips, shared by drawing and hit
+// testing. The keyboard grows upward with the display size; the chips still sit above it.
+#define RECENT_Y TR_S(254)
+#define RECENT_H TR_S(54)
+// 排出放得下的胶囊，返回个数；越过右边距的那个和之后的都不画、也点不到。
+// Lay out the chips that fit and return how many; the first one past the right margin and all after it are neither
+// drawn nor tappable.
+static int recent_layout(EpdRect rects[RECENT_QUERIES]) {
+    int n = 0, x = TR_MARGIN;
+    for (int i = 0; i < RECENT_QUERIES && s_recent[i][0]; i++) {
+        const int w = ttf_text_width_px(TR_S(28), s_recent[i]) + TR_S(48);
+        if (x + w > TR_W - TR_MARGIN) break;
+        rects[n++] = (EpdRect){x, RECENT_Y, w, RECENT_H};
+        x += w + TR_S(12);
+    }
+    return n;
 }
 
 static void draw_search(uint8_t* fb) {
     draw_field(fb, s_kbd.text, true);
     if (s_recent[0][0]) {
-        tr_text_dim(fb, TR_MARGIN, 208, 28, "最近搜索", EPD_DRAW_ALIGN_LEFT);
-        int x = TR_MARGIN;
-        for (int i = 0; i < RECENT_QUERIES && s_recent[i][0]; i++) {
-            int w = ttf_text_width_px(28, s_recent[i]) + 48;
-            if (x + w > TR_W - TR_MARGIN) break;
-            tr_pill(fb, (EpdRect){x, 254, w, 54}, s_recent[i], false, 28);
-            x += w + 12;
-        }
+        tr_text_dim(fb, TR_MARGIN, TR_S(208), TR_S(28), "最近搜索", EPD_DRAW_ALIGN_LEFT);
+        EpdRect rects[RECENT_QUERIES];
+        const int n = recent_layout(rects);
+        for (int i = 0; i < n; i++) tr_pill(fb, rects[i], s_recent[i], false, TR_S(28));
     }
     tr_kbd_draw(fb, &s_kbd);
 }
 
 static int recent_hit(uint16_t x, uint16_t y) {
-    if (y < 254 || y > 308) return -1;
-    int cx = TR_MARGIN;
-    for (int i = 0; i < RECENT_QUERIES && s_recent[i][0]; i++) {
-        int w = ttf_text_width_px(28, s_recent[i]) + 48;
-        if (x >= cx && x < cx + w) return i;
-        cx += w + 12;
-    }
+    if (y < RECENT_Y || y > RECENT_Y + RECENT_H) return -1;
+    EpdRect rects[RECENT_QUERIES];
+    const int n = recent_layout(rects);
+    for (int i = 0; i < n; i++)
+        if (x >= rects[i].x && x < rects[i].x + rects[i].width) return i;
     return -1;
 }
 
@@ -342,48 +390,70 @@ static void draw_results(uint8_t* fb) {
     char line[160];
     bool searching = tomato_sync_busy() && s_op == OP_SEARCH;
     if (searching) snprintf(line, sizeof(line), "%s", s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi…" : "正在搜索…");
-    else if (s_status.phase == TOMATO_FAILED && s_last == OP_SEARCH) snprintf(line, sizeof(line), "%s", s_status.message);
+    else if (s_status.phase == TOMATO_FAILED && last_is(OP_SEARCH)) snprintf(line, sizeof(line), "%s", s_status.message);
     else if (!s_hit_count) snprintf(line, sizeof(line), "没有找到");
     else snprintf(line, sizeof(line), "%d 个结果", s_hit_count);
-    tr_message(fb, TR_MARGIN, 204, 196, TR_W - 2 * TR_MARGIN, 28, line, EPD_DRAW_ALIGN_LEFT, false);
-    for (int row = 0; row < RESULTS_PER_PAGE; row++) {
-        int i = s_result_page * RESULTS_PER_PAGE + row;
+    tr_message(fb, TR_MARGIN, TR_S(204), TR_S(196), TR_W - 2 * TR_MARGIN, TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
+    const int per = RESULTS_PER_PAGE, tx = RESULT_TEXT_X;
+    for (int row = 0; row < per; row++) {
+        int i = s_result_page * per + row;
         if (i >= s_hit_count) break;
         const tomato_hit_t* h = &s_hits[i];
         int y = RESULT_TOP + row * RESULT_ROW_H;
-        tr_mini_cover(fb, (EpdRect){TR_MARGIN, y + 2, 70, 96}, h->title, false);
+        tr_mini_cover(fb, (EpdRect){TR_MARGIN, y + TR_S(2), TR_S(70), TR_S(96)}, h->title, false);
         bool owned = shelf_index_of(h->book_id) >= 0;
-        int mark_w = owned ? ttf_text_width_px(24, "已在书库") + 24 + 16 : 0;
+        int mark_w = owned ? ttf_text_width_px(TR_S(24), "已在书库") + TR_S(24) + TR_S(16) : 0;
         snprintf(line, sizeof(line), "%s", h->title);
-        tr_fit(line, 34, TR_W - TR_MARGIN - 136 - mark_w);
-        tr_text(fb, 136, y, 34, line, EPD_DRAW_ALIGN_LEFT, true);
-        if (owned) tr_badge(fb, TR_W - TR_MARGIN, y + 6, "已在书库", false, 24);
+        tr_fit(line, TR_S(34), TR_W - TR_MARGIN - tx - mark_w);
+        tr_text(fb, tx, y, TR_S(34), line, EPD_DRAW_ALIGN_LEFT, true);
+        if (owned) tr_badge(fb, TR_W - TR_MARGIN, y + TR_S(6), "已在书库", false, TR_S(24));
         snprintf(line, sizeof(line), "%s%s%s", h->author, h->category[0] ? " · " : "", h->category);
-        tr_fit(line, 26, TR_W - TR_MARGIN - 136);
-        tr_text_dim(fb, 136, y + 48, 26, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(26), TR_W - TR_MARGIN - tx);
+        tr_text_dim(fb, tx, y + TR_S(48), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
         format_meta(h, line, sizeof(line));
-        tr_text_dim(fb, 136, y + 84, 26, line, EPD_DRAW_ALIGN_LEFT);
-        tr_hline(fb, y + RESULT_ROW_H - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        tr_text_dim(fb, tx, y + TR_S(84), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
+        tr_hline(fb, y + RESULT_ROW_H - TR_S(20), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_pager(fb, PAGER_Y, s_result_page, (s_hit_count + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE);
 }
 
 /* ---- 详情 / Detail ---- */
 
+// 当前详情页这本书就是下载的那本。/ The detail page shows the book being downloaded.
+static bool detail_is_dl(void) {
+    return s_dl_id[0] && s_detail >= 0 && s_detail < s_hit_count && !strcmp(s_hits[s_detail].book_id, s_dl_id);
+}
+
 static void draw_detail(uint8_t* fb) {
     const tomato_hit_t* h = &s_hits[s_detail];
-    tr_text(fb, TR_MARGIN, 90, 30, "‹ 搜索结果", EPD_DRAW_ALIGN_LEFT, false);
-    tr_cover(fb, (EpdRect){232, 160, 220, 296}, h->title, h->author, "番茄", false);
+    tr_text(fb, TR_MARGIN, TR_S(90), TR_S(30), "‹ 搜索结果", EPD_DRAW_ALIGN_LEFT, false);
     char line[128];
-    snprintf(line, sizeof(line), "%s", h->title);
-    tr_fit(line, 48, TR_W - 2 * TR_MARGIN);
-    tr_text(fb, TR_W / 2, 488, 48, line, EPD_DRAW_ALIGN_CENTER, true);
-    tr_text_dim(fb, TR_W / 2, 554, 30, h->author, EPD_DRAW_ALIGN_CENTER);
+    int top;   // 信息卡片顶边 / Top of the stat card
+    if (ui_scale_pct == 100) {
+        tr_cover(fb, (EpdRect){232, 160, 220, 296}, h->title, h->author, "番茄", false);
+        snprintf(line, sizeof(line), "%s", h->title);
+        tr_fit(line, 48, TR_W - 2 * TR_MARGIN);
+        tr_text(fb, TR_W / 2, 488, 48, line, EPD_DRAW_ALIGN_CENTER, true);
+        tr_text_dim(fb, TR_W / 2, 554, 30, h->author, EPD_DRAW_ALIGN_CENTER);
+        top = 626;
+    } else {
+        // 放大后居中摆放放不下：封面缩小放左边，书名作者在右边，省下的高度留给简介。
+        // Scaled up, the centered stack no longer fits: a smaller cover on the left, title and author on its right,
+        // leaving height for the synopsis.
+        const EpdRect cover = {TR_MARGIN, TR_S(160), 180, 242};
+        tr_cover(fb, cover, h->title, h->author, "番茄", false);
+        const int x = cover.x + cover.width + TR_S(24), w = TR_W - TR_MARGIN - x;
+        const int lines = tr_wrap(fb, x, cover.y + TR_S(8), w, TR_S(44), TR_S(56), h->title, 2);
+        snprintf(line, sizeof(line), "%s", h->author);
+        tr_fit(line, TR_S(30), w);
+        tr_text_dim(fb, x, cover.y + TR_S(8) + lines * TR_S(56) + TR_S(12), TR_S(30), line, EPD_DRAW_ALIGN_LEFT);
+        top = cover.y + cover.height + TR_S(30);
+    }
 
     // 四格信息放在浅灰卡片里（下载进度的 DU 区域在它下面，不碰灰底）。/ Four stat cells on a light gray card (the
     // download progress DU area is below it and never touches the gray).
-    const int top = 626, cell = (TR_W - 2 * TR_MARGIN) / 4;
-    ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 8, top, TR_W - 2 * TR_MARGIN + 16, 116}, 24, TR_GRAY_SURFACE);
+    const int cell = (TR_W - 2 * TR_MARGIN) / 4;
+    ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 8, top, TR_W - 2 * TR_MARGIN + 16, TR_S(116)}, TR_S(24), TR_GRAY_SURFACE);
     char words[16], chapters[16];
     snprintf(chapters, sizeof(chapters), "%d", h->chapters);
     if (h->words >= 10000) snprintf(words, sizeof(words), "%lu 万", (unsigned long)(h->words / 10000));
@@ -392,31 +462,43 @@ static void draw_detail(uint8_t* fb) {
     const char* values[4] = {h->category[0] ? h->category : "—", h->finished ? "完结" : "连载", chapters, words};
     for (int i = 0; i < 4; i++) {
         int cx = TR_MARGIN + i * cell + cell / 2;
-        if (i) epd_fill_rect((EpdRect){TR_MARGIN + i * cell, top + 20, 2, 76}, TR_GRAY_LINE, fb);
-        tr_text_on(fb, cx, top + 16, 24, labels[i], EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
-        tr_text_on(fb, cx, top + 52, 32, values[i], EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        if (i) epd_fill_rect((EpdRect){TR_MARGIN + i * cell, top + TR_S(20), 2, TR_S(76)}, TR_GRAY_LINE, fb);
+        tr_text_on(fb, cx, top + TR_S(16), TR_S(24), labels[i], EPD_DRAW_ALIGN_CENTER, false, TR_GRAY_SECONDARY,
+                   TR_GRAY_SURFACE);
+        // 格子宽不变：放大后长分类名缩小字号放进格子。/ Cells keep their width: a long category steps its size down.
+        int px = TR_S(32);
+        while (px > TR_S(24) && ttf_text_width_px(px, values[i]) > cell - 8) px -= 2;
+        tr_text_on(fb, cx, top + TR_S(52) + (TR_S(32) - px) / 2, px, values[i], EPD_DRAW_ALIGN_CENTER, true,
+                   UI_GRAY_BLACK, TR_GRAY_SURFACE);
     }
-    // 下载失败时简介少显示两行，给两行的失败原因让位。/ On a failed download the synopsis gives two lines to the cause.
-    const bool failed = s_last == OP_DOWNLOAD && s_status.phase == TOMATO_FAILED && !(tomato_sync_busy() && s_op == OP_DOWNLOAD);
-    if (h->abstract[0]) tr_wrap(fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, 28, 44, h->abstract, failed ? 2 : 4);
-
+    // 下载失败时简介少显示两行，给两行的失败原因让位；放大后按按钮上面剩下的高度再少几行。
+    // On a failed download the synopsis gives two lines to the cause; scaled up it also drops lines to fit above the
+    // button.
+    const bool failed = (last_is(OP_DOWNLOAD) && detail_is_dl() && s_status.phase == TOMATO_FAILED &&
+                         !(tomato_sync_busy() && s_op == OP_DOWNLOAD)) || s_detail_note[0];
     EpdRect btn = DETAIL_BTN;
-    bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD;
+    const int abs_y = top + TR_S(146), abs_lh = TR_S(44);
+    const int room = ((failed ? btn.y - TR_S(92) - 4 : btn.y - TR_S(12)) - abs_y) / abs_lh;
+    const int abs_lines = room < (failed ? 2 : 4) ? room : (failed ? 2 : 4);
+    if (h->abstract[0] && abs_lines > 0)
+        tr_wrap(fb, TR_MARGIN, abs_y, TR_W - 2 * TR_MARGIN, TR_S(28), abs_lh, h->abstract, abs_lines);
+
+    bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD && detail_is_dl();
     if (downloading) {
         const char* what = s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi"
                          : s_status.phase == TOMATO_QUEUED ? "服务器正在生成 TXT" : "正在下载";
         if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
         else snprintf(line, sizeof(line), "%s…", what);
-        tr_text(fb, TR_MARGIN, btn.y - 4, 28, line, EPD_DRAW_ALIGN_LEFT, false);
-        tr_progress(fb, TR_MARGIN, btn.y + 54, btn.width - 110,
+        tr_text(fb, TR_MARGIN, btn.y - TR_S(4), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_progress(fb, TR_MARGIN, btn.y + TR_S(54), btn.width - TR_S(110),
                     s_status.phase == TOMATO_DOWNLOADING ? 80 : s_status.phase == TOMATO_QUEUED ? 40 : 10);
-        tr_text(fb, TR_W - TR_MARGIN, btn.y + 38, 30, "取消", EPD_DRAW_ALIGN_RIGHT, false);
+        tr_text(fb, TR_W - TR_MARGIN, btn.y + TR_S(38), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, false);
         return;
     }
-    if (failed) tr_message(fb, TR_MARGIN, btn.y - 50, btn.y - 92, TR_W - 2 * TR_MARGIN, 28, s_status.message,
-                           EPD_DRAW_ALIGN_LEFT, false);
+    if (failed) tr_message(fb, TR_MARGIN, btn.y - TR_S(50), btn.y - TR_S(92), TR_W - 2 * TR_MARGIN, TR_S(28),
+                           s_detail_note[0] ? s_detail_note : s_status.message, EPD_DRAW_ALIGN_LEFT, false);
     bool owned = shelf_index_of(h->book_id) >= 0;
-    tr_pill(fb, btn, owned ? "开始阅读" : "下载到书库", true, 32);
+    tr_pill(fb, btn, owned ? "开始阅读" : "下载到书库", true, TR_S(32));
 }
 
 /* ---- 页面框架 / Page plumbing ---- */
@@ -450,6 +532,18 @@ static EpdRect area_hint(app_ctx_t* ctx) {
     return s_area;
 }
 
+// 本页任务结束：取结果、重读书架。on_tick 和 on_enter（在别的页时结束的）共用。
+// Our op finished: collect results and reload the shelf. Shared by on_tick and on_enter (it ended while away).
+static void finish_op(void) {
+    s_last = s_op;
+    s_op = OP_NONE;
+    if (s_last == OP_SEARCH) s_hit_count = tomato_sync_hits(s_hits, TOMATO_SEARCH_MAX);
+    load_shelf();
+    if (s_page >= list_pages()) s_page = list_pages() - 1;
+    s_du_count = 0;
+    s_seen_revision = s_status.revision;
+}
+
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -458,8 +552,15 @@ static void on_enter(app_ctx_t* ctx) {
     tr_nav_set_tomato_page(&app_tr_tomato);
     static bool recent_loaded;
     if (!recent_loaded) { load_recent(); recent_loaded = true; }
-    load_shelf();
     tomato_sync_get_status(&s_status);
+    s_note[0] = 0;
+    s_detail_note[0] = 0;
+    // 本页任务在别的页时已经结束：照 on_tick 收下结果。/ Our op ended while we were away: collect it as on_tick does.
+    if (s_op != OP_NONE && !tomato_sync_busy() && tomato_sync_seq() == s_op_seq) finish_op();
+    else load_shelf();
+    // 之后有别的任务开始过：上次结果的状态已被盖掉，不再显示。/ Another job started since: the last result's status
+    // was overwritten, so stop showing it.
+    if (s_last != OP_NONE && tomato_sync_seq() != s_op_seq) s_last = OP_NONE;
     s_seen_revision = s_status.revision;
     // 后台还在跑的话保持原来的视图，否则回到书架。/ Keep the view if work is still running; otherwise show the shelf.
     const bool ours = tomato_sync_busy() && tomato_sync_seq() == s_op_seq;
@@ -468,6 +569,9 @@ static void on_enter(app_ctx_t* ctx) {
     s_pending_query[0] = 0;
     if (s_view == V_SEARCH) s_view = V_LIST;
     s_page = 0;
+    // 显示大小变了每页结果数也变：结果页码夹回范围。/ Results per page follow the display size: clamp the page.
+    const int result_pages = (s_hit_count + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE;
+    if (s_result_page >= result_pages) s_result_page = result_pages > 0 ? result_pages - 1 : 0;
     s_du_count = 0;
     if (s_search_request) {
         s_search_request = false;
@@ -518,18 +622,27 @@ static app_redraw_t turn_list(int turn) {
 
 static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     bool busy = tomato_sync_busy();
-    if (!busy && y >= 80 && y < 150 && x > TR_W - TR_MARGIN - 200) {
+    if (!busy && y >= TR_S(80) && y < TR_S(150) && x > TR_W - TR_MARGIN - TR_S(200)) {
         start_op(OP_CHECK, tomato_sync_start_check());
         tomato_sync_get_status(&s_status);
         return APP_REDRAW_PAGE;
     }
     if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 1) { ctx->request_app = &app_tr_store; return APP_REDRAW_NONE; }
     const int b = SEG_SHIFT - NO_FIELD_DY;
-    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE) && y >= 380 + b && y < 446 + b && x > TR_W - TR_MARGIN - 140) {
+    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE) && y >= TR_S(380 + b) && y < TR_S(446 + b) &&
+        x > TR_W - TR_MARGIN - TR_S(140)) {
         tomato_sync_cancel();
         return APP_REDRAW_NONE;
     }
-    if (!busy && s_pending && y >= 316 + b && y < 396 + b) {
+    if (s_pending && !(busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) && y >= TR_S(316 + b) && y < TR_S(396 + b)) {
+        // 后台在跑浏览任务就先停它；还没停下或在下载、同步就说原因（同设置页）。/ Stop a browsing job first; if it is
+        // still stopping or a download / sync runs, say why (as Settings does).
+        const tomato_preempt_t room = busy ? tomato_sync_preempt() : TOMATO_PREEMPT_FREE;
+        if (room != TOMATO_PREEMPT_FREE) {
+            snprintf(s_note, sizeof(s_note), "%s", room == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次"
+                                                                                  : "后台正在下载或同步，完成后再试");
+            return APP_REDRAW_PAGE;
+        }
         start_op(OP_UPDATE, tomato_sync_start_update());
         tomato_sync_get_status(&s_status);
         return APP_REDRAW_PAGE;
@@ -550,7 +663,7 @@ static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t touch_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (y < 180 && x < 96) {
+    if (y < TR_S(180) && x < FIELD_X) {
         if (s_hit_count) { s_view = V_RESULTS; return APP_REDRAW_PAGE; }
         return leave_search(ctx);
     }
@@ -562,12 +675,12 @@ static app_redraw_t touch_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     tr_kbd_result_t res = tr_kbd_touch(&s_kbd, x, y);
     if (res == TR_KBD_SUBMIT) {
-        if (!s_kbd.text[0]) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
+        if (!s_kbd.text[0]) return area_redraw(ctx, (EpdRect){0, TR_S(70), TR_W, TR_H - TR_S(70)});
         char q[TR_KBD_TEXT_MAX];
         snprintf(q, sizeof(q), "%s", s_kbd.text);
         return submit_search(q) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
     }
-    if (res == TR_KBD_CHANGED) return area_redraw(ctx, (EpdRect){0, 70, TR_W, TR_H - 70});
+    if (res == TR_KBD_CHANGED) return area_redraw(ctx, (EpdRect){0, TR_S(70), TR_W, TR_H - TR_S(70)});
     return APP_REDRAW_NONE;
 }
 
@@ -581,23 +694,24 @@ static app_redraw_t turn_results(int turn) {
 }
 
 static app_redraw_t touch_results(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    (void)ctx;
-    if (y >= 84 && y < 164) { open_search(s_query); return APP_REDRAW_PAGE; }
+    // 输入框左边的“‹”是返回，和搜索页同一块区域。/ The "‹" left of the field goes back, same zone as the search view.
+    if (y < TR_S(180) && x < FIELD_X) return leave_search(ctx);
+    if (y >= TR_S(84) && y < TR_S(164)) { open_search(s_query); return APP_REDRAW_PAGE; }
     int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn_results(pager);
     if (y >= RESULT_TOP && y < RESULT_TOP + RESULTS_PER_PAGE * RESULT_ROW_H) {
         int i = s_result_page * RESULTS_PER_PAGE + (y - RESULT_TOP) / RESULT_ROW_H;
-        if (i < s_hit_count) { s_detail = i; s_view = V_DETAIL; return APP_REDRAW_PAGE; }
+        if (i < s_hit_count) { s_detail = i; s_view = V_DETAIL; s_detail_note[0] = 0; return APP_REDRAW_PAGE; }
     }
     return APP_REDRAW_NONE;
 }
 
 static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (y < 150 && x < 300) { s_view = V_RESULTS; return APP_REDRAW_PAGE; }
+    if (y < TR_S(150) && x < TR_S(300)) { s_view = V_RESULTS; return APP_REDRAW_PAGE; }
     EpdRect btn = DETAIL_BTN;
-    bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD;
+    bool downloading = tomato_sync_busy() && s_op == OP_DOWNLOAD && detail_is_dl();
     if (downloading) {
-        if (y >= btn.y && y < btn.y + btn.height && x > TR_W - TR_MARGIN - 140) tomato_sync_cancel();
+        if (y >= btn.y && y < btn.y + btn.height && x > TR_W - TR_MARGIN - TR_S(140)) tomato_sync_cancel();
         return APP_REDRAW_NONE;
     }
     if (!ui_rect_hit(btn, x, y)) return APP_REDRAW_NONE;
@@ -609,7 +723,23 @@ static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         tr_nav_open_book(ctx, path);
         return APP_REDRAW_NONE;
     }
-    if (start_op(OP_DOWNLOAD, tomato_sync_start_download(h))) tomato_sync_get_status(&s_status);
+    // 后台忙就说原因，不悄悄没反应：另一本在下就等它下完；别的页的浏览任务先停；下载或同步在跑就稍后再试。
+    // When the worker is busy, say why instead of doing nothing: another book downloading waits for it; a browsing
+    // job from another page is stopped first; a running download or sync means try again later.
+    if (tomato_sync_busy()) {
+        const tomato_preempt_t room = s_op == OP_DOWNLOAD ? TOMATO_PREEMPT_BLOCKED : tomato_sync_preempt();
+        if (room != TOMATO_PREEMPT_FREE) {
+            snprintf(s_detail_note, sizeof(s_detail_note), "%s",
+                     s_op == OP_DOWNLOAD ? "正在下载另一本，下完再点"
+                     : room == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次" : "后台正在下载或同步，完成后再试");
+            return APP_REDRAW_PAGE;
+        }
+    }
+    s_detail_note[0] = 0;
+    if (start_op(OP_DOWNLOAD, tomato_sync_start_download(h))) {
+        snprintf(s_dl_id, sizeof(s_dl_id), "%s", h->book_id);
+        tomato_sync_get_status(&s_status);
+    }
     return APP_REDRAW_PAGE;
 }
 
@@ -671,13 +801,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     tomato_sync_get_status(&s_status);
     if (!busy) {
         // 操作结束：取结果、重读书架、整页刷新。/ Operation finished: collect results, reload the shelf, full page.
-        s_last = s_op;
-        s_op = OP_NONE;
-        if (s_last == OP_SEARCH) s_hit_count = tomato_sync_hits(s_hits, TOMATO_SEARCH_MAX);
-        load_shelf();
-        if (s_page >= list_pages()) s_page = list_pages() - 1;
-        s_du_count = 0;
-        s_seen_revision = s_status.revision;
+        finish_op();
         return s_view == V_SEARCH ? APP_REDRAW_NONE : APP_REDRAW_PAGE;
     }
     bool changed = s_status.revision != s_seen_revision;
@@ -685,9 +809,12 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (!changed && !stale) return APP_REDRAW_NONE;
     s_seen_revision = s_status.revision;
     s_busy_draw_ms = ctx->now_ms;
-    if (s_view == V_LIST) return area_redraw(ctx, (EpdRect){0, 150, TR_W, LIST_BOTTOM - 150});
-    if (s_view == V_DETAIL) return area_redraw(ctx, (EpdRect){0, 900, TR_W, 160});
-    if (s_view == V_RESULTS) return area_redraw(ctx, (EpdRect){0, 190, TR_W, 60});
+    // 只在当前视图显示这个任务的进度时刷。/ Refresh only when the current view shows this op's progress.
+    if (s_view == V_LIST && (s_op == OP_CHECK || s_op == OP_UPDATE))
+        return area_redraw(ctx, (EpdRect){0, TR_S(150), TR_W, LIST_BOTTOM - TR_S(150)});
+    if (s_view == V_DETAIL && s_op == OP_DOWNLOAD && detail_is_dl())
+        return area_redraw(ctx, (EpdRect){0, DETAIL_BTN.y - TR_S(60), TR_W, TR_S(160)});
+    if (s_view == V_RESULTS && s_op == OP_SEARCH) return area_redraw(ctx, (EpdRect){0, TR_S(190), TR_W, TR_S(60)});
     return APP_REDRAW_NONE;
 }
 

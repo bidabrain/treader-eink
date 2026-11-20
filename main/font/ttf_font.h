@@ -50,6 +50,8 @@ esp_err_t ttf_font_open(const char* path);
 esp_err_t ttf_font_open_builtin(void);
 /// 控制任务独占传字体时切内置并暂停 SD 打开；停服后解除，保留字体设置。/ Switch to built-in and suspend SD opens on the owner task for font transfer; resume after stop without changing settings.
 esp_err_t ttf_font_suspend_sd(bool suspend);
+/// SD 字体是否正处于暂停（传书期间）。/ Whether SD font opens are suspended (during transfer).
+bool ttf_font_sd_suspended(void);
 bool ttf_font_is_builtin(void);
 bool ttf_font_path_is_builtin(const char* path);
 void ttf_font_unload(void);

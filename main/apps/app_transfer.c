@@ -77,7 +77,12 @@ static void prepare_qr(void) {
 }
 
 typedef enum { TRANSFER_HOME, TRANSFER_NETWORKS, TRANSFER_PASSWORD } transfer_view_t;
-#define NETWORK_ROWS 6
+// 长度随显示大小放大；放大后选网页一页少几行，密码页和主页间距收紧，二维码让出左栏宽度，都放在底栏上面。
+// Lengths scale with the display size; scaled up, the network list shows fewer rows per page, the password and home
+// views tighten their gaps and the QR code yields width to the left column, all staying above the bottom bar.
+#define BIG (ui_scale_pct > 100)
+#define NETWORK_ROWS_MAX 6   // 网络行的控件编号 0..5 / Network rows use control ids 0..5
+#define NETWORK_ROWS network_rows()
 #define PASSWORD_MAX 64
 static transfer_view_t s_view;
 static read_pico_transfer_network_t s_networks[READ_PICO_TRANSFER_SCAN_MAX], s_selected;
@@ -104,22 +109,56 @@ static void clear_password(void) {
     s_password_visible = false;
 }
 
+// 翻页按钮一行贴着底栏；一页几行按它上面剩下的高度算（正常档 6 行）。
+// The pager button row sits on the bottom bar; rows per page follow the height above it (6 at normal size).
+static int network_nav_y(void) { return UI_BAR_TOP - UI_S(128); }
+
+static int network_rows(void) {
+    const int rows = (network_nav_y() - UI_S(18) - UI_S(350) + UI_S(12)) / UI_S(100);
+    return rows < 1 ? 1 : rows > NETWORK_ROWS_MAX ? NETWORK_ROWS_MAX : rows;
+}
+
 static EpdRect network_control_rect(int id) {
-    if (id < NETWORK_ROWS) return (EpdRect){UI_MARGIN, 350 + id * 100, ui_content_width(), 88};
-    if (id == 6) return ui_row_rect(0, 2, 176, 84);
-    if (id == 11) return s_forget_confirm ? ui_row_rect(0, 2, 600, UI_BTN_H) : ui_row_rect(1, 2, 176, 84);
-    if (id == 12) return ui_row_rect(1, 2, 600, UI_BTN_H);
+    if (id < NETWORK_ROWS_MAX)
+        return (EpdRect){UI_MARGIN, UI_S(350) + id * UI_S(100), ui_content_width(), UI_S(88)};
+    if (id == 6) return ui_row_rect(0, 2, UI_S(176), UI_S(84));
+    if (id == 11) return s_forget_confirm ? ui_row_rect(0, 2, UI_S(600), UI_BTN_H) : ui_row_rect(1, 2, UI_S(176), UI_S(84));
+    if (id == 12) return ui_row_rect(1, 2, UI_S(600), UI_BTN_H);
     if (id == 10) return ui_bar_rect(0, 1);
-    return ui_row_rect(id - 7, 3, 968, 84);
+    return ui_row_rect(id - 7, 3, network_nav_y(), UI_S(84));
+}
+
+// 密码页的纵向排布。正常档沿用原坐标；放大后从标题下依次排、间距收紧，消息行留在底栏上面。
+// Password view rows. Normal size keeps the original coordinates; scaled up they stack below the header with tighter
+// gaps so the message line stays above the bottom bar.
+typedef struct {
+    int name, caption, keys, key_h, key_pitch, mode, mode_h, msg;
+    EpdRect field;
+} pw_geo_t;
+
+static pw_geo_t pw_geo(void) {
+    if (!BIG) return (pw_geo_t){176, 240, 420, 88, 100, 830, 78, 940, {UI_MARGIN, 288, ui_content_width(), 86}};
+    pw_geo_t g;
+    g.name = UI_CONTENT_TOP;
+    g.caption = g.name + UI_S(56);
+    g.field = (EpdRect){UI_MARGIN, g.caption + UI_S(44), ui_content_width(), UI_S(72)};
+    g.keys = g.field.y + g.field.height + UI_S(16);
+    g.key_h = UI_S(70);
+    g.key_pitch = UI_S(78);
+    g.mode = g.keys + 3 * g.key_pitch + g.key_h + UI_S(14);
+    g.mode_h = UI_S(70);
+    g.msg = g.mode + g.mode_h + UI_S(12);
+    return g;
 }
 
 static EpdRect password_control_rect(int id) {
+    const pw_geo_t g = pw_geo();
     if (id < 40) {
         const int gap = 6;
         int width = (ui_content_width() - 9 * gap) / 10;
-        return (EpdRect){UI_MARGIN + (id % 10) * (width + gap), 420 + (id / 10) * 100, width, 88};
+        return (EpdRect){UI_MARGIN + (id % 10) * (width + gap), g.keys + (id / 10) * g.key_pitch, width, g.key_h};
     }
-    if (id < 44) return ui_row_rect(id - 40, 4, 830, 78);
+    if (id < 44) return ui_row_rect(id - 40, 4, g.mode, g.mode_h);
     return ui_bar_rect(id - 44, 3);
 }
 
@@ -144,8 +183,8 @@ static void draw_networks(uint8_t* fb) {
         char name[33];
         snprintf(name, sizeof(name), "%s", s_saved_ssid);
         fit_label(name, UI_PX_BODY, ui_content_width());
-        ui_text(fb, UI_MARGIN, 350, UI_PX_BODY, name, EPD_DRAW_ALIGN_LEFT, false);
-        ui_text(fb, UI_MARGIN, 450, UI_PX_CAPTION, s_network_message, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, UI_MARGIN, UI_S(350), UI_PX_BODY, name, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, UI_MARGIN, UI_S(450), UI_PX_CAPTION, s_network_message, EPD_DRAW_ALIGN_LEFT, false);
         provisioning_button(fb, network_control_rect(11), "确认遗忘", 11);
         provisioning_button(fb, network_control_rect(12), "取消", 12);
         ui_draw_menu_handle(fb, false);
@@ -159,12 +198,12 @@ static void draw_networks(uint8_t* fb) {
         snprintf(saved, sizeof(saved), "已保存网络：%s", s_saved_ssid);
         int name_px = UI_PX_CAPTION;
         while (name_px > 12 && ttf_text_width_px(name_px, saved) > ui_content_width()) --name_px;
-        ui_text(fb, UI_MARGIN, 270, name_px, saved, EPD_DRAW_ALIGN_LEFT, false);
-    } else ui_text(fb, UI_MARGIN, 196, UI_PX_CAPTION, "尚未保存 WiFi，点下方网络配网", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, UI_MARGIN, UI_S(270), name_px, saved, EPD_DRAW_ALIGN_LEFT, false);
+    } else ui_text(fb, UI_MARGIN, UI_S(196), UI_PX_CAPTION, "尚未保存 WiFi，点下方网络配网", EPD_DRAW_ALIGN_LEFT, false);
     char count[64];
     snprintf(count, sizeof(count), "%u 个网络 · 第 %u/%u 页", (unsigned)s_network_count,
              (unsigned)s_network_page + 1, (unsigned)(s_network_count ? (s_network_count + NETWORK_ROWS - 1) / NETWORK_ROWS : 1));
-    ui_text(fb, UI_MARGIN, s_saved_configured ? 310 : 280, UI_PX_CAPTION,
+    ui_text(fb, UI_MARGIN, s_saved_configured ? UI_S(310) : UI_S(280), UI_PX_CAPTION,
             s_scan_pending ? "正在扫描，请稍候…" : s_network_message[0] ? s_network_message : count,
             EPD_DRAW_ALIGN_LEFT, false);
     for (int row = 0; row < NETWORK_ROWS; ++row) {
@@ -178,10 +217,10 @@ static void draw_networks(uint8_t* fb) {
         char name[33], detail[64];
         snprintf(name, sizeof(name), "%s", network->ssid);
         fit_label(name, UI_PX_BTN, rect.width - 2 * UI_PAD);
-        ui_text(fb, rect.x + UI_PAD, rect.y + 8, UI_PX_BTN, name, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(8), UI_PX_BTN, name, EPD_DRAW_ALIGN_LEFT, false);
         snprintf(detail, sizeof(detail), "%d dBm · %s", network->rssi,
                  !network->supported ? "暂不支持" : network->requires_password ? "需要密码" : "开放网络");
-        ui_text(fb, rect.x + UI_PAD, rect.y + 50, UI_PX_CAPTION, detail, EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(50), UI_PX_CAPTION, detail, EPD_DRAW_ALIGN_LEFT, false);
     }
     provisioning_button(fb, network_control_rect(7), "上一页", 7);
     provisioning_button(fb, network_control_rect(8), "重新扫描", 8);
@@ -196,12 +235,13 @@ static void draw_password(uint8_t* fb) {
     char name[33];
     snprintf(name, sizeof(name), "%s", s_selected.ssid);
     fit_label(name, UI_PX_BODY, ui_content_width());
-    ui_text(fb, UI_MARGIN, 176, UI_PX_BODY, name, EPD_DRAW_ALIGN_LEFT, false);
+    const pw_geo_t g = pw_geo();
+    ui_text(fb, UI_MARGIN, g.name, UI_PX_BODY, name, EPD_DRAW_ALIGN_LEFT, false);
     char caption[80];
     size_t len = strlen(s_password);
     snprintf(caption, sizeof(caption), "%s · %u/%u", s_selected.requires_password ? "密码" : "开放网络，无需密码", (unsigned)len, PASSWORD_MAX);
-    ui_text(fb, UI_MARGIN, 240, UI_PX_CAPTION, caption, EPD_DRAW_ALIGN_LEFT, false);
-    EpdRect field = {UI_MARGIN, 288, ui_content_width(), 86};
+    ui_text(fb, UI_MARGIN, g.caption, UI_PX_CAPTION, caption, EPD_DRAW_ALIGN_LEFT, false);
+    EpdRect field = g.field;
     ui_draw_round_rect(fb, field, UI_BTN_RADIUS, UI_GRAY_BLACK);
     char shown[PASSWORD_MAX + 1];
     if (s_password_visible) memcpy(shown, s_password, len + 1);
@@ -218,7 +258,7 @@ static void draw_password(uint8_t* fb) {
     provisioning_button(fb, password_control_rect(41), s_keyboard_mode == 2 ? "字母" : "#+=", 41);
     provisioning_button(fb, password_control_rect(42), "空格", 42);
     provisioning_button(fb, password_control_rect(43), "退格", 43);
-    ui_text(fb, UI_MARGIN, 940, UI_PX_CAPTION,
+    ui_text(fb, UI_MARGIN, g.msg, UI_PX_CAPTION,
             s_network_message[0] ? s_network_message : "支持字母、数字、符号和空格", EPD_DRAW_ALIGN_LEFT, false);
     provisioning_button(fb, password_control_rect(44), "取消", 44);
     provisioning_button(fb, password_control_rect(45), s_password_visible ? "隐藏" : "显示", 45);
@@ -283,7 +323,8 @@ static int provisioning_hit(uint16_t x, uint16_t y) {
         for (int i = 0; i < 47; ++i) if (ui_rect_hit(password_control_rect(i), x, y)) return i;
     } else {
         for (int i = 0; i < 12; ++i) {
-            if (i < NETWORK_ROWS && (s_scan_pending || s_network_page * NETWORK_ROWS + i >= s_network_count)) continue;
+            if (i < NETWORK_ROWS_MAX && (i >= NETWORK_ROWS || s_scan_pending ||
+                                         s_network_page * NETWORK_ROWS + i >= s_network_count)) continue;
             if ((i == 6 || i == 11) && !s_saved_configured) continue;
             if (ui_rect_hit(network_control_rect(i), x, y)) return i;
         }
@@ -306,7 +347,7 @@ static app_redraw_t provisioning_action(int id) {
         return APP_REDRAW_PAGE;
     }
     if (s_view == TRANSFER_NETWORKS) {
-        if (id < NETWORK_ROWS) {
+        if (id < NETWORK_ROWS_MAX) {
             s_selected = s_networks[s_network_page * NETWORK_ROWS + id];
             if (!s_selected.supported) {
                 snprintf(s_network_message, sizeof(s_network_message), "此网络认证暂不支持，请选择其他网络");
@@ -361,7 +402,9 @@ static app_redraw_t provisioning_gesture(app_ctx_t* ctx, const ui_gesture_event_
         app_redraw_t redraw = provisioning_action(origin);
         if (redraw == APP_REDRAW_PAGE) return redraw;
         render(ctx, ctx->fb);
-        s_area = ui_rect_union(old_rect, (EpdRect){UI_MARGIN, 240, ui_content_width(), 744});
+        const pw_geo_t g = pw_geo();
+        s_area = ui_rect_union(old_rect, (EpdRect){UI_MARGIN, g.caption, ui_content_width(),
+                                                   g.msg + UI_PX_CAPTION + UI_S(16) - g.caption});
         s_settle = false;
         return APP_REDRAW_AREA;
     }
@@ -372,7 +415,53 @@ static app_redraw_t provisioning_gesture(app_ctx_t* ctx, const ui_gesture_event_
     return APP_REDRAW_AREA;
 }
 
-static EpdRect status_rect(void) { return (EpdRect){UI_MARGIN, 610, ui_content_width(), 430}; }
+// 主页排布。正常档沿用原坐标；放大后左栏宽度按最长的固定文字算，二维码缩小让位，下面各段依次排、间距收紧。
+// Home view layout. Normal size keeps the original coordinates; scaled up the left column is as wide as its longest
+// fixed text, the QR code shrinks to make room, and the sections below stack with tighter gaps.
+typedef struct {
+    int name, pass, url, hint, col, cap, rule;
+    EpdRect toggle, qr, status;
+} home_geo_t;
+
+static home_geo_t home_geo(void) {
+    if (!BIG)
+        return (home_geo_t){274, 326, 370, 412, 350, 528, 578, {UI_MARGIN, 454, 350, 60}, {404, 274, 240, 240},
+                            {UI_MARGIN, 610, ui_content_width(), 430}};
+    static const char* const CAPTIONS[] = {"口令：" READ_PICO_TRANSFER_PASSWORD, "设备已连接；手机需同网",
+                                           "正在连接已保存网络…", "已保存，尚未连接", "点已有 WiFi 扫描选网", "等待网络地址…"};
+    static const char* const HINTS[] = {"等待网络连接…", "二维码失败，请手输网址", "扫码打开网页", "扫码连接 WiFi"};
+    int col = 350;
+    for (size_t i = 0; i < sizeof(CAPTIONS) / sizeof(CAPTIONS[0]); ++i) {
+        const int w = ttf_text_width_px(UI_PX_CAPTION, CAPTIONS[i]);
+        if (w > col) col = w;
+    }
+    for (size_t i = 0; i < sizeof(HINTS) / sizeof(HINTS[0]); ++i) {
+        const int w = ttf_text_width_px(UI_S(24), HINTS[i]);
+        if (w > col) col = w;
+    }
+    const int toggle_w = ttf_text_width_px(UI_PX_BTN, "切换为 WiFi 码") + 2 * UI_PAD;
+    if (toggle_w > col) col = toggle_w;
+    home_geo_t g;
+    const int pitch = UI_PX_CAPTION + UI_S(10);
+    g.name = UI_CONTENT_TOP + UI_BTN_H + UI_S(14);
+    g.pass = g.name + pitch;
+    g.url = g.pass + pitch;
+    g.hint = g.url + pitch;
+    int side = ui_content_width() - UI_S(16) - col;
+    if (side > 240) side = 240;
+    g.qr = (EpdRect){ui_content_right() - side, g.name, side, side};
+    g.col = g.qr.x - UI_S(16) - UI_MARGIN;
+    g.toggle = (EpdRect){UI_MARGIN, g.hint + UI_S(32), g.col, UI_S(60)};
+    int bottom = g.toggle.y + g.toggle.height;
+    if (g.qr.y + g.qr.height > bottom) bottom = g.qr.y + g.qr.height;
+    g.cap = bottom + UI_S(12);
+    g.rule = g.cap + UI_PX_CAPTION + UI_S(12);
+    const int top = g.rule + UI_S(14);
+    g.status = (EpdRect){UI_MARGIN, top, ui_content_width(), UI_BAR_TOP - UI_S(12) - top};
+    return g;
+}
+
+static EpdRect status_rect(void) { return home_geo().status; }
 // 上传按“剩余减预留”算，网页显示和接收检查用的是同一个数。/ Uploads see free space minus the reserve; the page and the
 // receive check use the same number.
 static uint64_t free_bytes(void* arg) { return book_store_upload_free_bytes(arg); }
@@ -386,12 +475,13 @@ static uint64_t reserve_bytes(void* arg) { return book_store_upload_reserve(arg)
 
 static void draw_capacity(uint8_t* fb) {
     char capacity[96];
-    ui_clear_rect_fast(fb, (EpdRect){UI_MARGIN, 518, ui_content_width(), 42});
+    const int y = home_geo().cap;
+    ui_clear_rect_fast(fb, (EpdRect){UI_MARGIN, y - UI_S(10), ui_content_width(), UI_S(42)});
     if (s_media_lost) snprintf(capacity, sizeof(capacity), "TF 卡已移除，原存储已停用");
     else if (s_root.is_flash) snprintf(capacity, sizeof(capacity), "内置 · 剩余 %.1f MB · 单文件 ≤ 1 MB", s_free / 1048576.0);
     else snprintf(capacity, sizeof(capacity), "TF 卡 · 可上传 %.1f MB（预留 %.0f MB）", s_free / 1048576.0,
                   s_reserve / 1048576.0);
-    ui_text(fb, UI_MARGIN, 528, UI_PX_CAPTION, capacity, EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(fb, UI_MARGIN, y, UI_PX_CAPTION, capacity, EPD_DRAW_ALIGN_LEFT, false);
 }
 
 static void draw_status(uint8_t* fb) {
@@ -409,17 +499,24 @@ static void draw_status(uint8_t* fb) {
     else if (s_mode == READ_PICO_TRANSFER_MODE_AP)
         snprintf(line, sizeof(line), "已连接 %u 台 · 已完成 %u 个文件", s_status.sta_count, s_status.done_count);
     else snprintf(line, sizeof(line), "同网浏览器上传 · 已完成 %u 个文件", s_status.done_count);
-    ui_text(fb, area.x, area.y + 64, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    // 放大后文件名和字节数并成一行（文件名在左、可截断），各行间距收紧。
+    // Scaled up, the file name and byte count share one line (name on the left, truncatable) and rows sit closer.
+    const int y_line = BIG ? UI_S(46) : 64, y_name = BIG ? UI_S(84) : 116, y_track = BIG ? UI_S(130) : 224;
+    const int y_err = BIG ? UI_S(150) : 260, y_tip1 = BIG ? UI_S(188) : 328, y_tip2 = BIG ? UI_S(226) : 370;
+    ui_text(fb, area.x, area.y + y_line, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    char bytes[48];
+    snprintf(bytes, sizeof(bytes), "%.1f / %.1f MB", s_status.cur_bytes / 1048576.0, s_status.cur_total / 1048576.0);
+    const int name_w = BIG ? area.width - ttf_text_width_px(UI_PX_BODY, bytes) - UI_S(16) : area.width;
     snprintf(line, sizeof(line), "%s", s_status.cur_name);
-    while (*line && ttf_text_width_px(UI_PX_CAPTION, line) > area.width) {
+    while (*line && ttf_text_width_px(UI_PX_CAPTION, line) > name_w) {
         size_t n = strlen(line) - 1;
         while (n && ((unsigned char)line[n] & 0xc0) == 0x80) --n;
         line[n] = 0;
     }
-    ui_text(fb, area.x, area.y + 116, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
-    snprintf(line, sizeof(line), "%.1f / %.1f MB", s_status.cur_bytes / 1048576.0, s_status.cur_total / 1048576.0);
-    ui_text(fb, area.x, area.y + 164, UI_PX_BODY, line, EPD_DRAW_ALIGN_LEFT, false);
-    EpdRect track = {area.x, area.y + 224, area.width, 12};
+    ui_text(fb, area.x, area.y + y_name + (BIG ? UI_S(6) : 0), UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    if (BIG) ui_text(fb, area.x + area.width, area.y + y_name, UI_PX_BODY, bytes, EPD_DRAW_ALIGN_RIGHT, false);
+    else ui_text(fb, area.x, area.y + 164, UI_PX_BODY, bytes, EPD_DRAW_ALIGN_LEFT, false);
+    EpdRect track = {area.x, area.y + y_track, area.width, UI_S(12)};
     epd_fill_rect(track, UI_GRAY_LIGHT, fb);
     if (s_status.cur_total) {
         uint64_t width = (uint64_t)s_status.cur_bytes * track.width / s_status.cur_total;
@@ -427,13 +524,13 @@ static void draw_status(uint8_t* fb) {
         epd_fill_rect(track, UI_GRAY_BLACK, fb);
     }
     if (s_status.last_error != ESP_OK)
-        ui_text(fb, area.x, area.y + 260, UI_PX_CAPTION, s_status.network_ready ? "上传未完成，请在浏览器查看原因" : "检查WiFi配置后重新选择接入方式", EPD_DRAW_ALIGN_LEFT, false);
-    ui_text(fb, area.x, area.y + 328, UI_PX_CAPTION, s_status.state == READ_PICO_TRANSFER_UPLOADING ? "上传完成后可切换接入方式" : "离开本页会断开网络", EPD_DRAW_ALIGN_LEFT, false);
-    ui_text(fb, area.x, area.y + 370, UI_PX_CAPTION, "同名文件上传后将覆盖", EPD_DRAW_ALIGN_LEFT, false);
+        ui_text(fb, area.x, area.y + y_err, UI_PX_CAPTION, s_status.network_ready ? "上传未完成，请在浏览器查看原因" : "检查WiFi配置后重新选择接入方式", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(fb, area.x, area.y + y_tip1, UI_PX_CAPTION, s_status.state == READ_PICO_TRANSFER_UPLOADING ? "上传完成后可切换接入方式" : "离开本页会断开网络", EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(fb, area.x, area.y + y_tip2, UI_PX_CAPTION, "同名文件上传后将覆盖", EPD_DRAW_ALIGN_LEFT, false);
 }
 
 static EpdRect control_rect(int id) {
-    if (id == 3) return (EpdRect){UI_MARGIN, 454, 350, 60};
+    if (id == 3) return home_geo().toggle;
     return id == 2 ? ui_bar_rect(0, 1) : ui_row_rect(id, 2, UI_CONTENT_TOP, UI_BTN_H);
 }
 
@@ -450,21 +547,22 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     }
     char name[64];
     snprintf(name, sizeof(name), "%s", s_mode == READ_PICO_TRANSFER_MODE_AP ? s_status.ssid : s_status.wifi_ssid);
+    const home_geo_t g = home_geo();
     int name_px = UI_PX_CAPTION;
-    int name_width = 350;
+    int name_width = g.col;
     while (name_px > 12 && ttf_text_width_px(name_px, name) > name_width) --name_px;
-    ui_text(fb, UI_MARGIN, 274, name_px, name, EPD_DRAW_ALIGN_LEFT, false);
-    ui_text(fb, UI_MARGIN, 326, UI_PX_CAPTION,
+    ui_text(fb, UI_MARGIN, g.name, name_px, name, EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(fb, UI_MARGIN, g.pass, UI_PX_CAPTION,
             s_mode == READ_PICO_TRANSFER_MODE_AP ? "口令：" READ_PICO_TRANSFER_PASSWORD :
             s_status.network_ready ? "设备已连接；手机需同网" :
             s_start_pending || s_status.state == READ_PICO_TRANSFER_STARTING ? "正在连接已保存网络…" :
             s_status.wifi_configured ? "已保存，尚未连接" : "点已有 WiFi 扫描选网",
             EPD_DRAW_ALIGN_LEFT, false);
     int url_px = UI_PX_CAPTION;
-    while (url_px > 12 && ttf_text_width_px(url_px, s_status.url) > 350) --url_px;
-    ui_text(fb, UI_MARGIN, 370, url_px,
+    while (url_px > 12 && ttf_text_width_px(url_px, s_status.url) > g.col) --url_px;
+    ui_text(fb, UI_MARGIN, g.url, url_px,
             s_status.network_ready ? s_status.url : "等待网络地址…", EPD_DRAW_ALIGN_LEFT, false);
-    ui_text(fb, UI_MARGIN, 412, 24,
+    ui_text(fb, UI_MARGIN, g.hint, UI_S(24),
             !s_status.network_ready ? "等待网络连接…" : !s_qr_ready ? "二维码失败，请手输网址" :
             s_qr_url || s_mode == READ_PICO_TRANSFER_MODE_STA ? "扫码打开网页" : "扫码连接 WiFi",
             EPD_DRAW_ALIGN_LEFT, false);
@@ -474,9 +572,9 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         ui_draw_button(fb, toggle, s_qr_url ? "切换为 WiFi 码" : "切换为网页码", false);
     }
     if (s_status.network_ready && s_qr_ready)
-        ui_wifi_qr_draw(fb, (EpdRect){404, 274, 240, 240});
+        ui_wifi_qr_draw(fb, g.qr);
     draw_capacity(fb);
-    ui_hairline(fb, 578, UI_MARGIN, ui_content_width(), UI_GRAY_BLACK);
+    ui_hairline(fb, g.rule, UI_MARGIN, ui_content_width(), UI_GRAY_BLACK);
     draw_status(fb);
     EpdRect back = control_rect(2);
     if (s_pressed == 2) ui_draw_pressed_round_rect(fb, back, UI_BTN_RADIUS);

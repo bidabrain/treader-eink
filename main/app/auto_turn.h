@@ -17,10 +17,13 @@
 #include <stdint.h>
 
 #include "epdiy.h"
+#include "ui_scale.h"
 
 #define AUTO_TURN_STEP_S 3
 #define AUTO_TURN_LEVELS 10   ///< 1～10 档 = 3～30 秒，0 为关 / Levels 1-10 = 3-30 s, 0 is off
-#define AUTO_TURN_ROW_H 60
+#define AUTO_TURN_ROW_H UI_S(60)   ///< 行高随显示大小放大 / Row height follows the display size
+/// −、+ 按钮宽度。/ Width of the minus and plus buttons.
+#define AUTO_TURN_BTN_W UI_S(90)
 
 /// 档位对应的毫秒数，0 档返回 0。/ Milliseconds for a level; 0 for off.
 int32_t auto_turn_ms(int level);

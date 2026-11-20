@@ -43,43 +43,61 @@
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 #define CW (TR_W - 2 * TR_MARGIN)
 
+// 长度都随显示大小放大（页边距和细线不放大）；列表底边跟着标签栏走，笔记和评论的底边跟着屏幕底走。
+// Lengths scale with the display size (margins and hairlines do not); the list bottom follows the tab bar, the note
+// and comment bottoms follow the screen bottom.
+
 // 列表 / Lists
 #define LIST_MAX TOMATO_LIST_LIMIT_MAX
-#define LIST_TOP 284
-#define PAGER_Y 1036
-// 两列卡片，每页 2×2。/ Two-column cards, 2x2 per page.
+#define LIST_TOP TR_S(284)
+#define PAGER_Y (TR_TABS_Y - TR_S(58))
+// 两列卡片。一页几行按翻页钮上面剩下的高度定：两行时封面还有 180 像素高就放两行（正常、大），否则一行（特大），
+// 封面填满一行但不超过 3:4。卡片和翻页钮之间留一段，免得圆钮压住最后一行的作者和点赞。
+// Two-column cards. Rows per page follow the height above the pager: two rows while a cover keeps 180 px (normal,
+// large), otherwise one row (largest) whose cover fills it, up to 3:4. A gap above the pager keeps its round buttons
+// off the last row's author and likes.
 #define COLS 2
-#define PER_PAGE 4
-#define CELL_GAP 20
+#define LIST_H (PAGER_Y - TR_S(24) - LIST_TOP)
+#define CARD_TEXT_H TR_S(114)   // 封面下面的标题两行和作者 / Two title lines and the author under the cover
+#define ROWS (LIST_H / 2 - CARD_TEXT_H >= 180 ? 2 : 1)
+#define PER_PAGE (ROWS * COLS)
+#define CELL_GAP TR_S(20)
 #define CELL_W ((TR_W - 2 * TR_MARGIN - CELL_GAP) / COLS)
-#define CELL_H 376
-#define COVER_H 262
-#define STATUS_Y 240
-#define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - 240, 70, 240, 80}
-#define SETUP_RECT (EpdRect){TR_MARGIN, 420, 240, 72}
-#define DIALOG_RECT (EpdRect){92, 500, TR_W - 184, 220}
+#define CELL_H (LIST_H / ROWS)
+#define COVER_H (CELL_H - CARD_TEXT_H < CELL_W * 4 / 3 ? CELL_H - CARD_TEXT_H : CELL_W * 4 / 3)
+#define STATUS_Y TR_S(240)
+#define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - TR_S(240), TR_S(70), TR_S(240), TR_S(80)}
+#define EMPTY_PX TR_S(30)
+#define EMPTY_LH TR_S(46)
+#define EMPTY_LINES 8
+#define SETUP_TEXT "还没连接 rednote 服务器。先在电脑或 NAS 上部署 rednote（见项目 rednote/ 目录），" \
+                   "再到“设置 › 内容来源”填服务器地址和设备令牌。"
+// 对话框两边留白随放大收窄（正常 92，特大到页边距），一行的提示才放得下。/ The dialog's side inset narrows as the
+// size grows (92 at normal, down to the margin at the largest) so its one-line hints still fit.
+#define DIALOG_X (92 - (ui_scale_pct - 100) * 52 / 30)
+#define DIALOG_RECT (EpdRect){DIALOG_X, TR_S(500), TR_W - 2 * DIALOG_X, TR_S(220)}
 
 // 笔记 / Note
-#define NOTE_SEG (EpdRect){TR_MARGIN, 150, CW, 64}
-#define TITLE_Y 240
-#define TITLE_PX 38
-#define TITLE_LH 50
-#define BODY_TOP 240
-#define BODY_BOTTOM 1100
-#define BODY_PX 32
-#define BODY_LH 52
-#define TEXT_PAGER_Y 1124
+#define NOTE_SEG (EpdRect){TR_MARGIN, TR_S(150), CW, TR_S(64)}
+#define TITLE_Y TR_S(240)
+#define TITLE_PX TR_S(38)
+#define TITLE_LH TR_S(50)
+#define BODY_TOP TR_S(240)
+#define BODY_BOTTOM (TR_H - TR_S(116))
+#define BODY_PX TR_S(32)
+#define BODY_LH TR_S(52)
+#define TEXT_PAGER_Y (TR_H - TR_S(92))
 #define LINES_MAX 1600
 #define PAGES_MAX 200
 #define COMMENTS_MAX 60
 // 评论最后一页末尾的“加载更多评论”按钮。/ The "load more comments" button at the end of the last comment page.
-#define MORE_BTN_W 400
-#define MORE_BTN_H 76
-#define MORE_BLOCK_H 120
+#define MORE_BTN_W TR_S(400)
+#define MORE_BTN_H TR_S(76)
+#define MORE_BLOCK_H TR_S(120)
 #define COMMENT_LINES 5
-#define COMMENT_PX 30
-#define COMMENT_LH 44
-#define IMAGE_BAND 96           // 看图底部的白条 / White strip under the image
+#define COMMENT_PX TR_S(30)
+#define COMMENT_LH TR_S(44)
+#define IMAGE_BAND TR_S(96)     // 看图底部的白条 / White strip under the image
 
 typedef enum { V_LIST, V_IMAGE, V_TEXT } view_t;
 typedef enum { SEG_FOLLOW, SEG_REC } seg_t;
@@ -391,7 +409,7 @@ static int title_lines(void) {
 }
 
 static int body_top(int page) {
-    return page ? BODY_TOP : TITLE_Y + s_title_lines * TITLE_LH + 10 + 44 + 18;
+    return page ? BODY_TOP : TITLE_Y + s_title_lines * TITLE_LH + TR_S(10) + TR_S(44) + TR_S(18);
 }
 
 static void layout_body(void) {
@@ -424,7 +442,7 @@ static int comment_lines(const comment_t* c) {
     return n ? n : 1;
 }
 
-static int comment_height(const comment_t* c) { return 40 + comment_lines(c) * COMMENT_LH + 32; }
+static int comment_height(const comment_t* c) { return TR_S(40) + comment_lines(c) * COMMENT_LH + TR_S(32); }
 
 static void layout_comments(void) {
     int pages = 0, y = BODY_BOTTOM;
@@ -433,7 +451,7 @@ static void layout_comments(void) {
         if (y + h > BODY_BOTTOM && y != BODY_TOP) { s_comment_pages[pages++] = (uint8_t)i; y = BODY_TOP; }
         y += h;
     }
-    if (!pages) { s_comment_pages[pages++] = 0; y = BODY_TOP + 80; }
+    if (!pages) { s_comment_pages[pages++] = 0; y = BODY_TOP + TR_S(80); }
     // 按钮放不下就单独占一页。/ The button gets a page of its own when it does not fit.
     if (y + MORE_BLOCK_H > BODY_BOTTOM) { s_comment_pages[pages++] = (uint8_t)s_comment_count; y = BODY_TOP; }
     s_more_y = y;
@@ -441,7 +459,9 @@ static void layout_comments(void) {
     s_comment_page_count = pages;
 }
 
-static EpdRect more_btn(void) { return (EpdRect){(TR_W - MORE_BTN_W) / 2, s_more_y + 24, MORE_BTN_W, MORE_BTN_H}; }
+static EpdRect more_btn(void) {
+    return (EpdRect){(TR_W - MORE_BTN_W) / 2, s_more_y + TR_S(24), MORE_BTN_W, MORE_BTN_H};
+}
 
 // 小红书的计数文字（“12”“1.2万”“10+”）换成大约的数。/ Xiaohongshu count text ("12", "1.2万", "10+") as a number.
 static long count_value(const char* s) {
@@ -525,18 +545,33 @@ static int text_pages(void) { return s_tab == T_BODY ? s_page_count : s_comment_
 
 /* ---- 绘制 / Drawing ---- */
 
-static void draw_empty(uint8_t* fb, int y, const char* text) { tr_wrap(fb, TR_MARGIN, y, CW, 30, 46, text, 5); }
+// 固定提示最多 8 行，放大后也写得完。/ Fixed hints get up to 8 lines so they still show whole at larger sizes.
+static void draw_empty(uint8_t* fb, int y, const char* text) {
+    tr_wrap(fb, TR_MARGIN, y, CW, EMPTY_PX, EMPTY_LH, text, EMPTY_LINES);
+}
+
+// “去设置”按钮放在说明文字下面（正常档仍在 420）。/ The Set up button sits below the hint (still at 420 at normal).
+static EpdRect setup_rect(void) {
+    int lines = 0;
+    for (const char* p = SETUP_TEXT; *p && lines < EMPTY_LINES; lines++) {
+        p += tr_line_bytes(p, EMPTY_PX, CW);
+        if (*p == '\n') p++;
+    }
+    const int below = LIST_TOP + (lines - 1) * EMPTY_LH + EMPTY_PX + TR_S(10);
+    return (EpdRect){TR_MARGIN, below > TR_S(420) ? below : TR_S(420), TR_S(240), TR_S(72)};
+}
 
 static void draw_header(uint8_t* fb) {
     tr_title(fb, "小红书");
     if (s_has_cfg) {
         const bool busy = job_running(s_seg == SEG_FOLLOW ? TOMATO_RED_FEED : TOMATO_RED_REC);
         if (busy) {
-            tr_text(fb, TR_W - TR_MARGIN, 98, 30, "拉取中…", EPD_DRAW_ALIGN_RIGHT, false);
+            tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "拉取中…", EPD_DRAW_ALIGN_RIGHT, false);
         } else if (!tomato_sync_busy()) {
             const char* label = s_seg == SEG_FOLLOW ? "刷新" : "刷新推荐";
-            tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - ttf_text_width_px(30, label) - 26, 116, false);
-            tr_text(fb, TR_W - TR_MARGIN, 98, 30, label, EPD_DRAW_ALIGN_RIGHT, false);
+            tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - ttf_text_width_px(TR_S(30), label) - TR_S(26), TR_S(116),
+                    false);
+            tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), label, EPD_DRAW_ALIGN_RIGHT, false);
         }
     }
     static const char* const SEG[2] = {"关注", "推荐"};
@@ -559,31 +594,30 @@ static void draw_cards(uint8_t* fb) {
         const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, CELL_W, COVER_H) : NULL;
         if (px) hupu_img_draw(fb, cx, cy, CELL_W, COVER_H, px, true);
         // 封面还没到：浅灰圆角块（小红书只用整页刷新）。/ Cover not here yet: a light gray block (whole-page refresh only).
-        else ui_fill_round_rect(fb, (EpdRect){cx, cy, CELL_W, COVER_H}, 12, TR_GRAY_SURFACE);
+        else ui_fill_round_rect(fb, (EpdRect){cx, cy, CELL_W, COVER_H}, TR_S(12), TR_GRAY_SURFACE);
         if (!x->seen) {
-            ui_fill_round_rect(fb, (EpdRect){cx + 10, cy + 10, 48, 34}, 17, UI_GRAY_BLACK);
-            tr_text_inv(fb, cx + 34, cy + 13, 22, "新", EPD_DRAW_ALIGN_CENTER, true);
+            ui_fill_round_rect(fb, (EpdRect){cx + TR_S(10), cy + TR_S(10), TR_S(48), TR_S(34)}, TR_S(17), UI_GRAY_BLACK);
+            tr_text_inv(fb, cx + TR_S(34), cy + TR_S(13), TR_S(22), "新", EPD_DRAW_ALIGN_CENTER, true);
         }
         if (s_seg == SEG_REC && note_cached(x->id)) {
-            const EpdRect r = {cx + CELL_W - 98, cy + COVER_H - 44, 88, 34};
-            ui_fill_round_rect(fb, r, 17, UI_GRAY_WHITE);
-            ui_draw_round_rect(fb, r, 17, TR_GRAY_OUTLINE);
-            ui_draw_round_rect(fb, ui_inset_rect(r, 1), 16, TR_GRAY_OUTLINE);
-            tr_text(fb, r.x + r.width / 2, r.y + 4, 20, "已下载", EPD_DRAW_ALIGN_CENTER, true);
+            const EpdRect r = {cx + CELL_W - TR_S(98), cy + COVER_H - TR_S(44), TR_S(88), TR_S(34)};
+            ui_fill_round_rect(fb, r, TR_S(17), UI_GRAY_WHITE);
+            ui_draw_round_rect(fb, r, TR_S(17), TR_GRAY_OUTLINE);
+            ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(17) - 1, TR_GRAY_OUTLINE);
+            tr_text(fb, r.x + r.width / 2, r.y + TR_S(4), TR_S(20), "已下载", EPD_DRAW_ALIGN_CENTER, true);
         }
-        tr_wrap(fb, cx, cy + COVER_H + 10, CELL_W, 26, 34, x->title[0] ? x->title : "（无标题）", 2);
+        tr_wrap(fb, cx, cy + COVER_H + TR_S(10), CELL_W, TR_S(26), TR_S(34), x->title[0] ? x->title : "（无标题）", 2);
         snprintf(line, sizeof(line), "%s%s%s", x->author, x->likes[0] ? " · 赞 " : "", x->likes);
-        tr_fit(line, 22, CELL_W);
-        tr_text_dim(fb, cx, cy + COVER_H + 84, 22, line, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(line, TR_S(22), CELL_W);
+        tr_text_dim(fb, cx, cy + COVER_H + TR_S(84), TR_S(22), line, EPD_DRAW_ALIGN_LEFT);
     }
 }
 
 static void draw_list(uint8_t* fb) {
     draw_header(fb);
     if (!s_has_cfg) {
-        draw_empty(fb, LIST_TOP, "还没连接 rednote 服务器。先在电脑或 NAS 上部署 rednote（见项目 rednote/ 目录），"
-                                 "再到“设置 › 内容来源”填服务器地址和设备令牌。");
-        tr_pill(fb, SETUP_RECT, "去设置", true, 30);
+        draw_empty(fb, LIST_TOP, SETUP_TEXT);
+        tr_pill(fb, setup_rect(), "去设置", true, TR_S(30));
         return;
     }
     char line[160];
@@ -607,10 +641,10 @@ static void draw_list(uint8_t* fb) {
         else snprintf(line, sizeof(line), "首页推荐%s", when);
     }
     // 平常的条数用深灰，加载和出错的提示保持黑字。/ The plain count is dark gray; loading and errors stay black.
-    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, 26, line, EPD_DRAW_ALIGN_LEFT);
-    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - 12, CW, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+    if (!loading && !s_msg[0]) tr_text_dim(fb, TR_MARGIN, STATUS_Y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
+    else tr_message(fb, TR_MARGIN, STATUS_Y, STATUS_Y - TR_S(12), CW, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
     if (!s_item_count) {
-        draw_empty(fb, LIST_TOP + 20, loading ? "加载中，请稍候。" : s_seg == SEG_FOLLOW ?
+        draw_empty(fb, LIST_TOP + TR_S(20), loading ? "加载中，请稍候。" : s_seg == SEG_FOLLOW ?
                    "还没有缓存。联网后点右上角“刷新”，从服务器取关注博主的笔记；之后不联网也能看。" :
                    "还没有推荐。点右上角“刷新推荐”，服务器会去读一次小红书首页（只留图文）。");
         return;
@@ -623,37 +657,37 @@ static void draw_wait(uint8_t* fb) {
     const EpdRect r = DIALOG_RECT;
     // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     epd_fill_rect(r, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, r, 28, TR_GRAY_OUTLINE);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 27, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, r, TR_S(28), TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(28) - 1, TR_GRAY_OUTLINE);
     const int cx = r.x + r.width / 2;
     const bool failed = !job_running(TOMATO_RED_NOTE) && s_msg[0];
     if (failed) {
-        tr_text(fb, cx, r.y + 40, 32, "没能打开这篇", EPD_DRAW_ALIGN_CENTER, true);
-        tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg, 2);
-        tr_text_dim(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
+        tr_text(fb, cx, r.y + TR_S(40), TR_S(32), "没能打开这篇", EPD_DRAW_ALIGN_CENTER, true);
+        tr_wrap(fb, r.x + TR_S(30), r.y + TR_S(96), r.width - TR_S(60), TR_S(26), TR_S(36), s_msg, 2);
+        tr_text_dim(fb, cx, r.y + TR_S(168), TR_S(24), "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
         return;
     }
-    tr_text(fb, cx, r.y + 44, 34, "正在拉取这篇笔记…", EPD_DRAW_ALIGN_CENTER, true);
-    tr_text(fb, cx, r.y + 104, 26, loading_text("服务器要打开小红书，约 10～20 秒"), EPD_DRAW_ALIGN_CENTER, false);
-    tr_text_dim(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER);
+    tr_text(fb, cx, r.y + TR_S(44), TR_S(34), "正在拉取这篇笔记…", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, cx, r.y + TR_S(104), TR_S(26), loading_text("服务器要打开小红书，约 10～20 秒"), EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, cx, r.y + TR_S(156), TR_S(26), "点框外取消", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_more_wait(uint8_t* fb) {
     const EpdRect r = DIALOG_RECT;
     // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
     epd_fill_rect(r, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, r, 28, TR_GRAY_OUTLINE);
-    ui_draw_round_rect(fb, ui_inset_rect(r, 1), 27, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, r, TR_S(28), TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(28) - 1, TR_GRAY_OUTLINE);
     const int cx = r.x + r.width / 2;
     if (s_more_failed) {
-        tr_text(fb, cx, r.y + 40, 32, "没能加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
-        tr_wrap(fb, r.x + 30, r.y + 96, r.width - 60, 26, 36, s_msg[0] ? s_msg : "稍后再试", 2);
-        tr_text_dim(fb, cx, r.y + 168, 24, "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
+        tr_text(fb, cx, r.y + TR_S(40), TR_S(32), "没能加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
+        tr_wrap(fb, r.x + TR_S(30), r.y + TR_S(96), r.width - TR_S(60), TR_S(26), TR_S(36), s_msg[0] ? s_msg : "稍后再试", 2);
+        tr_text_dim(fb, cx, r.y + TR_S(168), TR_S(24), "点任意处关闭", EPD_DRAW_ALIGN_CENTER);
         return;
     }
-    tr_text(fb, cx, r.y + 44, 34, "正在加载更多评论…", EPD_DRAW_ALIGN_CENTER, true);
-    tr_text(fb, cx, r.y + 104, 26, loading_text("服务器要打开小红书往下翻，约 20～60 秒"), EPD_DRAW_ALIGN_CENTER, false);
-    tr_text_dim(fb, cx, r.y + 156, 26, "点框外取消", EPD_DRAW_ALIGN_CENTER);
+    tr_text(fb, cx, r.y + TR_S(44), TR_S(34), "正在加载更多评论…", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, cx, r.y + TR_S(104), TR_S(26), loading_text("服务器要打开小红书往下翻，约 20～60 秒"), EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, cx, r.y + TR_S(156), TR_S(26), "点框外取消", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void draw_image(uint8_t* fb) {
@@ -664,29 +698,29 @@ static void draw_image(uint8_t* fb) {
     if (exists(path) && image_fit(s_image, &w, &h)) {
         const uint8_t* px = hupu_img_get(path, w, h);
         if (px) hupu_img_draw(fb, (TR_W - w) / 2, (TR_H - IMAGE_BAND - h) / 2, w, h, px, false);
-        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, 30,
+        else tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30),
                      hupu_img_failed(path, w, h) ? "这张图打不开" : "正在处理图片…", EPD_DRAW_ALIGN_CENTER, false);
     } else {
         const bool loading = job_running(TOMATO_RED_NOTE);
         s_image_missing = loading;
-        tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, 30, loading ? loading_text("图片下载中…") : "图片还没下载",
+        tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), loading ? loading_text("图片下载中…") : "图片还没下载",
                 EPD_DRAW_ALIGN_CENTER, false);
     }
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
     char label[32];
     snprintf(label, sizeof(label), "%d / %d", s_image + 1, s_images);
-    tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_W / 2, TR_H - IMAGE_BAND + 28, 30, label, EPD_DRAW_ALIGN_CENTER, true);
-    tr_text(fb, TR_W - TR_MARGIN, TR_H - IMAGE_BAND + 28, 30, "正文 ›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text(fb, TR_MARGIN, TR_H - IMAGE_BAND + TR_S(28), TR_S(30), "‹ 返回", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W / 2, TR_H - IMAGE_BAND + TR_S(28), TR_S(30), label, EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, TR_W - TR_MARGIN, TR_H - IMAGE_BAND + TR_S(28), TR_S(30), "正文 ›", EPD_DRAW_ALIGN_RIGHT, false);
     tr_wallsave_draw(fb, &s_ws);
 }
 
 static void draw_text_header(uint8_t* fb) {
     char back[80];
     snprintf(back, sizeof(back), "‹ %s", s_author[0] ? s_author : "返回");
-    tr_fit(back, 30, 400);
-    tr_text(fb, TR_MARGIN, 92, 30, back, EPD_DRAW_ALIGN_LEFT, false);
+    tr_fit(back, TR_S(30), 400);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(30), back, EPD_DRAW_ALIGN_LEFT, false);
     char l0[24], l2[24];
     snprintf(l0, sizeof(l0), "图片 %d", s_images);
     snprintf(l2, sizeof(l2), "评论 %d", s_comment_count);
@@ -706,15 +740,15 @@ static void draw_body(uint8_t* fb) {
             localtime_r(&t, &tm);
             snprintf(when, sizeof(when), " · %02d-%02d", (tm.tm_mon + 1) % 100, tm.tm_mday % 100);
         }
-        const int my = TITLE_Y + s_title_lines * TITLE_LH + 10;
+        const int my = TITLE_Y + s_title_lines * TITLE_LH + TR_S(10);
         snprintf(meta, sizeof(meta), "%s%s%s%s%s%s", s_author, when, s_likes[0] ? " · 赞 " : "", s_likes,
                  s_comment_total[0] ? " · 评论 " : "", s_comment_total);
-        tr_fit(meta, 24, CW);
-        tr_text_dim(fb, TR_MARGIN, my, 24, meta, EPD_DRAW_ALIGN_LEFT);
-        tr_hline(fb, my + 40, TR_MARGIN, CW, true);
+        tr_fit(meta, TR_S(24), CW);
+        tr_text_dim(fb, TR_MARGIN, my, TR_S(24), meta, EPD_DRAW_ALIGN_LEFT);
+        tr_hline(fb, my + TR_S(40), TR_MARGIN, CW, true);
     }
     if (!s_line_count) {
-        tr_text_dim(fb, TR_MARGIN, y, 30, "这篇没有文字。", EPD_DRAW_ALIGN_LEFT);
+        tr_text_dim(fb, TR_MARGIN, y, TR_S(30), "这篇没有文字。", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     const int start = s_pages[s_page];
@@ -733,12 +767,12 @@ static void draw_body(uint8_t* fb) {
 static void draw_more_btn(uint8_t* fb) {
     const EpdRect b = more_btn();
     if (s_comments_more) {
-        ui_draw_round_rect(fb, b, 38, TR_GRAY_OUTLINE);
-        ui_draw_round_rect(fb, ui_inset_rect(b, 1), 37, TR_GRAY_OUTLINE);
-        tr_text(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
+        ui_draw_round_rect(fb, b, TR_S(38), TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(b, 1), TR_S(38) - 1, TR_GRAY_OUTLINE);
+        tr_text(fb, TR_W / 2, b.y + (MORE_BTN_H - TR_S(30)) / 2 - TR_S(2), TR_S(30), "加载更多评论", EPD_DRAW_ALIGN_CENTER, true);
     } else {
-        ui_fill_round_rect(fb, b, 38, TR_GRAY_SURFACE);
-        tr_text_on(fb, TR_W / 2, b.y + (MORE_BTN_H - 30) / 2 - 2, 30, "加载更多评论", EPD_DRAW_ALIGN_CENTER, false,
+        ui_fill_round_rect(fb, b, TR_S(38), TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W / 2, b.y + (MORE_BTN_H - TR_S(30)) / 2 - TR_S(2), TR_S(30), "加载更多评论", EPD_DRAW_ALIGN_CENTER, false,
                    TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
     }
 }
@@ -746,7 +780,7 @@ static void draw_more_btn(uint8_t* fb) {
 static void draw_comments(uint8_t* fb) {
     if (s_page + 1 == s_comment_page_count) draw_more_btn(fb);
     if (!s_comment_count) {
-        tr_text_dim(fb, TR_MARGIN, BODY_TOP + 20, 30, "服务器没有存这篇的评论", EPD_DRAW_ALIGN_LEFT);
+        tr_text_dim(fb, TR_MARGIN, BODY_TOP + TR_S(20), TR_S(30), "服务器没有存这篇的评论", EPD_DRAW_ALIGN_LEFT);
         return;
     }
     int y = BODY_TOP;
@@ -754,15 +788,15 @@ static void draw_comments(uint8_t* fb) {
     for (int i = s_comment_pages[s_page]; i < s_comment_pages[s_page + 1]; i++) {
         const comment_t* c = &s_comments[i];
         snprintf(line, sizeof(line), "%s", c->user[0] ? c->user : "小红书用户");
-        tr_fit(line, 26, CW - 160);
-        tr_text(fb, TR_MARGIN, y, 26, line, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(line, TR_S(26), CW - TR_S(160));
+        tr_text(fb, TR_MARGIN, y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, true);
         if (c->likes[0] && strcmp(c->likes, "0")) {
             snprintf(line, sizeof(line), "赞 %s", c->likes);
-            tr_badge(fb, TR_W - TR_MARGIN, y - 4, line, false, 22);
+            tr_badge(fb, TR_W - TR_MARGIN, y - TR_S(4), line, false, TR_S(22));
         }
-        tr_wrap(fb, TR_MARGIN, y + 40, CW, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
+        tr_wrap(fb, TR_MARGIN, y + TR_S(40), CW, COMMENT_PX, COMMENT_LH, c->text[0] ? c->text : "（空）", COMMENT_LINES);
         y += comment_height(c);
-        tr_hline(fb, y - 16, TR_MARGIN, CW, true);
+        tr_hline(fb, y - TR_S(16), TR_MARGIN, CW, true);
     }
 }
 
@@ -780,7 +814,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     if (!s_items) {
         tr_status_bar(fb);
         tr_title(fb, "小红书");
-        draw_empty(fb, 240, "内存不足，打不开小红书页。");
+        draw_empty(fb, TR_S(240), "内存不足，打不开小红书页。");
         tr_tab_bar(fb, TR_TAB_XHS);
         return;
     }
@@ -925,7 +959,7 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (tr_nav_touch(ctx, x, y, TR_TAB_XHS)) return APP_REDRAW_NONE;
     if (!s_has_cfg) {
-        if (ui_rect_hit(SETUP_RECT, x, y)) {
+        if (ui_rect_hit(setup_rect(), x, y)) {
             app_tr_settings_request_source(TR_TAB_XHS);
             ctx->request_app = tr_nav_tab_app(TR_TAB_SETTINGS);
         }
@@ -974,7 +1008,7 @@ static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 
 static app_redraw_t tap_text(uint16_t x, uint16_t y) {
     if (s_more_wait) return !s_more_failed && ui_rect_hit(DIALOG_RECT, x, y) ? APP_REDRAW_NONE : close_more();
-    if (y < 140 && x < 420) return back_to_list();
+    if (y < TR_S(140) && x < 420) return back_to_list();
     const int seg = tr_segment_hit(NOTE_SEG, 3, x, y);
     if (seg == 0) {
         if (!s_images) return APP_REDRAW_NONE;

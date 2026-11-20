@@ -55,10 +55,12 @@
 #include "ui_wifi_qr.h"
 
 #define POLL_MS 500
-#define CAT_TOP 170
-#define CAT_H 136
-#define ROW_H 72
-#define BACK_RECT (EpdRect){0, 70, 320, 90}
+// 长度都随显示大小放大（TR_S）；表里的 y 是正常档的值，用的时候再换算。/ Lengths scale with the display size
+// (TR_S); y values in the tables are normal-size values, scaled where used.
+#define CAT_TOP TR_S(170)
+#define CAT_H TR_S(136)
+#define ROW_H TR_S(72)
+#define BACK_RECT (EpdRect){0, TR_S(70), 320, TR_S(90)}
 
 extern const app_desc_t app_font_pick;
 extern const app_desc_t app_sleep;
@@ -115,7 +117,7 @@ typedef struct {
 } row_t;
 
 enum {
-    R_FONT, R_WALL,
+    R_SIZE, R_FONT, R_WALL,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
@@ -123,8 +125,9 @@ enum {
 };
 
 static const row_t DISPLAY_ROWS[] = {
-    {R_FONT, NULL, "字体", 190},
-    {R_WALL, NULL, "锁屏壁纸", 262},
+    {R_SIZE, NULL, "显示大小", 190},
+    {R_FONT, NULL, "字体", 262},
+    {R_WALL, NULL, "锁屏壁纸", 334},
 };
 static const row_t TOMATO_ROWS[] = {
     {R_SRV, NULL, "番茄服务器", 190},
@@ -155,17 +158,20 @@ static const row_t TIME_ROWS[] = {
     {R_TSET, NULL, "手动设置时间", 334},
 };
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
-#define WEB_ROW_H 84
-#define WEB_BOX (EpdRect){TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 480}
+#define WEB_ROW_H TR_S(84)
+#define WEB_BOX_Y TR_S(284)
+// 网页填写的二维码不随显示大小放大（和图片一样），扫码不受影响。/ The web-form QR code keeps its size (like
+// images); scanning is unaffected.
+#define WEB_QR 220
 // 内容来源页：番茄加各个自建服务器。/ Content sources page: Tomato plus each self-hosted server.
 #define SOURCES (1 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
-#define TAB_TOP 210   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
-#define TAB_H 70      // 每行高度 / Row height
-#define TAB_SEC_H 40  // 段标题高度 / Section heading height
-#define TAB_SEC_GAP 22
-#define TAB_BTN_H 52
+#define TAB_TOP TR_S(210)   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
+#define TAB_H TR_S(70)      // 每行高度 / Row height
+#define TAB_SEC_H TR_S(40)  // 段标题高度 / Section heading height
+#define TAB_SEC_GAP TR_S(22)
+#define TAB_BTN_H TR_S(52)
 
 static page_t s_page;
 static int s_open_source = -1;  // 别的页要求直接打开某个来源（tr_tab_t）/ Another page asked for a source (tr_tab_t)
@@ -295,6 +301,7 @@ static void card_value(char* out, size_t cap) {
 static void row_value(int id, char* out, size_t cap) {
     char tmp[120];
     switch (id) {
+    case R_SIZE: snprintf(out, cap, "%s ›", app_settings_display_label(app_settings_display_size())); break;
     case R_FONT: font_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_WALL: wall_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
@@ -474,15 +481,26 @@ static void start_test(srv_t which) {
 /* ---- 绘制 / Drawing ---- */
 
 static void draw_back_title(uint8_t* fb, const char* title) {
-    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, title, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(100), TR_S(36), title, EPD_DRAW_ALIGN_LEFT, true);
 }
 
+// 提示放在标题右边；标题随显示大小变宽，提示的宽度跟着让。/ The message sits right of the title; as the title
+// grows with the display size, the message width yields.
 static void draw_message(uint8_t* fb) {
-    if (s_message[0]) tr_message(fb, TR_W - TR_MARGIN, 104, 92, 360, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
+    if (s_message[0])
+        tr_message(fb, TR_W - TR_MARGIN, TR_S(104), TR_S(92), TR_W - TR_MARGIN - TR_S(284), TR_S(26), s_message,
+                   EPD_DRAW_ALIGN_RIGHT, false);
 }
 
-static void draw_cat(uint8_t* fb, int y, tr_icon_t icon, const char* name, const char* summary, bool last);
+static void draw_cat(uint8_t* fb, int y, int h, tr_icon_t icon, const char* name, const char* summary, bool last);
+
+// 首页分类行高：放不下六行时压低行高并省掉版本号（关于页里有）。/ Home category row height: when six rows do not
+// fit, rows get shorter and the version line is dropped (About shows it).
+static int home_cat_h(void) {
+    if (CAT_TOP + C_COUNT * CAT_H <= TR_TABS_Y - TR_S(84)) return CAT_H;
+    return (TR_TABS_Y - TR_S(8) - CAT_TOP) / C_COUNT;
+}
 
 static void cat_summary(cat_t c, char* out, size_t cap) {
     char a[120], b[120];
@@ -490,7 +508,8 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     case C_DISPLAY:
         font_name(a, sizeof(a));
         wall_name(b, sizeof(b));
-        snprintf(out, cap, "%.60s · 锁屏壁纸 %.50s", a, b);
+        snprintf(out, cap, "显示大小 %s · %.60s · 锁屏壁纸 %.50s",
+                 app_settings_display_label(app_settings_display_size()), a, b);
         break;
     case C_TABS: {
         tr_tab_t bar[TR_TAB_MAX];
@@ -522,31 +541,36 @@ static void draw_home(uint8_t* fb) {
                                              TR_ICON_POWER};
     tr_title(fb, "设置");
     draw_message(fb);
+    const int h = home_cat_h();
     for (int i = 0; i < C_COUNT; i++) {
         char sum[200];
         cat_summary((cat_t)i, sum, sizeof(sum));
-        draw_cat(fb, CAT_TOP + i * CAT_H, ICONS[i], NAMES[i], sum, i + 1 == C_COUNT);
+        draw_cat(fb, CAT_TOP + i * h, h, ICONS[i], NAMES[i], sum, i + 1 == C_COUNT);
     }
+    if (h < CAT_H) return;
     const esp_app_desc_t* app = esp_app_get_description();
     char ver[48];
     snprintf(ver, sizeof(ver), "Treader %.20s", app->version);
-    tr_text_dim(fb, TR_W / 2, 1030, 24, ver, EPD_DRAW_ALIGN_CENTER);
+    tr_text_dim(fb, TR_W / 2, TR_TABS_Y - TR_S(64), TR_S(24), ver, EPD_DRAW_ALIGN_CENTER);
 }
 
-// 一行大分类（首页和传书页共用）。/ One large category row (home and the transfer page share it).
-static void draw_cat(uint8_t* fb, int y, tr_icon_t icon, const char* name, const char* summary, bool last) {
+// 一行大分类（首页和传书页共用）。h 比标准行矮时内容整体上移居中。/ One large category row (home and the
+// transfer page share it). When h is below the standard height the content moves up to stay centred.
+static void draw_cat(uint8_t* fb, int y, int h, tr_icon_t icon, const char* name, const char* summary, bool last) {
     // Material 3 列表项：图标放在浅灰圆底上，摘要和箭头用深灰（这几页整页刷新）。/ Material 3 list item: the icon
     // on a light gray circle, summary and chevron in dark gray (these pages refresh as whole pages).
-    const EpdRect box = {TR_MARGIN, y + 30, 76, 76};
-    ui_fill_round_rect(fb, box, 38, TR_GRAY_SURFACE);
-    tr_icon_on(fb, icon, box.x + 38, box.y + 38, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-    tr_text(fb, TR_MARGIN + 104, y + 24, 34, name, EPD_DRAW_ALIGN_LEFT, true);
+    const int top = y + (h - CAT_H) / 2;
+    const EpdRect box = {TR_MARGIN, top + TR_S(30), TR_S(76), TR_S(76)};
+    ui_fill_round_rect(fb, box, TR_S(38), TR_GRAY_SURFACE);
+    tr_icon_on(fb, icon, box.x + TR_S(38), box.y + TR_S(38), UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    const int tx = TR_MARGIN + TR_S(104);
+    tr_text(fb, tx, top + TR_S(24), TR_S(34), name, EPD_DRAW_ALIGN_LEFT, true);
     char sum[200];
     snprintf(sum, sizeof(sum), "%s", summary);
-    tr_fit(sum, 26, TR_W - 2 * TR_MARGIN - 104 - 40);
-    tr_text_dim(fb, TR_MARGIN + 104, y + 78, 26, sum, EPD_DRAW_ALIGN_LEFT);
-    tr_text_dim(fb, TR_W - TR_MARGIN, y + 46, 34, "›", EPD_DRAW_ALIGN_RIGHT);
-    if (!last) tr_hline(fb, y + CAT_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_fit(sum, TR_S(26), TR_W - TR_MARGIN - tx - TR_S(40));
+    tr_text_dim(fb, tx, top + TR_S(78), TR_S(26), sum, EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_W - TR_MARGIN, top + TR_S(46), TR_S(34), "›", EPD_DRAW_ALIGN_RIGHT);
+    if (!last) tr_hline(fb, y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 }
 
 static void draw_transfer(uint8_t* fb) {
@@ -554,78 +578,102 @@ static void draw_transfer(uint8_t* fb) {
     draw_message(fb);
     char wifi[80];
     snprintf(wifi, sizeof(wifi), "手机或电脑浏览器上传%s%s", s_wifi[0] ? " · " : "", s_wifi);
-    draw_cat(fb, CAT_TOP, TR_ICON_WIFI, "Wi-Fi 传书", wifi, false);
-    draw_cat(fb, CAT_TOP + CAT_H, TR_ICON_USB, "USB 传书",
+    draw_cat(fb, CAT_TOP, CAT_H, TR_ICON_WIFI, "Wi-Fi 传书", wifi, false);
+    draw_cat(fb, CAT_TOP + CAT_H, CAT_H, TR_ICON_USB, "USB 传书",
              tomato_sync_busy() && !tomato_sync_preemptible() ? "后台正在下载或同步，完成后再用" : "连电脑当 U 盘，拷大文件更方便", true);
-    tr_wrap(fb, TR_MARGIN, CAT_TOP + 2 * CAT_H + 28, TR_W - 2 * TR_MARGIN, 24, 36,
-            "Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。", 3);
+    tr_wrap(fb, TR_MARGIN, CAT_TOP + 2 * CAT_H + TR_S(28), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+            "Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。", 4);
 }
 
 // Material 3 开关：开是黑轨道加白圆钮；关是深灰描边轨道加小一圈的深灰圆钮。深灰在 DU 下按黑处理。
 // Material 3 switch: on is a black track with a white knob; off is an outlined dark gray track with a smaller dark
 // gray knob. Dark gray reads as black under DU.
 static void draw_switch(uint8_t* fb, int right, int y, bool on) {
-    const EpdRect r = {right - 100, y, 100, 54};
+    const int w = TR_S(100), h = TR_S(54), rad = h / 2;
+    const EpdRect r = {right - w, y, w, h};
     if (on) {
-        ui_fill_round_rect(fb, r, 27, UI_GRAY_BLACK);
-        epd_fill_circle(r.x + r.width - 27, y + 27, 19, UI_GRAY_WHITE, fb);
+        ui_fill_round_rect(fb, r, rad, UI_GRAY_BLACK);
+        epd_fill_circle(r.x + r.width - rad, y + rad, TR_S(19), UI_GRAY_WHITE, fb);
     } else {
-        ui_draw_round_rect(fb, r, 27, TR_GRAY_OUTLINE);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, TR_GRAY_OUTLINE);
-        epd_fill_circle(r.x + 27, y + 27, 13, TR_GRAY_OUTLINE, fb);
+        ui_draw_round_rect(fb, r, rad, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), rad - 1, TR_GRAY_OUTLINE);
+        epd_fill_circle(r.x + rad, y + rad, TR_S(13), TR_GRAY_OUTLINE, fb);
     }
 }
+
+static int row_h(const row_t* r) { return r->id == R_WEB ? WEB_ROW_H : ROW_H; }
 
 static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
     for (int i = 0; i < n; i++) {
         const row_t* r = &rows[i];
-        if (r->section) tr_text_dim(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT);
-        const int h = r->id == R_WEB ? WEB_ROW_H : ROW_H;
-        tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_WEB && s_web_on);
+        const int y = TR_S(r->y), h = row_h(r);
+        if (r->section) tr_text_dim(fb, TR_MARGIN, y - TR_S(36), TR_S(26), r->section, EPD_DRAW_ALIGN_LEFT);
+        tr_text(fb, TR_MARGIN, y + (h - TR_S(32)) / 2 - TR_S(2), TR_S(32), r->label, EPD_DRAW_ALIGN_LEFT,
+                r->id == R_WEB && s_web_on);
         if (r->id == R_WEB) {
-            draw_switch(fb, TR_W - TR_MARGIN, r->y + 15, s_web_on);
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, s_web_on);
         } else if (r->id == R_TAUTO) {
-            draw_switch(fb, TR_W - TR_MARGIN, r->y + (h - 54) / 2, app_settings_time_auto());
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_time_auto());
         } else {
+            // 右边的值让开左边的名字（正常档至少留 220）。/ The value keeps clear of the label (220 at least).
             char value[160];
             row_value(r->id, value, sizeof(value));
-            tr_fit(value, 28, TR_W - 2 * TR_MARGIN - 220);
-            tr_text_dim(fb, TR_W - TR_MARGIN, r->y + (h - 28) / 2, 28, value, EPD_DRAW_ALIGN_RIGHT);
+            int label = ttf_text_width_px(TR_S(32), r->label) + TR_S(28);
+            if (label < 220) label = 220;
+            tr_fit(value, TR_S(28), TR_W - 2 * TR_MARGIN - label);
+            tr_text_dim(fb, TR_W - TR_MARGIN, y + (h - TR_S(28)) / 2, TR_S(28), value, EPD_DRAW_ALIGN_RIGHT);
         }
         const bool last = i + 1 == n || rows[i + 1].section;
-        if (!last && !(r->id == R_WEB && s_web_on)) tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        if (!last && !(r->id == R_WEB && s_web_on)) tr_hline(fb, y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }
 
+// 网页填写框：二维码左边，说明和网址在右边；说明折行变多时网址和下半部分往下让，框跟着变高。
+// Web-form box: QR on the left, instructions and address on the right; when the instructions wrap to more lines the
+// address and the lower half move down and the box grows with them.
 static void draw_web_box(uint8_t* fb) {
-    const EpdRect b = WEB_BOX;
-    ui_draw_round_rect(fb, b, 24, TR_GRAY_OUTLINE);
-    ui_draw_round_rect(fb, ui_inset_rect(b, 1), 23, TR_GRAY_OUTLINE);
-    const int tx = b.x + 268, tw = b.x + b.width - 32 - tx;
+    const int bx = TR_MARGIN, by = WEB_BOX_Y, bw = TR_W - 2 * TR_MARGIN;
+    const int pad = TR_S(32);
+    // 正常档照旧最多 3 / 4 行；放大后列变窄，给到 6 行。/ Normal size keeps 3 / 4 lines; larger sizes get 6.
+    const int more = ui_scale_pct == 100 ? 0 : 6;
+    int sep = by + TR_S(270);
     char line[160];
     if (!s_web_status.network_ready) {
-        tr_wrap(fb, b.x + 32, b.y + 40, b.width - 64, 28, 42,
+        tr_wrap(fb, bx + pad, by + TR_S(40), bw - 2 * pad, TR_S(28), TR_S(42),
                 s_web_status.state == READ_PICO_TRANSFER_ERROR ? "连不上 Wi-Fi。检查“Wi-Fi 与传书”里保存的网络，或关掉开关再试。"
-                                                               : "正在打开网页服务…", 3);
+                                                               : "正在打开网页服务…", more ? more : 3);
     } else {
-        ui_wifi_qr_draw(fb, (EpdRect){b.x + 28, b.y + 28, 220, 220});
-        if (s_web_status.mode == READ_PICO_TRANSFER_MODE_STA) {
-            snprintf(line, sizeof(line), "手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：", s_web_status.wifi_ssid);
-            tr_wrap(fb, tx, b.y + 36, tw, 26, 38, line, 3);
-            tr_text(fb, tx, b.y + 168, 32, host_of(s_web_status.url), EPD_DRAW_ALIGN_LEFT, true);
-        } else {
-            snprintf(line, sizeof(line), "扫码连上设备热点 %s（口令 %s），再在浏览器打开：", s_web_status.ssid,
-                     READ_PICO_TRANSFER_PASSWORD);
-            tr_wrap(fb, tx, b.y + 36, tw, 26, 38, line, 4);
-            tr_text(fb, tx, b.y + 196, 32, host_of(READ_PICO_TRANSFER_URL), EPD_DRAW_ALIGN_LEFT, true);
-        }
+        const EpdRect qr = {bx + TR_S(28), by + TR_S(28), WEB_QR, WEB_QR};
+        ui_wifi_qr_draw(fb, qr);
+        const int tx = qr.x + qr.width + TR_S(20), tw = bx + bw - pad - tx, ty = by + TR_S(36);
+        const bool sta = s_web_status.mode == READ_PICO_TRANSFER_MODE_STA;
+        if (sta) snprintf(line, sizeof(line), "手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：", s_web_status.wifi_ssid);
+        else snprintf(line, sizeof(line), "扫码连上设备热点 %s（口令 %s），再在浏览器打开：", s_web_status.ssid,
+                      READ_PICO_TRANSFER_PASSWORD);
+        const int n = tr_wrap(fb, tx, ty, tw, TR_S(26), TR_S(38), line, more ? more : sta ? 3 : 4);
+        int uy = by + TR_S(sta ? 168 : 196);
+        if (uy < ty + n * TR_S(38) + TR_S(8)) uy = ty + n * TR_S(38) + TR_S(8);
+        // 网址是内容：放不下就把字号缩到放得下。/ The address is content: shrink its size until it fits.
+        const char* host = host_of(sta ? s_web_status.url : READ_PICO_TRANSFER_URL);
+        int px = TR_S(32);
+        while (px > 24 && ttf_text_width_px(px, host) > tw) px -= 2;
+        tr_text(fb, tx, uy, px, host, EPD_DRAW_ALIGN_LEFT, true);
+        if (sep < uy + TR_S(56)) sep = uy + TR_S(56);
+        if (sep < qr.y + qr.height + TR_S(22)) sep = qr.y + qr.height + TR_S(22);
     }
-    tr_hline(fb, b.y + 270, b.x + 32, b.width - 64, true);
-    tr_text(fb, b.x + 32, b.y + 290, 28, s_web_note[0] ? s_web_note : "等待网页提交…", EPD_DRAW_ALIGN_LEFT, false);
-    tr_wrap(fb, b.x + 32, b.y + 342, b.width - 64, 24, 36,
-            s_web_status.mode == READ_PICO_TRANSFER_MODE_AP
-                ? "设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。"
-                : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。", 3);
+    tr_hline(fb, sep, bx + pad, bw - 2 * pad, true);
+    tr_text(fb, bx + pad, sep + TR_S(20), TR_S(28), s_web_note[0] ? s_web_note : "等待网页提交…", EPD_DRAW_ALIGN_LEFT,
+            false);
+    const int n = tr_wrap(fb, bx + pad, sep + TR_S(72), bw - 2 * pad, TR_S(24), TR_S(36),
+                          s_web_status.mode == READ_PICO_TRANSFER_MODE_AP
+                              ? "设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。"
+                              : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。", more ? more : 3);
+    // 框高：正常档固定 480；放大后包住实际内容。/ Box height: 480 at normal size; larger sizes wrap the content.
+    int bh = TR_S(480);
+    if (more) bh = sep + TR_S(72) + n * TR_S(36) + TR_S(30) - by;
+    const EpdRect b = {bx, by, bw, bh};
+    ui_draw_round_rect(fb, b, TR_S(24), TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(b, 1), TR_S(24) - 1, TR_GRAY_OUTLINE);
 }
 
 // “底部标签”页的行：书库和放在底部的（按顺序）、只在“全部”里的、隐藏的三段。绘制和点击都用这一份排版。
@@ -642,72 +690,106 @@ typedef struct {
 
 static uint8_t s_tb_pins[TR_TAB_MAX];
 static int s_tb_pin_n;
+static int s_tb_h, s_tb_btn_h;   // 这次排版的行高和按钮高 / Row and button height of the current layout
 
 // 常用最多几个（底部减去书库和“全部”两格）。/ Most pins (the bar minus the library and "All").
 static int tb_capacity(void) { return tr_tab_slots() - 2; }
 
-static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[3]) {
+// 段标题：三段，加上放大后“这一档在‘全部’里”的小标题（正常档写在行里）。/ Section headings: the three
+// sections plus, at larger sizes, a "this size: on All" sub-heading (normal size writes it inside the row).
+enum { TB_OVER = 3, TB_HEADS };
+
+static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[TB_HEADS]) {
     s_tb_pin_n = app_settings_tab_pins(s_tb_pins);
     const uint8_t hidden = app_settings_hidden_tabs();
-    int n = 0, y = TAB_TOP;
-    sec_y[TB_PINNED] = y;
-    y += TAB_SEC_H;
-    rows[n++] = (tb_row_t){TR_TAB_LIBRARY, TB_PINNED, -1, y};
-    y += TAB_H;
-    for (int i = 0; i < s_tb_pin_n; i++) {
-        rows[n++] = (tb_row_t){(tr_tab_t)s_tb_pins[i], TB_PINNED, i, y};
-        y += TAB_H;
+    const int cap = tb_capacity();
+    // 放大后一行放不下名字、说明和三个按钮，超出的常用改放到小标题下面。/ At larger sizes a row cannot hold the
+    // name, the note and three buttons, so pins beyond the bar go under a sub-heading.
+    const bool over_head = ui_scale_pct != 100 && s_tb_pin_n > cap;
+    int count = 1 + s_tb_pin_n;
+    for (int t = 1; t < TR_TAB_MAX; t++) {
+        bool pinned = false;
+        for (int i = 0; i < s_tb_pin_n; i++) pinned |= s_tb_pins[i] == t;
+        count += !pinned;
     }
-    y += TAB_SEC_GAP;
+    const int heads = 2 + (hidden ? 1 : 0) + (over_head ? 1 : 0);
+    // 行放不下标签栏上面时，收紧段距再均分行高。/ When the rows do not fit above the tab bar, tighten the section
+    // spacing and share out the row height.
+    int y = TAB_TOP, sec = TAB_SEC_H, gap = TAB_SEC_GAP;
+    s_tb_h = TAB_H;
+    const int limit = TR_TABS_Y - TR_S(8);
+    if (y + count * s_tb_h + heads * sec + 2 * gap > limit) {
+        y = TR_S(158) + TR_S(26) + TR_S(14);
+        sec = TR_S(26) + TR_S(12);
+        gap = TR_S(8);
+        s_tb_h = (limit - y - heads * sec - 2 * gap) / count;
+        if (s_tb_h > TAB_H) s_tb_h = TAB_H;
+    }
+    s_tb_btn_h = s_tb_h - TR_S(10) < TAB_BTN_H ? s_tb_h - TR_S(10) : TAB_BTN_H;
+    int n = 0;
+    sec_y[TB_PINNED] = y;
+    sec_y[TB_OVER] = -1;
+    y += sec;
+    rows[n++] = (tb_row_t){TR_TAB_LIBRARY, TB_PINNED, -1, y};
+    y += s_tb_h;
+    for (int i = 0; i < s_tb_pin_n; i++) {
+        if (over_head && i == cap) {
+            sec_y[TB_OVER] = y;
+            y += sec;
+        }
+        rows[n++] = (tb_row_t){(tr_tab_t)s_tb_pins[i], TB_PINNED, i, y};
+        y += s_tb_h;
+    }
+    y += gap;
     sec_y[TB_REST] = y;
-    y += TAB_SEC_H;
+    y += sec;
     for (int t = 1; t < TR_TAB_MAX; t++) {
         bool pinned = false;
         for (int i = 0; i < s_tb_pin_n; i++) pinned |= s_tb_pins[i] == t;
         if (pinned || (hidden & (1u << t))) continue;
         rows[n++] = (tb_row_t){(tr_tab_t)t, TB_REST, -1, y};
-        y += TAB_H;
+        y += s_tb_h;
     }
-    y += TAB_SEC_GAP;
+    y += gap;
     sec_y[TB_HIDDEN] = hidden ? y : -1;
-    if (hidden) y += TAB_SEC_H;
+    if (hidden) y += sec;
     for (int t = 1; t < TR_TAB_MAX; t++) {
         if (!(hidden & (1u << t))) continue;
         rows[n++] = (tb_row_t){(tr_tab_t)t, TB_HIDDEN, -1, y};
-        y += TAB_H;
+        y += s_tb_h;
     }
     return n;
 }
 
-static int tb_btn_w(const char* label) { return ttf_text_width_px(26, label) + 32; }
+static int tb_btn_w(const char* label) { return ttf_text_width_px(TR_S(26), label) + TR_S(32); }
 
 // 这一行某个按钮的位置；这一行没有这个按钮返回 false。/ Where a row's button sits; false if the row lacks it.
 static bool tb_btn_rect(const tb_row_t* r, tb_btn_t b, EpdRect* out) {
-    const int top = r->y + (TAB_H - TAB_BTN_H) / 2;
+    const int bh = s_tb_btn_h, top = r->y + (s_tb_h - bh) / 2;
     int right = TR_W - TR_MARGIN;
     if (r->sec == TB_PINNED) {
         if (r->index < 0) return false;
         const int out_w = tb_btn_w("移出");
-        if (b == TB_OUT) { *out = (EpdRect){right - out_w, top, out_w, TAB_BTN_H}; return true; }
-        right -= out_w + 14;
-        if (b == TB_DOWN) { *out = (EpdRect){right - TAB_BTN_H, top, TAB_BTN_H, TAB_BTN_H}; return true; }
-        right -= TAB_BTN_H + 10;
-        if (b == TB_UP) { *out = (EpdRect){right - TAB_BTN_H, top, TAB_BTN_H, TAB_BTN_H}; return true; }
+        if (b == TB_OUT) { *out = (EpdRect){right - out_w, top, out_w, bh}; return true; }
+        right -= out_w + TR_S(14);
+        if (b == TB_DOWN) { *out = (EpdRect){right - bh, top, bh, bh}; return true; }
+        right -= bh + TR_S(10);
+        if (b == TB_UP) { *out = (EpdRect){right - bh, top, bh, bh}; return true; }
         return false;
     }
     if (r->sec == TB_REST) {
         const int in_w = tb_btn_w("放到底部");
-        if (b == TB_IN) { *out = (EpdRect){right - in_w, top, in_w, TAB_BTN_H}; return true; }
-        right -= in_w + 14;
+        if (b == TB_IN) { *out = (EpdRect){right - in_w, top, in_w, bh}; return true; }
+        right -= in_w + TR_S(14);
         const int hide_w = tb_btn_w("隐藏");
         if (b == TB_HIDE && !(TR_TABS_FIXED & (1u << r->tab))) {
-            *out = (EpdRect){right - hide_w, top, hide_w, TAB_BTN_H};
+            *out = (EpdRect){right - hide_w, top, hide_w, bh};
             return true;
         }
         return false;
     }
     const int show_w = tb_btn_w("显示");
-    if (b == TB_SHOW) { *out = (EpdRect){right - show_w, top, show_w, TAB_BTN_H}; return true; }
+    if (b == TB_SHOW) { *out = (EpdRect){right - show_w, top, show_w, bh}; return true; }
     return false;
 }
 
@@ -731,7 +813,7 @@ static void tb_draw_btn(uint8_t* fb, EpdRect r, tb_btn_t b, bool enabled) {
     }
     const uint8_t ink = enabled ? UI_GRAY_BLACK : TR_GRAY_OUTLINE, bg = enabled ? UI_GRAY_WHITE : TR_GRAY_SURFACE;
     if (b == TB_UP || b == TB_DOWN) {
-        const int cx = r.x + r.width / 2, cy = r.y + r.height / 2, a = 10, dy = b == TB_UP ? -a / 2 : a / 2;
+        const int cx = r.x + r.width / 2, cy = r.y + r.height / 2, a = TR_S(10), dy = b == TB_UP ? -a / 2 : a / 2;
         for (int d = -1; d <= 1; d++) {
             epd_draw_line(cx - a + d, cy - dy, cx + d, cy + dy, ink, fb);
             epd_draw_line(cx + d, cy + dy, cx + a + d, cy - dy, ink, fb);
@@ -739,7 +821,8 @@ static void tb_draw_btn(uint8_t* fb, EpdRect r, tb_btn_t b, bool enabled) {
         return;
     }
     static const char* const LABELS[TB_BTN_COUNT] = {"", "", "移出", "放到底部", "隐藏", "显示"};
-    tr_text_on(fb, r.x + r.width / 2, r.y + (r.height - 26) / 2 - 2, 26, LABELS[b], EPD_DRAW_ALIGN_CENTER, false, ink, bg);
+    tr_text_on(fb, r.x + r.width / 2, r.y + (r.height - TR_S(26)) / 2 - TR_S(2), TR_S(26), LABELS[b],
+               EPD_DRAW_ALIGN_CENTER, false, ink, bg);
 }
 
 static void draw_tabs(uint8_t* fb) {
@@ -747,39 +830,43 @@ static void draw_tabs(uint8_t* fb) {
     draw_message(fb);
     char line[96];
     snprintf(line, sizeof(line), "底部放 %d 个，最后一格固定是“全部”", tr_tab_slots() - 1);
-    tr_text_dim(fb, TR_MARGIN, 158, 26, line, EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, TR_S(158), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
     tb_row_t rows[TR_TAB_MAX];
-    int sec_y[3];
+    int sec_y[TB_HEADS];
     const int n = tb_layout(rows, sec_y);
-    tr_text_dim(fb, TR_MARGIN, sec_y[TB_PINNED], 26, "放在底部（按顺序）", EPD_DRAW_ALIGN_LEFT);
-    tr_text_dim(fb, TR_MARGIN, sec_y[TB_REST], 26, "只在“全部”里", EPD_DRAW_ALIGN_LEFT);
+    const int h = s_tb_h, px = TR_S(26);
+    tr_text_dim(fb, TR_MARGIN, sec_y[TB_PINNED], px, "放在底部（按顺序）", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, sec_y[TB_REST], px, "只在“全部”里", EPD_DRAW_ALIGN_LEFT);
     if (sec_y[TB_HIDDEN] >= 0)
-        tr_text_dim(fb, TR_MARGIN, sec_y[TB_HIDDEN], 26, "已隐藏（“全部”里也不显示）", EPD_DRAW_ALIGN_LEFT);
+        tr_text_dim(fb, TR_MARGIN, sec_y[TB_HIDDEN], px, "已隐藏（“全部”里也不显示）", EPD_DRAW_ALIGN_LEFT);
+    if (sec_y[TB_OVER] >= 0) tr_text_dim(fb, TR_MARGIN, sec_y[TB_OVER], px, "这一档在“全部”里", EPD_DRAW_ALIGN_LEFT);
     for (int i = 0; i < n; i++) {
         const tb_row_t* r = &rows[i];
         const bool pinned = r->sec == TB_PINNED;
         int x = TR_MARGIN;
         if (pinned) {
             snprintf(line, sizeof(line), "%d", r->index + 2);
-            tr_text_dim(fb, x + 6, r->y + (TAB_H - 28) / 2 - 2, 28, line, EPD_DRAW_ALIGN_LEFT);
-            x += 40;
+            tr_text_dim(fb, x + TR_S(6), r->y + (h - TR_S(28)) / 2 - TR_S(2), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
+            x += TR_S(40);
         }
-        tr_icon(fb, tr_tab_icon(r->tab), x + 20, r->y + TAB_H / 2, false);
+        tr_icon(fb, tr_tab_icon(r->tab), x + TR_S(20), r->y + h / 2, false);
+        const int ly = r->y + (h - TR_S(32)) / 2 - TR_S(2);
         if (r->sec == TB_HIDDEN)
-            tr_text_dim(fb, x + 60, r->y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT);
-        else tr_text(fb, x + 60, r->y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT, false);
+            tr_text_dim(fb, x + TR_S(60), ly, TR_S(32), tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT);
+        else tr_text(fb, x + TR_S(60), ly, TR_S(32), tr_tab_label(r->tab), EPD_DRAW_ALIGN_LEFT, false);
         if (r->sec == TB_PINNED && r->index < 0) {
-            tr_text_dim(fb, TR_W - TR_MARGIN, r->y + (TAB_H - 26) / 2, 26, "固定第一格（主页）", EPD_DRAW_ALIGN_RIGHT);
-        } else if (r->sec == TB_PINNED && r->index >= tb_capacity()) {
+            tr_text_dim(fb, TR_W - TR_MARGIN, r->y + (h - px) / 2, px, "固定第一格（主页）", EPD_DRAW_ALIGN_RIGHT);
+        } else if (r->sec == TB_PINNED && r->index >= tb_capacity() && sec_y[TB_OVER] < 0) {
             // 这一档底部放不下：先留在“全部”里。/ No room in the bar at this size: on the All page for now.
-            tr_text_dim(fb, x + 60 + ttf_text_width_px(32, tr_tab_label(r->tab)) + 16, r->y + (TAB_H - 24) / 2, 24,
-                        "这一档在“全部”里", EPD_DRAW_ALIGN_LEFT);
+            tr_text_dim(fb, x + TR_S(60) + ttf_text_width_px(TR_S(32), tr_tab_label(r->tab)) + TR_S(16),
+                        r->y + (h - TR_S(24)) / 2, TR_S(24), "这一档在“全部”里", EPD_DRAW_ALIGN_LEFT);
         }
         for (int b = 0; b < TB_BTN_COUNT; b++) {
             EpdRect br;
             if (tb_btn_rect(r, (tb_btn_t)b, &br)) tb_draw_btn(fb, br, (tb_btn_t)b, tb_btn_enabled(r, (tb_btn_t)b));
         }
-        if (i + 1 < n && rows[i + 1].sec == r->sec) tr_hline(fb, r->y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        if (i + 1 < n && rows[i + 1].sec == r->sec && rows[i + 1].y == r->y + h)
+            tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }
 
@@ -789,11 +876,11 @@ static void draw_sources(uint8_t* fb) {
     char sum[200];
     snprintf(sum, sizeof(sum), "%.150s · 书城榜单", !s_has_cfg ? "番茄服务器未设置" : s_cfg.builtin ? "内置服务器" :
              host_of(s_cfg.url));
-    draw_cat(fb, CAT_TOP, TR_ICON_TOMATO, "番茄小说", sum, false);
+    draw_cat(fb, CAT_TOP, CAT_H, TR_ICON_TOMATO, "番茄小说", sum, false);
     for (int i = 0; i < S_COUNT; i++) {
         snprintf(sum, sizeof(sum), "%s 服务器 · %.150s", SERVERS[i].panel,
                  s_has_host[i] ? host_of(s_host[i].url) : "未设置");
-        draw_cat(fb, CAT_TOP + (1 + i) * CAT_H, SERVERS[i].icon, SERVERS[i].name, sum, i + 1 == S_COUNT);
+        draw_cat(fb, CAT_TOP + (1 + i) * CAT_H, CAT_H, SERVERS[i].icon, SERVERS[i].name, sum, i + 1 == S_COUNT);
     }
 }
 
@@ -809,22 +896,38 @@ static void draw_server(uint8_t* fb) {
     char hint[200];
     snprintf(hint, sizeof(hint), "地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。",
              SERVERS[s_srv].panel);
-    tr_wrap(fb, TR_MARGIN, 582, TR_W - 2 * TR_MARGIN, 24, 36, hint, 3);
-    tr_wrap(fb, TR_MARGIN, 700, TR_W - 2 * TR_MARGIN, 24, 36,
+    const int n = tr_wrap(fb, TR_MARGIN, TR_S(582), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), hint, 3);
+    // 第二段跟在第一段后面（放大后第一段可能多折一行）。/ The second note follows the first (which may wrap to an
+    // extra line at larger sizes).
+    int y = TR_S(700);
+    if (y < TR_S(582) + n * TR_S(36) + TR_S(10)) y = TR_S(582) + n * TR_S(36) + TR_S(10);
+    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
             "列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。", 3);
 }
 
 static void draw_edit(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     char title[48];
     snprintf(title, sizeof(title), "%s%s", s_edit == E_HOST_URL || s_edit == E_HOST_TOKEN ? SERVERS[s_srv].name : "",
              EDIT[s_edit].title);
-    tr_text(fb, 96, 100, 36, title, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(100), TR_S(36), title, EPD_DRAW_ALIGN_LEFT, true);
+    // 键盘随显示大小往上长；两行提示放不下时，输入框变矮、提示行距收紧，整体贴着键盘往上排。
+    // The keyboard grows upward with the display size; when two hint lines no longer fit, the field gets shorter and
+    // the hint tighter, stacked up from the keyboard.
+    int fy = TR_S(176), fh = TR_S(84), hy = TR_S(286), lh = TR_S(36);
+    const int room = TR_KBD_TOP - TR_S(6);
+    if (hy + 2 * lh > room) {
+        lh = TR_S(26) + TR_S(6);
+        hy = room - 2 * lh;
+        fh = TR_S(76);
+        fy = hy - TR_S(16) - fh;
+    }
+    const int inset = (TR_S(84) - fh) / 2;   // 矮框里的字和光标往上提 / Text and caret move up in a shorter field
     // 输入框保持白底（打字时按 DU 局部刷新），框线用深灰。/ The field stays white (typing refreshes by DU); its
     // frame is dark gray.
-    EpdRect f = {TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 84};
-    ui_draw_round_rect(fb, f, 14, TR_GRAY_OUTLINE);
-    ui_draw_round_rect(fb, ui_inset_rect(f, 1), 13, TR_GRAY_OUTLINE);
+    EpdRect f = {TR_MARGIN, fy, TR_W - 2 * TR_MARGIN, fh};
+    ui_draw_round_rect(fb, f, TR_S(14), TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(f, 1), TR_S(14) - 1, TR_GRAY_OUTLINE);
     bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_HOST_TOKEN;
     char shown[TR_KBD_TEXT_MAX];
     if (secret) {
@@ -836,9 +939,11 @@ static void draw_edit(uint8_t* fb) {
     } else {
         snprintf(shown, sizeof(shown), "%s", s_kbd.text);
     }
-    const char* tail = tr_tail_fit(shown, 32, f.width - 48);
-    tr_text(fb, f.x + 20, f.y + 22, 32, tail, EPD_DRAW_ALIGN_LEFT, false);
-    epd_fill_rect((EpdRect){f.x + 22 + ttf_text_width_px(32, tail), f.y + 18, 3, 46}, UI_GRAY_BLACK, fb);
+    const int px = TR_S(32);
+    const char* tail = tr_tail_fit(shown, px, f.width - TR_S(48));
+    tr_text(fb, f.x + TR_S(20), f.y + TR_S(22) - inset, px, tail, EPD_DRAW_ALIGN_LEFT, false);
+    epd_fill_rect((EpdRect){f.x + TR_S(22) + ttf_text_width_px(px, tail), f.y + TR_S(18) - inset, TR_S(3), TR_S(46)},
+                  UI_GRAY_BLACK, fb);
     const char* hint = EDIT[s_edit].hint;
     char host_hint[160];
     if (s_edit == E_HOST_URL) {
@@ -848,14 +953,20 @@ static void draw_edit(uint8_t* fb) {
     }
     if (s_edit == E_SRV_URL && tomato_config_has_builtin()) hint = "留空使用内置服务器；自建的填 http://地址:端口";
     if (s_message[0]) hint = s_message;   // 输入不对时的提示 / Why the input was refused
-    tr_wrap(fb, TR_MARGIN, 286, TR_W - 2 * TR_MARGIN, 26, 36, hint, 2);
+    tr_wrap(fb, TR_MARGIN, hy, TR_W - 2 * TR_MARGIN, TR_S(26), lh, hint, 2);
     tr_kbd_draw(fb, &s_kbd);
 }
 
 /* ---- 关于 / About ---- */
 
-#define ABOUT_DEVICE_Y 1030
-#define ABOUT_TEST_Y 1106
+// 正常档一页放下；放大后分两页：上页版本和设备入口，下页开源致谢，底部翻页。
+// One page at the normal size; larger sizes split into two pages (version and device entries, then credits) with a
+// pager at the bottom.
+static int s_about_page;
+static bool about_paged(void) { return TR_S(1186) > TR_H; }
+static int about_device_y(void) { return about_paged() ? TR_S(558) : TR_S(1030); }
+static int about_test_y(void) { return about_device_y() + TR_S(76); }
+#define ABOUT_PAGER_Y (TR_H - TR_S(110))
 
 static const char* const CREDITS[] = {
     "MindReset Read Pico 示例固件 · Apache-2.0",
@@ -868,63 +979,92 @@ static const char* const CREDITS[] = {
 };
 
 static void about_row(uint8_t* fb, int y, const char* label, const char* value) {
-    tr_text(fb, TR_MARGIN, y, 30, label, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN, y, TR_S(30), label, EPD_DRAW_ALIGN_LEFT, false);
     char v[96];
     snprintf(v, sizeof(v), "%s", value);
-    tr_fit(v, 28, TR_W - 2 * TR_MARGIN - 160);
-    tr_text_dim(fb, TR_W - TR_MARGIN, y + 2, 28, v, EPD_DRAW_ALIGN_RIGHT);
+    tr_fit(v, TR_S(28), TR_W - 2 * TR_MARGIN - TR_S(160));
+    tr_text_dim(fb, TR_W - TR_MARGIN, y + TR_S(2), TR_S(28), v, EPD_DRAW_ALIGN_RIGHT);
+}
+
+static void draw_credits(uint8_t* fb, int y) {
+    tr_text_dim(fb, TR_MARGIN, y, TR_S(26), "开源致谢", EPD_DRAW_ALIGN_LEFT);
+    y += TR_S(44);
+    // 放大后一条放不下就折成两行，不截断。/ At larger sizes a credit that does not fit wraps instead of being cut.
+    for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++) {
+        const int n = tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(36), CREDITS[i], 2);
+        y += TR_S(42) + (n - 1) * TR_S(36);
+    }
+    tr_wrap(fb, TR_MARGIN, y + TR_S(16), TR_W - 2 * TR_MARGIN, TR_S(26), TR_S(38),
+            "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 3);
 }
 
 static void draw_about(uint8_t* fb) {
     const esp_app_desc_t* app = esp_app_get_description();
     char line[64];
     draw_back_title(fb, "关于 Treader");
-    tr_text(fb, TR_MARGIN, 184, 60, "Treader", EPD_DRAW_ALIGN_LEFT, true);
-    // 一行放不下（约 730 px），折成两行。/ Too wide for one line (~730 px); wrap to two.
-    tr_wrap(fb, TR_MARGIN, 256, TR_W - 2 * TR_MARGIN, 28, 34, "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", 2);
-    snprintf(line, sizeof(line), "%.20s · TF 卡升级 ›", app->version);
-    about_row(fb, 336, "版本", line);
-    tr_hline(fb, 390, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    snprintf(line, sizeof(line), "%s %s UTC", app->date, app->time);
-    about_row(fb, 410, "构建时间", line);
-    tr_hline(fb, 464, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    about_row(fb, 484, "项目主页", "github.com/bidabrain/treader-eink");
-    tr_text_dim(fb, TR_MARGIN, 584, 26, "开源致谢", EPD_DRAW_ALIGN_LEFT);
-    int y = 628;
-    for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++, y += 42) {
-        char credit[96];
-        snprintf(credit, sizeof(credit), "%s", CREDITS[i]);
-        tr_fit(credit, 28, TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, y, 28, credit, EPD_DRAW_ALIGN_LEFT, false);
+    const bool paged = about_paged();
+    if (paged) tr_pager(fb, ABOUT_PAGER_Y, s_about_page, 2);
+    if (paged && s_about_page == 1) {
+        draw_credits(fb, TR_S(184));
+        return;
     }
-    tr_wrap(fb, TR_MARGIN, y + 16, TR_W - 2 * TR_MARGIN, 26, 38,
-            "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 2);
-    tr_hline(fb, ABOUT_DEVICE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    tr_text(fb, TR_MARGIN, ABOUT_DEVICE_Y + 10, 32, "设备信息", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text_dim(fb, TR_W - TR_MARGIN, ABOUT_DEVICE_Y + 14, 28, "电量、存储、芯片 ›", EPD_DRAW_ALIGN_RIGHT);
-    tr_hline(fb, ABOUT_TEST_Y - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    tr_text(fb, TR_MARGIN, ABOUT_TEST_Y + 10, 32, "设备自检", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text_dim(fb, TR_W - TR_MARGIN, ABOUT_TEST_Y + 14, 28, "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT);
+    tr_text(fb, TR_MARGIN, TR_S(184), TR_S(60), "Treader", EPD_DRAW_ALIGN_LEFT, true);
+    // 一行放不下（约 730 px），折成两行。/ Too wide for one line (~730 px); wrap to two.
+    tr_wrap(fb, TR_MARGIN, TR_S(256), TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(34),
+            "小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步", 2);
+    snprintf(line, sizeof(line), "%.20s · TF 卡升级 ›", app->version);
+    about_row(fb, TR_S(336), "版本", line);
+    tr_hline(fb, TR_S(390), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    snprintf(line, sizeof(line), "%s %s UTC", app->date, app->time);
+    about_row(fb, TR_S(410), "构建时间", line);
+    tr_hline(fb, TR_S(464), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    about_row(fb, TR_S(484), "项目主页", "github.com/bidabrain/treader-eink");
+    if (!paged) draw_credits(fb, TR_S(584));
+    const int dev = about_device_y(), test = about_test_y();
+    tr_hline(fb, dev - TR_S(20), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_text(fb, TR_MARGIN, dev + TR_S(10), TR_S(32), "设备信息", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, dev + TR_S(14), TR_S(28), "电量、存储、芯片 ›", EPD_DRAW_ALIGN_RIGHT);
+    tr_hline(fb, test - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_text(fb, TR_MARGIN, test + TR_S(10), TR_S(32), "设备自检", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, test + TR_S(14), TR_S(28), "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT);
 }
 
 /* ---- 时间与时区 / Time and zone ---- */
 
-// 手动设置时间：年、月、日、时、分五栏，每栏上下各一个按钮。/ Manual time: five columns (year, month, day, hour,
-// minute), each with a button above and below.
+// 手动设置时间：年、月、日、时、分五栏，每栏上下各一个按钮。放大后栏宽不超过一行能放下的宽度，栏距最少 8。
+// Manual time: five columns (year, month, day, hour, minute), each with a button above and below. At larger sizes a
+// column is never wider than one row allows, with gaps of at least 8.
 #define TSET_COLS 5
-#define TSET_COL_W 108
+#define TSET_COL_W tset_col_w()
 #define TSET_GAP ((TR_W - 2 * TR_MARGIN - TSET_COLS * TSET_COL_W) / (TSET_COLS - 1))
-#define TSET_LABEL_Y 200
-#define TSET_UP_Y 248
-#define TSET_BTN_H 88
-#define TSET_VALUE_Y 360
-#define TSET_DOWN_Y 444
-#define TSET_SAVE (EpdRect){TR_MARGIN, 600, TR_W - 2 * TR_MARGIN, 88}
-// 时区列表每行高度。/ Row height in the zone list.
-#define TZ_TOP 170
-#define TZ_ROW_H 60
+#define TSET_LABEL_Y TR_S(200)
+#define TSET_UP_Y TR_S(248)
+#define TSET_BTN_H TR_S(88)
+#define TSET_VALUE_Y TR_S(360)
+#define TSET_DOWN_Y TR_S(444)
+#define TSET_SAVE (EpdRect){TR_MARGIN, TR_S(600), TR_W - 2 * TR_MARGIN, TR_S(88)}
+// 时区列表：行高随显示大小放大，放不下时分页。/ Zone list: row height scales; pages when it does not fit.
+#define TZ_TOP TR_S(170)
+#define TZ_ROW_H TR_S(60)
+#define TZ_PAGER_Y (TR_TABS_Y - TR_S(84))
 
 static int s_tset[TSET_COLS];   // 年、月、日、时、分 / Year, month, day, hour, minute
+static int s_tz_page;
+
+static int tset_col_w(void) {
+    const int fit = (TR_W - 2 * TR_MARGIN - (TSET_COLS - 1) * TR_S(8)) / TSET_COLS;
+    return TR_S(108) < fit ? TR_S(108) : fit;
+}
+
+// 一页几个时区：全放得下就一页，否则留出翻页的位置。/ Zones per page: all on one page when they fit, otherwise
+// leave room for the pager.
+static int tz_per_page(void) {
+    const int n = app_settings_tz_count();
+    if (TZ_TOP + n * TZ_ROW_H <= TR_TABS_Y - TR_S(16)) return n;
+    return (TZ_PAGER_Y - TR_S(20) - TZ_TOP) / TZ_ROW_H;
+}
+
+static int tz_pages(void) { return (app_settings_tz_count() + tz_per_page() - 1) / tz_per_page(); }
 
 static int days_in_month(int year, int month) {
     static const int DAYS[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -940,24 +1080,28 @@ static void draw_time_page(uint8_t* fb) {
     draw_back_title(fb, "时间与时区");
     draw_message(fb);
     draw_rows(fb, TIME_ROWS, COUNT(TIME_ROWS));
-    tr_wrap(fb, TR_MARGIN, 440, TR_W - 2 * TR_MARGIN, 24, 36,
+    tr_wrap(fb, TR_MARGIN, TR_S(440), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
             "自动校时开着时，设备每次联网（番茄、小红书、传书等）都会顺便对一次时，按上面的时区显示。关掉后只用手动设置的时间。"
-            "时间存在电源芯片的时钟里，断电也继续走。", 4);
+            "时间存在电源芯片的时钟里，断电也继续走。", 5);
 }
 
 static void draw_tz_page(uint8_t* fb) {
     draw_back_title(fb, "时区");
-    const int cur = app_settings_tz();
-    for (int i = 0; i < app_settings_tz_count(); i++) {
-        const int y = TZ_TOP + i * TZ_ROW_H;
-        tr_text(fb, TR_MARGIN, y + (TZ_ROW_H - 30) / 2 - 2, 30, app_settings_tz_name((uint8_t)i), EPD_DRAW_ALIGN_LEFT,
-                i == cur);
+    const int cur = app_settings_tz(), per = tz_per_page(), n = app_settings_tz_count();
+    const int h = TZ_ROW_H;
+    for (int k = 0; k < per; k++) {
+        const int i = s_tz_page * per + k;
+        if (i >= n) break;
+        const int y = TZ_TOP + k * h;
+        tr_text(fb, TR_MARGIN, y + (h - TR_S(30)) / 2 - TR_S(2), TR_S(30), app_settings_tz_name((uint8_t)i),
+                EPD_DRAW_ALIGN_LEFT, i == cur);
         char right[32];
         snprintf(right, sizeof(right), "%s%s", app_settings_tz_offset((uint8_t)i), i == cur ? " · 当前" : "");
-        if (i == cur) tr_text(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT, true);
-        else tr_text_dim(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT);
-        if (i + 1 < app_settings_tz_count()) tr_hline(fb, y + TZ_ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+        if (i == cur) tr_text(fb, TR_W - TR_MARGIN, y + (h - TR_S(26)) / 2, TR_S(26), right, EPD_DRAW_ALIGN_RIGHT, true);
+        else tr_text_dim(fb, TR_W - TR_MARGIN, y + (h - TR_S(26)) / 2, TR_S(26), right, EPD_DRAW_ALIGN_RIGHT);
+        if (i + 1 < n && k + 1 < per) tr_hline(fb, y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
+    tr_pager(fb, TZ_PAGER_Y, s_tz_page, tz_pages());
 }
 
 static void draw_tset_page(uint8_t* fb) {
@@ -965,18 +1109,22 @@ static void draw_tset_page(uint8_t* fb) {
     static const char* const LABELS[TSET_COLS] = {"年", "月", "日", "时", "分"};
     for (int k = 0; k < TSET_COLS; k++) {
         const EpdRect c = tset_col(k, 0, 0);
-        tr_text_dim(fb, c.x + TSET_COL_W / 2, TSET_LABEL_Y, 26, LABELS[k], EPD_DRAW_ALIGN_CENTER);
-        tr_pill(fb, tset_col(k, TSET_UP_Y, TSET_BTN_H), "+", false, 40);
+        tr_text_dim(fb, c.x + TSET_COL_W / 2, TSET_LABEL_Y, TR_S(26), LABELS[k], EPD_DRAW_ALIGN_CENTER);
+        tr_pill(fb, tset_col(k, TSET_UP_Y, TSET_BTN_H), "+", false, TR_S(40));
         char v[8];
         snprintf(v, sizeof(v), k == 0 ? "%04d" : "%02d", s_tset[k] % 10000);
-        tr_text(fb, c.x + TSET_COL_W / 2, TSET_VALUE_Y, k == 0 ? 40 : 48, v, EPD_DRAW_ALIGN_CENTER, true);
-        tr_pill(fb, tset_col(k, TSET_DOWN_Y, TSET_BTN_H), "−", false, 40);
+        // 年份四位：栏变窄时字号收到放得下。/ The four-digit year shrinks to fit a narrower column.
+        int px = TR_S(k == 0 ? 40 : 48);
+        while (px > 32 && ttf_text_width_px(px, v) > TSET_COL_W - TR_S(4)) px -= 2;
+        tr_text(fb, c.x + TSET_COL_W / 2, TSET_VALUE_Y + (TR_S(k == 0 ? 40 : 48) - px) / 2, px, v,
+                EPD_DRAW_ALIGN_CENTER, true);
+        tr_pill(fb, tset_col(k, TSET_DOWN_Y, TSET_BTN_H), "−", false, TR_S(40));
     }
-    tr_pill(fb, TSET_SAVE, "保存", true, 32);
+    tr_pill(fb, TSET_SAVE, "保存", true, TR_S(32));
     char hint[96];
     snprintf(hint, sizeof(hint), "按%s %s的本地时间填写，保存后立刻生效。", app_settings_tz_name(app_settings_tz()),
              app_settings_tz_offset(app_settings_tz()));
-    tr_wrap(fb, TR_MARGIN, 720, TR_W - 2 * TR_MARGIN, 24, 36, hint, 2);
+    tr_wrap(fb, TR_MARGIN, TR_S(720), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), hint, 2);
 }
 
 static void tset_begin(void) {
@@ -1103,7 +1251,7 @@ static app_redraw_t finish_edit(void) {
 }
 
 static app_redraw_t touch_edit(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (y < 160 && x < 120) { s_edit = E_NONE; memset(&s_kbd, 0, sizeof(s_kbd)); return APP_REDRAW_PAGE; }
+    if (y < TR_S(160) && x < TR_S(120)) { s_edit = E_NONE; memset(&s_kbd, 0, sizeof(s_kbd)); return APP_REDRAW_PAGE; }
     tr_kbd_result_t res = tr_kbd_touch(&s_kbd, x, y);
     if (res == TR_KBD_CHANGED) {
         render(ctx, ctx->fb);
@@ -1161,8 +1309,9 @@ static app_redraw_t touch_sources(uint16_t y) {
 }
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
-    if (y < CAT_TOP || y >= CAT_TOP + C_COUNT * CAT_H) return APP_REDRAW_NONE;
-    switch ((cat_t)((y - CAT_TOP) / CAT_H)) {
+    const int h = home_cat_h();
+    if (y < CAT_TOP || y >= CAT_TOP + C_COUNT * h) return APP_REDRAW_NONE;
+    switch ((cat_t)((y - CAT_TOP) / h)) {
     case C_DISPLAY: return open_page(P_DISPLAY);
     case C_TABS: return open_page(P_TABS);
     case C_WIFI: return open_page(P_TRANSFER);
@@ -1175,8 +1324,8 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
 
 static int row_hit(const row_t* rows, int n, uint16_t y) {
     for (int i = 0; i < n; i++) {
-        const int h = rows[i].id == R_WEB ? WEB_ROW_H : ROW_H;
-        if (y >= rows[i].y && y < rows[i].y + h) return rows[i].id;
+        const int top = TR_S(rows[i].y);
+        if (y >= top && y < top + row_h(&rows[i])) return rows[i].id;
     }
     return -1;
 }
@@ -1202,7 +1351,7 @@ static app_redraw_t tb_apply(uint8_t hidden) {
 
 static app_redraw_t touch_tabs(uint16_t x, uint16_t y) {
     tb_row_t rows[TR_TAB_MAX];
-    int sec_y[3];
+    int sec_y[TB_HEADS];
     const int n = tb_layout(rows, sec_y);
     uint8_t hidden = app_settings_hidden_tabs();
     for (int i = 0; i < n; i++) {
@@ -1280,6 +1429,11 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     case R_FONT: ctx->request_app = &app_font_pick; return APP_REDRAW_NONE;
     case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
     case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
+    case R_SIZE:
+        // 换档后整页排版都变了，整屏重画。/ The whole layout changes with the size; redraw the full screen.
+        app_settings_set_display_size((uint8_t)((app_settings_display_size() + 1) % APP_DISPLAY_SIZES));
+        ui_set_scale(app_settings_display_pct());
+        return APP_REDRAW_FULL;
     case R_IDLE:
         app_settings_set_lock_idle((uint8_t)((app_settings_lock_idle() + 1) % APP_LOCK_IDLE_LEVELS));
         return APP_REDRAW_PAGE;
@@ -1290,7 +1444,10 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         tr_time_apply_settings();
         snprintf(s_message, sizeof(s_message), "%s", app_settings_time_auto() ? "下次联网时自动对时" : "已关闭自动校时");
         return APP_REDRAW_PAGE;
-    case R_TZONE: return open_page(P_TZ);
+    case R_TZONE:
+        // 从当前时区所在的那一页开始。/ Start on the page holding the current zone.
+        s_tz_page = app_settings_tz() / tz_per_page();
+        return open_page(P_TZ);
     case R_TSET:
         if (app_settings_time_auto()) {
             snprintf(s_message, sizeof(s_message), "先关掉自动校时");
@@ -1299,7 +1456,7 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         tset_begin();
         return open_page(P_TSET);
     case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
-    case R_ABOUT: return open_page(P_ABOUT);
+    case R_ABOUT: s_about_page = 0; return open_page(P_ABOUT);
     case R_STORE: {
         char url[160];
         begin_edit(E_STORE_URL, tomato_store_url_load(url, sizeof(url)) == ESP_OK ? url : "");
@@ -1342,9 +1499,15 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     if (s_edit != E_NONE) return touch_edit(ctx, x, y);
     if (s_page == P_ABOUT) {
         if (ui_rect_hit(BACK_RECT, x, y)) return go_back();
-        if (y >= 320 && y < 392) { ctx->request_app = &app_tr_update; return APP_REDRAW_NONE; }
-        if (y >= ABOUT_DEVICE_Y - 20 && y < ABOUT_TEST_Y) ctx->request_app = &app_home;
-        else if (y >= ABOUT_TEST_Y && y < ABOUT_TEST_Y + 80) ctx->request_app = &app_selftest;
+        if (about_paged()) {
+            const int turn = tr_pager_hit(ABOUT_PAGER_Y, x, y);
+            if (turn) { s_about_page = (s_about_page + 1) % 2; return APP_REDRAW_PAGE; }
+            if (s_about_page) return APP_REDRAW_NONE;
+        }
+        const int dev = about_device_y(), test = about_test_y();
+        if (y >= TR_S(320) && y < TR_S(392)) { ctx->request_app = &app_tr_update; return APP_REDRAW_NONE; }
+        if (y >= dev - TR_S(20) && y < test) ctx->request_app = &app_home;
+        else if (y >= test && y < test + TR_S(80)) ctx->request_app = &app_selftest;
         return APP_REDRAW_NONE;
     }
     if (tr_nav_touch(ctx, x, y, TR_TAB_SETTINGS)) return APP_REDRAW_NONE;
@@ -1363,8 +1526,15 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case P_TIME: id = row_hit(TIME_ROWS, COUNT(TIME_ROWS), y); break;
     case P_TSET: return touch_tset(x, y);
     case P_TZ: {
+        const int turn = tr_pager_hit(TZ_PAGER_Y, x, y);
+        if (turn && tz_pages() > 1) {
+            s_tz_page = (s_tz_page + turn + tz_pages()) % tz_pages();
+            return APP_REDRAW_PAGE;
+        }
         if (y < TZ_TOP) return APP_REDRAW_NONE;
-        const int i = (y - TZ_TOP) / TZ_ROW_H;
+        const int k = (y - TZ_TOP) / TZ_ROW_H;
+        if (k >= tz_per_page()) return APP_REDRAW_NONE;
+        const int i = s_tz_page * tz_per_page() + k;
         if (i >= app_settings_tz_count()) return APP_REDRAW_NONE;
         app_settings_set_tz((uint8_t)i);
         tr_time_apply_settings();
@@ -1422,9 +1592,9 @@ static void page_on_exit(app_ctx_t* ctx) {
 
 static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
-    if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, SYNC_ROWS[1].y, TR_W, ROW_H};
-    if (s_edit == E_NONE && s_page == P_SRC_SERVER) return (EpdRect){0, SERVER_ROWS[3].y, TR_W, ROW_H};
-    return (EpdRect){0, 160, TR_W, TR_H - 160};
+    if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, TR_S(SYNC_ROWS[1].y), TR_W, ROW_H};
+    if (s_edit == E_NONE && s_page == P_SRC_SERVER) return (EpdRect){0, TR_S(SERVER_ROWS[3].y), TR_W, ROW_H};
+    return (EpdRect){0, TR_S(160), TR_W, TR_H - TR_S(160)};
 }
 
 // 网页填写：等联网、等提交；提交后停服并测试连接。/ Web form: wait for the network and a submission; then stop

@@ -53,7 +53,8 @@ def main():
         run("read", archive(payload, stream=True), expected=payload)
         run("read", archive(payload, comment=b"x" * 65535), expected=payload)
         run("read", archive(b"x" * (2 * 1024 * 1024)), expected=b"x" * (2 * 1024 * 1024))
-        run("reject-open", archive(b"x" * (4 * 1024 * 1024 + 1)))
+        # 0.4.1 起单个大条目不再让整包打不开：超过 4 MB 的条目照常读出，上限由调用方各自查。/ Since 0.4.1 one large entry no longer makes the archive unopenable: entries over 4 MB read normally and callers apply their own limits.
+        run("read", archive(b"x" * (4 * 1024 * 1024 + 1)), expected=b"x" * (4 * 1024 * 1024 + 1))
         good = archive(payload)
         cd = good.index(b"PK\x01\x02")
         eocd = good.rindex(b"PK\x05\x06")

@@ -25,7 +25,8 @@ static void check_image(const char* path, bool png) {
     else for(size_t i=0;i<(size_t)w*h;++i) assert(pixels[i]>=118 && pixels[i]<=122);
     free(pixels);
     assert(!book_image_decode(data,len,1,&pixels,&w,&h) && !pixels && !w && !h);
-    assert(!book_image_decode(data,2u*1024u*1024u+1,1000000,&pixels,&w,&h));
+    // 输入上限 0.4.1 起是 8 MB（IMAGE_INPUT_MAX）。/ The input limit is 8 MB since 0.4.1 (IMAGE_INPUT_MAX).
+    assert(!book_image_decode(data,8u*1024u*1024u+1,1000000,&pixels,&w,&h));
     // 截断和单字节损坏不越界；宽容解码成功时也必须释放。
     // Truncation and single-byte corruption stay bounded; free even tolerated partial decodes.
     for (size_t n=0;n<len && n<256;++n) {
@@ -78,11 +79,16 @@ int main(int argc,char** argv) {
     for(size_t i=0;i<text.count;++i) if(text.blocks[i].image_src) {
         uint8_t* pixels=NULL;uint16_t w=0,h=0;
         esp_err_t err=book_epub_load_image(book,0,text.blocks[i].image_src,&pixels,&w,&h);
-        if(err==ESP_OK){++decoded;assert(pixels && w==16 && h==8);free(pixels);}
+        // 0.4.1 起大 PNG 边解边缩，能显示：huge.png 缩到屏幕内，其余是 16x8。
+        // Since 0.4.1 large PNGs decode while scaling down: huge.png fits the screen, the rest are 16x8.
+        if(err==ESP_OK){++decoded;
+            if(strstr(text.blocks[i].image_src,"huge")) assert(pixels && w<=648 && h<=1000 && w>16);
+            else assert(pixels && w==16 && h==8);
+            free(pixels);}
         else assert(!pixels && !w && !h);
         assert(!text.blocks[i].image && !text.blocks[i].image_repeated && !text.blocks[i].image_title);
     }
-    assert(decoded==2 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
+    assert(decoded==3 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
     uint8_t* pixels=NULL;uint16_t w=0,h=0;
     image_fail_after=0;
     assert(book_epub_load_image(book,0,"../images/gray.jpg",&pixels,&w,&h)!=ESP_OK && !pixels && !w && !h);

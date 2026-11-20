@@ -32,6 +32,7 @@
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
+#include "ttf_font.h"
 #include "ui_gesture.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
@@ -40,38 +41,75 @@
 #define TAG "comic"
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 
-extern const app_desc_t app_transfer;
-
 /* ---- 版式 / Layout ---- */
 
+// 封面和漫画页是图片，不随显示大小放大；文字、按钮、行高和间距都放大。放大后书架一页一行、话列表一页少几行，
+// 工具条从屏幕底往上排。
+// Covers and comic pages are images and do not scale; text, buttons, row heights and gaps do. Scaled up, the shelf
+// shows one row per page, the episode list fewer rows, and the toolbar stacks up from the screen bottom.
+#define BIG (ui_scale_pct > 100)
 #define CELL_W 150
 #define COVER_H 200
 #define MINI_W 70
 #define MINI_H 96
-#define PER_PAGE 6
-#define PAGER_Y 1040
-#define CARD (EpdRect){TR_MARGIN, 284, TR_W - 2 * TR_MARGIN, 136}
-#define SORT_PILL (EpdRect){TR_MARGIN, 212, 150, 54}
+#define PER_PAGE (3 * shelf_rows())
+#define PAGER_Y (TR_TABS_Y - TR_S(54))
+#define CARD (EpdRect){TR_MARGIN, TR_S(284), TR_W - 2 * TR_MARGIN, TR_S(136)}
+#define SORT_PILL (EpdRect){TR_MARGIN, TR_S(212), TR_S(150), TR_S(54)}
 #define IMPORT_X 592
-#define ROWS_TOP 536
-#define ROW_H 66
-#define ROWS_PER 7
-#define SERIES_PAGER_Y 1030
-#define CONTINUE_PILL (EpdRect){222, 400, TR_W - TR_MARGIN - 222, 76}
+#define GRID_TOP (TR_S(284) + TR_S(136) + TR_S(34))
+#define GRID_PITCH (COVER_H + TR_S(94))
+#define CELL_TEXT_H (TR_S(74) + (BIG ? TR_S(28) : 0))   // 放大后状态行可折成两行 / The status may fold to 2 lines
+#define ROWS_TOP series_rows_top()
+#define ROW_H TR_S(66)
+#define ROWS_PER series_rows()
+#define SERIES_PAGER_Y (TR_TABS_Y - TR_S(64))
+#define CONTINUE_PILL continue_pill()
 #define AREA_W TR_W
 #define AREA_H 1160
-#define BAR_TOP 700
-#define SEEK_Y 786
-#define TOOL_Y 840
-#define AUTO_Y 962
-#define STEP_Y 1076
+#define LABEL_Y (TR_H - TR_S(46) > AREA_H ? TR_H - TR_S(46) : AREA_H)   // 页脚不压图 / The footer stays off the image
+#define STEP_Y (TR_H - TR_S(140))
+#define AUTO_Y (STEP_Y - TR_S(36) - TR_S(18) - AUTO_TURN_ROW_H)
+#define TOOL_Y (AUTO_Y - TR_S(122))
+#define SEEK_Y (TOOL_Y - TR_S(54))
+#define BAR_TOP (SEEK_Y - TR_S(86))
 #define FULL_EVERY 8
 #define FLUSH_EVERY 10
 #define COVER_SLOTS 12
 #define PAGE_INPUT_MAX (8u * 1024u * 1024u)
 
 static const int CELL_X[3] = {40, 267, 494};
-static const int CELL_Y[2] = {454, 748};
+
+// 书架一页几行：按翻页条上面剩下的高度算（正常档 2 行）。/ Shelf rows per page from the height above the pager (2 at
+// normal size).
+static int shelf_rows(void) {
+    const int rows = (PAGER_Y - TR_S(16) - GRID_TOP + TR_S(26)) / GRID_PITCH;
+    return rows < 1 ? 1 : rows > 2 ? 2 : rows;
+}
+
+static int cell_y(int k) { return GRID_TOP + (k / 3) * GRID_PITCH; }
+
+// 画一行字；放不下且带“ · ”时从那里折成两行（不截短固定文字）。strong 为加粗黑字，否则深灰。返回行数。
+// Draw one line; when it does not fit and has " · ", fold it there into two lines (fixed text is never cut). strong
+// draws bold black, otherwise dark gray. Returns the line count.
+static int split_lines(const char* text, int px, int w) {
+    return ttf_text_width_px(px, text) > w && strstr(text, " · ") ? 2 : 1;
+}
+
+static int draw_split(uint8_t* fb, int x, int y, int px, int pitch, int w, const char* text, bool strong) {
+    char a[128], b[128];
+    const char* dot = strstr(text, " · ");
+    const int lines = split_lines(text, px, w);
+    if (lines == 1) snprintf(a, sizeof(a), "%s", text);
+    else snprintf(a, sizeof(a), "%.*s", (int)(dot - text), text);
+    if (lines == 2) snprintf(b, sizeof(b), "%s", dot + strlen(" · "));
+    for (int i = 0; i < lines; i++) {
+        const char* s = i ? b : a;
+        if (strong) tr_text(fb, x, y + i * pitch, px, s, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(fb, x, y + i * pitch, px, s, EPD_DRAW_ALIGN_LEFT);
+    }
+    return lines;
+}
 
 typedef enum { V_SHELF, V_SERIES, V_READ, V_DETAIL } view_t;
 
@@ -381,16 +419,17 @@ static void draw_series_stack(uint8_t* fb, int x, int y) {
 
 static void draw_shelf(uint8_t* fb) {
     tr_title(fb, "漫画");
-    tr_icon(fb, TR_ICON_IMPORT, IMPORT_X + 20, 116, false);
+    tr_icon(fb, TR_ICON_IMPORT, IMPORT_X + 20, TR_S(116), false);
     char line[96];
     snprintf(line, sizeof(line), "%d 部 · %s", s_count, s_sort_name ? "按名字" : "按最近");
-    tr_text_dim(fb, TR_MARGIN, 156, 28, line, EPD_DRAW_ALIGN_LEFT);
-    tr_pill(fb, SORT_PILL, s_sort_name ? "按名字" : "按最近", false, 28);
-    if (s_message[0]) tr_message(fb, TR_W - TR_MARGIN, 220, 210, 400, 26, s_message, EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text_dim(fb, TR_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
+    tr_pill(fb, SORT_PILL, s_sort_name ? "按名字" : "按最近", false, TR_S(28));
+    if (s_message[0])
+        tr_message(fb, TR_W - TR_MARGIN, TR_S(220), TR_S(210), 400, TR_S(26), s_message, EPD_DRAW_ALIGN_RIGHT, false);
     if (!s_count) {
-        tr_wrap(fb, TR_MARGIN, 330, TR_W - 2 * TR_MARGIN, 30, 46,
+        tr_wrap(fb, TR_MARGIN, TR_S(330), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 "还没有漫画。设置 → Wi-Fi 与传书，用手机网页上传 CBZ；也可以用读卡器把 CBZ 放进 TF 卡的 comics 文件夹，"
-                "一部漫画的多话放在同一个子文件夹里。", 6);
+                "一部漫画的多话放在同一个子文件夹里。", BIG ? 9 : 6);
         tr_tab_bar(fb, TR_TAB_COMIC);
         return;
     }
@@ -399,30 +438,37 @@ static void draw_shelf(uint8_t* fb) {
     if (s_last[0]) {
         // Material 3 填充卡片（漫画只用整页刷新，灰底安全）。/ Material 3 filled card (comics refresh whole pages, so
         // the gray is safe).
-        ui_fill_round_rect(fb, card, 24, TR_GRAY_SURFACE);
-        draw_cover(fb, (EpdRect){56, 304, MINI_W, MINI_H}, s_last_owner, s_last_title, true);
-        tr_text_on(fb, 148, 298, 24, "继续看", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
-        tr_text_on(fb, TR_W - 60, 298, 24, "接着看 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        ui_fill_round_rect(fb, card, TR_S(24), TR_GRAY_SURFACE);
+        draw_cover(fb, (EpdRect){56, card.y + (card.height - MINI_H) / 2, MINI_W, MINI_H}, s_last_owner, s_last_title,
+                   true);
+        tr_text_on(fb, 148, card.y + TR_S(14), TR_S(24), "继续看", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY,
+                   TR_GRAY_SURFACE);
+        tr_text_on(fb, TR_W - 60, card.y + TR_S(14), TR_S(24), "接着看 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
         char title[200];
         snprintf(title, sizeof(title), "%s", s_last_title);
-        tr_fit(title, 32, TR_W - 60 - 148);
-        tr_text_on(fb, 148, 330, 32, title, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        tr_fit(title, TR_S(32), TR_W - 60 - 148);
+        tr_text_on(fb, 148, card.y + TR_S(46), TR_S(32), title, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
         const int pct = s_last_pages ? (s_last_page + 1) * 100 / s_last_pages : 0;
-        tr_progress(fb, 148, 392, TR_W - 170 - 148, pct);
         snprintf(line, sizeof(line), "%u / %u", (unsigned)s_last_page + 1, (unsigned)s_last_pages);
-        tr_text_on(fb, TR_W - 60, 378, 26, line, EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        // 放大后进度条给页码让出宽度。/ Scaled up, the bar leaves room for the page count.
+        const int bar_w = BIG ? TR_W - 60 - ttf_text_width_px(TR_S(26), line) - TR_S(16) - 148 : TR_W - 170 - 148;
+        tr_progress(fb, 148, card.y + TR_S(108), bar_w, pct);
+        tr_text_on(fb, TR_W - 60, card.y + TR_S(94), TR_S(26), line, EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
     }
     for (int k = 0; k < PER_PAGE; k++) {
         const int i = s_page * PER_PAGE + k;
         if (i >= s_count) break;
         const comic_entry_t* e = &s_shelf[i];
-        const int x = CELL_X[k % 3], y = CELL_Y[k / 3];
+        const int x = CELL_X[k % 3], y = cell_y(k);
         if (e->series) draw_series_stack(fb, x, y);
         draw_cover(fb, (EpdRect){x, y, CELL_W, COVER_H}, e->path, e->name, false);
         char name[COMIC_NAME_MAX];
         snprintf(name, sizeof(name), "%s", e->name);
-        tr_fit(name, 24, CELL_W);
-        tr_text(fb, x, y + 208, 24, name, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(name, TR_S(24), CELL_W);
+        tr_text(fb, x, y + COVER_H + TR_S(8), TR_S(24), name, EPD_DRAW_ALIGN_LEFT, true);
         bool done = e->series ? e->done == e->volumes : e->done;
         if (e->series) {
             if (done) snprintf(line, sizeof(line), "%u 话 · 看完", (unsigned)e->volumes);
@@ -433,8 +479,13 @@ static void draw_shelf(uint8_t* fb) {
             else if (e->stamp) snprintf(line, sizeof(line), "单本 · %u%%", (unsigned)e->pct);
             else snprintf(line, sizeof(line), "单本 · 未看");
         }
+        // 看完的加粗黑字，其余深灰；放大后放不下就在“ · ”处折行。/ Finished ones are bold black, the rest dark
+        // gray; scaled up, a line that does not fit folds at " · ".
+        if (BIG) {
+            draw_split(fb, x, y + COVER_H + TR_S(46), TR_S(22), TR_S(28), CELL_W, line, done);
+            continue;
+        }
         tr_fit(line, 22, CELL_W);
-        // 看完的加粗黑字，其余深灰。/ Finished ones are bold black, the rest dark gray.
         if (done) tr_text(fb, x, y + 246, 22, line, EPD_DRAW_ALIGN_LEFT, true);
         else tr_text_dim(fb, x, y + 246, 22, line, EPD_DRAW_ALIGN_LEFT);
     }
@@ -443,6 +494,44 @@ static void draw_shelf(uint8_t* fb) {
 }
 
 /* ---- 系列 / Series ---- */
+
+// 系列页上半部分的排布。正常档沿用原坐标；放大后右边文字依次往下排，“继续看”按钮放在封面和文字都下面。
+// Series header layout. Normal size keeps the original coordinates; scaled up the text beside the cover stacks
+// downward and the continue button sits below both the cover and the text.
+typedef struct {
+    int stats_y, resume_y, dir_y, rule_y, rows_top;
+    EpdRect pill;
+} series_geo_t;
+
+static void series_stats_line(char* out, size_t cap) {
+    snprintf(out, cap, "共 %d 话 · 看完 %d 话", s_vol_count, s_ser_done);
+}
+
+static series_geo_t series_geo(void) {
+    if (!BIG) return (series_geo_t){204, 256, 304, 520, 536, {222, 400, TR_W - TR_MARGIN - 222, 76}};
+    series_geo_t g;
+    char line[96];
+    series_stats_line(line, sizeof(line));
+    g.stats_y = TR_S(204);
+    g.resume_y = g.stats_y + (split_lines(line, TR_S(30), TR_W - TR_MARGIN - 222) - 1) * TR_S(42) + TR_S(52);
+    g.dir_y = g.resume_y + TR_S(48);
+    int pill_y = TR_S(196) + COVER_H + TR_S(4);
+    if (g.dir_y + TR_S(44) > pill_y) pill_y = g.dir_y + TR_S(44);
+    g.pill = (EpdRect){222, pill_y, TR_W - TR_MARGIN - 222, TR_S(76)};
+    g.rule_y = pill_y + g.pill.height + TR_S(20);
+    g.rows_top = g.rule_y + TR_S(16);
+    return g;
+}
+
+static EpdRect continue_pill(void) { return series_geo().pill; }
+static int series_rows_top(void) { return series_geo().rows_top; }
+
+// 话列表一页几行：按翻页条上面剩下的高度算（正常档 7 行）。/ Episode rows per page from the height above the pager
+// (7 at normal size).
+static int series_rows(void) {
+    const int rows = (SERIES_PAGER_Y - TR_S(32) - series_rows_top()) / ROW_H;
+    return rows < 1 ? 1 : rows > 7 ? 7 : rows;
+}
 
 static int vol_pages(void) { return s_vol_count ? (s_vol_count + ROWS_PER - 1) / ROWS_PER : 1; }
 
@@ -483,19 +572,24 @@ static void open_series(int index) {
 
 static void draw_series(uint8_t* fb) {
     const comic_entry_t* e = &s_shelf[s_series];
-    tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    const series_geo_t g = series_geo();
+    const int rows_per = ROWS_PER;
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     char title[COMIC_NAME_MAX];
     snprintf(title, sizeof(title), "%s", e->name);
-    tr_fit(title, 40, TR_W - 96 - 160);
-    tr_text(fb, 96, 96, 40, title, EPD_DRAW_ALIGN_LEFT, true);
     char line[96];
     snprintf(line, sizeof(line), "%d 话", s_vol_count);
-    tr_text_dim(fb, TR_W - TR_MARGIN, 104, 28, line, EPD_DRAW_ALIGN_RIGHT);
-    tr_hline(fb, 170, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    draw_cover(fb, (EpdRect){TR_MARGIN, 196, CELL_W, COVER_H}, e->path, e->name, false);
+    // 标题让出右边话数的宽度。/ The title leaves room for the episode count on the right.
+    tr_fit(title, TR_S(40), BIG ? TR_W - TR_S(96) - TR_MARGIN - ttf_text_width_px(TR_S(28), line) - TR_S(16)
+                                : TR_W - 96 - 160);
+    tr_text(fb, TR_S(96), TR_S(96), TR_S(40), title, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_dim(fb, TR_W - TR_MARGIN, TR_S(104), TR_S(28), line, EPD_DRAW_ALIGN_RIGHT);
+    tr_hline(fb, TR_S(170), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    draw_cover(fb, (EpdRect){TR_MARGIN, TR_S(196), CELL_W, COVER_H}, e->path, e->name, false);
     char path[COMIC_PATH_MAX + COMIC_NAME_MAX];
-    snprintf(line, sizeof(line), "共 %d 话 · 看完 %d 话", s_vol_count, s_ser_done);
-    tr_text(fb, 222, 204, 30, line, EPD_DRAW_ALIGN_LEFT, true);
+    series_stats_line(line, sizeof(line));
+    if (BIG) draw_split(fb, 222, g.stats_y, TR_S(30), TR_S(42), TR_W - TR_MARGIN - 222, line, true);
+    else tr_text(fb, 222, 204, 30, line, EPD_DRAW_ALIGN_LEFT, true);
     const int resume = s_ser_resume;
     char vol[COMIC_NAME_MAX], text[COMIC_NAME_MAX + 48];
     if (s_vol_count) {
@@ -506,22 +600,22 @@ static void draw_series(uint8_t* fb) {
         utf8_append(text, sizeof(text), "接着看：");
         utf8_append(text, sizeof(text), vol);
         utf8_append(text, sizeof(text), line);
-        tr_fit(text, 28, TR_W - TR_MARGIN - 222);
-        tr_text_dim(fb, 222, 256, 28, text, EPD_DRAW_ALIGN_LEFT);
+        tr_fit(text, TR_S(28), TR_W - TR_MARGIN - 222);
+        tr_text_dim(fb, 222, g.resume_y, TR_S(28), text, EPD_DRAW_ALIGN_LEFT);
     }
-    tr_text_dim(fb, 222, 304, 28, s_ser_dir == 1 ? "翻页：从右往左" : "翻页：从左往右", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, 222, g.dir_y, TR_S(28), s_ser_dir == 1 ? "翻页：从右往左" : "翻页：从左往右", EPD_DRAW_ALIGN_LEFT);
     if (s_vol_count) {
         text[0] = 0;
         utf8_append(text, sizeof(text), "继续看 ");
         utf8_append(text, sizeof(text), vol);
-        tr_fit(text, 30, CONTINUE_PILL.width - 40);
-        tr_pill(fb, CONTINUE_PILL, text, true, 30);
+        tr_fit(text, TR_S(30), g.pill.width - TR_S(40));
+        tr_pill(fb, g.pill, text, true, TR_S(30));
     }
-    tr_hline(fb, 520, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    for (int k = 0; k < ROWS_PER; k++) {
-        const int i = s_vol_page * ROWS_PER + k;
+    tr_hline(fb, g.rule_y, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    for (int k = 0; k < rows_per; k++) {
+        const int i = s_vol_page * rows_per + k;
         if (i >= s_vol_count) break;
-        const int y = ROWS_TOP + k * ROW_H;
+        const int y = g.rows_top + k * ROW_H;
         vol_path(i, path, sizeof(path));
         base_title(path, vol, sizeof(vol));
         comic_progress_t p;
@@ -531,10 +625,12 @@ static void draw_series(uint8_t* fb) {
         if (!has) snprintf(state, sizeof(state), "未看");
         else if (p.done) snprintf(state, sizeof(state), "看完");
         else snprintf(state, sizeof(state), "%s%u / %u", now ? "在看 " : "", (unsigned)p.page + 1, (unsigned)p.pages);
-        tr_fit(vol, 32, TR_W - 2 * TR_MARGIN - 200);
-        tr_text(fb, TR_MARGIN, y + 14, 32, vol, EPD_DRAW_ALIGN_LEFT, now);
-        if (now) tr_text(fb, TR_W - TR_MARGIN, y + 18, 28, state, EPD_DRAW_ALIGN_RIGHT, true);
-        else tr_text_dim(fb, TR_W - TR_MARGIN, y + 18, 28, state, EPD_DRAW_ALIGN_RIGHT);
+        // 话名让出右边状态的宽度。/ The episode name leaves room for the state on the right.
+        tr_fit(vol, TR_S(32), BIG ? TR_W - 2 * TR_MARGIN - ttf_text_width_px(TR_S(28), state) - TR_S(20)
+                                  : TR_W - 2 * TR_MARGIN - 200);
+        tr_text(fb, TR_MARGIN, y + TR_S(14), TR_S(32), vol, EPD_DRAW_ALIGN_LEFT, now);
+        if (now) tr_text(fb, TR_W - TR_MARGIN, y + TR_S(18), TR_S(28), state, EPD_DRAW_ALIGN_RIGHT, true);
+        else tr_text_dim(fb, TR_W - TR_MARGIN, y + TR_S(18), TR_S(28), state, EPD_DRAW_ALIGN_RIGHT);
         tr_hline(fb, y + ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_pager(fb, SERIES_PAGER_Y, s_vol_page, vol_pages());
@@ -786,67 +882,71 @@ static app_redraw_t turn_right(void) { return turn(s_rtl ? -1 : 1); }
 static void draw_reader(uint8_t* fb) {
     const pagebuf_t* b = &s_buf[0];
     if (b->px) hupu_img_draw(fb, (AREA_W - b->w) / 2, (AREA_H - b->h) / 2, b->w, b->h, b->px, false);
-    else tr_wrap(fb, TR_MARGIN, 520, TR_W - 2 * TR_MARGIN, 32, 48, "这一页设备解不了（渐进式 JPEG 太大，或格式不支持）。用传书网页重新上传这部漫画会自动转换。左右翻页继续。", 4);
+    else tr_wrap(fb, TR_MARGIN, TR_S(520), TR_W - 2 * TR_MARGIN, TR_S(32), TR_S(48), "这一页设备解不了（渐进式 JPEG 太大，或格式不支持）。用传书网页重新上传这部漫画会自动转换。左右翻页继续。", BIG ? 6 : 4);
     char label[200];
-    snprintf(label, sizeof(label), "%s", s_book_title);
-    tr_fit(label, 24, TR_W - 2 * TR_MARGIN - 160);
-    tr_text(fb, TR_MARGIN, 1170, 24, label, EPD_DRAW_ALIGN_LEFT, false);
     snprintf(label, sizeof(label), "%d / %d", s_cur + 1, s_page_count);
-    tr_text(fb, TR_W - TR_MARGIN, 1170, 24, label, EPD_DRAW_ALIGN_RIGHT, false);
+    char name[200];
+    snprintf(name, sizeof(name), "%s", s_book_title);
+    tr_fit(name, TR_S(24), BIG ? TR_W - 2 * TR_MARGIN - ttf_text_width_px(TR_S(24), label) - TR_S(24)
+                               : TR_W - 2 * TR_MARGIN - 160);
+    tr_text(fb, TR_MARGIN, LABEL_Y, TR_S(24), name, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_W - TR_MARGIN, LABEL_Y, TR_S(24), label, EPD_DRAW_ALIGN_RIGHT, false);
     if (s_message[0] && !s_toolbar) {
-        epd_fill_rect((EpdRect){0, 1120, TR_W, 44}, UI_GRAY_WHITE, fb);
-        tr_text(fb, TR_W / 2, 1124, 26, s_message, EPD_DRAW_ALIGN_CENTER, true);
+        epd_fill_rect((EpdRect){0, LABEL_Y - TR_S(50), TR_W, TR_S(44)}, UI_GRAY_WHITE, fb);
+        tr_text(fb, TR_W / 2, LABEL_Y - TR_S(46), TR_S(26), s_message, EPD_DRAW_ALIGN_CENTER, true);
     }
     if (!s_toolbar) return;
     // 工具条：顶部返回和标题，底部页码、进度、按钮。/ Toolbar: back and title on top; pages, progress and buttons below.
-    epd_fill_rect((EpdRect){0, 0, TR_W, 120}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, 118, 0, TR_W, true);
-    tr_text(fb, TR_MARGIN, 40, 32, "‹ 漫画", EPD_DRAW_ALIGN_LEFT, false);
+    epd_fill_rect((EpdRect){0, 0, TR_W, TR_S(120)}, UI_GRAY_WHITE, fb);
+    tr_hline(fb, TR_S(120) - 2, 0, TR_W, true);
+    tr_text(fb, TR_MARGIN, TR_S(40), TR_S(32), "‹ 漫画", EPD_DRAW_ALIGN_LEFT, false);
     char title[200];
     if (s_vol_index >= 0 && s_series >= 0) snprintf(title, sizeof(title), "%.80s · %.80s", s_shelf[s_series].name, s_book_title);
     else snprintf(title, sizeof(title), "%s", s_book_title);
-    tr_fit(title, 34, TR_W - 2 * 170);
-    tr_text(fb, TR_W / 2, 38, 34, title, EPD_DRAW_ALIGN_CENTER, true);
+    tr_fit(title, TR_S(34), TR_W - 2 * TR_S(170));
+    tr_text(fb, TR_W / 2, TR_S(38), TR_S(34), title, EPD_DRAW_ALIGN_CENTER, true);
     // Material 3 底部面板：圆角上沿和拖动条。/ Material 3 bottom sheet: rounded top edge and a drag handle.
     epd_fill_rect((EpdRect){0, BAR_TOP, TR_W, TR_H - BAR_TOP}, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP, TR_W, 120}, 32, TR_GRAY_LINE);
-    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP + 1, TR_W, 120}, 32, TR_GRAY_LINE);
-    epd_fill_rect((EpdRect){2, BAR_TOP + 40, TR_W - 4, 82}, UI_GRAY_WHITE, fb);
-    ui_fill_round_rect(fb, (EpdRect){TR_W / 2 - 36, BAR_TOP + 8, 72, 8}, 4, TR_GRAY_SELECTED);
+    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP, TR_W, TR_S(120)}, TR_S(32), TR_GRAY_LINE);
+    ui_draw_round_rect(fb, (EpdRect){0, BAR_TOP + 1, TR_W, TR_S(120)}, TR_S(32), TR_GRAY_LINE);
+    epd_fill_rect((EpdRect){2, BAR_TOP + TR_S(40), TR_W - 4, TR_S(82)}, UI_GRAY_WHITE, fb);
+    ui_fill_round_rect(fb, (EpdRect){TR_W / 2 - TR_S(36), BAR_TOP + TR_S(8), TR_S(72), TR_S(8)}, TR_S(4), TR_GRAY_SELECTED);
     snprintf(label, sizeof(label), "第 %d / %d 页", s_cur + 1, s_page_count);
-    tr_text_dim(fb, TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, BAR_TOP + TR_S(32), TR_S(28), label, EPD_DRAW_ALIGN_LEFT);
     if (s_vol_index >= 0) {
         snprintf(label, sizeof(label), "第 %d / %d 话", s_vol_index + 1, s_vol_count);
-        tr_text_dim(fb, TR_W - TR_MARGIN, BAR_TOP + 32, 28, label, EPD_DRAW_ALIGN_RIGHT);
+        tr_text_dim(fb, TR_W - TR_MARGIN, BAR_TOP + TR_S(32), TR_S(28), label, EPD_DRAW_ALIGN_RIGHT);
     }
     tr_progress(fb, TR_MARGIN, SEEK_Y, TR_W - 2 * TR_MARGIN, s_page_count ? (s_cur + 1) * 100 / s_page_count : 0);
     const int col = (TR_W - 2 * TR_MARGIN) / 3;
     for (int i = 0; i < 3; i++) {
         const int cx = TR_MARGIN + col * i + col / 2;
         // 每个按钮垫一块浅灰圆角方块。/ Each tool sits on a light gray rounded tile.
-        ui_fill_round_rect(fb, (EpdRect){TR_MARGIN + col * i + 10, TOOL_Y - 12, col - 20, 108}, 24, TR_GRAY_SURFACE);
+        ui_fill_round_rect(fb, (EpdRect){TR_MARGIN + col * i + 10, TOOL_Y - TR_S(12), col - 20, TR_S(108)}, TR_S(24),
+                           TR_GRAY_SURFACE);
         if (i == 0) {
-            tr_icon_on(fb, TR_ICON_TOC, cx, TOOL_Y + 24, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-            tr_text_on(fb, cx, TOOL_Y + 56, 28, s_vol_index >= 0 ? "话列表" : "详情", EPD_DRAW_ALIGN_CENTER, false,
-                       UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_icon_on(fb, TR_ICON_TOC, cx, TOOL_Y + TR_S(24), UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + TR_S(56), TR_S(28), s_vol_index >= 0 ? "话列表" : "详情", EPD_DRAW_ALIGN_CENTER,
+                       false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
         } else if (i == 1) {
-            tr_text_on(fb, cx, TOOL_Y + 4, 36, s_rtl ? "⇠" : "⇢", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+            tr_text_on(fb, cx, TOOL_Y + TR_S(4), TR_S(36), s_rtl ? "⇠" : "⇢", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
                        TR_GRAY_SURFACE);
-            tr_text_on(fb, cx, TOOL_Y + 56, 28, s_rtl ? "右→左" : "左→右", EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK,
-                       TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + TR_S(56), TR_S(28), s_rtl ? "右→左" : "左→右", EPD_DRAW_ALIGN_CENTER, false,
+                       UI_GRAY_BLACK, TR_GRAY_SURFACE);
         } else {
-            tr_icon_on(fb, TR_ICON_COMIC, cx, TOOL_Y + 24, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-            tr_text_on(fb, cx, TOOL_Y + 56, 28, "漫画", EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_icon_on(fb, TR_ICON_COMIC, cx, TOOL_Y + TR_S(24), UI_GRAY_BLACK, TR_GRAY_SURFACE);
+            tr_text_on(fb, cx, TOOL_Y + TR_S(56), TR_S(28), "漫画", EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK,
+                       TR_GRAY_SURFACE);
         }
     }
     auto_turn_draw_row(fb, AUTO_Y, s_auto_level);
-    tr_hline(fb, AUTO_Y + AUTO_TURN_ROW_H + 18, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    tr_hline(fb, AUTO_Y + AUTO_TURN_ROW_H + TR_S(18), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     if (s_vol_index >= 0) {
-        const int w = (TR_W - 2 * TR_MARGIN - 24) / 2;
-        tr_pill(fb, (EpdRect){TR_MARGIN, STEP_Y, w, 76}, "‹ 上一话", false, 30);
-        tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - w, STEP_Y, w, 76}, "下一话 ›", false, 30);
+        const int w = (TR_W - 2 * TR_MARGIN - TR_S(24)) / 2;
+        tr_pill(fb, (EpdRect){TR_MARGIN, STEP_Y, w, TR_S(76)}, "‹ 上一话", false, TR_S(30));
+        tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - w, STEP_Y, w, TR_S(76)}, "下一话 ›", false, TR_S(30));
     }
-    if (s_message[0]) tr_text(fb, TR_W / 2, 1176, 24, s_message, EPD_DRAW_ALIGN_CENTER, false);
+    if (s_message[0]) tr_text(fb, TR_W / 2, TR_H - TR_S(40), TR_S(24), s_message, EPD_DRAW_ALIGN_CENTER, false);
 }
 
 /* ---- 详情 / Detail ---- */
@@ -878,20 +978,20 @@ static void open_detail(const char* path, const char* name, bool series, view_t 
     }
 }
 
-#define DETAIL_CLEAR (EpdRect){TR_MARGIN, 640, TR_W - 2 * TR_MARGIN, 84}
-#define DETAIL_DELETE (EpdRect){TR_MARGIN, 748, TR_W - 2 * TR_MARGIN, 84}
+#define DETAIL_CLEAR (EpdRect){TR_MARGIN, TR_S(640), TR_W - 2 * TR_MARGIN, TR_S(84)}
+#define DETAIL_DELETE (EpdRect){TR_MARGIN, TR_S(748), TR_W - 2 * TR_MARGIN, TR_S(84)}
 
 static void draw_detail(uint8_t* fb) {
-    tr_text(fb, TR_MARGIN, 92, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, s_detail_series ? "系列详情" : "漫画详情", EPD_DRAW_ALIGN_LEFT, true);
-    tr_wrap(fb, TR_MARGIN, 190, TR_W - 2 * TR_MARGIN, 40, 56, s_detail_name, 3);
-    tr_text_dim(fb, TR_MARGIN, 380, 30, s_detail_info[0], EPD_DRAW_ALIGN_LEFT);
-    if (s_detail_info[1][0]) tr_text_dim(fb, TR_MARGIN, 430, 30, s_detail_info[1], EPD_DRAW_ALIGN_LEFT);
-    tr_text_dim(fb, TR_MARGIN, 520, 26, s_detail_series ? "删除会删掉这个文件夹里的全部 CBZ。" : "删除只删这一个 CBZ 文件。",
-                EPD_DRAW_ALIGN_LEFT);
-    tr_pill(fb, DETAIL_CLEAR, s_detail_series ? "清除这部的全部进度" : "清除进度", false, 32);
-    tr_pill(fb, DETAIL_DELETE, s_confirm_delete ? "再点一次确认删除" : "删除", s_confirm_delete, 32);
-    if (s_message[0]) tr_text(fb, TR_W / 2, 870, 28, s_message, EPD_DRAW_ALIGN_CENTER, false);
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_S(96), TR_S(100), TR_S(36), s_detail_series ? "系列详情" : "漫画详情", EPD_DRAW_ALIGN_LEFT, true);
+    tr_wrap(fb, TR_MARGIN, TR_S(190), TR_W - 2 * TR_MARGIN, TR_S(40), TR_S(56), s_detail_name, 3);
+    tr_text_dim(fb, TR_MARGIN, TR_S(380), TR_S(30), s_detail_info[0], EPD_DRAW_ALIGN_LEFT);
+    if (s_detail_info[1][0]) tr_text_dim(fb, TR_MARGIN, TR_S(430), TR_S(30), s_detail_info[1], EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, TR_S(520), TR_S(26),
+                s_detail_series ? "删除会删掉这个文件夹里的全部 CBZ。" : "删除只删这一个 CBZ 文件。", EPD_DRAW_ALIGN_LEFT);
+    tr_pill(fb, DETAIL_CLEAR, s_detail_series ? "清除这部的全部进度" : "清除进度", false, TR_S(32));
+    tr_pill(fb, DETAIL_DELETE, s_confirm_delete ? "再点一次确认删除" : "删除", s_confirm_delete, TR_S(32));
+    if (s_message[0]) tr_text(fb, TR_W / 2, TR_S(870), TR_S(28), s_message, EPD_DRAW_ALIGN_CENTER, false);
 }
 
 static app_redraw_t detail_back(void) {
@@ -904,10 +1004,13 @@ static app_redraw_t detail_back(void) {
 }
 
 static app_redraw_t touch_detail(uint16_t x, uint16_t y) {
-    if (y < 160 && x < 160) return detail_back();
+    if (y < TR_S(160) && x < TR_S(160)) return detail_back();
     if (ui_rect_hit(DETAIL_CLEAR, x, y)) {
         comic_progress_forget(s_detail_path);
         snprintf(s_message, sizeof(s_message), comic_progress_flush() == ESP_OK ? "进度已清除" : "保存失败，检查 TF 卡");
+        // 内存里的表已经清掉；按它重算“继续看”，卡片不再指向刚清的那一话。
+        // The in-memory table is already cleared; recompute "continue" from it so the card no longer points at the cleared episode.
+        load_last();
         s_detail_info[1][0] = 0;
         s_confirm_delete = false;
         return APP_REDRAW_PAGE;
@@ -937,8 +1040,8 @@ static int shelf_hit(uint16_t x, uint16_t y) {
     for (int k = 0; k < PER_PAGE; k++) {
         const int i = s_page * PER_PAGE + k;
         if (i >= s_count) break;
-        const int cx = CELL_X[k % 3], cy = CELL_Y[k / 3];
-        if (x >= cx && x < cx + CELL_W && y + 12 >= cy && y < cy + 274) return i;
+        const int cx = CELL_X[k % 3], cy = cell_y(k);
+        if (x >= cx && x < cx + CELL_W && y + 12 >= cy && y < cy + COVER_H + CELL_TEXT_H) return i;
     }
     return -1;
 }
@@ -953,7 +1056,12 @@ static app_redraw_t open_entry(int i) {
 
 static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_COMIC)) return APP_REDRAW_NONE;
-    if (y >= 86 && y < 150 && x >= IMPORT_X - 10) { ctx->request_app = &app_transfer; return APP_REDRAW_NONE; }
+    if (y >= TR_S(86) && y < TR_S(150) && x >= IMPORT_X - 10) {
+        // 先到“设置 › 传书”选 Wi-Fi 还是 USB。/ Go to Settings > Transfer to pick Wi-Fi or USB.
+        app_tr_settings_request_transfer();
+        ctx->request_app = tr_nav_tab_app(TR_TAB_SETTINGS);
+        return APP_REDRAW_NONE;
+    }
     if (ui_rect_hit(SORT_PILL, x, y)) {
         s_sort_name = !s_sort_name;
         s_page = 0;
@@ -978,7 +1086,7 @@ static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 
 static app_redraw_t tap_series(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_COMIC)) return APP_REDRAW_NONE;
-    if (y < 160 && x < 160) { s_view = V_SHELF; s_message[0] = 0; return APP_REDRAW_PAGE; }
+    if (y < TR_S(160) && x < TR_S(160)) { s_view = V_SHELF; s_message[0] = 0; return APP_REDRAW_PAGE; }
     if (s_vol_count && ui_rect_hit(CONTINUE_PILL, x, y)) {
         return open_volume(s_ser_resume, s_ser_page) ? APP_REDRAW_FULL : APP_REDRAW_PAGE;
     }
@@ -989,8 +1097,9 @@ static app_redraw_t tap_series(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         s_vol_page = next;
         return APP_REDRAW_PAGE;
     }
-    if (y >= ROWS_TOP && y < ROWS_TOP + ROWS_PER * ROW_H) {
-        const int i = s_vol_page * ROWS_PER + (y - ROWS_TOP) / ROW_H;
+    const int top = ROWS_TOP, rows = ROWS_PER;
+    if (y >= top && y < top + rows * ROW_H) {
+        const int i = s_vol_page * rows + (y - top) / ROW_H;
         if (i < s_vol_count) return open_volume(i, -1) ? APP_REDRAW_FULL : APP_REDRAW_PAGE;
     }
     return APP_REDRAW_NONE;
@@ -1012,12 +1121,12 @@ static app_redraw_t tap_reader(uint16_t x, uint16_t y) {
         s_toolbar = true;
         return APP_REDRAW_PAGE;
     }
-    if (y < 120) {
-        if (x < 200) { leave_reader(); return APP_REDRAW_FULL; }
+    if (y < TR_S(120)) {
+        if (x < TR_S(200)) { leave_reader(); return APP_REDRAW_FULL; }
         return APP_REDRAW_NONE;
     }
     if (y < BAR_TOP) { s_toolbar = false; s_message[0] = 0; return APP_REDRAW_PAGE; }
-    if (y >= SEEK_Y - 30 && y < SEEK_Y + 34 && x >= TR_MARGIN && x < TR_W - TR_MARGIN) {
+    if (y >= SEEK_Y - TR_S(30) && y < SEEK_Y + TR_S(34) && x >= TR_MARGIN && x < TR_W - TR_MARGIN) {
         int page = (x - TR_MARGIN) * s_page_count / (TR_W - 2 * TR_MARGIN);
         if (page >= s_page_count) page = s_page_count - 1;
         s_cur = page;
@@ -1031,7 +1140,7 @@ static app_redraw_t tap_reader(uint16_t x, uint16_t y) {
         app_settings_set_auto_turn(true, (uint8_t)s_auto_level);
         return APP_REDRAW_PAGE;
     }
-    if (y >= TOOL_Y - 10 && y < TOOL_Y + 100) {
+    if (y >= TOOL_Y - TR_S(10) && y < TOOL_Y + TR_S(100)) {
         const int col = (x - TR_MARGIN) * 3 / (TR_W - 2 * TR_MARGIN);
         if (col == 0) {
             save_progress(true);
@@ -1053,7 +1162,7 @@ static app_redraw_t tap_reader(uint16_t x, uint16_t y) {
             return APP_REDRAW_FULL;
         }
     }
-    if (s_vol_index >= 0 && y >= STEP_Y && y < STEP_Y + 76) {
+    if (s_vol_index >= 0 && y >= STEP_Y && y < STEP_Y + TR_S(76)) {
         const int vol = x < TR_W / 2 ? s_vol_index - 1 : s_vol_index + 1;
         if (vol < 0 || vol >= s_vol_count) {
             snprintf(s_message, sizeof(s_message), vol < 0 ? "已经是第一话" : "已经是最后一话");
@@ -1235,6 +1344,10 @@ static void on_enter(app_ctx_t* ctx) {
     // entry so a swapped card never receives the old table.
     comic_progress_drop();
     scan();
+    // 显示大小可能变了，每页行数跟着变：话列表页码夹回范围。/ The display size may have changed and with it the rows
+    // per page: clamp the episode page.
+    if (s_vol_page >= vol_pages()) s_vol_page = vol_pages() - 1;
+    if (s_vol_page < 0) s_vol_page = 0;
     // 锁屏或切页回来时按路径找回那一话，接着刚才那一页。/ Coming back from the lock screen or another page finds the
     // episode by path and resumes the same page.
     if (s_view == V_READ && s_book[0]) {
@@ -1273,8 +1386,21 @@ static void comic_on_exit(app_ctx_t* ctx) {
     covers_release();
 }
 
+// 每次锁屏前（含浅睡）把正在看的这一页写回卡上；不画屏、不关文件。没在看就什么也不做。
+// Before every lock, light sleep included, write the current page to the card; no drawing, files stay open. Nothing to do
+// when not reading.
+static void comic_on_lock(app_ctx_t* ctx) {
+    (void)ctx;
+    if (s_view != V_READ || !s_page_count) return;
+    save_progress(true);
+}
+
 static void on_media_lost(app_ctx_t* ctx) {
     (void)ctx;
+    // 先尽量把上次落盘后翻过的页写回去，失败也照常收尾；卡已失效时写入只会失败，不会写到别的卡上。
+    // Try to save pages turned since the last flush first and close as usual on failure; with the card gone the write just fails.
+    save_progress(false);
+    (void)comic_progress_flush();
     reader_close();
     covers_release();
     comic_progress_drop();
@@ -1301,6 +1427,7 @@ const app_desc_t app_comic = {
     .on_enter = on_enter,
     .on_exit = comic_on_exit,
     .on_media_lost = on_media_lost,
+    .on_lock = comic_on_lock,
     .on_gesture = on_gesture,
     .on_key = on_key,
     .on_tick = on_tick,

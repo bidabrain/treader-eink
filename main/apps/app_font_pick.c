@@ -28,11 +28,12 @@
 #define TAG "app_font"
 #define FONT_TITLE "字体"
 #define FONT_ROW_H UI_BTN_H
-#define FONT_NAV_H 56
+// 随显示大小放大。/ Scales with the display size.
+#define FONT_NAV_H UI_S(56)
 #define FONT_MIN_LIST 2
 #define FONT_SCORE_ROWS 2
-#define FONT_WGHT_W 96
-#define FONT_WGHT_H 44
+#define FONT_WGHT_W UI_S(96)
+#define FONT_WGHT_H UI_S(44)
 #define FONT_HIT_NONE (-1)
 #define FONT_HIT_PREV (-2)
 #define FONT_HIT_NEXT (-3)
@@ -132,16 +133,24 @@ static font_geom_t font_geom(void) {
     const int score_h = 0;
     const int min_list = UI_SEC_HEAD + FONT_MIN_LIST * FONT_ROW_H
         + (FONT_MIN_LIST - 1) * UI_GAP;
-    const int sample_n = sample_fit(
+    int sample_n = sample_fit(
         content - min_list - score_h - 2 * UI_SECTION_GAP - UI_SEC_HEAD
     );
-    const int sample_h = UI_SEC_HEAD + sample_inner_h(sample_n);
-    int budget = content - sample_h - score_h - 2 * UI_SECTION_GAP;
-    int per = rows_for(budget);
-    bool paged = leaf_count(per) > 1;
-    if (paged) {
-        per = rows_for(budget - UI_GAP - FONT_NAV_H);
+    int sample_h, per;
+    bool paged;
+    // 放大后翻页按钮会把列表挤到一行：少放几行预览，保证至少两行字体。/ At larger sizes the pager can squeeze the
+    // list to one row: drop preview lines until at least two font rows fit.
+    for (;;) {
+        sample_h = UI_SEC_HEAD + sample_inner_h(sample_n);
+        const int budget = content - sample_h - score_h - 2 * UI_SECTION_GAP;
+        per = rows_for(budget);
         paged = leaf_count(per) > 1;
+        if (paged) {
+            per = rows_for(budget - UI_GAP - FONT_NAV_H);
+            paged = leaf_count(per) > 1;
+        }
+        if (!paged || per >= FONT_MIN_LIST || sample_n <= 1) break;
+        sample_n--;
     }
 
     const int list_h = UI_SEC_HEAD + per * FONT_ROW_H + (per - 1) * UI_GAP;
@@ -349,9 +358,13 @@ static app_redraw_t pick(int index) {
         read_pico_sd_info_t sd = {0};
         read_pico_sd_get_info(&sd);
         if (!sd.present || !sd.mounted) return APP_REDRAW_FULL;
-        app_settings_set_font_path(item->path);
+        // 先打开，确认真的换上了再存；坏字体不写进设置，免得开机和换卡时反复重试它。
+        // Open first and save only once it is really in use; a broken font never reaches the settings, so boot and
+        // card swaps do not keep retrying it.
         esp_err_t err = ttf_font_open(item->path);
-        if (err != ESP_OK) {
+        if (err == ESP_OK && !ttf_font_is_builtin() && strcmp(ttf_font_path(), item->path) == 0) {
+            app_settings_set_font_path(item->path);
+        } else {
             ESP_LOGW(TAG, "font switch %s: %s", item->path, esp_err_to_name(err));
         }
     }

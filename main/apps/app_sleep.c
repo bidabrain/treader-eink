@@ -21,6 +21,8 @@
 #include "read_pico_pmu.h"
 #include "settings.h"
 #include "sleep.h"
+#include "tomato.h"
+#include "tr_pin.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
 
@@ -30,8 +32,9 @@ extern const app_desc_t app_sleep;
 
 #define SLEEP_TITLE "睡眠与唤醒"
 #define SLEEP_POLL_MS 1500
-#define SLEEP_CHIP_H 56
-#define SLEEP_CHIP_GAP 8
+// 随显示大小放大。/ Scales with the display size.
+#define SLEEP_CHIP_H UI_S(56)
+#define SLEEP_CHIP_GAP UI_S(8)
 #define SLEEP_CHIP_COLS 4
 
 #define SLEEP_HIT_NONE (-1)
@@ -237,7 +240,7 @@ static void sleep_show_notice(app_ctx_t* ctx, app_sleep_mode_t mode) {
     sleep_notice_text(mode, &zh, &en);
     ui_clear_page(ctx->fb);
     const int cx = epd_rotated_display_width() / 2;
-    const int gap = 16;
+    const int gap = UI_S(16);
     const int block = UI_PX_TITLE + gap + UI_PX_BODY;
     const int y0 = (epd_rotated_display_height() - block) / 2;
     ui_text(ctx->fb, cx, y0, UI_PX_TITLE, zh, EPD_DRAW_ALIGN_CENTER, false);
@@ -290,7 +293,7 @@ static void draw_sleep_page(uint8_t* framebuffer) {
         EPD_DRAW_ALIGN_LEFT, false
     );
     ui_text(
-        framebuffer, UI_MARGIN, y_desc + UI_PX_BODY + 10, UI_PX_CAPTION, note_en,
+        framebuffer, UI_MARGIN, y_desc + UI_PX_BODY + UI_S(10), UI_PX_CAPTION, note_en,
         EPD_DRAW_ALIGN_LEFT, false
     );
 
@@ -313,11 +316,17 @@ static void sleep_try(app_ctx_t* ctx) {
     sleep_show_notice(ctx, mode);
     app_lock_wait_key_idle(800);
     if (mode != APP_SLEEP_LIGHT) {
+        // 和真正锁屏一样，断主机电之前先停下后台下载和同步，免得写到一半的 TF 卡文件坏掉。
+        // As the real lock does, stop background downloads and syncs before cutting host power so a half-written TF
+        // card file is not damaged.
+        if (!tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at power-down");
         ESP_LOGW(TAG, "host sleep failed: %s, light sleep", esp_err_to_name(app_enter_host_sleep(mode)));
     }
     epd_poweroff();
     app_light_sleep_wait(s_ui.pickup_ok ? ctx->acc : NULL);
     app_lock_ignore_for(APP_LOCK_IGNORE_BOOT_MS);
+    // 试睡醒来和真正锁屏一样要过锁屏密码。/ Waking from a trial sleep passes the lock PIN like a real lock.
+    tr_pin_gate(ctx->hl, ctx->tp, ctx->acc, NULL);
 }
 
 static app_redraw_t sleep_on_hit(app_ctx_t* ctx, int hit) {

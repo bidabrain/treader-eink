@@ -1,0 +1,55 @@
+{
+  "screens-reading": [
+    ["demo_book/shelf_100.png", "书库"],
+    ["demo_book/reader_100.png", "阅读"],
+    ["demo_book/toolbar_100.png", "阅读工具条"],
+    ["demo_lock/card_100.png", "锁屏 · 书卡"]
+  ],
+  "screens-comics": [
+    ["demo_comic/shelf_100.png", "漫画"],
+    ["demo_comic/reader_100.png", "漫画阅读"],
+    ["demo_transfer/home_100.png", "Wi-Fi 传书"],
+    ["demo_usb/running_100.png", "USB 传书中"]
+  ],
+  "screens-tomato": [
+    ["demo_tomato/shelf_100.png", "番茄 · 书架"],
+    ["demo_store/home_100.png", "书城"],
+    ["demo_store/rank_100.png", "分类榜单"],
+    ["demo_store/detail_100.png", "书城详情"]
+  ],
+  "screens-xhs": [
+    ["demo_xhs/follow_100.png", "小红书 · 关注"],
+    ["demo_xhs/recommend_100.png", "小红书 · 推荐"],
+    ["demo_xhs/image_100.png", "笔记 · 看图"],
+    ["demo_xhs/note_100.png", "笔记 · 正文 / 评论"]
+  ],
+  "screens-weibo": [
+    ["demo_weibo/follow_100.png", "微博 · 关注"],
+    ["demo_weibo/hot_100.png", "微博 · 热门"],
+    ["demo_weibo/post_100.png", "微博 · 正文"],
+    ["demo_weibo/comments_100.png", "微博 · 评论"]
+  ],
+  "screens-hupu": [
+    ["demo_hupu/feed_100.png", "虎扑 · 推荐"],
+    ["demo_hupu/post_100.png", "帖子 · 正文"],
+    ["demo_hupu/scores_100.png", "虎扑 · 比分"],
+    ["demo_hupu/rate_100.png", "比赛评分"]
+  ],
+  "screens-settings": [
+    ["demo_settings/home_100.png", "设置首页"],
+    ["demo_settings/tabs_100.png", "设置 · 底部标签"],
+    ["demo_all/all_100.png", "全部"],
+    ["demo_book/shelf_large_130.png", "显示大小 · 特大"]
+  ],
+  "screens-lock": [
+    ["demo_settings/power_100.png", "设置 · 电源与设备"],
+    ["demo_pin/set_100.png", "设置锁屏密码"],
+    ["demo_pin/gate_100.png", "输入密码解锁"],
+    ["demo_pin/locked_100.png", "输错太多次"]
+  ],
+  "site-hero": [
+    ["demo_book/shelf_100.png", "书库"],
+    ["demo_book/reader_100.png", "阅读"],
+    ["demo_weibo/follow_100.png", "微博"]
+  ]
+}

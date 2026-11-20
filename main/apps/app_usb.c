@@ -36,12 +36,18 @@
 
 #define TAG "app_usb"
 #define CW (TR_W - 2 * TR_MARGIN)
-#define BUTTON_RECT (EpdRect){TR_MARGIN, 960, CW, 96}
-#define DIALOG_RECT (EpdRect){70, 420, TR_W - 140, 400}
-#define BACK_BTN (EpdRect){70 + 36, 420 + 278, 230, 84}
-#define FORCE_BTN (EpdRect){TR_W - 70 - 36 - 230, 420 + 278, 230, 84}
-#define METER_TOP 520
-#define METER_H 80
+// 长度随显示大小放大；放大后说明页不画装饰图标、间距收紧，按钮离底边近一些，每一屏仍放得下。
+// Lengths scale with the display size; larger sizes drop the intro's decorative icon, tighten gaps and move the button
+// closer to the bottom so every view still fits.
+#define BIG (ui_scale_pct > 100)
+#define BUTTON_RECT button_rect()
+#define DIALOG_RECT dialog_geom(NULL, NULL, NULL)
+#define BACK_BTN back_btn()
+#define FORCE_BTN force_btn()
+#define METER_TOP (BIG ? TR_S(420) : 520)
+#define METER_H TR_S(80)
+#define DIALOG_TEXT "现在结束，电脑上还没写完的文件可能会坏掉。建议先在电脑上弹出。"
+#define RESTART_SUB "重启后检查 TF 卡、重新扫描书库和漫画"
 #define GONE_END_MS 3000
 #define POLL_MS 1000
 
@@ -58,6 +64,86 @@ static int64_t s_intro_ms;            // 开始前页面最近一次被碰 / Las
 
 /* ---- 小工具 / Helpers ---- */
 
+static EpdRect button_rect(void) {
+    const int h = TR_S(96);
+    return (EpdRect){TR_MARGIN, TR_H - (BIG ? TR_S(40) : 160) - h, CW, h};
+}
+
+// 按 tr_wrap 的断行规则数行数（不限行）。/ Count lines with tr_wrap's breaking rule (no line limit).
+static int count_lines(const char* text, int px, int w) {
+    int n = 0;
+    for (const char* p = text; *p; n++) {
+        p += tr_line_bytes(p, px, w);
+        if (*p == '\n') p++;
+    }
+    return n;
+}
+
+// 确认框：放大后说明可能多一行，框跟着长高、保持上下居中。/ Confirm dialog: scaled up the text may take another
+// line, so the box grows and stays centred.
+static EpdRect dialog_geom(int* text_lines, EpdRect* back, EpdRect* force) {
+    const int w = TR_W - 140, pad = TR_S(36);
+    int lines = count_lines(DIALOG_TEXT, TR_S(28), w - 2 * pad);
+    if (lines < 3) lines = 3;
+    if (lines > 4) lines = 4;
+    const int btn_off = TR_S(108) + lines * TR_S(42) + TR_S(44);
+    const int h = btn_off + TR_S(84) + TR_S(38);
+    const EpdRect d = {70, 420 - (h - 400) / 2, w, h};
+    const int bw = (w - 2 * pad - TR_S(12)) / 2;
+    if (text_lines) *text_lines = lines;
+    if (back) *back = (EpdRect){d.x + pad, d.y + btn_off, bw, TR_S(84)};
+    if (force) *force = (EpdRect){d.x + d.width - pad - bw, d.y + btn_off, bw, TR_S(84)};
+    return d;
+}
+
+static EpdRect back_btn(void) {
+    EpdRect r;
+    dialog_geom(NULL, &r, NULL);
+    return r;
+}
+
+static EpdRect force_btn(void) {
+    EpdRect r;
+    dialog_geom(NULL, NULL, &r);
+    return r;
+}
+
+// 在底色上逐行排字，项目符号的续行缩到符号后面；fb 为空只数行。
+// Wrap text on a filled background; bullet continuation lines indent past the bullet. A NULL fb only counts lines.
+static int wrap_on(uint8_t* fb, int x, int y, int w, int px, int line_h, const char* text, bool bold, uint8_t bg) {
+    const int indent = strncmp(text, "· ", strlen("· ")) == 0 ? ttf_text_width_px(px, "· ") : 0;
+    int n = 0;
+    for (const char* p = text; *p; n++) {
+        const int lx = n ? x + indent : x;
+        const size_t take = tr_line_bytes(p, px, w - (lx - x));
+        char line[160];
+        const size_t k = take < sizeof(line) - 1 ? take : sizeof(line) - 1;
+        memcpy(line, p, k);
+        line[k] = 0;
+        if (fb) tr_text_on(fb, lx, y + n * line_h, px, line, EPD_DRAW_ALIGN_LEFT, bold, UI_GRAY_BLACK, bg);
+        p += take;
+        while (*p == ' ' || *p == '\n') p++;
+    }
+    return n;
+}
+
+// 居中的一句，放不下就折成两行；返回行数。/ A centred line that folds into two when it does not fit; returns lines.
+static int center_text(uint8_t* fb, int y, int px, int line_h, const char* text, bool dim) {
+    char line[160];
+    const char* p = text;
+    int n = 0;
+    for (; *p && n < 2; n++) {
+        const size_t take = ttf_text_width_px(px, p) <= CW ? strlen(p) : tr_line_bytes(p, px, CW);
+        const size_t k = take < sizeof(line) - 1 ? take : sizeof(line) - 1;
+        memcpy(line, p, k);
+        line[k] = 0;
+        if (dim) tr_text_dim(fb, TR_W / 2, y + n * line_h, px, line, EPD_DRAW_ALIGN_CENTER);
+        else tr_text(fb, TR_W / 2, y + n * line_h, px, line, EPD_DRAW_ALIGN_CENTER, true);
+        p += take;
+    }
+    return n;
+}
+
 static void fmt_bytes(uint64_t n, char* out, size_t cap) {
     if (n < 1024 * 1024) snprintf(out, cap, "%llu KB", (unsigned long long)(n / 1024));
     else if (n < 10ull * 1024 * 1024 * 1024) snprintf(out, cap, "%.1f MB", n / 1048576.0);
@@ -73,8 +159,8 @@ static bool card_ready(uint64_t* free_bytes) {
 
 // USB 图标：竖杆、三叉、方块和圆点（按 ui.html 里的 i-usb 画）。/ USB glyph: shaft, fork, square and dots.
 static void draw_usb_icon(uint8_t* fb, int cx, int top, int size) {
-    const int s = size / 40;
-    const int x = cx - size / 2;
+    const int s = TR_S(size / 40);
+    const int x = cx - TR_S(size) / 2;
     for (int d = -s; d <= s; d++) {
         epd_draw_line(x + 20 * s + d, top + 4 * s, x + 20 * s + d, top + 30 * s, UI_GRAY_BLACK, fb);
         epd_draw_line(x + 15 * s, top + 9 * s + d, x + 20 * s, top + 4 * s + d, UI_GRAY_BLACK, fb);
@@ -93,30 +179,34 @@ static void draw_usb_icon(uint8_t* fb, int cx, int top, int size) {
 
 static void draw_intro(uint8_t* fb) {
     tr_status_bar(fb);
-    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, "USB 传书", EPD_DRAW_ALIGN_LEFT, true);
-    draw_usb_icon(fb, TR_W / 2, 190, 120);
+    tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_S(96), TR_S(100), TR_S(36), "USB 传书", EPD_DRAW_ALIGN_LEFT, true);
+    // 放大后去掉装饰图标，给文字让地方。/ Larger sizes drop the decorative icon to make room for text.
+    if (!BIG) draw_usb_icon(fb, TR_W / 2, 190, 120);
     static const char* const STEPS[4] = {"用数据线连上电脑", "点“开始”，电脑上出现 U 盘", "拷完在电脑上“弹出”这个 U 盘",
                                          "回到设备点“结束传输”"};
+    int y = BIG ? TR_S(158) : 350;
     for (int i = 0; i < 4; i++) {
-        const int y = 350 + i * 46;
-        epd_fill_circle(TR_MARGIN + 21, y + 21, 21, UI_GRAY_BLACK, fb);
+        epd_fill_circle(TR_MARGIN + TR_S(21), y + TR_S(21), TR_S(21), UI_GRAY_BLACK, fb);
         char n[4];
         snprintf(n, sizeof(n), "%d", i + 1);
-        tr_text_inv(fb, TR_MARGIN + 21, y + 6, 24, n, EPD_DRAW_ALIGN_CENTER, true);
-        tr_text(fb, TR_MARGIN + 58, y + 2, 28, STEPS[i], EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_inv(fb, TR_MARGIN + TR_S(21), y + TR_S(6), TR_S(24), n, EPD_DRAW_ALIGN_CENTER, true);
+        const int lines =
+            tr_wrap(fb, TR_MARGIN + TR_S(58), y + TR_S(2), CW - TR_S(58), TR_S(28), TR_S(36), STEPS[i], 2);
+        y += TR_S(46) + (lines - 1) * TR_S(36);
     }
-    // 注意事项放在浅灰填充卡片里（说明页整页刷新）。/ The notes sit on a light gray filled card (the intro refreshes
-    // as a whole page).
-    const EpdRect w = {TR_MARGIN, 580, CW, 210};
-    ui_fill_round_rect(fb, w, 24, TR_GRAY_SURFACE);
-    tr_text_on(fb, w.x + 26, w.y + 20, 28, "开始后：", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
-    tr_text_on(fb, w.x + 26, w.y + 62, 28, "· 设备其他功能全部暂停，只显示传输页", EPD_DRAW_ALIGN_LEFT, false,
-               UI_GRAY_BLACK, TR_GRAY_SURFACE);
-    tr_text_on(fb, w.x + 26, w.y + 104, 28, "· 换成内置字体，结束后自动换回", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
-               TR_GRAY_SURFACE);
-    tr_text_on(fb, w.x + 26, w.y + 146, 28, "· Wi-Fi 和后台加载都会停掉", EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK,
-               TR_GRAY_SURFACE);
+    // 注意事项放在浅灰填充卡片里（说明页整页刷新）；放大后一条可能折两行，卡片跟着长高。
+    // The notes sit on a light gray filled card (the intro refreshes as a whole page); scaled up a note may take two
+    // lines and the card grows with it.
+    static const char* const NOTES[4] = {"开始后：", "· 设备其他功能全部暂停，只显示传输页", "· 换成内置字体，结束后自动换回",
+                                         "· Wi-Fi 和后台加载都会停掉"};
+    const int pad = TR_S(26), inner = CW - 2 * pad, lh = TR_S(42);
+    int note_lines = 0;
+    for (int i = 0; i < 4; i++) note_lines += wrap_on(NULL, 0, 0, inner, TR_S(28), lh, NOTES[i], i == 0, 0);
+    const EpdRect w = {TR_MARGIN, y + (BIG ? TR_S(16) : 46), CW, TR_S(20) + note_lines * lh + TR_S(22)};
+    ui_fill_round_rect(fb, w, TR_S(24), TR_GRAY_SURFACE);
+    for (int i = 0, ny = w.y + TR_S(20); i < 4; i++)
+        ny += lh * wrap_on(fb, w.x + pad, ny, inner, TR_S(28), lh, NOTES[i], i == 0, TR_GRAY_SURFACE);
     uint64_t free_bytes = 0;
     const bool card = card_ready(&free_bytes);
     char line[200], size[24];
@@ -125,12 +215,14 @@ static void draw_intro(uint8_t* fb) {
         snprintf(line, sizeof(line), "TF 卡可用 %s。书放 books/，漫画放 comics/（一部一个文件夹），字体放 fonts/，壁纸放 wallpapers/。", size);
     else
         snprintf(line, sizeof(line), "没有可用的 TF 卡，插好卡再来。");
-    tr_wrap(fb, TR_MARGIN, 836, CW, 24, 36, s_msg[0] ? s_msg : line, 3);
+    tr_wrap(fb, TR_MARGIN, w.y + w.height + (BIG ? TR_S(16) : 46), CW, TR_S(24), TR_S(36), s_msg[0] ? s_msg : line,
+            BIG ? 4 : 3);
+    const EpdRect b = BUTTON_RECT;
     if (card) {
-        tr_pill(fb, BUTTON_RECT, "开始", true, 34);
+        tr_pill(fb, b, "开始", true, TR_S(34));
     } else {
-        ui_draw_round_rect(fb, BUTTON_RECT, 48, TR_GRAY_LINE);
-        tr_text(fb, TR_W / 2, BUTTON_RECT.y + 30, 34, "没有 TF 卡", EPD_DRAW_ALIGN_CENTER, false);
+        ui_draw_round_rect(fb, b, b.height / 2, TR_GRAY_LINE);
+        tr_text(fb, TR_W / 2, b.y + TR_S(30), TR_S(34), "没有 TF 卡", EPD_DRAW_ALIGN_CENTER, false);
     }
 }
 
@@ -146,8 +238,8 @@ static void draw_meters(uint8_t* fb) {
     for (int i = 0; i < 3; i++) {
         const int y = METER_TOP + i * METER_H;
         epd_fill_rect((EpdRect){0, y, TR_W, METER_H}, UI_GRAY_WHITE, fb);
-        tr_text(fb, TR_MARGIN, y + 20, 30, labels[i], EPD_DRAW_ALIGN_LEFT, false);
-        tr_text(fb, TR_W - TR_MARGIN, y + 20, 30, values[i], EPD_DRAW_ALIGN_RIGHT, true);
+        tr_text(fb, TR_MARGIN, y + TR_S(20), TR_S(30), labels[i], EPD_DRAW_ALIGN_LEFT, false);
+        tr_text(fb, TR_W - TR_MARGIN, y + TR_S(20), TR_S(30), values[i], EPD_DRAW_ALIGN_RIGHT, true);
         tr_hline(fb, y + METER_H - 2, TR_MARGIN, CW, true);
     }
 }
@@ -155,45 +247,50 @@ static void draw_meters(uint8_t* fb) {
 static void draw_run(uint8_t* fb) {
     tr_status_bar(fb);
     tr_title(fb, "USB 传书中");
-    draw_usb_icon(fb, TR_W / 2, 200, 140);
+    // 放大后图标、状态和读数靠得紧一些。/ Scaled up, the icon, status and meters sit closer together.
+    draw_usb_icon(fb, TR_W / 2, BIG ? TR_S(150) : 200, 140);
+    const int big_y = BIG ? TR_S(296) : 370;
     const bool gone = s_st.state == READ_PICO_USB_GONE;
     const char* big = s_failed ? "USB 没能启动" :
                       s_st.ejected ? "电脑已弹出，可以结束" :
                       s_st.state == READ_PICO_USB_WAITING ? "等待连接电脑…" :
                       s_st.state == READ_PICO_USB_CONNECTED ? "已连接电脑" :
                       s_power ? "电脑暂停了 U 盘" : "数据线已拔下";
-    tr_text(fb, TR_W / 2, 370, 40, big, EPD_DRAW_ALIGN_CENTER, true);
+    center_text(fb, big_y, TR_S(40), TR_S(48), big, false);
     const char* sub = s_failed ? s_msg :
                       s_st.ejected ? "点下面的按钮恢复设备" :
                       s_st.state == READ_PICO_USB_WAITING ? "用数据线连上电脑，电脑上会出现 U 盘" :
                       s_st.state == READ_PICO_USB_CONNECTED ? "在电脑上打开新出现的 U 盘" :
                       s_power ? "电脑可能在睡眠或省电，等它恢复" : "马上自动结束…";
-    tr_text_dim(fb, TR_W / 2, 430, 28, sub, EPD_DRAW_ALIGN_CENTER);
+    center_text(fb, big_y + TR_S(60), TR_S(28), TR_S(36), sub, true);
     (void)gone;
     if (!s_failed) draw_meters(fb);
-    tr_wrap(fb, TR_MARGIN, 800, CW, 26, 40,
+    tr_wrap(fb, TR_MARGIN, BIG ? METER_TOP + 3 * METER_H + TR_S(24) : 800, CW, TR_S(26), TR_S(40),
             s_failed ? "TF 卡已经从设备上卸下，点“结束传输”重启恢复。" :
-            "拷完先在电脑上“弹出”U 盘（Windows 右下角“安全删除硬件”，Mac 拖到废纸篓或点 ⏏），再点下面的按钮。", 3);
-    tr_pill(fb, BUTTON_RECT, "结束传输", s_failed || s_st.ejected || s_st.state == READ_PICO_USB_WAITING, 34);
+            "拷完先在电脑上“弹出”U 盘（Windows 右下角“安全删除硬件”，Mac 拖到废纸篓或点 ⏏），再点下面的按钮。",
+            BIG ? 4 : 3);
+    tr_pill(fb, BUTTON_RECT, "结束传输", s_failed || s_st.ejected || s_st.state == READ_PICO_USB_WAITING, TR_S(34));
 }
 
 static void draw_confirm(uint8_t* fb) {
     draw_run(fb);
     // Material 3 对话框：白底大圆角、深灰细框。/ Material 3 dialog: white, large radius, thin dark outline.
-    const EpdRect d = DIALOG_RECT;
+    int lines;
+    EpdRect back, force;
+    const EpdRect d = dialog_geom(&lines, &back, &force);
     epd_fill_rect(d, UI_GRAY_WHITE, fb);
-    ui_draw_round_rect(fb, d, 28, TR_GRAY_OUTLINE);
-    ui_draw_round_rect(fb, ui_inset_rect(d, 1), 27, TR_GRAY_OUTLINE);
-    tr_text(fb, TR_W / 2, d.y + 40, 36, "电脑还没弹出 U 盘", EPD_DRAW_ALIGN_CENTER, true);
-    tr_wrap(fb, d.x + 36, d.y + 108, d.width - 72, 28, 42, "现在结束，电脑上还没写完的文件可能会坏掉。建议先在电脑上弹出。", 3);
-    tr_pill(fb, BACK_BTN, "返回", false, 30);
-    tr_pill(fb, FORCE_BTN, "仍然结束", true, 30);
+    ui_draw_round_rect(fb, d, TR_S(28), TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(d, 1), TR_S(28) - 1, TR_GRAY_OUTLINE);
+    tr_text(fb, TR_W / 2, d.y + TR_S(40), TR_S(36), "电脑还没弹出 U 盘", EPD_DRAW_ALIGN_CENTER, true);
+    tr_wrap(fb, d.x + TR_S(36), d.y + TR_S(108), d.width - 2 * TR_S(36), TR_S(28), TR_S(42), DIALOG_TEXT, lines);
+    tr_pill(fb, back, "返回", false, TR_S(30));
+    tr_pill(fb, force, "仍然结束", true, TR_S(30));
 }
 
 static void draw_restart(uint8_t* fb) {
-    tr_text(fb, TR_W / 2, 470, 44, "正在恢复…", EPD_DRAW_ALIGN_CENTER, true);
-    tr_text_dim(fb, TR_W / 2, 550, 28, "重启后检查 TF 卡、重新扫描书库和漫画", EPD_DRAW_ALIGN_CENTER);
-    tr_text_dim(fb, TR_W / 2, 594, 28, "约 5 秒", EPD_DRAW_ALIGN_CENTER);
+    tr_text(fb, TR_W / 2, TR_S(470), TR_S(44), "正在恢复…", EPD_DRAW_ALIGN_CENTER, true);
+    const int n = center_text(fb, TR_S(550), TR_S(28), TR_S(36), RESTART_SUB, true);
+    tr_text_dim(fb, TR_W / 2, TR_S(594) + (n - 1) * TR_S(36), TR_S(28), "约 5 秒", EPD_DRAW_ALIGN_CENTER);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -265,7 +362,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     switch (s_view) {
     case V_INTRO:
         s_intro_ms = ctx->now_ms;
-        if (y < 160 && x < 160) return leave(ctx);
+        if (y < TR_S(160) && x < TR_S(160)) return leave(ctx);
         if (ui_rect_hit(BUTTON_RECT, x, y)) return start();
         return APP_REDRAW_NONE;
     case V_RUN:

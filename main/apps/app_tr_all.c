@@ -24,13 +24,15 @@
 #include "ui_kit.h"
 #include "ui_menu.h"
 
-#define GRID_TOP 212
+// 长度都随显示大小放大；一页几行按标签栏上面剩下的高度算。/ Lengths scale with the display size; rows per page
+// follow the height left above the tab bar.
+#define GRID_TOP TR_S(212)
 #define COLS 3
-#define CELL_GAP 16
+#define CELL_GAP TR_S(16)
 #define CELL_W ((TR_W - 2 * TR_MARGIN - (COLS - 1) * CELL_GAP) / COLS)
-#define CELL_H 170
-#define PAGER_Y 1010
-#define ROWS ((PAGER_Y - 20 - GRID_TOP + CELL_GAP) / (CELL_H + CELL_GAP))
+#define CELL_H TR_S(170)
+#define PAGER_Y (TR_TABS_Y - TR_S(84))
+#define ROWS ((PAGER_Y - TR_S(20) - GRID_TOP + CELL_GAP) / (CELL_H + CELL_GAP))
 #define PER_PAGE (ROWS * COLS)
 
 extern const app_desc_t app_tr_all;
@@ -66,7 +68,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     ui_clear_page(fb);
     tr_status_bar(fb);
     tr_title(fb, "全部");
-    tr_text_dim(fb, TR_MARGIN, 156, 26, "底部放哪几个：设置 › 底部标签", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_MARGIN, TR_S(156), TR_S(26), "底部放哪几个：设置 › 底部标签", EPD_DRAW_ALIGN_LEFT);
     tr_tab_t tabs[TR_TAB_MAX];
     const int n = listed(tabs);
     const int from = tr_nav_app_tab(s_origin);
@@ -78,9 +80,9 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         const EpdRect r = cell_rect(k);
         const bool on = (int)tabs[i] == from;
         const uint8_t bg = on ? TR_GRAY_SELECTED : TR_GRAY_SURFACE;
-        ui_fill_round_rect(fb, r, 24, bg);
-        tr_icon_on(fb, tr_tab_icon(tabs[i]), r.x + r.width / 2, r.y + 62, UI_GRAY_BLACK, bg);
-        tr_text_on(fb, r.x + r.width / 2, r.y + 108, 30, tr_tab_label(tabs[i]), EPD_DRAW_ALIGN_CENTER, on,
+        ui_fill_round_rect(fb, r, TR_S(24), bg);
+        tr_icon_on(fb, tr_tab_icon(tabs[i]), r.x + r.width / 2, r.y + TR_S(62), UI_GRAY_BLACK, bg);
+        tr_text_on(fb, r.x + r.width / 2, r.y + TR_S(108), TR_S(30), tr_tab_label(tabs[i]), EPD_DRAW_ALIGN_CENTER, on,
                    UI_GRAY_BLACK, bg);
     }
     tr_pager(fb, PAGER_Y, s_page, pages());

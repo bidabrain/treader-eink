@@ -41,26 +41,38 @@
 #define WAIT_STEP_S 30
 #define WAIT_MAX_S 300
 
-// 版面（竖屏 684×1216）。/ Layout (portrait 684x1216).
+// 版面（竖屏 684×1216）。长度随显示大小放大；标题位置不动，键的宽高不超过屏幕放得下的大小（放大后键上的字变大，
+// 键本身不再变大）。/ Layout (portrait 684x1216). Lengths scale with the display size; the title stays put and keys
+// never exceed what the screen holds (at larger sizes the key labels grow, the keys do not).
 #define TITLE_Y 190
-#define HINT_Y 262
-#define BOX_W 80
-#define BOX_H 96
-#define BOX_GAP 24
-#define BOX_Y 330
+#define HINT_Y (TITLE_Y + TR_S(72))
+#define BOX_W TR_S(80)
+#define BOX_H TR_S(96)
+#define BOX_GAP TR_S(24)
+#define BOX_Y (TITLE_Y + TR_S(140))
 #define BOX_X ((TR_W - 4 * BOX_W - 3 * BOX_GAP) / 2)
-#define KEY_W 180
-#define KEY_H 150
-#define KEY_GAP 24
+#define KEY_GAP TR_S(24)
+#define KEY_W key_w()
+#define KEY_Y (BOX_Y + BOX_H + TR_S(94))
+#define KEY_H key_h()
 #define KEY_X ((TR_W - 3 * KEY_W - 2 * KEY_GAP) / 2)
-#define KEY_Y 520
 // 每输一位要重刷的一块：提示行加四个格子。/ The area redrawn per digit: the hint line and the four boxes.
-#define TOP_AREA ((EpdRect){0, HINT_Y - 10, TR_W, BOX_Y + BOX_H + 20 - (HINT_Y - 10)})
+#define TOP_AREA ((EpdRect){0, HINT_Y - TR_S(10), TR_W, BOX_Y + BOX_H + TR_S(20) - (HINT_Y - TR_S(10))})
 
 // 键位：0～9 是数字，10 取消，11 删除，-1 空。/ Keys: 0-9 digits, 10 cancel, 11 delete, -1 none.
 static const int8_t KEYS[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 11};
 
-static int s_fails;   // 本次开机累计输错 / Wrong tries since boot
+static int s_fails;   // 连续输错次数，和 NVS 同步 / Consecutive wrong tries, mirrored in NVS
+
+static int key_w(void) {
+    const int fit = (TR_W - 2 * TR_MARGIN - 2 * KEY_GAP) / 3;
+    return TR_S(180) < fit ? TR_S(180) : fit;
+}
+
+static int key_h(void) {
+    const int fit = (TR_H - TR_S(24) - KEY_Y - 3 * KEY_GAP) / 4;
+    return TR_S(150) < fit ? TR_S(150) : fit;
+}
 
 static EpdRect key_rect(int i) {
     return (EpdRect){KEY_X + (i % 3) * (KEY_W + KEY_GAP), KEY_Y + (i / 3) * (KEY_H + KEY_GAP), KEY_W, KEY_H};
@@ -69,18 +81,18 @@ static EpdRect key_rect(int i) {
 static void draw_top(uint8_t* fb, const char* hint, int n) {
     epd_fill_rect(TOP_AREA, UI_GRAY_WHITE, fb);
     // 这一块每输一位按 DU 局部刷新，只用深灰和黑。/ This block is DU-refreshed per digit: dark gray and black only.
-    if (hint && hint[0]) tr_text_dim(fb, TR_W / 2, HINT_Y, 26, hint, EPD_DRAW_ALIGN_CENTER);
+    if (hint && hint[0]) tr_text_dim(fb, TR_W / 2, HINT_Y, TR_S(26), hint, EPD_DRAW_ALIGN_CENTER);
     for (int i = 0; i < 4; i++) {
         const EpdRect r = {BOX_X + i * (BOX_W + BOX_GAP), BOX_Y, BOX_W, BOX_H};
-        ui_draw_round_rect(fb, r, 10, TR_GRAY_OUTLINE);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 9, TR_GRAY_OUTLINE);
-        if (i < n) epd_fill_circle(r.x + BOX_W / 2, r.y + BOX_H / 2, 14, UI_GRAY_BLACK, fb);
+        ui_draw_round_rect(fb, r, TR_S(10), TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(10) - 1, TR_GRAY_OUTLINE);
+        if (i < n) epd_fill_circle(r.x + BOX_W / 2, r.y + BOX_H / 2, TR_S(14), UI_GRAY_BLACK, fb);
     }
 }
 
 static void draw_all(uint8_t* fb, const char* title, const char* hint, int n, bool cancel) {
     epd_fill_rect((EpdRect){0, 0, TR_W, TR_H}, UI_GRAY_WHITE, fb);
-    tr_text(fb, TR_W / 2, TITLE_Y, 40, title, EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, TR_W / 2, TITLE_Y, TR_S(40), title, EPD_DRAW_ALIGN_CENTER, true);
     draw_top(fb, hint, n);
     for (int i = 0; i < 12; i++) {
         const int k = KEYS[i];
@@ -90,16 +102,16 @@ static void draw_all(uint8_t* fb, const char* title, const char* hint, int n, bo
         // and delete are dark gray outlines.
         const EpdRect r = key_rect(i);
         if (k <= 9) {
-            ui_fill_round_rect(fb, r, 24, TR_GRAY_SURFACE);
+            ui_fill_round_rect(fb, r, TR_S(24), TR_GRAY_SURFACE);
         } else {
-            ui_draw_round_rect(fb, r, 24, TR_GRAY_OUTLINE);
-            ui_draw_round_rect(fb, ui_inset_rect(r, 1), 23, TR_GRAY_OUTLINE);
+            ui_draw_round_rect(fb, r, TR_S(24), TR_GRAY_OUTLINE);
+            ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(24) - 1, TR_GRAY_OUTLINE);
         }
         char label[8];
         if (k <= 9) snprintf(label, sizeof(label), "%d", k);
         else snprintf(label, sizeof(label), "%s", k == 10 ? "取消" : "删除");
-        const int px = k <= 9 ? 56 : 34;
-        tr_text_on(fb, r.x + KEY_W / 2, r.y + (KEY_H - px) / 2 - 4, px, label, EPD_DRAW_ALIGN_CENTER, k <= 9,
+        const int px = TR_S(k <= 9 ? 56 : 34);
+        tr_text_on(fb, r.x + KEY_W / 2, r.y + (KEY_H - px) / 2 - TR_S(4), px, label, EPD_DRAW_ALIGN_CENTER, k <= 9,
                    UI_GRAY_BLACK, k <= 9 ? TR_GRAY_SURFACE : UI_GRAY_WHITE);
     }
 }
@@ -167,6 +179,14 @@ tr_pin_result_t tr_pin_pad(EpdiyHighlevelState* hl, cst836u_handle_t tp, const c
     }
 }
 
+// 锁定画面的标题和倒计时行；area 是它们占的那一块。/ The locked title and countdown line; area is the block they use.
+static EpdRect locked_area(void) { return (EpdRect){0, TITLE_Y - TR_S(20), TR_W, TR_S(140)}; }
+
+static void draw_locked(uint8_t* fb, const char* line) {
+    tr_text(fb, TR_W / 2, TITLE_Y, TR_S(40), "已锁定", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(fb, TR_W / 2, TITLE_Y + TR_S(72), TR_S(28), line, EPD_DRAW_ALIGN_CENTER, false);
+}
+
 // 输错太多：整屏显示还要等几秒，倒计时到了才回去。电源键照样能锁屏。返回是否被电源键打断。
 // Too many misses: show how long to wait and count down before returning. The power key still locks. Returns whether
 // the power key cut it short.
@@ -190,16 +210,14 @@ static bool wait_penalty(EpdiyHighlevelState* hl, int seconds, int64_t ignore_po
             shown = bucket;
             char line[64];
             snprintf(line, sizeof(line), "输错太多次，%d 秒后再试", left);
-            const EpdRect area = {0, TITLE_Y - 20, TR_W, 140};
+            const EpdRect area = locked_area();
             if (shown * 5 >= seconds - 4) {
                 epd_fill_rect((EpdRect){0, 0, TR_W, TR_H}, UI_GRAY_WHITE, fb);
-                tr_text(fb, TR_W / 2, TITLE_Y, 40, "已锁定", EPD_DRAW_ALIGN_CENTER, true);
-                tr_text(fb, TR_W / 2, TITLE_Y + 72, 28, line, EPD_DRAW_ALIGN_CENTER, false);
+                draw_locked(fb, line);
                 guard_draw_result(hl, update_display_full(hl));
             } else {
                 epd_fill_rect(area, UI_GRAY_WHITE, fb);
-                tr_text(fb, TR_W / 2, TITLE_Y, 40, "已锁定", EPD_DRAW_ALIGN_CENTER, true);
-                tr_text(fb, TR_W / 2, TITLE_Y + 72, 28, line, EPD_DRAW_ALIGN_CENTER, false);
+                draw_locked(fb, line);
                 guard_draw_result(hl, update_display_area_with(hl, &E0470_WAVEFORM, MODE_DU, area));
             }
         }
@@ -209,6 +227,9 @@ static bool wait_penalty(EpdiyHighlevelState* hl, int seconds, int64_t ignore_po
 
 void tr_pin_gate(EpdiyHighlevelState* hl, cst836u_handle_t tp, sc7a20h_handle_t acc, int64_t* ignore_until_ms) {
     if (!app_settings_pin_enabled()) return;
+    // 输错次数从 NVS 读：关机再开不会清掉等待时间。/ Read the wrong-try count from NVS so power-cycling does not
+    // clear the wait.
+    s_fails = app_settings_pin_fails();
     char hint[64] = "";
     for (;;) {
         const int64_t ignore = ignore_until_ms ? *ignore_until_ms : 0;
@@ -228,10 +249,12 @@ void tr_pin_gate(EpdiyHighlevelState* hl, cst836u_handle_t tp, sc7a20h_handle_t 
             memset(pin, 0, sizeof(pin));
             if (ok) {
                 s_fails = 0;
+                app_settings_set_pin_fails(0);
                 ESP_LOGI(TAG, "unlocked");
                 return;
             }
-            s_fails++;
+            if (s_fails < 255) s_fails++;
+            app_settings_set_pin_fails((uint8_t)s_fails);
             ESP_LOGW(TAG, "wrong PIN (%d)", s_fails);
             if (s_fails < FREE_TRIES) snprintf(hint, sizeof(hint), "密码不对，还能试 %d 次", FREE_TRIES - s_fails);
             else snprintf(hint, sizeof(hint), "密码不对");

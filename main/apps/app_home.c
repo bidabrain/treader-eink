@@ -409,6 +409,7 @@ static void on_enter(app_ctx_t* ctx) {
 const app_desc_t app_home = {
     .title = "关于本机",
     .detail = "设备识别码与状态",
+    .fixed_scale = true,
     .enter_full = true,
     .render = render,
     .present = home_present,

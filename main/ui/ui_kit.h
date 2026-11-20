@@ -16,6 +16,7 @@
 
 #include "epdiy.h"
 #include "fallback.h"
+#include "ui_scale.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,48 +43,51 @@ extern "C" {
 // label/value pair also fits the 604px content width at 40px. Dense pages use
 // the _SM pair in two columns and stay readable via alignment and rules, not a
 // smaller size.
-#define UI_PX_TITLE 60
-#define UI_PX_SUB 30
-#define UI_PX_SECTION 30
-#define UI_PX_LABEL 40
-#define UI_PX_VALUE 40
-#define UI_PX_LABEL_SM 28
-#define UI_PX_VALUE_SM 34
-#define UI_PX_BODY 38
-#define UI_PX_CAPTION 28
+#define UI_PX_TITLE UI_S(60)
+#define UI_PX_SUB UI_S(30)
+#define UI_PX_SECTION UI_S(30)
+#define UI_PX_LABEL UI_S(40)
+#define UI_PX_VALUE UI_S(40)
+#define UI_PX_LABEL_SM UI_S(28)
+#define UI_PX_VALUE_SM UI_S(34)
+#define UI_PX_BODY UI_S(38)
+#define UI_PX_CAPTION UI_S(28)
 // 底栏三格时每格只有 157px，按钮字号压到 34 才放得下「复位触摸」这种四字标签。
 // A 3-cell bar is 157px per cell; 34px is what fits a four-character label such as 「复位触摸」.
-#define UI_PX_BTN 34
-#define UI_PX_HERO 92
+#define UI_PX_BTN UI_S(34)
+#define UI_PX_HERO UI_S(92)
 
 // 全页共用的排版：边距、间距、按钮、键值行。/ Shared page metrics: margins, gaps, buttons, key-value rows.
+// 字号、间距、行高、页眉和底栏都随显示大小放大（UI_S，见 ui_scale.h）；左右边距不放大。
+// Sizes, gaps, row heights, the header band and the bottom bar scale with the display size (UI_S, see ui_scale.h);
+// side margins do not.
 #define UI_MARGIN 40
-#define UI_GAP 12
-#define UI_PAD 16
-#define UI_BTN_RADIUS 14
-#define UI_CHIP_RADIUS 8
-#define UI_BTN_H 84
-#define UI_ROW_H 68
-#define UI_ROW_H_SM 58
-#define UI_SECTION_GAP 28
+#define UI_GAP UI_S(12)
+#define UI_PAD UI_S(16)
+#define UI_BTN_RADIUS UI_S(14)
+#define UI_CHIP_RADIUS UI_S(8)
+#define UI_BTN_H UI_S(84)
+#define UI_ROW_H UI_S(68)
+#define UI_ROW_H_SM UI_S(58)
+#define UI_SECTION_GAP UI_S(28)
 
 // ui_draw_section() 占掉的高度：标题字号 + 到分隔线的 8 + 线到首行的 10。
 // Height taken by ui_draw_section(): title size + 8 to the rule + 10 to the first row.
-#define UI_SEC_HEAD (UI_PX_SECTION + 18)
+#define UI_SEC_HEAD (UI_PX_SECTION + UI_S(18))
 
 // 固定页眉带：所有页的标题、副标题、分隔线都在同一组 y 上，翻页时标题不跳。
 // Fixed header band: title, subtitle and rule share the same y so they do not jump on page change.
-#define UI_HEADER_TITLE_Y 32
-#define UI_HEADER_SUB_Y 104
-#define UI_HEADER_RULE_Y 152
-#define UI_CONTENT_TOP 176
+#define UI_HEADER_TITLE_Y UI_S(32)
+#define UI_HEADER_SUB_Y UI_S(104)
+#define UI_HEADER_RULE_Y UI_S(152)
+#define UI_CONTENT_TOP UI_S(176)
 
 // 底栏贴屏幕下沿，右端固定留给菜单按钮，两者同高同基线。
 // Bottom bar sits on the lower edge; the right cell is reserved for the menu button. Same height and baseline.
-#define UI_BAR_H 96
-#define UI_BAR_MARGIN 24
+#define UI_BAR_H UI_S(96)
+#define UI_BAR_MARGIN UI_S(24)
 #define UI_BAR_TOP (UI_LOCK_HEIGHT - UI_BAR_MARGIN - UI_BAR_H)
-#define UI_CONTENT_BOTTOM (UI_BAR_TOP - 20)
+#define UI_CONTENT_BOTTOM (UI_BAR_TOP - UI_S(20))
 
 // 菜单按钮是底栏最右一格，箭头向上表示能打开全屏一级菜单。
 // The menu button is the rightmost bar cell; an up arrow means the root menu can open.

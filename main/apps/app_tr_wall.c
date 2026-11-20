@@ -33,11 +33,14 @@
 #define WALL_DIR "/sdcard/wallpapers"
 #define WALL_MAX 60
 #define NAME_LEN 128
-#define LIST_TOP 280
-#define ROW_H 132
-#define ROWS 6
-#define PAGER_Y 1112
-#define BAND_Y 1064
+// 长度随显示大小放大（壁纸预览图本身不放大）；一页几行按翻页按钮上面剩下的高度算。/ Lengths scale with the
+// display size (the wallpaper preview itself does not); rows per page follow the height left above the pager.
+#define LIST_TOP TR_S(280)
+#define ROW_H TR_S(132)
+#define PAGER_Y (TR_H - TR_S(104))
+#define ROWS ((PAGER_Y - TR_S(20) - LIST_TOP) / ROW_H)
+#define BAND_Y (TR_H - TR_S(152))
+#define TEXT_X (TR_MARGIN + TR_S(110))
 
 extern const app_desc_t app_tr_settings;
 
@@ -90,6 +93,18 @@ static int pages(void) {
     return s_count ? (s_count + ROWS - 1) / ROWS : 1;
 }
 
+// 预览底栏三个按钮：放大后宽度收到一行放得下。/ The preview band's three buttons: at larger sizes their width
+// shrinks so they fit one row.
+static int band_btn_w(void) {
+    const int fit = (TR_W - 2 * TR_MARGIN - 2 * TR_S(17)) / 3;
+    return TR_S(190) < fit ? TR_S(190) : fit;
+}
+
+static int band_mid_x(void) {
+    const int w = band_btn_w();
+    return TR_MARGIN + w + (TR_W - 2 * TR_MARGIN - 3 * w) / 2;
+}
+
 static void free_preview(void) {
     heap_caps_free(s_preview);
     s_preview = NULL;
@@ -99,22 +114,23 @@ static void free_preview(void) {
 
 static void draw_list(uint8_t* fb) {
     tr_status_bar(fb);
-    tr_text(fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, 96, 100, 36, "锁屏壁纸", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(fb, TR_MARGIN, TR_S(96), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_MARGIN + TR_S(56), TR_S(100), TR_S(36), "锁屏壁纸", EPD_DRAW_ALIGN_LEFT, true);
     char line[160];
     const char* cur = strrchr(s_current, '/');
     snprintf(line, sizeof(line), "当前：%.120s", s_current[0] ? (cur ? cur + 1 : s_current) : "书卡样式（不用壁纸）");
-    tr_fit(line, 28, TR_W - 2 * TR_MARGIN - (s_current[0] ? 190 : 0));
-    tr_text(fb, TR_MARGIN, 172, 28, line, EPD_DRAW_ALIGN_LEFT, false);
-    if (s_current[0]) tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 170, 160, 170, 56}, "不用壁纸", false, 28);
-    if (s_msg[0]) tr_text(fb, TR_MARGIN, 228, 26, s_msg, EPD_DRAW_ALIGN_LEFT, true);
+    tr_fit(line, TR_S(28), TR_W - 2 * TR_MARGIN - (s_current[0] ? TR_S(190) : 0));
+    tr_text(fb, TR_MARGIN, TR_S(172), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
+    if (s_current[0])
+        tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - TR_S(170), TR_S(160), TR_S(170), TR_S(56)}, "不用壁纸", false, TR_S(28));
+    if (s_msg[0]) tr_text(fb, TR_MARGIN, TR_S(228), TR_S(26), s_msg, EPD_DRAW_ALIGN_LEFT, true);
 
     if (s_no_card) {
-        tr_wrap(fb, TR_MARGIN, LIST_TOP + 20, TR_W - 2 * TR_MARGIN, 30, 46, "没有检测到 TF 卡。", 2);
+        tr_wrap(fb, TR_MARGIN, LIST_TOP + TR_S(20), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46), "没有检测到 TF 卡。", 2);
         return;
     }
     if (!s_count) {
-        tr_wrap(fb, TR_MARGIN, LIST_TOP + 20, TR_W - 2 * TR_MARGIN, 30, 46,
+        tr_wrap(fb, TR_MARGIN, LIST_TOP + TR_S(20), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 "把 JPG 或 PNG 图片放进 TF 卡的 wallpapers 文件夹，再回到这里。建议竖图 684×1216，单张不超过 2 MB。", 5);
         return;
     }
@@ -124,15 +140,15 @@ static void draw_list(uint8_t* fb) {
         const int top = LIST_TOP + row * ROW_H;
         char path[NAME_LEN + 24];
         path_of(i, path, sizeof(path));
-        tr_book_mini_cover(fb, (EpdRect){TR_MARGIN, top + 8, 87, 116}, path, s_names[i], false);
+        tr_book_mini_cover(fb, (EpdRect){TR_MARGIN, top + TR_S(8), TR_S(87), TR_S(116)}, path, s_names[i], false);
         snprintf(line, sizeof(line), "%s", s_names[i]);
-        tr_fit(line, 32, TR_W - TR_MARGIN - 150);
-        tr_text(fb, 150, top + 22, 32, line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_fit(line, TR_S(32), TR_W - TR_MARGIN - TEXT_X);
+        tr_text(fb, TEXT_X, top + TR_S(22), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, false);
         const bool current = !strcmp(path, s_current);
         snprintf(line, sizeof(line), "%.1f MB%s", s_sizes[i] / 1048576.0, current ? " · 当前壁纸" : "");
-        if (current) tr_text(fb, 150, top + 72, 26, line, EPD_DRAW_ALIGN_LEFT, true);
-        else tr_text_dim(fb, 150, top + 72, 26, line, EPD_DRAW_ALIGN_LEFT);
-        tr_hline(fb, top + ROW_H - 2, 150, TR_W - TR_MARGIN - 150, true);
+        if (current) tr_text(fb, TEXT_X, top + TR_S(72), TR_S(26), line, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(fb, TEXT_X, top + TR_S(72), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
+        tr_hline(fb, top + ROW_H - 2, TEXT_X, TR_W - TR_MARGIN - TEXT_X, true);
     }
     tr_pager(fb, PAGER_Y, s_page, pages());
 }
@@ -143,9 +159,10 @@ static void draw_preview(uint8_t* fb) {
     tr_hline(fb, BAND_Y, 0, TR_W, true);
     // 三个按钮：设为壁纸、删除（点一次变黑底“确认删除”）、返回。/ Three buttons: set, delete (one tap turns it into a
     // filled "confirm"), back.
-    tr_pill(fb, (EpdRect){TR_MARGIN, BAND_Y + 40, 190, 80}, "设为壁纸", true, 30);
-    tr_pill(fb, (EpdRect){TR_MARGIN + 207, BAND_Y + 40, 190, 80}, s_confirm_del ? "确认删除" : "删除", s_confirm_del, 30);
-    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - 190, BAND_Y + 40, 190, 80}, "返回", false, 30);
+    const int w = band_btn_w(), y = BAND_Y + TR_S(40), h = TR_S(80), px = TR_S(30);
+    tr_pill(fb, (EpdRect){TR_MARGIN, y, w, h}, "设为壁纸", true, px);
+    tr_pill(fb, (EpdRect){band_mid_x(), y, w, h}, s_confirm_del ? "确认删除" : "删除", s_confirm_del, px);
+    tr_pill(fb, (EpdRect){TR_W - TR_MARGIN - w, y, w, h}, "返回", false, px);
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
@@ -199,18 +216,19 @@ static app_redraw_t turn_page(int turn) {
 static app_redraw_t tap(app_ctx_t* ctx, int x, int y) {
     if (s_view == V_LOADING) return APP_REDRAW_NONE;
     if (s_view == V_PREVIEW) {
-        if (y < BAND_Y + 20) {
+        if (y < BAND_Y + TR_S(20)) {
             // 点图片别处取消“确认删除”。/ Tapping the image cancels a pending delete.
             if (!s_confirm_del) return APP_REDRAW_NONE;
             s_confirm_del = false;
             return APP_REDRAW_PAGE;
         }
-        if (x >= TR_MARGIN + 197 && x < TR_MARGIN + 407) {
+        const int mid = band_mid_x();
+        if (x >= mid - 10 && x < mid + band_btn_w() + 10) {
             if (s_confirm_del) return delete_selected();
             s_confirm_del = true;
             return APP_REDRAW_PAGE;
         }
-        if (x < TR_MARGIN + 197) {
+        if (x < mid - 10) {
             char path[NAME_LEN + 24];
             path_of(s_sel, path, sizeof(path));
             tr_lock_wallpaper_set(path);
@@ -219,9 +237,9 @@ static app_redraw_t tap(app_ctx_t* ctx, int x, int y) {
         }
         return back_to_list();
     }
-    if (y < 160 && x < 120) { leave(ctx); return APP_REDRAW_NONE; }
+    if (y < TR_S(160) && x < TR_S(120)) { leave(ctx); return APP_REDRAW_NONE; }
     s_msg[0] = 0;
-    if (s_current[0] && y >= 150 && y < 226 && x > TR_W - TR_MARGIN - 190) {
+    if (s_current[0] && y >= TR_S(150) && y < TR_S(226) && x > TR_W - TR_MARGIN - TR_S(190)) {
         tr_lock_wallpaper_set(NULL);
         s_current[0] = 0;
         snprintf(s_msg, sizeof(s_msg), "锁屏改回书卡样式");
