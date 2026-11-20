@@ -107,14 +107,9 @@ static void hr_shelf(app_ctx_t* ctx, const char* scene) {
     hr_allow_fit();
     hr_shot(scene);
 }
-
-void hr_scenes(void) {
-    app_ctx_t ctx = {.fb = hr_fb};
-
-    // 书架：继续阅读卡片、番茄更新、图片和文字封面。/ Shelf: continue card, Tomato updates, image and text covers.
-    hr_shelf(&ctx, "shelf");
-
-    // 阅读页：真实排版的正文，显示本章第 2 页。/ Reader: real layout body on page 2 of the chapter.
+// 打开阅读页：真实排版的正文，停在本章第 2 页，画好但不截图。/ Open the reader: real layout body on page 2 of the
+// chapter, drawn but not shot.
+static void hr_reader(app_ctx_t* ctx) {
     hr_reset();
     s_view = READING;
     s_text = s_hr_text;
@@ -126,7 +121,17 @@ void hr_scenes(void) {
     apply_style();
     if (!book_layout_build(s_text, s_text_len, body_rect(), s_px)) printf("layout failed\n");
     s_page = book_layout_page_count() > 1 ? 1 : 0;
-    render(&ctx, hr_fb);
+    render(ctx, hr_fb);
+}
+
+void hr_scenes(void) {
+    app_ctx_t ctx = {.fb = hr_fb};
+
+    // 书架：继续阅读卡片、番茄更新、图片和文字封面。/ Shelf: continue card, Tomato updates, image and text covers.
+    hr_shelf(&ctx, "shelf");
+
+    // 阅读页：真实排版的正文，显示本章第 2 页。/ Reader: real layout body on page 2 of the chapter.
+    hr_reader(&ctx);
     hr_no_bar_check();
     hr_shot("reader");
 
@@ -138,6 +143,36 @@ void hr_scenes(void) {
     hr_no_bar_check();
     hr_shot("toolbar");
     s_toolbar = false;
+    book_layout_free();
+    s_text = NULL;
+
+    // 设计文档（docs/design/ui.html）的图：书架、阅读、工具条（自动翻页 15 秒）、排版面板。
+    // Design doc (docs/design/ui.html) figures: shelf, reader, toolbar (auto turn at 15 s), layout panel.
+    hr_shelf(&ctx, "ui0");
+    hr_reader(&ctx);
+    hr_no_bar_check();
+    hr_shot("ui1");
+    s_toolbar = true;
+    s_auto_level = 5;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("ui2");
+    // 排版面板：首行缩进选“缩进两字”，按新样式重排后再画。/ Layout panel with the two-character indent chosen,
+    // re-laid out with the new style before drawing.
+    book_layout_free();
+    s_style.indent = 1;
+    apply_style();
+    if (!book_layout_build(s_text, s_text_len, body_rect(), s_px)) printf("layout failed\n");
+    s_page = book_layout_page_count() > 1 ? 1 : 0;
+    s_typeset = true;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("ui3");
+    s_typeset = s_toolbar = false;
+    s_style.indent = 0;
+    s_auto_level = 0;
     book_layout_free();
     s_text = NULL;
 

@@ -1,8 +1,8 @@
 /*
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
- * 中文：书城的演示截图（README / 网站预览图用）：首页、榜单网格、书籍详情。
- * English: Demo shots of the bookstore (README / site previews): home, rank grid and book detail.
+ * 中文：书城的演示截图（README / 网站预览图和设计文档用）：首页、榜单网格、书籍详情。
+ * English: Demo shots of the bookstore (README / site previews and the design doc): home, rank grid and book detail.
  * 冻结：只在电脑上跑。/ Frozen: host-only.
  */
 #include "app_tr_store.c"   // 按 -I 找 / Found via -I
@@ -74,8 +74,19 @@ static const demo_book_t BOOKS[] = {
     {"灵境行者", "卖报小郎君", "41.2万"},   {"夜的命名术", "会说话的肘子", "37.8万"},
     {"超神机械师", "齐佩甲", "29.5万"},     {"万族之劫", "老鹰吃小鸡", "26.4万"},
     {"修真聊天群", "圣骑士的传说", "21.7万"},
+    // 下面这些只在整份榜单（20 本）里用。/ The rest are used only for the full 20-book list.
+    {"我的治愈系游戏", "我会修空调", "19.8万"}, {"全球高武", "老鹰吃小鸡", "18.4万"},
+    {"从红月开始", "黑山老鬼", "16.9万"},     {"神秘复苏", "佛前献花", "15.2万"},
+    {"我有一座冒险屋", "我会修空调", "14.6万"}, {"重生之都市修仙", "十里剑神", "13.1万"},
+    {"异常生物见闻录", "远瞳", "12.7万"},     {"我的1979", "争斤论两花花帽", "11.9万"},
+    {"放开那个女巫", "二目", "10.8万"},       {"深夜书店的猫", "林中小径", "9.6万"},
+    {"学霸的黑科技系统", "晨星LL", "9.1万"},
 };
-#define BOOK_N ((int)(sizeof(BOOKS) / sizeof(BOOKS[0])))
+#define BOOK_ALL ((int)(sizeof(BOOKS) / sizeof(BOOKS[0])))
+// 预览图只用前 9 本（一页）；设计文档的榜单用满 20 本。/ Previews use the first 9 (one page); the design doc's rank
+// list uses all 20.
+static int s_book_n = 9;
+#define BOOK_N s_book_n
 
 static const char* const INTRO =
     "灵气复苏的年代，洛城高三学生吕树意外得到一个古怪的系统：别人冲他生出的负面情绪，都会变成他修行用的能量。"
@@ -140,4 +151,22 @@ void hr_scenes(void) {
     s_detail = 0;
     hr_allow_fit();
     demo_shot("detail");
+
+    // 设计文档 ㉒ 书城首页（搜索栏在最上面）。/ Design doc ㉒ bookstore home (search bar on top).
+    demo_reset();
+    demo_shot("ui26");
+
+    // ㉓ 分类榜单：整份 20 本，第 1 页。/ ㉓ Rank list: all 20 books, page 1.
+    s_book_n = BOOK_ALL;
+    demo_reset();
+    s_view = V_RANK;
+    hr_allow_fit();
+    demo_shot("ui27");
+
+    // ㉔ 书城详情。/ ㉔ Store detail.
+    demo_reset();
+    s_view = V_DETAIL;
+    s_detail = 0;
+    hr_allow_fit();
+    demo_shot("ui28");
 }

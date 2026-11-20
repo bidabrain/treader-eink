@@ -124,7 +124,7 @@
 
 ![自动锁屏与锁屏密码](docs/images/screens-lock.png)
 
-全部界面和每个页面的功能：[docs/design/ui.html](docs/design/ui.html)（下载后用浏览器打开；示意图还是 0.9.0 之前的旧样式，布局和功能说明仍可参考）。
+全部界面和每个页面的功能：[docs/design/ui.html](docs/design/ui.html)（下载后用浏览器打开，每一屏都是真实界面代码画出的截图）。
 
 ## 硬件
 

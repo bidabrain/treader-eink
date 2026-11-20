@@ -22,4 +22,17 @@ void hr_scenes(void) {
     hr_no_bar_check();
     draw_locked(hr_fb, "输错太多次，268 秒后再试");
     hr_shot("locked");
+
+    // 设计文档 ui.html 的图（编号见 docs/local/ui-figures.json）。/ Figures for the design doc ui.html (numbers from
+    // docs/local/ui-figures.json).
+    hr_no_bar_check();
+    draw_all(hr_fb, "设置锁屏密码", "输入 4 位数字", 2, true);
+    hr_shot("ui63");
+    hr_no_bar_check();
+    draw_all(hr_fb, "输入密码解锁", "", 1, false);
+    hr_shot("ui64");
+    // 第 6 次输错后要等 60 秒，倒计时走了几秒。/ After the sixth miss the wait is 60 s, a few seconds in.
+    hr_no_bar_check();
+    draw_locked(hr_fb, "输错太多次，55 秒后再试");
+    hr_shot("ui65");
 }

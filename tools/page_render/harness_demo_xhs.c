@@ -213,15 +213,40 @@ void hr_scenes(void) {
     s_rec_time = 1795275780 - 23 * 60;
     s_rec_left = 3;
     shot(&ctx, "recommend");
+    shot(&ctx, "ui30");
+
+    // 点开一篇还没下载的推荐：等待框。/ Opening a recommendation not yet downloaded: the wait dialog.
+    s_wait = true;
+    snprintf(s_wait_id, sizeof(s_wait_id), "r1");
+    s_has_pending = true;
+    s_pending = (tomato_red_req_t){.job = TOMATO_RED_NOTE};
+    shot(&ctx, "ui31");
+    s_wait = false;
+    s_has_pending = false;
 
     s_seg = SEG_FOLLOW;
+    fill_follow();
+    shot(&ctx, "ui29");
+
     note();
     s_view = V_IMAGE;
     s_image = 0;
     shot(&ctx, "image");
 
+    // 设计文档：第 2 张、工具条、存好的提示框。/ Design doc: image 2, the toolbar, the saved notice.
+    s_image = 1;
+    shot(&ctx, "ui32");
+    tr_wallsave_open(&s_ws);
+    shot(&ctx, "ui33");
+    tr_wallsave_close(&s_ws);
+    snprintf(s_ws.title, sizeof(s_ws.title), "已存为壁纸");
+    snprintf(s_ws.line, sizeof(s_ws.line), "小红书_小鹿在路上_2.jpg\n到 设置 › 显示与阅读 › 锁屏壁纸 里选用");
+    shot(&ctx, "ui34");
+    tr_wallsave_close(&s_ws);
+
     s_view = V_TEXT;
     s_tab = T_BODY;
     s_page = 0;
     shot(&ctx, "note");
+    shot(&ctx, "ui35");
 }

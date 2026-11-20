@@ -28,4 +28,11 @@ void hr_scenes(void) {
     on_enter(&ctx);
     render(&ctx, hr_fb);
     hr_shot("all");
+
+    // 设计文档新图：在虎扑按 KEY3 打开，第一页。/ New doc figure: opened with KEY3 from Hupu, first page.
+    s_origin = &s_feature[TR_TAB_HUPU];
+    on_enter(&ctx);
+    s_page = 0;
+    render(&ctx, hr_fb);
+    hr_shot("new_all");
 }

@@ -37,7 +37,35 @@ bool tomato_config_has_builtin(void) { return false; }
 bool tr_time_valid(void) { return true; }
 static const esp_app_desc_t s_desc = {.version = "0.9.0", .date = "Nov 21 2026", .time = "15:43:00"};
 const esp_app_desc_t* esp_app_get_description(void) { return &s_desc; }
-void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) { epd_fill_rect(area, 0xFF, fb); }
+// 演示二维码：三个定位角加伪随机的模块，看起来像一张真的二维码。/ Demo QR code: three finder squares plus
+// pseudo-random modules, so it reads like a real code.
+void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
+    enum { N = 29 };
+    const int m = area.width / (N + 4), ox = area.x + (area.width - N * m) / 2, oy = area.y + (area.height - N * m) / 2;
+    epd_fill_rect(area, 0xFF, fb);
+    uint32_t seed = 2463534242u;
+    for (int r = 0; r < N; r++)
+        for (int c = 0; c < N; c++) {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            bool on = seed & 1;
+            const int fr = r < 8 ? 0 : r >= N - 8 ? N - 7 : -1, fc = c < 8 ? 0 : c >= N - 8 ? N - 7 : -1;
+            if (fr >= 0 && fc >= 0 && !(fr && fc)) {
+                const int dr = r - fr, dc = c - fc;
+                if (dr == 7 || dc == 7 || dr < 0 || dc < 0) on = false;   // 定位角外的白边 / Quiet ring
+                else {
+                    int d = dr < dc ? dr : dc;
+                    if (6 - dr < d) d = 6 - dr;
+                    if (6 - dc < d) d = 6 - dc;
+                    on = d != 1;
+                }
+            }
+            if (r == 6 && c >= 8 && c < N - 8) on = c % 2 == 0;   // 定时线 / Timing pattern
+            if (c == 6 && r >= 8 && r < N - 8) on = r % 2 == 0;
+            if (on) epd_fill_rect((EpdRect){ox + c * m, oy + r * m, m, m}, 0x00, fb);
+        }
+}
 
 // 设置模块的存储替身：写入都算成功，好让锁屏密码显示“已开启”。/ Storage stand-ins for the settings module: writes
 // succeed so the lock PIN shows as on.
@@ -94,4 +122,52 @@ void hr_scenes(void) {
     page(P_TABS, "tabs");
     hr_allow_fit();
     page(P_POWER, "power");
+
+    // 设计文档 ui.html 的图：编号对应 docs/local/ui-figures.json。/ Figures for the design doc ui.html; numbers follow
+    // docs/local/ui-figures.json.
+    hr_allow_fit();
+    page(P_TRANSFER, "ui17");
+    hr_allow_fit();
+    page(P_HOME, "ui49");
+    page(P_TABS, "ui50");
+    hr_allow_fit();
+    page(P_SOURCES, "ui51");
+    // 微博来源页：已填地址和令牌，刚测试过。/ Weibo source page: address and token filled, just tested.
+    snprintf(s_host[S_WB].token, sizeof(s_host[S_WB].token), "wb-7f3a9c21e5d84b06");
+    snprintf(s_test_result[S_WB], sizeof(s_test_result[0]), "正常 · 关注 86 条");
+    s_srv = S_WB;
+    hr_allow_fit();
+    page(P_SRC_SERVER, "ui52");
+    // 手机网页填写打开后（小红书页，连着家里的 Wi-Fi）。/ Web form switched on (Xiaohongshu page, on home Wi-Fi).
+    s_srv = S_RED;
+    s_web_on = true;
+    memset(&s_web_status, 0, sizeof(s_web_status));
+    s_web_status.network_ready = true;
+    s_web_status.mode = READ_PICO_TRANSFER_MODE_STA;
+    snprintf(s_web_status.wifi_ssid, sizeof(s_web_status.wifi_ssid), "Home-5G");
+    snprintf(s_web_status.url, sizeof(s_web_status.url), "http://192.168.1.37");
+    page(P_SRC_SERVER, "ui53");
+    s_web_on = false;
+    hr_no_bar_check();
+    page(P_ABOUT, "ui55");
+    hr_allow_fit();
+    page(P_POWER, "ui62");
+    // 时间与时区：画关掉自动校时后的样子。/ Time and zone, drawn with automatic time switched off.
+    app_settings_set_time_auto(false);
+    page(P_TIME, "ui66");
+    tset_begin();
+    page(P_TSET, "ui67");
+    app_settings_set_time_auto(true);
+
+    // 文档新加的图。/ New figures for the doc.
+    hr_allow_fit();
+    page(P_DISPLAY, "new_display");
+    app_settings_set_display_size(2);   // 特大 / Largest
+    ui_set_scale(130);
+    hr_begin();
+    hr_allow_fit();
+    page(P_HOME, "new_display_large");
+    app_settings_set_display_size(0);
+    ui_set_scale(100);
+    hr_begin();
 }

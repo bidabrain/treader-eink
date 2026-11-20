@@ -243,10 +243,25 @@ void hupu_img_draw(uint8_t* fb, int x, int y, int w, int h, const uint8_t* px, b
     }
 }
 
+// 话名：系列页和工具条用。/ Episode names for the series page and the toolbar.
+static const char* const EPISODES[24] = {
+    "初夏", "转学生", "防波堤", "旧相机", "雨天的约定", "夜市", "灯塔下", "潮声", "海风信", "退潮以后", "萤火",
+    "台风前夜", "停电", "晴空", "渡船", "运动会", "秋祭", "第一封信", "海雾", "冬日海岸", "归港", "初雪", "新年参拜",
+    "春汛"};
+
+// 进度替身：海边的少年前 7 话看完、第 8 话看到第 23 页，其余没看。/ Progress stand-in: the first 7 episodes of the
+// seaside series are finished, episode 8 is at page 23, the rest unread.
 bool comic_progress_get(const char* path, comic_progress_t* out) {
-    (void)path;
     memset(out, 0, sizeof(*out));
-    return false;
+    const char* p = strstr(path, "海边的少年/第");
+    if (!p) return false;
+    const int n = atoi(p + strlen("海边的少年/第"));
+    if (n < 1 || n > 8) return false;
+    out->pages = n == 8 ? 52 : 48 + n % 5;
+    out->page = n == 8 ? 22 : out->pages - 1;
+    out->done = n < 8;
+    out->stamp = (uint32_t)n;
+    return true;
 }
 
 static comic_entry_t s_demo_shelf[DEMO_COUNT];
@@ -285,7 +300,22 @@ static void setup(void) {
     s_last_pages = 52;
     s_series = 0;
     s_vol_count = 24;
-    for (int i = 0; i < 24; i++) snprintf(s_vols[i], COMIC_NAME_MAX, "第%d话.cbz", i + 1);
+    for (int i = 0; i < 24; i++) snprintf(s_vols[i], COMIC_NAME_MAX, "第%02d话 %s.cbz", i + 1, EPISODES[i]);
+}
+
+// 阅读器停在海边的少年第 8 话第 23 页。/ The reader sits on page 23 of episode 8 of the seaside series.
+static void setup_reader(void) {
+    setup();
+    s_view = V_READ;
+    s_buf[0] = (pagebuf_t){.idx = 22, .w = PAGE_W, .h = PAGE_H, .px = s_page_px};
+    s_buf[1].idx = -1;
+    snprintf(s_book_title, sizeof(s_book_title), "第08话 潮声");
+    s_cur = 22;
+    s_page_count = 52;
+    s_vol_index = 7;
+    s_rtl = true;
+    s_toolbar = false;
+    s_message[0] = 0;
 }
 
 void hr_scenes(void) {
@@ -308,4 +338,33 @@ void hr_scenes(void) {
     hr_no_bar_check();
     render(&ctx, hr_fb);
     hr_shot("reader");
+
+    // 设计文档 ui.html 的漫画图。/ Comics figures for the ui.html design doc.
+    setup();
+    s_view = V_SHELF;
+    render(&ctx, hr_fb);
+    hr_shot("ui6");
+
+    // 系列页：默认翻到“在看”那一页（第 2 页，第 8～14 话）。/ Series page on the "reading" page (page 2, episodes 8-14).
+    setup();
+    s_view = V_SERIES;
+    s_ser_done = 7;
+    s_ser_resume = 7;
+    s_ser_page = 22;
+    s_ser_dir = 1;
+    s_vol_page = s_ser_resume / ROWS_PER;
+    render(&ctx, hr_fb);
+    hr_shot("ui7");
+
+    setup_reader();
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui8");
+
+    setup_reader();
+    s_toolbar = true;
+    s_auto_level = 0;
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui9");
 }

@@ -32,4 +32,37 @@ void hr_scenes(void) {
     hr_no_bar_check();
     render(&ctx, hr_fb);
     hr_shot("running");
+
+    // 设计文档 ui.html 的 USB 传书图。/ USB transfer figures for the ui.html design doc.
+    on_enter(&ctx);
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui18");
+
+    s_view = V_RUN;
+    s_failed = false;
+    s_msg[0] = 0;
+    memset(&s_st, 0, sizeof(s_st));
+    s_st.state = READ_PICO_USB_CONNECTED;
+    s_st.write_bytes = 286ull * 1048576 + 420000ull;
+    s_st.read_bytes = 12ull * 1048576 + 300000ull;
+    s_st.io_ms = esp_timer_get_time() / 1000;
+    s_power = true;
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui19");
+
+    // 没弹出就点结束：读写已停，确认框盖在传输页上。/ End before ejecting: I/O idle, the dialog over the run view.
+    s_st.write_bytes = 1240ull * 1048576 + 512000ull;
+    s_st.read_bytes = 18ull * 1048576 + 600000ull;
+    s_st.io_ms = 0;
+    s_view = V_CONFIRM;
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui20");
+
+    s_view = V_RESTART;
+    hr_no_bar_check();
+    render(&ctx, hr_fb);
+    hr_shot("ui21");
 }

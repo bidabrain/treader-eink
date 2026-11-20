@@ -1,8 +1,10 @@
 /*
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
- * 中文：虎扑的演示截图（README / 网站预览图用）：推荐列表、帖子正文、比分、比赛评分。
- * English: Demo shots of Hupu (README / site previews): feed, thread body, scores and match ratings.
+ * 中文：虎扑的演示截图（README / 网站预览图和设计文档用）：推荐、关注、全部专区、专区帖子、帖子正文与亮了、看大图、
+ * 比分、比赛评分。
+ * English: Demo shots of Hupu (README / site previews and the design doc): feed, following, all zones, zone posts,
+ * thread body and lit replies, image view, scores and match ratings.
  * 冻结：只在电脑上跑。/ Frozen: host-only.
  */
 #include "app_tr_hupu.c"   // 按 -I 找 / Found via -I
@@ -57,7 +59,7 @@ static const demo_item_t ITEMS[] = {
     {"勇士背靠背作战，主教练赛后谈轮换安排", "勇士专区", 653, true},
     {"CBA 常规赛：辽宁主场大胜，外援砍下 35 分", "CBA", 541, true},
     {"家里老人想换手机，三千价位有什么推荐？", "数码区", 452, false},
-    {"总决赛落幕，今年这届全球赛你打几分？", "英雄联盟", 2981, true},
+    {"总决赛落幕，五局大战打满，今年这届全球赛你打几分？", "英雄联盟", 2981, true},
     {"第一次自己做红烧肉，卖相还过得去吧", "步行街主干道", 196, true},
 };
 #define ITEM_N ((int)(sizeof(ITEMS) / sizeof(ITEMS[0])))
@@ -236,6 +238,181 @@ static void demo_rating(void) {
     s_rate_page = 0;
 }
 
+/* ---- 设计文档用的补充内容 / Extra content for the design doc ---- */
+
+// 帖子正文后面再加两张图，看大图时是“图 n / 3”。/ Two more images after the body so the image view shows "n / 3".
+static void demo_post_more_images(void) {
+    static const char* const P4 = "赛后球员们在场边和球迷合影，给大家放两张现场照片。";
+    block_t* b = &s_blocks[s_block_count++];
+    memset(b, 0, sizeof(*b));
+    b->text = P4;
+    for (int i = 0; i < 2; i++) {
+        b = &s_blocks[s_block_count++];
+        memset(b, 0, sizeof(*b));
+        b->image = true;
+        snprintf(b->jpg, sizeof(b->jpg), "post_fans_%d.jpg", i);
+        b->w = CW;
+        b->h = 400;
+    }
+    layout_body();
+}
+
+// 亮了：几条热门回复，有长有短，带一条引用。/ Lit replies: long and short, one with a quote.
+typedef struct {
+    const char* user;
+    const char* quote;
+    const char* text;
+    int lights;
+} demo_reply_t;
+
+static const demo_reply_t LIGHTS[] = {
+    {"湖畔老球迷", NULL, "末节那波防守是真的硬，连续三个回合逼出对手失误，教练这次的换人终于换对了。", 862},
+    {"紫金岁月", NULL, "替补今天打得很好，轮换终于有点样子了。", 691},
+    {"篮下小钢炮", "湖畔老球迷：末节那波防守是真的硬",
+     "同意，而且防守阵容上场以后篮板也护住了，前三节被抢了那么多前场板，末节一个都没让对面拿到。", 534},
+    {"夜猫看球", NULL, "现场看的，气氛太好了，终场全场起立鼓掌，回家路上大家还在聊最后那波反击。", 418},
+    {"三分雨中漫步", NULL, "这场的集锦我已经看了三遍了。", 307},
+    {"西海岸的风", NULL,
+     "说句公道话，勇士今天外线手感其实不错，第三节差点就被他们打出来了。最后输在体能上，背靠背的第二场，"
+     "末节明显腿软。下一场我们也是背靠背客场打掘金，同样的问题也得注意，主力的上场时间要控制好，"
+     "别到了季后赛又是一身伤。",
+     256},
+    {"老王说球", NULL, "下一场背靠背打掘金，体能是个考验，希望主力上场时间能控制一下。", 198},
+};
+
+static void demo_lights(void) {
+    const int n = (int)(sizeof(LIGHTS) / sizeof(LIGHTS[0]));
+    s_light_count = n;
+    for (int i = 0; i < n; i++) {
+        reply_t* r = &s_lights[i];
+        r->user = LIGHTS[i].user;
+        r->quote = LIGHTS[i].quote;
+        r->text = LIGHTS[i].text;
+        r->lights = LIGHTS[i].lights;
+    }
+    layout_replies(0);
+}
+
+// 关注：5 个专区的帖子轮流混排。/ Following: posts from five zones interleaved.
+typedef struct {
+    const char* title;
+    int zone;
+    int replies;
+} demo_follow_t;
+
+static const char* const FOLLOW_ZONES[] = {"步行街主干道", "湖人专区", "英雄联盟", "数码区", "跑步"};
+static const demo_follow_t FOLLOW_POSTS[] = {
+    {"下班路上捡到一只橘猫，带回家三个月了，现在它已经是家里的老大，晒几张照片给大家看看", 0, 2310},
+    {"主场力克勇士，赛后更衣室里大家都很放松", 1, 856},
+    {"总决赛落幕，五局大战打满，今年这届全球赛你打几分？", 2, 2981},
+    {"用了三个月墨水屏阅读器，说说真实感受", 3, 421},
+    {"第一次跑完半马，用时 2 小时 05 分，最后三公里真的是咬着牙跑下来的，纪念一下", 4, 312},
+    {"大家每天花多少时间看手机？", 0, 1288},
+    {"赛后采访：主教练谈最后两分钟的处理，称球员执行得很坚决", 1, 432},
+    {"新版本上路野辅联动，大家觉得哪套阵容最强？", 2, 350},
+    {"家里老人想换手机，三千价位有什么推荐？", 3, 452},
+    {"冬天跑步膝盖总不舒服，大家一般怎么热身？", 4, 287},
+    {"周末去爬了趟黄山，云海拍得还行", 0, 418},
+    {"今晚轮换：替补阵容有调整", 1, 298},
+    {"冬季转会窗口开启，各队阵容变化汇总", 2, 765},
+    {"降噪耳机用了一周，说说真实的使用感受", 3, 365},
+    {"晨跑还是夜跑？说说你的习惯", 4, 174},
+    {"第一次自己做红烧肉，卖相还过得去吧", 0, 196},
+    {"数据流：主场大胜，三人得分上二十", 1, 177},
+    {"有没有一起开黑的，周末晚上固定车队", 2, 143},
+    {"旧笔记本加了内存条，又能再战三年", 3, 209},
+    {"给大家推荐几条城市里适合跑步的路线", 4, 131},
+};
+
+static void demo_follow(void) {
+    s_follow_count = 5;
+    for (int i = 0; i < 5; i++) {
+        snprintf(s_follows[i].id, sizeof(s_follows[i].id), "%d", 30 + i);
+        snprintf(s_follows[i].name, sizeof(s_follows[i].name), "%s", FOLLOW_ZONES[i]);
+    }
+    s_item_count = 0;
+    for (int i = 0; i < (int)(sizeof(FOLLOW_POSTS) / sizeof(FOLLOW_POSTS[0])); i++) {
+        item_t* x = &s_items[s_item_count++];
+        snprintf(x->tid, sizeof(x->tid), "64%06d", 120400 + i * 613);
+        snprintf(x->title, sizeof(x->title), "%s", FOLLOW_POSTS[i].title);
+        snprintf(x->meta, sizeof(x->meta), "%s · %d 回复", FOLLOW_ZONES[FOLLOW_POSTS[i].zone], FOLLOW_POSTS[i].replies);
+        x->jpg[0] = 0;   // 关注流不取缩略图 / The following feed has no thumbnails
+    }
+}
+
+// 全部专区：选中 NBA 分类，5 个专区已关注。/ All zones: the NBA category, five zones followed.
+static const char* const ZONE_CATS[] = {"步行街", "NBA", "CBA", "国际足球", "中国足球", "综合体育",
+                                        "影视娱乐", "游戏", "二次元", "装备", "数码", "汽车"};
+static const char* const NBA_ZONES[] = {
+    "NBA", "湖人专区", "勇士专区", "凯尔特人", "火箭专区", "骑士专区", "马刺专区", "篮网专区", "雷霆专区",
+    "掘金专区", "76人专区", "快船专区", "尼克斯", "独行侠", "国王专区", "热火专区", "公牛专区", "老鹰专区",
+    "魔术专区", "太阳专区", "雄鹿专区", "森林狼", "开拓者", "爵士专区", "鹈鹕专区", "灰熊专区", "猛龙专区",
+    "步行者", "活塞专区", "黄蜂专区", "奇才专区", "NBA 选秀", "篮球场", "篮球装备"};
+// 其他分类只放几个，截图里看不到。/ Other categories get a few zones; they are not on screen.
+static const char* const OTHER_ZONES[] = {"步行街主干道", "英雄联盟", "数码区", "跑步", "影视区", "汽车区"};
+
+static void demo_zones(void) {
+    const int nc = (int)(sizeof(ZONE_CATS) / sizeof(ZONE_CATS[0]));
+    s_cat_count = nc;
+    s_zone_count = 0;
+    for (int c = 0; c < nc; c++) {
+        snprintf(s_cats[c].name, sizeof(s_cats[c].name), "%s", ZONE_CATS[c]);
+        s_cats[c].first = (int16_t)s_zone_count;
+        const int n = c == 1 ? (int)(sizeof(NBA_ZONES) / sizeof(NBA_ZONES[0])) : 6;
+        for (int z = 0; z < n; z++) {
+            snprintf(s_zones[s_zone_count].id, sizeof(s_zones[0].id), "%d", 100 + s_zone_count);
+            snprintf(s_zones[s_zone_count].name, sizeof(s_zones[0].name), "%s", c == 1 ? NBA_ZONES[z] : OTHER_ZONES[z]);
+            s_zone_count++;
+        }
+        s_cats[c].count = (int16_t)n;
+    }
+    // 关注湖人、勇士和另外三个专区。/ Follow 湖人, 勇士 and three other zones.
+    const int nba = s_cats[1].first;
+    const int picks[] = {nba + 1, nba + 2, s_cats[0].first, s_cats[7].first + 1, s_cats[10].first + 2};
+    s_follow_count = 5;
+    for (int i = 0; i < 5; i++) {
+        snprintf(s_follows[i].id, sizeof(s_follows[i].id), "%s", s_zones[picks[i]].id);
+        snprintf(s_follows[i].name, sizeof(s_follows[i].name), "%s", s_zones[picks[i]].name);
+    }
+    s_cat = 1;
+    s_zone_page = 0;
+}
+
+// 专区帖子：湖人专区，已关注，按最新回复。/ Zone posts: 湖人专区, followed, latest reply first.
+typedef struct {
+    const char* title;
+    const char* user;
+    const char* when;
+    int replies;
+} demo_zone_post_t;
+
+static const demo_zone_post_t ZONE_POSTS[] = {
+    {"湖人主场 118:112 力克勇士，末节一波 12:0 直接打停对手", "紫金名宿", "2小时前", 2563},
+    {"赛后采访：主教练谈最后两分钟的处理", "湖人老球迷", "3小时前", 432},
+    {"今晚的替补席贡献了 38 分，两位年轻球员都打出了赛季最佳，轮换终于理顺了？", "洛城之光", "4小时前", 298},
+    {"数据流：三人得分上二十，篮板 52 比 41", "JR数据组", "5小时前", 177},
+    {"有没有懂哥分析一下现在的防守体系，为什么末节换上这套阵容以后效果这么好", "篮下小钢炮", "6小时前", 640},
+    {"下一场背靠背客场打掘金，大家怎么看？", "夜猫看球", "7小时前", 351},
+};
+
+static void demo_zone(void) {
+    snprintf(s_zone_id, sizeof(s_zone_id), "%s", s_zones[s_cats[1].first + 1].id);   // 已关注 / Followed
+    snprintf(s_zone_name, sizeof(s_zone_name), "%s", "湖人专区");
+    s_zone_sort = 0;
+    s_list_end = false;
+    s_item_count = 0;
+    const int n = (int)(sizeof(ZONE_POSTS) / sizeof(ZONE_POSTS[0]));
+    for (int k = 0; k < 4 * n; k++) {
+        const demo_zone_post_t* p = &ZONE_POSTS[k % n];
+        item_t* x = &s_items[s_item_count++];
+        snprintf(x->tid, sizeof(x->tid), "65%06d", 300100 + k * 211);
+        snprintf(x->title, sizeof(x->title), "%s", p->title);
+        snprintf(x->meta, sizeof(x->meta), "%s · %s · %d 回复", p->user, p->when, p->replies);
+        x->jpg[0] = 0;
+    }
+    s_list_page = 0;
+}
+
 static void demo_shot(app_ctx_t* ctx, const char* name) {
     render(ctx, hr_fb);
     hr_shot(name);
@@ -269,4 +446,70 @@ void hr_scenes(void) {
     hr_no_bar_check();
     hr_allow_fit();
     demo_shot(&ctx, "rate");
+
+    /* ---- 设计文档 / Design doc ---- */
+
+    // ㉕ 推荐。/ ㉕ Feed.
+    demo_home(SEG_FEED);
+    demo_feed();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui40");
+
+    // ㉖ 帖子正文（帖子里共 3 张图）。/ ㉖ Post body (three images in the post).
+    s_view = V_POST;
+    s_post_back = V_HOME;
+    demo_post();
+    demo_post_more_images();
+    demo_lights();
+    s_tab = T_BODY;
+    s_page = 0;
+    hr_no_bar_check();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui41");
+
+    // ㉗ 亮了。/ ㉗ Lit replies.
+    s_tab = T_LIGHTS;
+    s_page = 0;
+    hr_no_bar_check();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui42");
+
+    // ㉘ 看大图。/ ㉘ Image view.
+    s_view = V_IMAGE;
+    s_image = 0;
+    hr_no_bar_check();
+    demo_shot(&ctx, "ui43");
+
+    // ㉙ 关注。/ ㉙ Following.
+    demo_home(SEG_FOLLOW);
+    demo_follow();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui44");
+
+    // ㉚ 全部专区。/ ㉚ All zones.
+    s_view = V_ZONES;
+    s_msg[0] = 0;
+    demo_zones();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui45");
+
+    // ㉛ 专区帖子。/ ㉛ Zone posts.
+    s_view = V_ZONE;
+    s_msg[0] = 0;
+    demo_zone();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui46");
+
+    // ㉜ 比分。/ ㉜ Scores.
+    demo_home(SEG_SCORE);
+    demo_schedule();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui47");
+
+    // ㉝ 比赛评分。/ ㉝ Match ratings.
+    s_view = V_RATE;
+    demo_rating();
+    hr_no_bar_check();
+    hr_allow_fit();
+    demo_shot(&ctx, "ui48");
 }

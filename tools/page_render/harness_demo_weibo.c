@@ -213,17 +213,21 @@ void hr_scenes(void) {
     s_seg = SEG_FOLLOW;
     fill(FOLLOW, sizeof(FOLLOW) / sizeof(FOLLOW[0]), "f");
     shot(&ctx, "follow");
+    shot(&ctx, "ui36");
 
     s_seg = SEG_HOT;
     fill(HOT, sizeof(HOT) / sizeof(HOT[0]), "h");
     shot(&ctx, "hot");
+    shot(&ctx, "ui37");
 
     s_seg = SEG_FOLLOW;
     post();
     s_tab = T_BODY;
     shot(&ctx, "post");
+    shot(&ctx, "ui38");
 
     s_tab = T_COMMENTS;
     s_page = 0;
     shot(&ctx, "comments");
+    shot(&ctx, "ui39");
 }
