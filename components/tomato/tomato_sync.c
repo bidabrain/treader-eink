@@ -38,7 +38,8 @@
 #define DEFER_MAX 8
 
 typedef enum {
-    OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X
+    OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X,
+    OP_OTA_CHECK, OP_OTA_DOWNLOAD
 } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
@@ -70,6 +71,8 @@ static tomato_hupu_req_t s_hupu;
 static tomato_red_req_t s_red;
 static tomato_wb_req_t s_wb;
 static tomato_x_req_t s_x;
+static tomato_ota_info_t s_ota;        // 检查结果，也是下载目标 / Check result, also the download target
+static bool s_ota_valid;
 // 每启动一次任务加一；页面据此认出“这是不是我发起的那个任务”。/ Bumped per started job so a page can tell its own job.
 static uint32_t s_seq;
 static work_t* s_work;
@@ -718,7 +721,7 @@ static void sync_task(void* arg) {
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
     const bool needs_server =
         s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU && s_op != OP_RED &&
-        s_op != OP_WB && s_op != OP_X;
+        s_op != OP_WB && s_op != OP_X && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -782,6 +785,34 @@ static void sync_task(void* arg) {
         err = tomato_x_run(&s_x, &s_cancel, set_progress, msg, sizeof(msg));
         if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
         else fail(err, s_cancel ? "已取消" : msg);
+        break;
+    }
+    case OP_OTA_CHECK: {
+        set_phase(TOMATO_CHECKING, "正在检查");
+        char msg[96] = "";
+        tomato_ota_info_t info;
+        err = tomato_ota_check(&info, &s_cancel, msg, sizeof(msg));
+        if (err == ESP_OK) {
+            portENTER_CRITICAL(&s_lock);
+            s_ota = info;
+            s_ota_valid = true;
+            portEXIT_CRITICAL(&s_lock);
+            set_phase(TOMATO_DONE, msg);
+        } else {
+            fail(err, s_cancel ? "已取消" : msg);
+        }
+        break;
+    }
+    case OP_OTA_DOWNLOAD: {
+        set_phase(TOMATO_DOWNLOADING, "正在下载");
+        char msg[96] = "";
+        tomato_ota_info_t info;
+        portENTER_CRITICAL(&s_lock);
+        info = s_ota;
+        portEXIT_CRITICAL(&s_lock);
+        err = tomato_ota_download(&info, &s_cancel, set_progress, msg, sizeof(msg));
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(s_cancel ? ESP_ERR_INVALID_STATE : err, msg);
         break;
     }
     case OP_WEBDAV: {
@@ -865,6 +896,29 @@ esp_err_t tomato_sync_start_x(const tomato_x_req_t* req) {
     return start(OP_X);
 }
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
+
+esp_err_t tomato_sync_start_ota_check(void) { return start(OP_OTA_CHECK); }
+
+bool tomato_sync_ota_info(tomato_ota_info_t* out) {
+    portENTER_CRITICAL(&s_lock);
+    const bool ok = s_ota_valid;
+    if (ok) *out = s_ota;
+    portEXIT_CRITICAL(&s_lock);
+    return ok;
+}
+
+esp_err_t tomato_sync_start_ota_download(const tomato_ota_info_t* info) {
+    if (!info) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    portENTER_CRITICAL(&s_lock);
+    s_ota = *info;
+    s_ota.name[sizeof(s_ota.name) - 1] = 0;
+    s_ota.url[sizeof(s_ota.url) - 1] = 0;
+    s_ota.version[sizeof(s_ota.version) - 1] = 0;
+    s_ota_valid = true;
+    portEXIT_CRITICAL(&s_lock);
+    return start(OP_OTA_DOWNLOAD);
+}
 esp_err_t tomato_sync_start_update(void) { return start(OP_UPDATE); }
 
 esp_err_t tomato_sync_start_search(const char* query) {

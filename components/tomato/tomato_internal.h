@@ -57,6 +57,14 @@ esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool 
 esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out, size_t* out_len,
                          const volatile bool* cancel);
 
+/* ---- 在线升级 / Online upgrade ---- */
+
+/// 读 GitHub 上 treader-latest 的升级包信息。/ Read the treader-latest package info from GitHub.
+esp_err_t tomato_ota_check(tomato_ota_info_t* out, const volatile bool* cancel, char* msg, size_t cap);
+/// 下载并校验升级包，规则见 tomato_sync_start_ota_download。/ Download and verify; see tomato_sync_start_ota_download.
+esp_err_t tomato_ota_download(const tomato_ota_info_t* info, const volatile bool* cancel,
+                              void (*progress)(int done, int total), char* msg, size_t cap);
+
 /* ---- 书城 / Bookstore ---- */
 
 /// 榜单站点根地址（去掉末尾斜杠和 /api/...）。/ Rank site root (no trailing slash or /api/...).

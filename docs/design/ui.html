@@ -217,7 +217,7 @@
 
 <h1>Treader 界面与功能（0.5.0）</h1>
 <p class="lead">这是 Treader 当前版本（0.5.0）的完整界面和功能说明，是唯一的界面设计稿。按小纸 Pico 的真实像素（684×1216）和代码里的坐标绘制，缩小一半显示；图片封面、壁纸和帖子图片用灰度渐变示意，真机上是抖动成 16 级灰度的实际图片。
-底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。自动锁屏和锁屏密码（L1～L4）是 0.7.0 新加的，还没在真机上验证。时间与时区（T1、T2）是 0.7.1 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
+底部标签页：书库、漫画、番茄、小红书、虎扑、微博、设置，最多同时显示七个（设置 › 底部标签里可以关掉中间五个，㉟）。微博（W1～W5）和内容来源按来源分页（㊸）是 0.5.0 之后新加的，还没在真机上验证；设置改成六个分类（㉞），小红书（㊻～㊿）、网页填写（㊹㊺）和 USB 传书（U1～U5）是 0.5.0 新加的。漫画（⑦～⑩）、上传漫画（⑮～⑰，设备屏幕和手机网页各一边）、自动翻页和隐藏虎扑是 0.4.0 新加的，还没在真机上验证。自动锁屏和锁屏密码（L1～L4）是 0.7.0 新加的，还没在真机上验证。时间与时区（T1、T2）是 0.7.1 新加的，还没在真机上验证。在线升级（O1、O2）是 0.8.0 新加的，还没在真机上验证。没有画出来的页面和全局规则写在最后。</p>
 
 <h2>书库、阅读与锁屏</h2>
 <div class="grid">
@@ -1897,6 +1897,59 @@
   </div>
 </div></div>
 <figcaption><b>T2 手动设置时间</b>年、月、日、时、分各有加减，循环滚动；换月份时日自动收进当月天数。按当前时区填写，“保存”后立刻生效并写进电源芯片的时钟。</figcaption></figure>
+
+<!-- O1 在线升级：发现新版本 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
+  <div class="a l" style="top:190px;font-size:30px">当前版本</div>
+  <div class="a" style="right:40px;top:192px;font-size:28px">0.7.1（Nov 20 2026 21:30:12）</div>
+  <div class="hl soft" style="top:244px"></div>
+  <div class="a l" style="top:266px;font-size:30px">运行位置</div>
+  <div class="a" style="right:40px;top:268px;font-size:28px">ota_0</div>
+  <div class="hl soft" style="top:320px"></div>
+  <div class="a l" style="top:342px;font-size:30px">电量</div>
+  <div class="a" style="right:40px;top:344px;font-size:28px">82%</div>
+  <div class="hl soft" style="top:396px"></div>
+  <div class="a l b" style="top:470px;font-size:32px">在线升级</div>
+  <div class="pill blk" style="left:394px;top:460px;width:250px;height:72px;font-size:28px">下载并升级</div>
+  <div class="a l" style="top:528px;font-size:26px">发现 0.8.0 · 3.2 MB</div>
+  <div class="a l" style="right:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;top:572px;font-size:24px">先下载到 TF 卡 update 文件夹，校验通过后自动写入并重启</div>
+  <div class="hl soft" style="top:626px"></div>
+  <div class="a l b" style="top:646px;font-size:32px">TF 卡升级</div>
+  <div class="a l b" style="top:712px;font-size:32px">treader-0.7.1-upgrade.bin</div>
+  <div class="a l" style="right:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;top:760px;font-size:26px">版本 0.7.1 · Nov 20 2026 · 3.2 MB · 与当前相同</div>
+  <div class="hl soft" style="top:816px"></div>
+</div></div>
+<figcaption><b>O1 设置 › 关于 › 系统升级（在线）</b>上半部分是在线升级，下半部分是原来的 TF 卡列表。点“检查更新”后读 GitHub 上“最新构建”的版本号；线上更新才显示“发现 x.y.z”和实心的“下载并升级”。版本一样显示“已是最新”和“重新安装”，当前版本更新（自己编译的）只显示“当前版本比线上新”。带内置番茄服务器的本地版本和重新安装，开始前多一页确认。</figcaption></figure>
+
+<!-- O2 在线升级：下载中 -->
+<figure><div class="frame"><div class="s">
+  <div class="status"><span>21:30</span><span class="batt">82% <i></i></span></div>
+  <div class="a l" style="top:96px;font-size:44px">‹</div>
+  <div class="a b" style="left:96px;top:100px;font-size:36px">系统升级</div>
+  <div class="a l" style="top:190px;font-size:30px">当前版本</div>
+  <div class="a" style="right:40px;top:192px;font-size:28px">0.7.1（Nov 20 2026 21:30:12）</div>
+  <div class="hl soft" style="top:244px"></div>
+  <div class="a l" style="top:266px;font-size:30px">运行位置</div>
+  <div class="a" style="right:40px;top:268px;font-size:28px">ota_0</div>
+  <div class="hl soft" style="top:320px"></div>
+  <div class="a l" style="top:342px;font-size:30px">电量</div>
+  <div class="a" style="right:40px;top:344px;font-size:28px">82%</div>
+  <div class="hl soft" style="top:396px"></div>
+  <div class="a l b" style="top:470px;font-size:32px">在线升级</div>
+  <div class="pill out" style="left:394px;top:460px;width:250px;height:72px;font-size:28px">暂停</div>
+  <div class="a l" style="top:528px;font-size:26px">下载中 45% · 1.5 / 3.2 MB</div>
+  <div class="a" style="left:40px;top:570px;width:604px;height:8px;background:repeating-linear-gradient(90deg,transparent 0 4px,#000 4px 6px,transparent 6px 7px);background-size:7px 2px;background-repeat:repeat-x;background-position:0 3px"></div>
+  <div class="a" style="left:40px;top:570px;width:272px;height:8px;background:#000"></div>
+  <div class="hl soft" style="top:626px"></div>
+  <div class="a l b" style="top:646px;font-size:32px">TF 卡升级</div>
+  <div class="a l b" style="top:712px;font-size:32px">treader-0.7.1-upgrade.bin</div>
+  <div class="a l" style="right:40px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;top:760px;font-size:26px">版本 0.7.1 · Nov 20 2026 · 3.2 MB · 与当前相同</div>
+  <div class="hl soft" style="top:816px"></div>
+</div></div>
+<figcaption><b>O2 在线升级 · 下载中</b>升级包先下到 TF 卡 <code>update/</code>，状态行和进度条每 2% 局部刷新。断网自动接着下；点“暂停”、离开页面、锁屏或拔卡都会停下，已下的部分留在卡上，回来状态行显示“已下载 x MB”，按钮变成“继续下载”。下完大小和 SHA-256 都对上才进入写入页（同 TF 卡升级），重启后自动删掉这个升级包。</figcaption></figure>
 
 </div>
 

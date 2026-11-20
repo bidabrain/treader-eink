@@ -382,6 +382,32 @@ typedef struct {
 } tomato_x_req_t;
 
 esp_err_t tomato_sync_start_x(const tomato_x_req_t* req);
+
+/* ---- 在线升级 / Online upgrade ---- */
+
+/// 下载的升级包放在这里。/ Downloaded upgrade packages go here.
+#define TOMATO_OTA_DIR "/sdcard/update"
+
+/// GitHub 上 treader-latest 发布里的升级包。/ The upgrade package in the treader-latest GitHub release.
+typedef struct {
+    char version[24];      ///< 文件名里的版本号 / Version from the file name
+    char name[64];         ///< treader-<版本>-upgrade.bin
+    char url[200];         ///< 下载地址（会跳转）/ Download URL (redirects)
+    uint32_t size;         ///< 字节数 / Bytes
+    uint8_t sha256[32];
+    bool has_sha256;       ///< GitHub 给了摘要 / GitHub supplied a digest
+} tomato_ota_info_t;
+
+/// 联网读 treader-latest 的升级包信息；结束后用 tomato_sync_ota_info 取结果。
+/// Fetch the treader-latest package info; read it with tomato_sync_ota_info when the job ends.
+esp_err_t tomato_sync_start_ota_check(void);
+/// 最近一次成功检查的结果；还没有返回 false。/ The last successful check; false if none yet.
+bool tomato_sync_ota_info(tomato_ota_info_t* out);
+/// 把升级包下载到 TOMATO_OTA_DIR/<name>：先写 <name>.part，已有就断点续传；大小和 SHA-256 都对上才改名成正式文件，
+/// 校验不对就删掉。进度在状态的 current / total（字节）。
+/// Download the package to TOMATO_OTA_DIR/<name>: write <name>.part, resuming one that exists; only a matching size and
+/// SHA-256 rename it into place, and a mismatch deletes it. Progress is the status current / total (bytes).
+esp_err_t tomato_sync_start_ota_download(const tomato_ota_info_t* info);
 /// 推文目录、第 n 张图（n 为 0 是缩略图）、回复文件、第 k 张方形小图。/ Post folder, image n (0 = thumbnail),
 /// replies file, square image k.
 void tomato_x_post_dir(const char* id, char* out, size_t cap);

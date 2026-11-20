@@ -68,7 +68,9 @@ idf_component_register(
         "book/book_image.c"
         "book/book_cover.c"
         "book/hupu_img.c"
+        "book/book_jpegdec.c"
         "book/vendor/tjpgd.c"
+        "book/vendor/jpegdec/jpegdec.c"
         "book/zip_reader.c"
         "book/html_text.c"
         "book/book_layout.c"
@@ -88,6 +90,13 @@ idf_component_register(
     EMBED_TXTFILES
         "apps/server_form.html"
 )
+
+# 图片解码器碰到损坏的图会让有符号整数溢出，用 -fwrapv 把它定义为回绕（与原来生成的结果一致）。
+# 上游 JPEGDEC 不按本仓库的告警标准写，只对它关掉告警。
+# Image decoders overflow signed integers on corrupt images; -fwrapv defines that as wraparound (the same result as
+# before). Upstream JPEGDEC is not written to this repo's warning bar, so its warnings are silenced.
+set_source_files_properties("book/book_image.c" "book/vendor/tjpgd.c" PROPERTIES COMPILE_OPTIONS "-fwrapv")
+set_source_files_properties("book/vendor/jpegdec/jpegdec.c" PROPERTIES COMPILE_OPTIONS "-w;-fwrapv")
 
 # 静态分析构建：idf.py -B build-analyze -DTREADER_ANALYZE=1 build
 # Static-analysis build: idf.py -B build-analyze -DTREADER_ANALYZE=1 build

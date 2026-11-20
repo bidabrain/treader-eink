@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-20 · Treader 0.8.0
+
+- 在线升级：设置 → 关于 Treader → 系统升级 → “检查更新”，从 GitHub 读最新版本；有新版本就先下载到 TF 卡 `update/`（断了可以接着下，换次也行），大小和 SHA-256 校验通过后自动写入并重启，新版本起来后自动删掉下载的升级包。只有线上版本更新才提示；带内置番茄服务器的本地版本升级前会提醒升级后没有内置服务器。
+  Online upgrade: Settings > About Treader > System upgrade > "Check for updates" reads the latest version from GitHub; a newer one downloads to the TF card's `update/` first (resuming after a break, even on a later visit), is written and restarted into once its size and SHA-256 check out, and the downloaded package is removed once the new version boots. Only a newer online version is offered; a local build with a built-in Tomato server warns that the upgrade has no built-in server.
+- 图片解码更快：普通基线 JPEG（漫画、EPUB 插图、小红书 / 微博 / X 的图）改用 JPEGDEC 解，约快 2.5 倍；渐进式等其他格式照旧。以前打不开的大图（宽或高超过 8192、超过 1600 万像素）和 4:4:0 采样的大图现在能打开。
+  Faster image decoding: plain baseline JPEGs (comics, EPUB illustrations, Xiaohongshu / Weibo / X images) now decode with JPEGDEC, about 2.5x faster; progressive and other formats are unchanged. Large images that failed before (a side over 8192, over 16 megapixels) and large 4:4:0 images now open.
+
 ## 2026-11-20 · Treader 0.7.1
 
 - 设置 → 电源与设备 → 时间与时区：自动校时（默认开，联网时对时）、15 个常用时区（默认北京时间，欧美和悉尼自动切夏令时）、关掉自动校时后可以手动设置日期和时间。修正：开机时从电源芯片的时钟恢复时间（以前写好了但没有调用，深睡、关机醒来后要等联网才有时间）。

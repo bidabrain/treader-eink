@@ -81,6 +81,7 @@
 - WebDAV：同步阅读进度和番茄书架（坚果云、Nextcloud 等），只在点“立即同步”时运行
 - TF 卡管理：状态、重新挂载、两步确认的格式化（格式化后自动建好文件夹）
 - 拔卡不崩，重新插卡自动挂载；**书、图片和缓存只存 TF 卡**，系统 flash 只放固件和设置
+- 在线升级：在“关于 Treader → 系统升级”里检查 GitHub 上的最新版本，先下载到 TF 卡（断了能接着下），校验通过再写入
 - TF 卡升级：把新固件放进 `update/`，在“关于 Treader”里升级；两个 7 MB 程序槽，新固件起不来自动退回旧版本
 - 时间与时区：默认自动校时（联网时用 SNTP 对时）、北京时间；也可以关掉自动校时手动调时间，或换成东京、伦敦、纽约等十几个时区。时间存在电源管理芯片的 RTC 里，断电后仍在
 - 联网失败时提示具体原因（Wi-Fi、DNS、HTTPS、超时、HTTP 状态），见[联网排查](#联网排查)
@@ -198,13 +199,23 @@ cd build
 python -m esptool --chip esp32s3 merge-bin -o treader-full.bin --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin 0x10000 Read_Pico.bin
 ```
 
-### 以后升级：TF 卡
+### 以后升级：在线或 TF 卡
 
-有了 Treader 之后，不用再连电脑：
+有了 Treader 之后，不用再连电脑。两种方式都在 设置 → 电源与设备 → 关于 Treader → 点“版本”那一行（系统升级页）。
+
+**在线升级**（用 GitHub 上的公开版）：
+
+1. 点“检查更新”。设备连上已保存的 Wi-Fi，读 GitHub 上“最新构建”（`treader-latest`）的版本号。
+2. 线上版本比当前新，会显示“发现 x.y.z”，点“下载并升级”。一样的版本显示“已是最新”，需要时可以点“重新安装”；当前版本更新（自己编译的）则不提示。
+3. 升级包先下载到 TF 卡 `update/`，有进度条；网络断了会自动接着下，离开页面再回来按钮变成“继续下载”。下完大小和 SHA-256 都核对通过才写入，然后自动重启；新版本起来后自动删掉下载的升级包。
+
+需要插着 TF 卡（空闲空间够放升级包）。公开版不带内置番茄服务器：自己编译、带内置服务器的版本升级前会提醒一次，设置里填的服务器不受影响。
+
+**TF 卡升级**（自己编译的固件）：
 
 1. 改 `CMakeLists.txt` 里的 `PROJECT_VER`（方便在设备上分辨新旧），编译。
 2. 把 `build/Read_Pico.bin`（或 `treader-full.bin`）复制到 TF 卡的 `update/` 文件夹。
-3. 设备上 设置 → 电源与设备 → 关于 Treader → 点“版本”那一行 → 选文件 → 开始升级。
+3. 在系统升级页的“TF 卡升级”列表里选文件 → 开始升级。
 
 写入约 1 分钟，完成后自动重启；设置、进度和书都保留。电量低于 30% 且没在充电时不让升级。新固件写在另一个程序槽里，起不来会自动退回当前版本。
 
@@ -383,7 +394,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | nvs | 0x9000 | 20 KB | 设置、Wi-Fi、阅读进度 |
 | phy_init | 0xE000 | 4 KB | 射频校准 |
 | ota_0 | 0x10000 | 7 MB | 程序槽 1（目前固件约 3 MB） |
-| ota_1 | 0x710000 | 7 MB | 程序槽 2，TF 卡升级时写这里，两个槽轮流用 |
+| ota_1 | 0x710000 | 7 MB | 程序槽 2，在线或 TF 卡升级时写这里，两个槽轮流用 |
 | otadata | 0xE10000 | 8 KB | 记录从哪个槽启动 |
 | 未分配 | 0xE12000 | 约 1.9 MB | 预留 |
 
@@ -418,7 +429,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico) | 拼音输入引擎与词库格式（Apache-2.0） |
 | jieba、pypinyin | 拼音词库数据（MIT） |
 | 寒蝉端黑体 ChillDuanSans | 中文字体（SIL OFL-1.1） |
-| stb_truetype、stb_image、TJpgDec、cJSON | 字体渲染、图片解码、JSON 解析 |
+| stb_truetype、stb_image、TJpgDec、JPEGDEC、cJSON | 字体渲染、图片解码、JSON 解析 |
 
 RickyOS 和 Take Easy 都是小纸 Pico 社区的优秀系统，Treader 只参考了它们的设计和功能思路，没有使用它们的代码。
 

@@ -8,6 +8,7 @@
  * bound total decoder allocation and never decode inside render.
  */
 #include "book_image.h"
+#include "book_jpegdec.h"
 #include "esp_heap_caps.h"
 #include <stdlib.h>
 #include <string.h>
@@ -338,9 +339,12 @@ static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
     *pixels = NULL; *width = *height = 0;
     if (!data || !len || len > IMAGE_INPUT_MAX || allocated) return false;
     if (png_decode(data,len,budget,pixels,width,height)) return true;
-    // 基线 JPEG 优先使用 MCU 分块缩小；小型渐进 JPEG 仍可走有界完整解码。
-    // Prefer MCU-scaled baseline JPEG; bounded full decoding still handles small progressive JPEGs.
-    if (len >= 2 && data[0] == 0xff && data[1] == 0xd8 && jpeg_decode(data, len, budget, pixels, width, height)) return true;
+    // 普通基线 JPEG 先走 JPEGDEC 快速通道；不合格或失败再用 tjpgd 按 MCU 缩小；小型渐进 JPEG 仍可走有界完整解码。
+    // Plain baseline JPEG tries the JPEGDEC fast path first; ineligible or failed ones fall back to MCU-scaled tjpgd;
+    // bounded full decoding still handles small progressive JPEGs.
+    if (len >= 2 && data[0] == 0xff && data[1] == 0xd8 &&
+        (book_jpegdec_decode(data, len, budget, pixels, width, height) ||
+         jpeg_decode(data, len, budget, pixels, width, height))) return true;
     int w, h, channels;
 #ifdef ESP_PLATFORM
     const size_t free_psram = heap_caps_get_free_size(PSRAM_CAPS);

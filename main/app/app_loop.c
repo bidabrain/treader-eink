@@ -57,6 +57,7 @@
 #include "tomato.h"
 #include "tr_pin.h"
 #include "tr_time.h"
+#include "tr_update.h"
 
 #define TAG "app_loop"
 
@@ -260,6 +261,13 @@ static bool poll_media(app_ctx_t* ctx, const app_desc_t* current,
     esp_err_t err = read_pico_sd_get_info(&info);
     if (err == ESP_ERR_NOT_FINISHED) return false;
     bool ready = err == ESP_OK && info.mounted;
+    // 每次开机第一次见到卡挂好，清理在线升级下载过的升级包。/ First mounted card per boot: clean up the online
+    // upgrade's downloaded package.
+    static bool s_boot_cleanup;
+    if (ready && !s_boot_cleanup) {
+        s_boot_cleanup = true;
+        tr_update_boot_cleanup();
+    }
     const bool inserted = info.present && !s_last_present;
     s_last_present = info.present;
     if (s_remount_pending && ready) {
