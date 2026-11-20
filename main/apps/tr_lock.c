@@ -198,30 +198,35 @@ static void draw_wallpaper(uint8_t* fb) {
     }
     if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
     else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
-    tr_text(fb, TR_W / 2, TR_H - 66, 26, line, EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, TR_H - 66, 26, line, EPD_DRAW_ALIGN_CENTER);
 }
 
 bool tr_lock_draw(uint8_t* fb) {
     if (s_wall) { draw_wallpaper(fb); return true; }
     if (!s_card.ok) return false;
     ui_clear_page(fb);
-    tr_text(fb, TR_MARGIN, 120, 30, "正在读", EPD_DRAW_ALIGN_LEFT, false);
+    // Material 3 填充卡片：封面、书名、作者和进度都在浅灰底的大卡片里；锁屏整屏刷新，灰底不受 DU 影响。
+    // A Material 3 filled card: cover, title, author and progress on one light gray card; the lock screen refreshes
+    // as a whole page, so DU never touches the gray.
+    tr_text_dim(fb, TR_MARGIN, 120, 30, "正在读", EPD_DRAW_ALIGN_LEFT);
+    const EpdRect card = {TR_MARGIN - 16, 164, TR_W - 2 * TR_MARGIN + 32, 680};
+    ui_fill_round_rect(fb, card, 28, TR_GRAY_SURFACE);
     tr_book_cover(fb, (EpdRect){TR_MARGIN, 180, BOOK_COVER_W, BOOK_COVER_H}, s_card.path, s_card.title, s_card.author,
                   s_card.format, false);
     char line[128];
     snprintf(line, sizeof(line), "%s", s_card.title);
     tr_fit(line, 54, TR_W - 2 * TR_MARGIN);
-    tr_text(fb, TR_MARGIN, 630, 54, line, EPD_DRAW_ALIGN_LEFT, true);
+    tr_text_on(fb, TR_MARGIN, 630, 54, line, EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
     if (s_card.has_progress) {
         const char* sep = s_card.author[0] ? " · " : "";
         if (s_card.pct >= 100) snprintf(line, sizeof(line), "%s%s读完", s_card.author, sep);
         else snprintf(line, sizeof(line), "%s%s已读 %u%%", s_card.author, sep, s_card.pct);
-        tr_text(fb, TR_MARGIN, 704, 32, line, EPD_DRAW_ALIGN_LEFT, false);
+        tr_text_on(fb, TR_MARGIN, 704, 32, line, EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
         tr_progress(fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, s_card.pct);
     }
     tr_text(fb, TR_W / 2, 960, 34, "慢一点，读几页。", EPD_DRAW_ALIGN_CENTER, false);
     if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
     else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
-    tr_text(fb, TR_W / 2, 1120, 26, line, EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, 1120, 26, line, EPD_DRAW_ALIGN_CENTER);
     return true;
 }

@@ -224,6 +224,132 @@ static void screen_icons(void) {
     tr_tabs_set_hidden(1u << TR_TAB_X);
 }
 
+/* ---- 按页面坐标仿画的几屏（app_book.c、tr_lock.c）/ Screens copied from page coordinates (app_book.c, tr_lock.c) ---- */
+
+// 书架：继续阅读卡片、待下载和新章节标记、进度、翻页、标签栏。坐标照 app_book.c 的 draw_shelf。
+// Shelf: continue card, pending and new-chapter badges, progress, pager, tab bar; coordinates follow draw_shelf.
+static void screen_shelf(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "书库");
+    tr_icon(s_fb, TR_ICON_SEARCH, 540, 116, false);
+    tr_icon(s_fb, TR_ICON_IMPORT, 612, 116, false);
+    tr_text_dim(s_fb, UI_MARGIN, 156, 28, "12 本 · 按最近阅读", EPD_DRAW_ALIGN_LEFT);
+    tr_text(s_fb, UI_LOCK_WIDTH - UI_MARGIN, 156, 28, "番茄 1 本有更新 ›", EPD_DRAW_ALIGN_RIGHT, true);
+    tr_pill(s_fb, (EpdRect){40, 212, 150, 54}, "全部", false, 28);
+    tr_pill(s_fb, (EpdRect){202, 212, 150, 54}, "按最近", false, 28);
+    tr_pill(s_fb, (EpdRect){364, 212, 120, 54}, "管理", false, 28);
+    const EpdRect c = {UI_MARGIN, 284, ui_content_width(), 136};
+    ui_fill_round_rect(s_fb, c, 24, TR_GRAY_SURFACE);
+    tr_mini_cover(s_fb, (EpdRect){c.x + 16, c.y + 20, 70, 96}, "宿命之环", true);
+    const int tx = c.x + 108, right = c.x + c.width - 20, tw = right - tx;
+    tr_text_on(s_fb, tx, c.y + 14, 24, "继续阅读", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, right, c.y + 14, 24, "接着读 →", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, tx, c.y + 46, 32, "宿命之环", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_progress(s_fb, tx, c.y + 108, tw - 80, 41);
+    tr_text_on(s_fb, right, c.y + 94, 26, "41%", EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    struct { const char *t, *meta, *mark; bool pending; int pct; } rows[4] = {
+        {"斗破苍穹", "番茄 · 天蚕土豆", "+3 章 待下载", true, 8}, {"十日终焉", "番茄 · 杀虫队队员", "+2 章", false, 64},
+        {"夜航船", "TXT", "", false, 12}, {"三体", "EPUB", "", false, 100}};
+    for (int i = 0; i < 4; i++) {
+        const EpdRect r = {UI_MARGIN, 436 + i * 140, ui_content_width(), 128};
+        tr_mini_cover(s_fb, (EpdRect){r.x, r.y + 8, 70, 96}, rows[i].t, i % 2 == 1);
+        const int x = r.x + 96;
+        tr_text(s_fb, x, r.y + 4, 34, rows[i].t, EPD_DRAW_ALIGN_LEFT, true);
+        if (rows[i].mark[0]) tr_badge(s_fb, r.x + r.width - 10, r.y + 10, rows[i].mark, rows[i].pending, 24);
+        tr_text_dim(s_fb, x, r.y + 52, 26, rows[i].meta, EPD_DRAW_ALIGN_LEFT);
+        if (rows[i].pct < 100) {
+            char p[16];
+            snprintf(p, sizeof(p), "%d%%", rows[i].pct);
+            tr_progress(s_fb, x, r.y + 98, r.x + r.width - x - 90, rows[i].pct);
+            tr_text_dim(s_fb, r.x + r.width, r.y + 86, 26, p, EPD_DRAW_ALIGN_RIGHT);
+        } else {
+            tr_text_dim(s_fb, x, r.y + 88, 26, "读完", EPD_DRAW_ALIGN_LEFT);
+        }
+        tr_hline(s_fb, r.y + r.height + 4, UI_MARGIN, ui_content_width(), true);
+    }
+    tr_pager(s_fb, 1010, 0, 3);
+    tr_tab_bar(s_fb, TR_TAB_LIBRARY);
+}
+
+// 阅读工具条：顶部返回和书名、底部面板。坐标照 app_book.c 的 draw_reader。
+// Reading toolbar: back and title on top, bottom panel; coordinates follow draw_reader.
+static void screen_toolbar(void) {
+    clear();
+    tr_wrap(s_fb, 40, 140, TR_W - 80, 40, 66,
+            "这是一个阴天，乌云压得很低，仿佛随时都会坠落下来。克莱恩站在窗前，望着街道上来往的行人。他已经在这座城市生活了"
+            "三个月，却依然觉得一切都很陌生。煤气灯在雾气中显得昏黄，马车的车轮碾过石板路，发出单调的声响。",
+            9);
+    epd_fill_rect((EpdRect){0, 0, UI_LOCK_WIDTH, 110}, UI_GRAY_WHITE, s_fb);
+    tr_hline(s_fb, 110, 0, UI_LOCK_WIDTH, true);
+    tr_text(s_fb, UI_MARGIN, 40, 32, "‹ 书库", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, UI_LOCK_WIDTH / 2 + 40, 38, 34, "宿命之环", EPD_DRAW_ALIGN_CENTER, true);
+    const int py = 680;
+    epd_fill_rect((EpdRect){0, py, UI_LOCK_WIDTH, UI_BAR_TOP - py}, UI_GRAY_WHITE, s_fb);
+    ui_draw_round_rect(s_fb, (EpdRect){0, py, UI_LOCK_WIDTH, 120}, 32, TR_GRAY_LINE);
+    ui_draw_round_rect(s_fb, (EpdRect){0, py + 1, UI_LOCK_WIDTH, 120}, 32, TR_GRAY_LINE);
+    epd_fill_rect((EpdRect){2, py + 40, UI_LOCK_WIDTH - 4, 82}, UI_GRAY_WHITE, s_fb);
+    ui_fill_round_rect(s_fb, (EpdRect){UI_LOCK_WIDTH / 2 - 36, py + 8, 72, 8}, 4, TR_GRAY_SELECTED);
+    tr_text_dim(s_fb, UI_MARGIN, py + 24, 28, "第三章 黑夜", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(s_fb, UI_LOCK_WIDTH - UI_MARGIN, py + 24, 28, "字号 48", EPD_DRAW_ALIGN_RIGHT);
+    static const tr_icon_t icons[4] = {TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BOOKS};
+    static const char* const labels[4] = {"目录", "菜单", "排版", "书库"};
+    for (int k = 0; k < 4; k++) {
+        const EpdRect r = {UI_MARGIN + k * 151, py + 80, 151, 120};
+        ui_fill_round_rect(s_fb, ui_inset_rect(r, 10), 24, TR_GRAY_SURFACE);
+        if (k == 2) tr_text_on(s_fb, r.x + r.width / 2, r.y + 16, 36, "Aa", EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK,
+                               TR_GRAY_SURFACE);
+        else tr_icon_on(s_fb, icons[k], r.x + r.width / 2, r.y + 36, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+        tr_text_on(s_fb, r.x + r.width / 2, r.y + 70, 28, labels[k], EPD_DRAW_ALIGN_CENTER, false, UI_GRAY_BLACK,
+                   TR_GRAY_SURFACE);
+    }
+    tr_pill(s_fb, (EpdRect){UI_MARGIN, py + 226, 200, 84}, "A−", false, 34);
+    tr_pill(s_fb, (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 200, py + 226, 200, 84}, "A+", false, 34);
+    tr_text(s_fb, UI_LOCK_WIDTH / 2, py + 246, 40, "48", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text(s_fb, TR_MARGIN, py + 326 + 14, 28, "自动翻页", EPD_DRAW_ALIGN_LEFT, false);
+    tr_pill(s_fb, (EpdRect){290, py + 326, 110, 56}, "−", false, 34);
+    tr_pill(s_fb, (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 100, py + 326, 110, 56}, "+", false, 34);
+    tr_text(s_fb, 470, py + 326 + 10, 32, "关", EPD_DRAW_ALIGN_CENTER, true);
+    const EpdRect track = {UI_MARGIN, UI_BAR_TOP, ui_content_width(), UI_BAR_H};
+    epd_fill_rect((EpdRect){track.x, track.y + 16, track.width, 12}, UI_GRAY_LIGHT, s_fb);
+    epd_fill_rect((EpdRect){track.x, track.y + 16, track.width * 41 / 100, 12}, UI_GRAY_BLACK, s_fb);
+    ui_text(s_fb, track.x, track.y + 36, UI_PX_CAPTION, "宿命之环 · 本章 3/12 · 全书 41%", EPD_DRAW_ALIGN_LEFT, false);
+}
+
+// 锁屏书卡。坐标照 tr_lock.c 的 tr_lock_draw。/ Lock-screen card; coordinates follow tr_lock_draw.
+static void screen_lock(void) {
+    clear();
+    tr_text_dim(s_fb, TR_MARGIN, 120, 30, "正在读", EPD_DRAW_ALIGN_LEFT);
+    const EpdRect card = {TR_MARGIN - 16, 164, TR_W - 2 * TR_MARGIN + 32, 680};
+    ui_fill_round_rect(s_fb, card, 28, TR_GRAY_SURFACE);
+    tr_cover(s_fb, (EpdRect){TR_MARGIN, 180, 300, 400}, "宿命之环", "爱潜水的乌贼", "番茄", false);
+    tr_text_on(s_fb, TR_MARGIN, 630, 54, "宿命之环", EPD_DRAW_ALIGN_LEFT, true, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_on(s_fb, TR_MARGIN, 704, 32, "爱潜水的乌贼 · 已读 41%", EPD_DRAW_ALIGN_LEFT, false, TR_GRAY_SECONDARY,
+               TR_GRAY_SURFACE);
+    tr_progress(s_fb, TR_MARGIN, 772, TR_W - 2 * TR_MARGIN, 41);
+    tr_text(s_fb, TR_W / 2, 960, 34, "慢一点，读几页。", EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(s_fb, TR_W / 2, 1120, 26, "按电源键或拿起设备继续 · 电量 82%", EPD_DRAW_ALIGN_CENTER);
+}
+
+// 图书详情弹窗压在书架上。坐标照 app_book.c 的 draw_manage。/ The detail dialog over the shelf; follows draw_manage.
+static void screen_dialog(void) {
+    screen_shelf();
+    const EpdRect panel = {UI_MARGIN - 16, 360, ui_content_width() + 32, 470};
+    ui_fill_round_rect(s_fb, panel, 28, UI_GRAY_WHITE);
+    ui_draw_round_rect(s_fb, panel, 28, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(s_fb, ui_inset_rect(panel, 1), 27, TR_GRAY_OUTLINE);
+    tr_text(s_fb, UI_MARGIN, panel.y + 18, 38, "图书详情", EPD_DRAW_ALIGN_LEFT, true);
+    tr_text(s_fb, UI_MARGIN, panel.y + 74, 32, "斗破苍穹.txt", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(s_fb, UI_MARGIN, panel.y + 130, UI_PX_CAPTION, "TF 卡 · txt · 6.21 MB", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(s_fb, UI_MARGIN, panel.y + 174, UI_PX_CAPTION, "阅读进度 8%", EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(s_fb, UI_MARGIN, panel.y + 218, UI_PX_CAPTION, "/sdcard/books", EPD_DRAW_ALIGN_LEFT);
+    for (int i = 0; i < 3; i++) {
+        const EpdRect b = ui_row_rect(i, 3, panel.y + panel.height - 94, 76);
+        static const char* const labels[3] = {"关闭", "清进度", "删除文件"};
+        tr_pill(s_fb, b, labels[i], i == 2, 30);
+    }
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -234,9 +360,10 @@ int main(int argc, char** argv) {
     }
     tr_tabs_set_hidden(1u << TR_TAB_X);
     char path[256];
-    void (*screens[])(void) = {screen_library, screen_tomato, screen_icons};
-    const char* names[] = {"library", "tomato", "icons"};
-    for (int i = 0; i < 3; i++) {
+    void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
+                               screen_dialog};
+    const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog"};
+    for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);
         write_png(path, s_fb);

@@ -65,6 +65,8 @@ void tr_text(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFo
 /// grays and anti-aliased edges blend toward bg, so no white fringe.
 void tr_text_on(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold,
                 uint8_t fg, uint8_t bg);
+/// 次要文字：白底上的深灰字。/ Secondary text: dark gray on white.
+void tr_text_dim(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align);
 /// 白字（画在黑底上）。/ White text for black fills.
 void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold);
 /// 截断到 max_w 像素并加省略号，按 UTF-8 边界。/ Fit into max_w with an ellipsis on UTF-8 boundaries.
@@ -129,6 +131,9 @@ void tr_book_mini_cover(uint8_t* fb, EpdRect r, const char* path, const char* ti
 /// 进度：已读部分是圆头实心条，剩余部分是一条细轨道（DU 下也看得见）。/ Progress: a round-capped solid bar for the read
 /// part on a thin track that stays visible under DU.
 void tr_progress(uint8_t* fb, int x, int y, int w, int pct);
+/// 小标记胶囊，右边缘对齐 right、上沿 y；filled 为黑底白字，否则灰底黑字。返回宽度。/ A small badge capsule, right
+/// edge at right and top at y; filled is black with white text, else gray with black text. Returns its width.
+int tr_badge(uint8_t* fb, int right, int y, const char* label, bool filled, int px);
 /// 胶囊按钮。filled 为黑底白字，否则深灰描边。/ Pill button; filled = black with white text, else a dark outline.
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px);
 /// 番茄页“书架 / 书城”分段按钮的位置。/ Where the Tomato "shelf / store" segment sits.

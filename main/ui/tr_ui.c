@@ -39,6 +39,10 @@ void tr_text_inv(uint8_t* fb, int x, int y_top, int px, const char* text, enum E
     if (text && text[0]) text_with_weight(fb, x, y_top, px, text, align, bold, true);
 }
 
+void tr_text_dim(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align) {
+    tr_text_on(fb, x, y_top, px, text, align, false, TR_GRAY_SECONDARY, UI_GRAY_WHITE);
+}
+
 void tr_text_on(uint8_t* fb, int x, int y_top, int px, const char* text, enum EpdFontFlags align, bool bold,
                 uint8_t fg, uint8_t bg) {
     if (!text || !text[0]) return;
@@ -594,6 +598,16 @@ void tr_progress(uint8_t* fb, int x, int y, int w, int pct) {
     if (done < w) epd_fill_rect((EpdRect){x + done, y + 3, w - done, 2}, TR_GRAY_OUTLINE, fb);
     if (done >= 8) ui_fill_round_rect(fb, (EpdRect){x, y, done, 8}, 4, UI_GRAY_BLACK);
     else if (done > 0) epd_fill_rect((EpdRect){x, y, done, 8}, UI_GRAY_BLACK, fb);
+}
+
+int tr_badge(uint8_t* fb, int right, int y, const char* label, bool filled, int px) {
+    if (!label || !label[0]) return 0;
+    const int w = ttf_text_width_px(px, label) + 24, h = px + 14;
+    const EpdRect r = {right - w, y, w, h};
+    ui_fill_round_rect(fb, r, h / 2, filled ? UI_GRAY_BLACK : TR_GRAY_SELECTED);
+    tr_text_on(fb, r.x + w / 2, y + 5, px, label, EPD_DRAW_ALIGN_CENTER, true, filled ? UI_GRAY_WHITE : UI_GRAY_BLACK,
+               filled ? UI_GRAY_BLACK : TR_GRAY_SELECTED);
+    return w;
 }
 
 void tr_pill(uint8_t* fb, EpdRect r, const char* label, bool filled, int px) {
