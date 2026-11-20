@@ -68,11 +68,12 @@ static EpdRect key_rect(int i) {
 
 static void draw_top(uint8_t* fb, const char* hint, int n) {
     epd_fill_rect(TOP_AREA, UI_GRAY_WHITE, fb);
-    if (hint && hint[0]) tr_text(fb, TR_W / 2, HINT_Y, 26, hint, EPD_DRAW_ALIGN_CENTER, false);
+    // 这一块每输一位按 DU 局部刷新，只用深灰和黑。/ This block is DU-refreshed per digit: dark gray and black only.
+    if (hint && hint[0]) tr_text_dim(fb, TR_W / 2, HINT_Y, 26, hint, EPD_DRAW_ALIGN_CENTER);
     for (int i = 0; i < 4; i++) {
         const EpdRect r = {BOX_X + i * (BOX_W + BOX_GAP), BOX_Y, BOX_W, BOX_H};
-        ui_draw_round_rect(fb, r, 10, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 9, UI_GRAY_BLACK);
+        ui_draw_round_rect(fb, r, 10, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 9, TR_GRAY_OUTLINE);
         if (i < n) epd_fill_circle(r.x + BOX_W / 2, r.y + BOX_H / 2, 14, UI_GRAY_BLACK, fb);
     }
 }
@@ -84,14 +85,22 @@ static void draw_all(uint8_t* fb, const char* title, const char* hint, int n, bo
     for (int i = 0; i < 12; i++) {
         const int k = KEYS[i];
         if (k == 10 && !cancel) continue;
+        // Material 3 数字键盘：数字键是浅灰圆角块（键盘只在整屏刷新时画），取消和删除是深灰描边。
+        // Material 3 keypad: digits sit on light gray rounded keys (the pad is only drawn on full refreshes); cancel
+        // and delete are dark gray outlines.
         const EpdRect r = key_rect(i);
-        ui_draw_round_rect(fb, r, 18, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 17, UI_GRAY_BLACK);
+        if (k <= 9) {
+            ui_fill_round_rect(fb, r, 24, TR_GRAY_SURFACE);
+        } else {
+            ui_draw_round_rect(fb, r, 24, TR_GRAY_OUTLINE);
+            ui_draw_round_rect(fb, ui_inset_rect(r, 1), 23, TR_GRAY_OUTLINE);
+        }
         char label[8];
         if (k <= 9) snprintf(label, sizeof(label), "%d", k);
         else snprintf(label, sizeof(label), "%s", k == 10 ? "取消" : "删除");
         const int px = k <= 9 ? 56 : 34;
-        tr_text(fb, r.x + KEY_W / 2, r.y + (KEY_H - px) / 2 - 4, px, label, EPD_DRAW_ALIGN_CENTER, k <= 9);
+        tr_text_on(fb, r.x + KEY_W / 2, r.y + (KEY_H - px) / 2 - 4, px, label, EPD_DRAW_ALIGN_CENTER, k <= 9,
+                   UI_GRAY_BLACK, k <= 9 ? TR_GRAY_SURFACE : UI_GRAY_WHITE);
     }
 }
 

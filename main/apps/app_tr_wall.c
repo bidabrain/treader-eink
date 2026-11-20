@@ -130,7 +130,8 @@ static void draw_list(uint8_t* fb) {
         tr_text(fb, 150, top + 22, 32, line, EPD_DRAW_ALIGN_LEFT, false);
         const bool current = !strcmp(path, s_current);
         snprintf(line, sizeof(line), "%.1f MB%s", s_sizes[i] / 1048576.0, current ? " · 当前壁纸" : "");
-        tr_text(fb, 150, top + 72, 26, line, EPD_DRAW_ALIGN_LEFT, current);
+        if (current) tr_text(fb, 150, top + 72, 26, line, EPD_DRAW_ALIGN_LEFT, true);
+        else tr_text_dim(fb, 150, top + 72, 26, line, EPD_DRAW_ALIGN_LEFT);
         tr_hline(fb, top + ROW_H - 2, 150, TR_W - TR_MARGIN - 150, true);
     }
     tr_pager(fb, PAGER_Y, s_page, pages());
@@ -139,7 +140,7 @@ static void draw_list(uint8_t* fb) {
 static void draw_preview(uint8_t* fb) {
     book_screen_draw(fb, s_preview);
     epd_fill_rect((EpdRect){0, BAND_Y, TR_W, TR_H - BAND_Y}, UI_GRAY_WHITE, fb);
-    tr_hline(fb, BAND_Y, 0, TR_W, false);
+    tr_hline(fb, BAND_Y, 0, TR_W, true);
     // 三个按钮：设为壁纸、删除（点一次变黑底“确认删除”）、返回。/ Three buttons: set, delete (one tap turns it into a
     // filled "confirm"), back.
     tr_pill(fb, (EpdRect){TR_MARGIN, BAND_Y + 40, 190, 80}, "设为壁纸", true, 30);

@@ -583,7 +583,8 @@ static void draw_list(uint8_t* fb) {
         else snprintf(line, sizeof(line), "版本 %s · %s · %.1f MB%s", fw->version, fw->date, fw->app_size / 1048576.0,
                       strcmp(fw->version, app->version) ? "" : " · 与当前相同");
         tr_fit(line, 26, TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, y + 60, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+        if (fw->problem) tr_text(fb, TR_MARGIN, y + 60, 26, line, EPD_DRAW_ALIGN_LEFT, false);
+        else tr_text_dim(fb, TR_MARGIN, y + 60, 26, line, EPD_DRAW_ALIGN_LEFT);
         tr_hline(fb, y + ROW_H - 4, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }

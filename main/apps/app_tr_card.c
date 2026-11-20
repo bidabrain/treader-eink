@@ -85,7 +85,7 @@ static void draw_info(uint8_t* fb) {
         snprintf(line, sizeof(line), "%.1f GB", s_info.free_bytes / 1073741824.0);
         info_row(fb, 352, "可用", line);
     }
-    tr_text(fb, TR_MARGIN, 460, 26, "Treader 用到的文件夹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, 460, 26, "Treader 用到的文件夹", EPD_DRAW_ALIGN_LEFT);
     static const char* const LINES[] = {
         "books　书籍（TXT、EPUB，番茄下载也放这里）",
         "comics　漫画（CBZ，一部多话放一个子文件夹）",
@@ -94,8 +94,11 @@ static void draw_info(uint8_t* fb) {
         "wallpapers　锁屏壁纸（JPG、PNG）",
         "tomato　番茄书架、封面和设置",
     };
-    for (int i = 0; i < 6; i++) tr_text(fb, TR_MARGIN, 506 + i * 40, 28, LINES[i], EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_MARGIN, 760, 26, "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT, false);
+    // 文件夹说明放进浅灰卡片（这一页整页刷新）。/ The folder notes sit on a light gray card (whole-page refresh).
+    ui_fill_round_rect(fb, (EpdRect){TR_MARGIN - 16, 494, TR_W - 2 * TR_MARGIN + 32, 6 * 40 + 20}, 24, TR_GRAY_SURFACE);
+    for (int i = 0; i < 6; i++)
+        tr_text_on(fb, TR_MARGIN, 506 + i * 40, 28, LINES[i], EPD_DRAW_ALIGN_LEFT, false, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text_dim(fb, TR_MARGIN, 760, 26, "书、图片和缓存只存在 TF 卡上，不占系统存储。", EPD_DRAW_ALIGN_LEFT);
     if (s_msg[0]) tr_wrap(fb, TR_MARGIN, 806, TR_W - 2 * TR_MARGIN, 28, 40, s_msg, 2);
     if (s_info.present) {
         tr_pill(fb, (EpdRect){TR_MARGIN, BTN_Y, 290, BTN_H}, "重新挂载", false, 30);

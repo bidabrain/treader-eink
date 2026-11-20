@@ -523,21 +523,22 @@ static void draw_home(uint8_t* fb) {
     const esp_app_desc_t* app = esp_app_get_description();
     char ver[48];
     snprintf(ver, sizeof(ver), "Treader %.20s", app->version);
-    tr_text(fb, TR_W / 2, 1030, 24, ver, EPD_DRAW_ALIGN_CENTER, false);
+    tr_text_dim(fb, TR_W / 2, 1030, 24, ver, EPD_DRAW_ALIGN_CENTER);
 }
 
 // 一行大分类（首页和传书页共用）。/ One large category row (home and the transfer page share it).
 static void draw_cat(uint8_t* fb, int y, tr_icon_t icon, const char* name, const char* summary, bool last) {
+    // Material 3 列表项：图标放在浅灰圆底上，摘要和箭头用深灰（这几页整页刷新）。/ Material 3 list item: the icon
+    // on a light gray circle, summary and chevron in dark gray (these pages refresh as whole pages).
     const EpdRect box = {TR_MARGIN, y + 30, 76, 76};
-    ui_draw_round_rect(fb, box, 18, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(box, 1), 17, UI_GRAY_BLACK);
-    tr_icon(fb, icon, box.x + 38, box.y + 38, false);
+    ui_fill_round_rect(fb, box, 38, TR_GRAY_SURFACE);
+    tr_icon_on(fb, icon, box.x + 38, box.y + 38, UI_GRAY_BLACK, TR_GRAY_SURFACE);
     tr_text(fb, TR_MARGIN + 104, y + 24, 34, name, EPD_DRAW_ALIGN_LEFT, true);
     char sum[200];
     snprintf(sum, sizeof(sum), "%s", summary);
     tr_fit(sum, 26, TR_W - 2 * TR_MARGIN - 104 - 40);
-    tr_text(fb, TR_MARGIN + 104, y + 78, 26, sum, EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_W - TR_MARGIN, y + 46, 34, "›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text_dim(fb, TR_MARGIN + 104, y + 78, 26, sum, EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(fb, TR_W - TR_MARGIN, y + 46, 34, "›", EPD_DRAW_ALIGN_RIGHT);
     if (!last) tr_hline(fb, y + CAT_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
 }
 
@@ -553,17 +554,19 @@ static void draw_transfer(uint8_t* fb) {
             "Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。", 3);
 }
 
+// Material 3 开关：开是黑轨道加白圆钮；关是深灰描边轨道加小一圈的深灰圆钮。深灰在 DU 下按黑处理。
+// Material 3 switch: on is a black track with a white knob; off is an outlined dark gray track with a smaller dark
+// gray knob. Dark gray reads as black under DU.
 static void draw_switch(uint8_t* fb, int right, int y, bool on) {
     const EpdRect r = {right - 100, y, 100, 54};
-    if (on) ui_fill_round_rect(fb, r, 27, UI_GRAY_BLACK);
-    else {
-        ui_draw_round_rect(fb, r, 27, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, UI_GRAY_BLACK);
-        ui_draw_round_rect(fb, ui_inset_rect(r, 2), 25, UI_GRAY_BLACK);
+    if (on) {
+        ui_fill_round_rect(fb, r, 27, UI_GRAY_BLACK);
+        epd_fill_circle(r.x + r.width - 27, y + 27, 19, UI_GRAY_WHITE, fb);
+    } else {
+        ui_draw_round_rect(fb, r, 27, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(r, 1), 26, TR_GRAY_OUTLINE);
+        epd_fill_circle(r.x + 27, y + 27, 13, TR_GRAY_OUTLINE, fb);
     }
-    const int kx = on ? r.x + r.width - 27 : r.x + 27;
-    epd_fill_circle(kx, y + 27, 18, UI_GRAY_WHITE, fb);
-    if (!on) for (int d = 0; d < 3; d++) epd_draw_circle(kx, y + 27, 18 - d, UI_GRAY_BLACK, fb);
 }
 
 // 灰色的关着开关（显示满了，不能再开）。/ A gray off switch (the bar is full, it cannot turn on).
@@ -578,7 +581,7 @@ static void draw_switch_gray(uint8_t* fb, int right, int y) {
 static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
     for (int i = 0; i < n; i++) {
         const row_t* r = &rows[i];
-        if (r->section) tr_text(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT, false);
+        if (r->section) tr_text_dim(fb, TR_MARGIN, r->y - 36, 26, r->section, EPD_DRAW_ALIGN_LEFT);
         const int h = r->id == R_WEB ? WEB_ROW_H : ROW_H;
         tr_text(fb, TR_MARGIN, r->y + (h - 32) / 2 - 2, 32, r->label, EPD_DRAW_ALIGN_LEFT, r->id == R_WEB && s_web_on);
         if (r->id == R_WEB) {
@@ -589,7 +592,7 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             char value[160];
             row_value(r->id, value, sizeof(value));
             tr_fit(value, 28, TR_W - 2 * TR_MARGIN - 220);
-            tr_text(fb, TR_W - TR_MARGIN, r->y + (h - 28) / 2, 28, value, EPD_DRAW_ALIGN_RIGHT, false);
+            tr_text_dim(fb, TR_W - TR_MARGIN, r->y + (h - 28) / 2, 28, value, EPD_DRAW_ALIGN_RIGHT);
         }
         const bool last = i + 1 == n || rows[i + 1].section;
         if (!last && !(r->id == R_WEB && s_web_on)) tr_hline(fb, r->y + h - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
@@ -598,8 +601,8 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
 
 static void draw_web_box(uint8_t* fb) {
     const EpdRect b = WEB_BOX;
-    ui_draw_round_rect(fb, b, 18, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(b, 1), 17, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, b, 24, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(b, 1), 23, TR_GRAY_OUTLINE);
     const int tx = b.x + 268, tw = b.x + b.width - 32 - tx;
     char line[160];
     if (!s_web_status.network_ready) {
@@ -638,7 +641,7 @@ static void draw_tabs(uint8_t* fb) {
         tr_icon(fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + TAB_H / 2, false);
         tr_text(fb, TR_MARGIN + 62, y + (TAB_H - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
         if (TR_TABS_FIXED & (1u << t))
-            tr_text(fb, TR_W - TR_MARGIN, y + (TAB_H - 28) / 2, 28, "固定", EPD_DRAW_ALIGN_RIGHT, false);
+            tr_text_dim(fb, TR_W - TR_MARGIN, y + (TAB_H - 28) / 2, 28, "固定", EPD_DRAW_ALIGN_RIGHT);
         else if (!tr_tab_shown((tr_tab_t)t) && full)
             // 已经显示满了：关着的开关画成灰的，点了不开。/ Already full: off switches are gray and do not turn on.
             draw_switch_gray(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2);
@@ -646,8 +649,8 @@ static void draw_tabs(uint8_t* fb) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (TAB_H - 54) / 2, tr_tab_shown((tr_tab_t)t));
         if (t + 1 < TR_TAB_MAX) tr_hline(fb, y + TAB_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
-    tr_text(fb, TR_MARGIN, TAB_TOP + TR_TAB_MAX * TAB_H + 30, 26, "下面的标签栏就是效果，开关一下整屏刷新一次。",
-            EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, TAB_TOP + TR_TAB_MAX * TAB_H + 30, 26, "下面的标签栏就是效果，开关一下整屏刷新一次。",
+                EPD_DRAW_ALIGN_LEFT);
 }
 
 static void draw_sources(uint8_t* fb) {
@@ -687,9 +690,11 @@ static void draw_edit(uint8_t* fb) {
     snprintf(title, sizeof(title), "%s%s", s_edit == E_HOST_URL || s_edit == E_HOST_TOKEN ? SERVERS[s_srv].name : "",
              EDIT[s_edit].title);
     tr_text(fb, 96, 100, 36, title, EPD_DRAW_ALIGN_LEFT, true);
+    // 输入框保持白底（打字时按 DU 局部刷新），框线用深灰。/ The field stays white (typing refreshes by DU); its
+    // frame is dark gray.
     EpdRect f = {TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 84};
-    ui_draw_round_rect(fb, f, 14, UI_GRAY_BLACK);
-    ui_draw_round_rect(fb, ui_inset_rect(f, 1), 13, UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, f, 14, TR_GRAY_OUTLINE);
+    ui_draw_round_rect(fb, ui_inset_rect(f, 1), 13, TR_GRAY_OUTLINE);
     bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_HOST_TOKEN;
     char shown[TR_KBD_TEXT_MAX];
     if (secret) {
@@ -737,7 +742,7 @@ static void about_row(uint8_t* fb, int y, const char* label, const char* value) 
     char v[96];
     snprintf(v, sizeof(v), "%s", value);
     tr_fit(v, 28, TR_W - 2 * TR_MARGIN - 160);
-    tr_text(fb, TR_W - TR_MARGIN, y + 2, 28, v, EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, y + 2, 28, v, EPD_DRAW_ALIGN_RIGHT);
 }
 
 static void draw_about(uint8_t* fb) {
@@ -754,7 +759,7 @@ static void draw_about(uint8_t* fb) {
     about_row(fb, 410, "构建时间", line);
     tr_hline(fb, 464, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     about_row(fb, 484, "项目主页", "github.com/bidabrain/treader-eink");
-    tr_text(fb, TR_MARGIN, 584, 26, "开源致谢", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text_dim(fb, TR_MARGIN, 584, 26, "开源致谢", EPD_DRAW_ALIGN_LEFT);
     int y = 628;
     for (size_t i = 0; i < sizeof(CREDITS) / sizeof(CREDITS[0]); i++, y += 42) {
         char credit[96];
@@ -764,12 +769,12 @@ static void draw_about(uint8_t* fb) {
     }
     tr_wrap(fb, TR_MARGIN, y + 16, TR_W - 2 * TR_MARGIN, 26, 38,
             "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 2);
-    tr_hline(fb, ABOUT_DEVICE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, false);
+    tr_hline(fb, ABOUT_DEVICE_Y - 20, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     tr_text(fb, TR_MARGIN, ABOUT_DEVICE_Y + 10, 32, "设备信息", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_W - TR_MARGIN, ABOUT_DEVICE_Y + 14, 28, "电量、存储、芯片 ›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, ABOUT_DEVICE_Y + 14, 28, "电量、存储、芯片 ›", EPD_DRAW_ALIGN_RIGHT);
     tr_hline(fb, ABOUT_TEST_Y - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     tr_text(fb, TR_MARGIN, ABOUT_TEST_Y + 10, 32, "设备自检", EPD_DRAW_ALIGN_LEFT, false);
-    tr_text(fb, TR_W - TR_MARGIN, ABOUT_TEST_Y + 14, 28, "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT, false);
+    tr_text_dim(fb, TR_W - TR_MARGIN, ABOUT_TEST_Y + 14, 28, "屏幕、触摸、电源 ›", EPD_DRAW_ALIGN_RIGHT);
 }
 
 /* ---- 时间与时区 / Time and zone ---- */
@@ -819,7 +824,8 @@ static void draw_tz_page(uint8_t* fb) {
                 i == cur);
         char right[32];
         snprintf(right, sizeof(right), "%s%s", app_settings_tz_offset((uint8_t)i), i == cur ? " · 当前" : "");
-        tr_text(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT, i == cur);
+        if (i == cur) tr_text(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT, true);
+        else tr_text_dim(fb, TR_W - TR_MARGIN, y + (TZ_ROW_H - 26) / 2, 26, right, EPD_DRAW_ALIGN_RIGHT);
         if (i + 1 < app_settings_tz_count()) tr_hline(fb, y + TZ_ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
 }
@@ -829,7 +835,7 @@ static void draw_tset_page(uint8_t* fb) {
     static const char* const LABELS[TSET_COLS] = {"年", "月", "日", "时", "分"};
     for (int k = 0; k < TSET_COLS; k++) {
         const EpdRect c = tset_col(k, 0, 0);
-        tr_text(fb, c.x + TSET_COL_W / 2, TSET_LABEL_Y, 26, LABELS[k], EPD_DRAW_ALIGN_CENTER, false);
+        tr_text_dim(fb, c.x + TSET_COL_W / 2, TSET_LABEL_Y, 26, LABELS[k], EPD_DRAW_ALIGN_CENTER);
         tr_pill(fb, tset_col(k, TSET_UP_Y, TSET_BTN_H), "+", false, 40);
         char v[8];
         snprintf(v, sizeof(v), k == 0 ? "%04d" : "%02d", s_tset[k] % 10000);

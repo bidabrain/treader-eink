@@ -771,6 +771,111 @@ static void screen_xhs(void) {
     tr_tab_bar(s_fb, TR_TAB_XHS);
 }
 
+// tr_pin.c 的布局常量（照抄）。/ Layout constants copied from tr_pin.c.
+#define PIN_TITLE_Y 190
+#define PIN_HINT_Y 262
+#define PIN_BOX_W 80
+#define PIN_BOX_H 96
+#define PIN_BOX_GAP 24
+#define PIN_BOX_Y 330
+#define PIN_BOX_X ((TR_W - 4 * PIN_BOX_W - 3 * PIN_BOX_GAP) / 2)
+#define PIN_KEY_W 180
+#define PIN_KEY_H 150
+#define PIN_KEY_GAP 24
+
+/* ---- 第七组：设置、锁屏密码（照 app_tr_settings.c、tr_pin.c）/ Group 7: settings and lock PIN ---- */
+
+static void set_cat(int y, tr_icon_t icon, const char* name, const char* sum, bool last) {
+    const EpdRect box = {TR_MARGIN, y + 30, 76, 76};
+    ui_fill_round_rect(s_fb, box, 38, TR_GRAY_SURFACE);
+    tr_icon_on(s_fb, icon, box.x + 38, box.y + 38, UI_GRAY_BLACK, TR_GRAY_SURFACE);
+    tr_text(s_fb, TR_MARGIN + 104, y + 24, 34, name, EPD_DRAW_ALIGN_LEFT, true);
+    char s[200];
+    snprintf(s, sizeof(s), "%s", sum);
+    tr_fit(s, 26, TR_W - 2 * TR_MARGIN - 144);
+    tr_text_dim(s_fb, TR_MARGIN + 104, y + 78, 26, s, EPD_DRAW_ALIGN_LEFT);
+    tr_text_dim(s_fb, TR_W - TR_MARGIN, y + 46, 34, "›", EPD_DRAW_ALIGN_RIGHT);
+    if (!last) tr_hline(s_fb, y + 136 - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+}
+
+// 设置首页。坐标照 draw_home / draw_cat。/ Settings home; follows draw_home and draw_cat.
+static void screen_settings(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_title(s_fb, "设置");
+    static const tr_icon_t icons[6] = {TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_SYNC,
+                                       TR_ICON_POWER};
+    static const char* const names[6] = {"显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
+    static const char* const sums[6] = {"寒蝉端黑体 · 锁屏壁纸 无", "显示 7 个：书库、漫画、番茄、小红书、虎扑、微博、设置",
+                                        "Wi-Fi 传书：Home · USB 传书", "番茄内置 · 小红书已设置 · 微博已设置 · X未设置",
+                                        "dav.example.com", "自动锁屏 2 分钟 · 有密码 · TF 卡 29.7 GB"};
+    for (int i = 0; i < 6; i++) set_cat(170 + i * 136, icons[i], names[i], sums[i], i == 5);
+    tr_text_dim(s_fb, TR_W / 2, 1030, 24, "Treader 0.8.0", EPD_DRAW_ALIGN_CENTER);
+    tr_tab_bar(s_fb, TR_TAB_SETTINGS);
+}
+
+static void set_switch(int right, int y, bool on) {
+    const EpdRect r = {right - 100, y, 100, 54};
+    if (on) {
+        ui_fill_round_rect(s_fb, r, 27, UI_GRAY_BLACK);
+        epd_fill_circle(r.x + r.width - 27, y + 27, 19, UI_GRAY_WHITE, s_fb);
+    } else {
+        ui_draw_round_rect(s_fb, r, 27, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(s_fb, ui_inset_rect(r, 1), 26, TR_GRAY_OUTLINE);
+        epd_fill_circle(r.x + 27, y + 27, 13, TR_GRAY_OUTLINE, s_fb);
+    }
+}
+
+// 设置 › 底部标签：开关。坐标照 draw_tabs。/ Settings > tabs with switches; follows draw_tabs.
+static void screen_set_tabs(void) {
+    clear();
+    tr_status_bar(s_fb);
+    tr_text(s_fb, TR_MARGIN, 96, 44, "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(s_fb, 96, 100, 36, "底部标签", EPD_DRAW_ALIGN_LEFT, true);
+    tr_wrap(s_fb, TR_MARGIN, 176, TR_W - 2 * TR_MARGIN, 26, 38,
+            "关掉的标签不出现在底部和菜单里，功能入口关闭；已有的内容和设置都保留，打开就回来。", 2);
+    for (int t = 0; t < TR_TAB_MAX; t++) {
+        const int y = 270 + t * 90;
+        tr_icon(s_fb, tr_tab_icon((tr_tab_t)t), TR_MARGIN + 20, y + 45, false);
+        tr_text(s_fb, TR_MARGIN + 62, y + (90 - 32) / 2 - 2, 32, tr_tab_label((tr_tab_t)t), EPD_DRAW_ALIGN_LEFT, false);
+        if (t == 0 || t == TR_TAB_SETTINGS) tr_text_dim(s_fb, TR_W - TR_MARGIN, y + 31, 28, "固定", EPD_DRAW_ALIGN_RIGHT);
+        else set_switch(TR_W - TR_MARGIN, y + 18, t != TR_TAB_X);
+        if (t + 1 < TR_TAB_MAX) tr_hline(s_fb, y + 88, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+    tr_tab_bar(s_fb, TR_TAB_SETTINGS);
+}
+
+// 锁屏密码键盘。坐标照 tr_pin.c 的 draw_all。/ Lock PIN keypad; follows draw_all in tr_pin.c.
+static void screen_pin(void) {
+    clear();
+    tr_text(s_fb, TR_W / 2, PIN_TITLE_Y, 40, "输入密码解锁", EPD_DRAW_ALIGN_CENTER, true);
+    tr_text_dim(s_fb, TR_W / 2, PIN_HINT_Y, 26, "输入 4 位数字", EPD_DRAW_ALIGN_CENTER);
+    for (int i = 0; i < 4; i++) {
+        const EpdRect r = {PIN_BOX_X + i * (PIN_BOX_W + PIN_BOX_GAP), PIN_BOX_Y, PIN_BOX_W, PIN_BOX_H};
+        ui_draw_round_rect(s_fb, r, 10, TR_GRAY_OUTLINE);
+        ui_draw_round_rect(s_fb, ui_inset_rect(r, 1), 9, TR_GRAY_OUTLINE);
+        if (i < 2) epd_fill_circle(r.x + PIN_BOX_W / 2, r.y + PIN_BOX_H / 2, 14, UI_GRAY_BLACK, s_fb);
+    }
+    static const int keys[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 11};
+    const int kx = (TR_W - 3 * PIN_KEY_W - 2 * PIN_KEY_GAP) / 2;
+    for (int i = 0; i < 12; i++) {
+        const int k = keys[i];
+        const EpdRect r = {kx + (i % 3) * (PIN_KEY_W + PIN_KEY_GAP), 520 + (i / 3) * (PIN_KEY_H + PIN_KEY_GAP), PIN_KEY_W,
+                           PIN_KEY_H};
+        if (k <= 9) ui_fill_round_rect(s_fb, r, 24, TR_GRAY_SURFACE);
+        else {
+            ui_draw_round_rect(s_fb, r, 24, TR_GRAY_OUTLINE);
+            ui_draw_round_rect(s_fb, ui_inset_rect(r, 1), 23, TR_GRAY_OUTLINE);
+        }
+        char label[8];
+        if (k <= 9) snprintf(label, sizeof(label), "%d", k);
+        else snprintf(label, sizeof(label), "%s", k == 10 ? "取消" : "删除");
+        const int px = k <= 9 ? 56 : 34;
+        tr_text_on(s_fb, r.x + PIN_KEY_W / 2, r.y + (PIN_KEY_H - px) / 2 - 4, px, label, EPD_DRAW_ALIGN_CENTER, k <= 9,
+                   UI_GRAY_BLACK, k <= 9 ? TR_GRAY_SURFACE : UI_GRAY_WHITE);
+    }
+}
+
 int main(int argc, char** argv) {
     const char* font = argc > 1 ? argv[1] : "sdcard/fonts/ChillDuanSansVF.ttf";
     const char* out = argc > 2 ? argv[2] : "build/ui-preview";
@@ -784,9 +889,10 @@ int main(int argc, char** argv) {
     void (*screens[])(void) = {screen_library, screen_tomato, screen_icons, screen_shelf, screen_toolbar, screen_lock,
                                screen_dialog, screen_comics, screen_comic_bar, screen_usb, screen_wifi,
                                screen_tomato_shelf, screen_tomato_detail, screen_store_rank, screen_store_home,
-                               screen_hupu_feed, screen_hupu_scores, screen_hupu_post, screen_weibo, screen_xhs};
+                               screen_hupu_feed, screen_hupu_scores, screen_hupu_post, screen_weibo, screen_xhs,
+                               screen_settings, screen_set_tabs, screen_pin};
     const char* names[] = {"library", "tomato", "icons", "shelf", "toolbar", "lock", "dialog", "comics", "comic_bar",
-                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post", "weibo", "xhs"};
+                           "usb", "wifi", "tomato_shelf", "tomato_detail", "store_rank", "store_home", "hupu_feed", "hupu_scores", "hupu_post", "weibo", "xhs", "settings", "set_tabs", "pin"};
     for (int i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++) {
         screens[i]();
         snprintf(path, sizeof(path), "%s/%s.png", out, names[i]);
