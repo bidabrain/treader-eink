@@ -267,7 +267,7 @@ static void draw_run(uint8_t* fb) {
     if (!s_failed) draw_meters(fb);
     tr_wrap(fb, TR_MARGIN, BIG ? METER_TOP + 3 * METER_H + TR_S(24) : 800, CW, TR_S(26), TR_S(40),
             s_failed ? "TF 卡已经从设备上卸下，点“结束传输”重启恢复。" :
-            "拷完先在电脑上“弹出”U 盘（Windows 右下角“安全删除硬件”，Mac 拖到废纸篓或点 ⏏），再点下面的按钮。",
+            "拷完先在电脑上“弹出”U 盘（Windows 右下角“安全删除硬件”，Mac 拖到废纸篓或点“推出”），再点下面的按钮。",
             BIG ? 4 : 3);
     tr_pill(fb, BUTTON_RECT, "结束传输", s_failed || s_st.ejected || s_st.state == READ_PICO_USB_WAITING, TR_S(34));
 }

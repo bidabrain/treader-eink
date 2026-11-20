@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 未发布 / Unreleased
+
+- USB 传书页的提示把“点 ⏏”改成“点“推出””：默认字体里没有这个符号，以前显示成空方框。
+  The USB transfer hint now says to click "推出" instead of showing the ⏏ symbol, which the default font lacks and drew as an empty box.
+
 ## 2026-11-21 · 安卓 App：番茄 1.1.0、小红书 1.5.0、微博 1.4.0、X 1.1.0
 
 - 四个安卓 App 的界面都改成和固件 0.9.0 一样的 Material 3 灰阶：分段按钮、胶囊按钮、角标、卡片、对话框、线条图标；桌面图标换成固件对应标签的图标，浅灰底黑线条。功能和操作不变。
