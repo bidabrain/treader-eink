@@ -117,6 +117,7 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
         // Otherwise after crossing a chapter they kept the previous chapter's page count and starts, skipping pages or
         // sticking on the last page with taps doing nothing.
         val turnNow by rememberUpdatedState { dir: Int -> turn(dir) }
+        val zone by rememberUpdatedState(vm.turnZone)
         LaunchedEffect(turnSignal.value) { turnSignal.value.second.let { if (it != 0) turn(it) } }
         // 自动翻页：3～30 秒一页，开着工具条时暂停，到书尾停下。/ Auto turn every 3-30 s; paused with a panel open.
         LaunchedEffect(autoLevel, panel, r.chapter, r.off) {
@@ -130,9 +131,13 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
                 detectTapGestures { p ->
                     when {
                         panel != Panel.NONE -> panel = Panel.NONE
-                        p.x < size.width * 0.3f -> turnNow(-1)
-                        p.x > size.width * 0.7f -> turnNow(1)
-                        else -> panel = Panel.TOOLS
+                        // 翻页区域照固件：左右，或上 1/4 开工具条、下面翻页。/ Zones after the firmware: sides, or the
+                        // top quarter opens the toolbar and the rest turns.
+                        zone == 0 && p.x < size.width * 0.3f -> turnNow(-1)
+                        zone == 0 && p.x > size.width * 0.7f -> turnNow(1)
+                        zone == 0 || p.y < size.height / 4f -> panel = Panel.TOOLS
+                        zone == 1 && p.x < size.width * 0.3f -> turnNow(-1)
+                        else -> turnNow(1)
                     }
                 }
             }.swipeTurn { turnNow(it) }

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.treader.tomato.AppVm
 import com.treader.tomato.BuildConfig
+import com.treader.tomato.TURN_ZONES
 import kotlinx.coroutines.launch
 
 /**
@@ -99,6 +100,10 @@ fun SettingsScreen(vm: AppVm) {
                 T("阅读", 13.sp, color = Mid, modifier = Modifier.padding(top = 28.dp, bottom = 4.dp))
                 SettingRow("字体", if (vm.serif) "宋体 ›" else "黑体 ›") { vm.changeSerif(!vm.serif) }
                 HLine()
+                SettingRow("翻页区域", TURN_ZONES[vm.turnZone].first + " ›") { vm.changeTurnZone(vm.turnZone + 1) }
+                HLine()
+                T("看书时点屏幕：" + TURN_ZONES[vm.turnZone].second + "。点一下换一种，和小纸 Pico 的设置一样。", 12.sp, color = Mid,
+                    lineHeight = 18.sp, modifier = Modifier.padding(top = 12.dp))
                 T("关于", 13.sp, color = Mid, modifier = Modifier.padding(top = 28.dp, bottom = 4.dp))
                 SettingRow("版本", BuildConfig.VERSION_NAME) {}
                 HLine()

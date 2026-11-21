@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · 番茄安卓 App 1.2.0
+
+- 和固件 1.0.2 一样，看书时点屏幕翻页的区域可以选了（设置 → 翻页区域，点一下换一种）：左右（默认）、中下翻页、点哪都翻。只存在手机上，不和设备同步。
+  As in firmware 1.0.2, the reader's tap zones are a setting (Settings > Page turn zones, tap to cycle): sides (default), lower or anywhere. Stored on the phone only, not synced with the device.
+
 ## 2026-11-21 · Treader 1.0.2
 
 - 看书时点屏幕翻页的区域可以选了（设置 → 显示与阅读 → 翻页区域）：左右（默认，和以前一样）、中下翻页（点上面开工具条，下面左边一条上一页、其余下一页）、点哪都翻（点上面开工具条，其余都是下一页）。选项旁边画了示意图。

@@ -67,6 +67,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var serif by mutableStateOf(ui.getBoolean("serif", true))
         private set
+    /** 翻页区域，照固件：0 左右、1 中下翻页、2 点哪都翻。/ Tap zones after the firmware: 0 sides, 1 lower, 2 anywhere. */
+    var turnZone by mutableStateOf(ui.getInt("turn_zone", 0).coerceIn(0, TURN_ZONES.size - 1))
+        private set
     /** 音量键翻页：(次数, 方向)，次数变了阅读页就翻一次。/ Volume-key turns: (count, direction); each new count turns once. */
     val turnSignal = mutableStateOf(0 to 0)
     var tomatoView by mutableStateOf<TomatoView>(TomatoView.Shelf)
@@ -271,6 +274,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun changeSerif(on: Boolean) { serif = on; ui.edit().putBoolean("serif", on).apply() }
 
+    fun changeTurnZone(z: Int) { turnZone = z % TURN_ZONES.size; ui.edit().putInt("turn_zone", turnZone).apply() }
+
     fun importBooks(uris: List<Uri>) {
         viewModelScope.launch {
             val msgs = withContext(Dispatchers.IO) { uris.map { library.import(getApplication(), it) } }
@@ -321,3 +326,10 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         refreshLibrary()
     }
 }
+
+/** 翻页区域的名称和说明，顺序同固件 app_turn_zone_t。/ Tap-zone names and notes, in the firmware's app_turn_zone_t order. */
+val TURN_ZONES = listOf(
+    "左右" to "点左边上一页，右边下一页，中间开工具条",
+    "中下翻页" to "点上面开工具条；下面左边一条上一页，其余下一页",
+    "点哪都翻" to "点上面开工具条，其余都是下一页；上一页用右滑或音量键",
+)
