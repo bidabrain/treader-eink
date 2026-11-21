@@ -47,6 +47,10 @@
  * confirm dialogs, toolbar and TOC take the Material 3 gray style; control positions, hit areas and refresh modes are
  * unchanged. Anything DU updates (pressed states, the search field, filter pills, layout choices) stays black and white;
  * grays are only backgrounds for page refreshes, and pressed outlines are drawn outside gray blocks.
+ * Treader 修订（1.0.2，用户要求）：正文点按的翻页区域可在设置里选：左右（默认，原行为）、中下翻页、点哪都翻；插图、滑动、
+ * 长按和三键不变。
+ * Treader revision (1.0.2, user request): the reader's tap zones are a setting: sides (default, the old behavior),
+ * lower or anywhere; images, swipes, long press and the keys are unchanged.
  */
 #include <dirent.h>
 #include <errno.h>
@@ -702,6 +706,21 @@ static void save_progress(void) {
     if (was_failed != s_save_failed) invalidate_prep();
 }
 static void invalidate_prep(void) { s_next_page = s_prep_page = -1; }
+
+// 正文上点一下：-1 上一页、1 下一页、0 开关工具条，按设置里的翻页区域分。工具条开着时，中下翻页和点哪都翻
+// 只用点正文收起工具条，不翻页。
+// A tap on the page: -1 back, 1 forward, 0 toggles the toolbar, split by the turn-zone setting. With the toolbar
+// open, the lower and anywhere layouts only close it on a body tap instead of turning.
+static int tap_zone(int x, int y) {
+    const uint8_t mode = app_settings_turn_zone();
+    if (mode == APP_TURN_SIDES) {
+        if (x < UI_LOCK_WIDTH * 3 / 10) return -1;
+        return x >= UI_LOCK_WIDTH * 7 / 10 ? 1 : 0;
+    }
+    if (s_toolbar || y < UI_LOCK_HEIGHT / 4) return 0;
+    if (mode == APP_TURN_LOWER && x < UI_LOCK_WIDTH * 3 / 10) return -1;
+    return 1;
+}
 static void free_image(void) {
     free(s_image_pixels); s_image_pixels = NULL;
     s_image_width = s_image_height = 0;
@@ -1813,8 +1832,8 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             unlock_draw();
             if (block != SIZE_MAX) return open_image(ctx, block);
         }
-        if (x < UI_LOCK_WIDTH * 3 / 10) return turn_page(ctx, -1);
-        if (x >= UI_LOCK_WIDTH * 7 / 10) return turn_page(ctx, 1);
+        const int zone = tap_zone(x, y);
+        if (zone) return turn_page(ctx, zone);
         s_toolbar = !s_toolbar;
             s_typeset = false;
         invalidate_prep();

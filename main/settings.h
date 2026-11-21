@@ -109,6 +109,17 @@ void app_settings_set_time_auto(bool on);
 bool app_settings_hupu_images(void);
 void app_settings_set_hupu_images(bool on);
 
+/// 看书时点屏幕的翻页区域。/ Where taps turn pages in the book reader.
+typedef enum {
+    APP_TURN_SIDES = 0,   ///< 左右：左 3/10 上一页，中间工具条，右 3/10 下一页 / Left back, middle toolbar, right forward
+    APP_TURN_LOWER,       ///< 中下翻页：上 1/4 工具条，下面左 3/10 上一页、其余下一页 / Top quarter toolbar; below, left back and the rest forward
+    APP_TURN_ANY,         ///< 点哪都翻：上 1/4 工具条，其余下一页 / Top quarter toolbar; the rest forward
+    APP_TURN_ZONES,
+} app_turn_zone_t;
+/// 默认 APP_TURN_SIDES（升级前的行为）。/ Defaults to APP_TURN_SIDES (the behavior before this setting).
+uint8_t app_settings_turn_zone(void);
+void app_settings_set_turn_zone(uint8_t zone);
+
 /// 时区，按表里的序号存；默认 0（北京时间 UTC+8）。夏令时按 POSIX 规则自动切换。
 /// Time zone stored as an index into the table; 0 (Beijing, UTC+8) by default. Daylight saving follows the POSIX rule.
 int app_settings_tz_count(void);

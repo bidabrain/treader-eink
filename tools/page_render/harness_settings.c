@@ -36,10 +36,8 @@ bool tr_time_valid(void) { return s_mock_time; }
 static const esp_app_desc_t s_desc = {.version = "1.42.0", .date = "Nov 21 2026", .time = "15:43:00"};
 const esp_app_desc_t* esp_app_get_description(void) { return &s_desc; }
 // 验证器：已设置、已上锁。/ Authenticator: set up and locked.
-#ifndef HR_BASELINE   // 改动前的代码还没有验证器 / The pre-change code has no authenticator
 tr_auth_state_t tr_auth_state(void) { return TR_AUTH_LOCKED; }
 int tr_auth_count(void) { return -1; }
-#endif
 void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
     epd_fill_rect(area, 0x00, fb);
     epd_fill_rect((EpdRect){area.x + 12, area.y + 12, area.width - 24, area.height - 24}, 0xFF, fb);
@@ -96,6 +94,13 @@ void hr_scenes(void) {
     s_message[0] = 0;
     hr_allow_fit();
     page(P_DISPLAY, "display");
+#ifndef HR_BASELINE   // 改动前没有翻页区域 / No turn-zone setting before this change
+    page(P_TURN, "turn");
+    app_settings_set_turn_zone(APP_TURN_LOWER);
+    page(P_TURN, "turn_lower");
+    page(P_DISPLAY, "display_turn_lower");
+    app_settings_set_turn_zone(APP_TURN_SIDES);
+#endif
     page(P_TABS, "tabs");
     // 最坏：八行三段，常用超出这一档。/ Worst case: eight rows in three sections, pins beyond this size's room.
     static const uint8_t pins3[] = {TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS};
@@ -116,12 +121,10 @@ void hr_scenes(void) {
     s_mock_busy = false;
     hr_allow_fit();
     page(P_SOURCES, "sources");
-#ifndef HR_BASELINE   // 改动前没有虎扑设置页 / No Hupu settings page before this change
     page(P_SRC_HUPU, "hupu");
     s_hupu_ask = true;
     page(P_SRC_HUPU, "hupu_ask");
     s_hupu_ask = false;
-#endif
     page(P_SRC_TOMATO, "src_tomato");
     s_srv = S_RED;
     page(P_SRC_SERVER, "server");

@@ -40,6 +40,7 @@
 #define NVS_KEY_DISPLAY "disp_size"   // 显示大小档位 / Display size level
 #define NVS_KEY_TIME_AUTO "time_auto"
 #define NVS_KEY_HUPU_IMG "hupu_img"   // 虎扑显示图片 / Hupu shows images
+#define NVS_KEY_TURN_ZONE "turn_zone" // 看书时的翻页区域 / Reader tap zones
 #define NVS_KEY_TZ "tz"
 #define NVS_KEY_PIN_FAILS "pin_fails" // 连续输错次数 / Consecutive wrong PIN tries
 #define NVS_KEY_PIN "pin_hash"      // 8 字节盐 + 32 字节 SHA-256 / 8-byte salt + 32-byte SHA-256
@@ -68,6 +69,7 @@ static uint8_t s_display;
 static uint8_t s_pin_fails;
 static bool s_time_auto = true;
 static bool s_hupu_img;   // 默认不显示图片 / Images off by default
+static uint8_t s_turn_zone;   // 默认左右 / Left and right by default
 static uint8_t s_tz;
 static bool s_pin_on;
 static uint8_t s_pin[PIN_SALT_LEN + PIN_HASH_LEN];
@@ -172,6 +174,8 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
     uint8_t hupu_img = 0;
     if (nvs_get_u8(h, NVS_KEY_HUPU_IMG, &hupu_img) == ESP_OK) s_hupu_img = hupu_img != 0;
+    uint8_t turn_zone = 0;
+    if (nvs_get_u8(h, NVS_KEY_TURN_ZONE, &turn_zone) == ESP_OK && turn_zone < APP_TURN_ZONES) s_turn_zone = turn_zone;
     if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
     size_t pin_len = sizeof(s_pin);
     s_pin_on = nvs_get_blob(h, NVS_KEY_PIN, s_pin, &pin_len) == ESP_OK && pin_len == sizeof(s_pin);
@@ -484,6 +488,14 @@ void app_settings_set_hupu_images(bool on) {
     if (on == s_hupu_img) return;
     s_hupu_img = on;
     nvs_put_u8(NVS_KEY_HUPU_IMG, on ? 1 : 0);
+}
+
+uint8_t app_settings_turn_zone(void) { return s_turn_zone; }
+
+void app_settings_set_turn_zone(uint8_t zone) {
+    if (zone >= APP_TURN_ZONES || zone == s_turn_zone) return;
+    s_turn_zone = zone;
+    nvs_put_u8(NVS_KEY_TURN_ZONE, zone);
 }
 
 bool app_settings_time_auto(void) {

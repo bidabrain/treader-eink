@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · Treader 1.0.2
+
+- 看书时点屏幕翻页的区域可以选了（设置 → 显示与阅读 → 翻页区域）：左右（默认，和以前一样）、中下翻页（点上面开工具条，下面左边一条上一页、其余下一页）、点哪都翻（点上面开工具条，其余都是下一页）。选项旁边画了示意图。
+  The reader's tap zones are now a setting (Settings > Display & reading > Page turn zones): sides (default, as before), lower (top opens the toolbar; below, a left strip goes back and the rest forward) or anywhere (top opens the toolbar; the rest goes forward). Each choice has a sketch beside it.
+
 ## 2026-11-21 · Treader 1.0.1
 
 - 虎扑加“显示图片”开关（设置 → 内容来源 → 虎扑），默认关：只看文字，不下载也不解码图片；打开前提醒会大大增加设备负担。图片下载按实际大小申请内存（原来每张先要 1 MB，内存碎了就下不了），没下好的图会说明原因，点图重试。

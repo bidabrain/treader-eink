@@ -81,7 +81,7 @@ extern const char server_form_end[] asm("_binary_server_form_html_end");
 
 typedef enum {
     P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SYNC, P_POWER, P_ABOUT,
-    P_TIME, P_TZ, P_TSET
+    P_TIME, P_TZ, P_TSET, P_TURN
 } page_t;
 
 // 自建服务器页：小红书、微博和 X 共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu, Weibo and X,
@@ -121,7 +121,7 @@ typedef struct {
 } row_t;
 
 enum {
-    R_SIZE, R_FONT, R_WALL,
+    R_SIZE, R_FONT, R_WALL, R_TURN,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
@@ -133,7 +133,17 @@ static const row_t DISPLAY_ROWS[] = {
     {R_SIZE, NULL, "显示大小", 190},
     {R_FONT, NULL, "字体", 262},
     {R_WALL, NULL, "锁屏壁纸", 334},
+    {R_TURN, NULL, "翻页区域", 406},
 };
+// 看书时的翻页区域：名称和一句说明，顺序同 app_turn_zone_t。/ Reader tap zones: name and one-line note, in
+// app_turn_zone_t order.
+static const char* const TURN_NAMES[APP_TURN_ZONES] = {"左右", "中下翻页", "点哪都翻"};
+static const char* const TURN_NOTES[APP_TURN_ZONES] = {
+    "点左边上一页，右边下一页，中间开工具条",
+    "点上面开工具条；下面左边一条上一页，其余下一页",
+    "点上面开工具条，其余都是下一页；上一页用右滑或左键",
+};
+
 static const row_t TOMATO_ROWS[] = {
     {R_SRV, NULL, "番茄服务器", 190},
     {R_STORE, NULL, "书城榜单", 262},
@@ -315,6 +325,7 @@ static void row_value(int id, char* out, size_t cap) {
     case R_SIZE: snprintf(out, cap, "%s ›", app_settings_display_label(app_settings_display_size())); break;
     case R_FONT: font_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_WALL: wall_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
+    case R_TURN: snprintf(out, cap, "%s ›", TURN_NAMES[app_settings_turn_zone() % APP_TURN_ZONES]); break;
     case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
         char url[160];
@@ -1164,6 +1175,58 @@ static void draw_time_page(uint8_t* fb) {
             "时间存在电源芯片的时钟里，断电也继续走。", 5);
 }
 
+// 翻页区域：每个选项左边一块小屏示意，浅灰上一页、深灰下一页、白色开工具条。
+// Turn zones: each option has a small screen sketch on the left; light gray is back, dark gray forward, white the
+// toolbar.
+#define TURN_TOP TR_S(170)
+#define TURN_OPT_H TR_S(206)
+#define TURN_SKETCH_H TR_S(170)
+#define TURN_SKETCH_W (TURN_SKETCH_H * 684 / 1216)
+#define TURN_BACK_INK 0xD0
+#define TURN_FWD_INK 0x60
+
+static void turn_zone_fill(uint8_t* fb, EpdRect r, int dir) {
+    if (r.width <= 0 || r.height <= 0) return;
+    if (dir) epd_fill_rect(r, dir < 0 ? TURN_BACK_INK : TURN_FWD_INK, fb);
+    const int cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+    if (dir < 0) tr_text(fb, cx, cy - TR_S(14), TR_S(28), "‹", EPD_DRAW_ALIGN_CENTER, true);
+    else if (dir > 0) tr_text_inv(fb, cx, cy - TR_S(14), TR_S(28), "›", EPD_DRAW_ALIGN_CENTER, true);
+    else for (int k = -1; k <= 1; k++)   // 菜单三道横线 / Three menu bars
+        epd_fill_rect((EpdRect){cx - TR_S(10), cy + k * TR_S(7) - 1, TR_S(20), 3}, UI_GRAY_BLACK, fb);
+}
+
+static void draw_turn_sketch(uint8_t* fb, int x, int y, int mode) {
+    const int w = TURN_SKETCH_W, h = TURN_SKETCH_H, side = w * 3 / 10;
+    if (mode == APP_TURN_SIDES) {
+        turn_zone_fill(fb, (EpdRect){x, y, side, h}, -1);
+        turn_zone_fill(fb, (EpdRect){x + side, y, w - 2 * side, h}, 0);
+        turn_zone_fill(fb, (EpdRect){x + w - side, y, side, h}, 1);
+    } else {
+        const int top = h / 4;
+        turn_zone_fill(fb, (EpdRect){x, y, w, top}, 0);
+        const int left = mode == APP_TURN_LOWER ? side : 0;
+        turn_zone_fill(fb, (EpdRect){x, y + top, left, h - top}, -1);
+        turn_zone_fill(fb, (EpdRect){x + left, y + top, w - left, h - top}, 1);
+        tr_hline(fb, y + top, x, w, true);
+    }
+    epd_draw_rect((EpdRect){x, y, w, h}, UI_GRAY_BLACK, fb);
+    epd_draw_rect((EpdRect){x + 1, y + 1, w - 2, h - 2}, UI_GRAY_BLACK, fb);
+}
+
+static void draw_turn_page(uint8_t* fb) {
+    draw_back_title(fb, "翻页区域");
+    const int cur = app_settings_turn_zone();
+    const int tx = TR_MARGIN + TURN_SKETCH_W + TR_S(28), tw = TR_W - TR_MARGIN - tx;
+    for (int i = 0; i < APP_TURN_ZONES; i++) {
+        const int y = TURN_TOP + i * TURN_OPT_H, sy = y + (TURN_OPT_H - TURN_SKETCH_H) / 2;
+        draw_turn_sketch(fb, TR_MARGIN, sy, i);
+        tr_text(fb, tx, sy + TR_S(6), TR_S(32), TURN_NAMES[i], EPD_DRAW_ALIGN_LEFT, i == cur);
+        if (i == cur) tr_text(fb, TR_W - TR_MARGIN, sy + TR_S(10), TR_S(26), "当前", EPD_DRAW_ALIGN_RIGHT, true);
+        tr_wrap(fb, tx, sy + TR_S(56), tw, TR_S(24), TR_S(34), TURN_NOTES[i], 3);
+        if (i + 1 < APP_TURN_ZONES) tr_hline(fb, y + TURN_OPT_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
+    }
+}
+
 static void draw_tz_page(uint8_t* fb) {
     draw_back_title(fb, "时区");
     const int cur = app_settings_tz(), per = tz_per_page(), n = app_settings_tz_count();
@@ -1274,6 +1337,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     case P_TIME: draw_time_page(fb); break;
     case P_TZ: draw_tz_page(fb); break;
     case P_TSET: draw_tset_page(fb); break;
+    case P_TURN: draw_turn_page(fb); break;
     }
     tr_tab_bar(fb, TR_TAB_SETTINGS);
 }
@@ -1377,6 +1441,7 @@ static app_redraw_t go_back(void) {
     s_hupu_ask = false;
     if (s_page == P_SRC_SERVER) web_stop();
     s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
+             s_page == P_TURN ? P_DISPLAY :
              s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU ? P_SOURCES : P_HOME;
     return APP_REDRAW_PAGE;
 }
@@ -1518,6 +1583,7 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     switch (id) {
     case R_FONT: ctx->request_app = &app_font_pick; return APP_REDRAW_NONE;
     case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
+    case R_TURN: return open_page(P_TURN);
     case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
     case R_SIZE:
         // 换档后整页排版都变了，整屏重画。/ The whole layout changes with the size; redraw the full screen.
@@ -1626,6 +1692,13 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
     case P_TIME: id = row_hit(TIME_ROWS, COUNT(TIME_ROWS), y); break;
     case P_TSET: return touch_tset(x, y);
+    case P_TURN: {
+        if (y < TURN_TOP || y >= TURN_TOP + APP_TURN_ZONES * TURN_OPT_H) return APP_REDRAW_NONE;
+        const uint8_t i = (uint8_t)((y - TURN_TOP) / TURN_OPT_H);
+        if (i == app_settings_turn_zone()) return APP_REDRAW_NONE;
+        app_settings_set_turn_zone(i);
+        return APP_REDRAW_PAGE;
+    }
     case P_TZ: {
         const int turn = tr_pager_hit(TZ_PAGER_Y, x, y);
         if (turn && tz_pages() > 1) {
