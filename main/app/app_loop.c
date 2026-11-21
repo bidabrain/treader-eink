@@ -43,7 +43,6 @@
 
 #include "app_registry.h"
 #include "tr_nav.h"
-#include "continuous_du.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
 #include "esp_log.h"
@@ -340,7 +339,9 @@ void app_loop_run(const app_loop_config_t* config) {
         .acc = config->acc,
         .tp = config->tp,
         .sensor_ready = config->sensor_ready,
-        .continuous_ready = continuous_du_init(),
+        // 连续 DU 只给已删掉的触摸演示页用，开机不再申请它的 812 KB 状态表。/ Continuous DU only served the
+        // removed touch demo page, so its 812 KB state table is no longer allocated at boot.
+        .continuous_ready = false,
         .touch = &latest,
         .touch_info = &touch_info,
     };

@@ -24,6 +24,7 @@
 #include "read_pico_board.h"
 #include "read_pico_buzzer.h"
 #include "read_pico_pmu.h"
+#include "read_pico_pmu_protocol.h"
 #include "sc7a20h_lab.h"
 #include "settings.h"
 #include "tr_auth.h"
@@ -119,6 +120,74 @@ app_wake_source_t app_last_wake_source(void) {
     return (app_wake_source_t)app_settings_last_wake();
 }
 
+/* ---- 浅睡按键唤醒 / Light-sleep key wake ---- */
+
+// 按键唤醒要经 PMU：按键 → PMU 记事件并拉低 CW_INT → IO 扩展器报中断 → ESP 醒来再用 I2C 向 PMU 确认。
+// CW_INT 是电平信号，只要还有没 ACK 的事件就一直低；醒来那一下 I2C 没读到，事件留在 PMU 里，CW_INT 不再变化，
+// 扩展器也就不再报中断，之后怎么按都叫不醒（拿起唤醒走加速度计自己的引脚，不受影响）。
+// Key wake goes through the PMU: key -> PMU queues an event and pulls CW_INT low -> the IO expander interrupts -> the
+// ESP wakes and confirms with the PMU over I2C. CW_INT is a level: it stays low while any event is unacknowledged. If
+// the I2C read right after waking misses, the event stays queued, CW_INT never changes again, the expander never
+// interrupts again and no key press can wake the device (pickup uses the accelerometer's own pin and still works).
+
+// 定时保底：疑似卡住时每隔这么久醒一次，直接问 PMU 有没有按键。/ Fallback: while a stall is suspected, wake this often
+// and ask the PMU directly about the key.
+#define KEY_FALLBACK_US (1500 * 1000)
+// 睡前扩展器中断一直撤不掉，最多等这么多轮（每轮 20 ms）就改用定时保底入睡。/ If the expander interrupt will not
+// clear before sleeping, give up after this many 20 ms rounds and sleep on the fallback timer.
+#define IOE_STUCK_ROUNDS 50
+
+static bool s_key_fallback;
+
+// 醒来马上读 PMU 可能失败（I2C 偶发错误），隔一下重试几次。/ Reading the PMU right after waking can fail (transient
+// I2C errors); retry a few times with a short gap.
+static bool pmu_poll_retry(void) {
+    for (int i = 0; i < 5; i++) {
+        if (read_pico_pmu_poll() == ESP_OK) return true;
+        vTaskDelay(pdMS_TO_TICKS(15));
+    }
+    return false;
+}
+
+// PMU 还压着没 ACK 的事件（读不到它也按最坏情况算）。/ The PMU still holds unacknowledged events (an unreadable PMU
+// counts as the worst case).
+static bool pmu_events_stuck(void) {
+    if (!pmu_poll_retry()) return true;
+    const pmu_snapshot_t* snap = read_pico_pmu_get();
+    return snap->pending_events > 0 || (snap->flags & PMU_STATUS_CW_INT_ASSERTED) != 0;
+}
+
+static void key_fallback_set(bool on) {
+    if (on == s_key_fallback) return;
+    s_key_fallback = on;
+    if (on) esp_sleep_enable_timer_wakeup(KEY_FALLBACK_US);
+    else esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    ESP_LOGW(TAG, "key wake fallback timer %s", on ? "on" : "off");
+}
+
+// 醒来后确认是不是按键：读得到 PMU 再取事件，键正按着也算。别的事件顺手 ACK 掉；还有剩的（或读不到）就打开
+// 定时保底，清干净了就关掉。
+// After waking, decide whether it was the key: read the PMU, then take events; a key held down counts too. Other
+// events get acknowledged on the way; if any remain (or the PMU cannot be read) turn the fallback timer on, and off
+// once the queue is clean.
+static bool key_wake_check(const char* why) {
+    const bool ok = pmu_poll_retry();
+    const bool held = ok && (read_pico_pmu_get()->key_state & 0x01) != 0;
+    const bool key = ok && read_pico_pmu_take_key_wakeup();
+    if (key || held) {
+        ESP_LOGI(TAG, "key wake (%s)%s", why, held ? " held" : "");
+        return true;
+    }
+    if (ok) read_pico_pmu_drain_events();
+    const bool stuck = pmu_events_stuck();
+    const pmu_snapshot_t* snap = read_pico_pmu_get();
+    ESP_LOGI(TAG, "no key (%s): pmu=%s pending=%u flags=0x%04x ioe=%d", why, ok ? "ok" : "fail",
+             (unsigned)snap->pending_events, (unsigned)(snap->flags & 0xFFFF),
+             gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO));
+    key_fallback_set(stuck);
+    return false;
+}
+
 static void pickup_ack(sc7a20h_handle_t acc) {
     sc7a20h_events_t ev;
     sc7a20h_read_events(acc, &ev);
@@ -210,11 +279,26 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
 
     app_wake_source_t wake = APP_WAKE_NONE;
     bool slept = false;
+    // 睡前先把 PMU 里积压的事件清干净，清不掉就打开定时保底。/ Clear the PMU backlog before sleeping; if it will not
+    // clear, turn on the fallback timer.
+    read_pico_pmu_drain_events();
+    key_fallback_set(pmu_events_stuck());
+    bool ioe_stuck = false;
+    int ioe_low_rounds = 0;
     for (;;) {
         read_pico_clear_ioe_int();
-        if (!slept && gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) == 0) {
+        if (!slept && !ioe_stuck && gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) == 0) {
             read_pico_pmu_drain_events();
             read_pico_clear_ioe_int();
+            // 一直撤不掉就别空转：关掉扩展器唤醒，靠定时保底入睡。/ Do not spin forever: drop the expander wake and
+            // sleep on the fallback timer.
+            if (++ioe_low_rounds >= IOE_STUCK_ROUNDS) {
+                ESP_LOGW(TAG, "IOE_INT stuck low before sleep, timer fallback");
+                gpio_wakeup_disable((gpio_num_t)READ_PICO_IOE_INT_GPIO);
+                ioe_stuck = true;
+                key_fallback_set(true);
+                continue;
+            }
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
@@ -223,12 +307,20 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
             vTaskDelay(pdMS_TO_TICKS(20));
             continue;
         }
-        if (slept && gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) == 0) {
-            if (read_pico_pmu_take_key_wakeup()) {
+        if (slept && !ioe_stuck && gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) == 0) {
+            if (key_wake_check("ioe low")) {
                 wake = APP_WAKE_KEY;
                 break;
             }
             read_pico_clear_ioe_int();
+            // 清过还是低：扩展器读不动，改靠定时保底，免得刚睡下又被同一个电平叫醒。/ Still low after clearing: the
+            // expander cannot be read, so rely on the fallback timer instead of waking on the same level again.
+            if (gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) == 0) {
+                ESP_LOGW(TAG, "IOE_INT stuck low, timer fallback");
+                gpio_wakeup_disable((gpio_num_t)READ_PICO_IOE_INT_GPIO);
+                ioe_stuck = true;
+                key_fallback_set(true);
+            }
             continue;
         }
         if (slept && pickup && sc7a20h_int1_level(acc) > 0 && pickup_ia(acc)) {
@@ -245,8 +337,18 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
         esp_light_sleep_start();
         slept = true;
         int64_t dt_ms = (esp_timer_get_time() - t0) / 1000;
+        const bool by_timer = (esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_TIMER)) != 0;
+        // 定时醒来时扩展器若已恢复，重新打开它的唤醒。/ On a timer wake, re-arm the expander wake once it has recovered.
+        if (by_timer && ioe_stuck) {
+            read_pico_clear_ioe_int();
+            if (gpio_get_level((gpio_num_t)READ_PICO_IOE_INT_GPIO) != 0) {
+                gpio_wakeup_enable((gpio_num_t)READ_PICO_IOE_INT_GPIO, GPIO_INTR_LOW_LEVEL);
+                ioe_stuck = false;
+                ESP_LOGI(TAG, "IOE_INT recovered");
+            }
+        }
         read_pico_clear_ioe_int();
-        if (read_pico_pmu_take_key_wakeup()) {
+        if (key_wake_check(by_timer ? "timer" : "sleep")) {
             wake = APP_WAKE_KEY;
             break;
         }
@@ -268,6 +370,7 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
     }
 
     gpio_wakeup_disable((gpio_num_t)READ_PICO_IOE_INT_GPIO);
+    key_fallback_set(false);
     if (acc_armed) {
         gpio_wakeup_disable(sc7a20h_int1_gpio(acc));
         sc7a20h_events_t ev;

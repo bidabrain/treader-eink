@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · Treader 1.0.3
+
+- 阅读工具条的进度条两边加了“上一章”“下一章”，点了直接跳到那一章开头；第一章和最后一章对应的按钮变灰。
+  The reading toolbar gets "previous chapter" and "next chapter" beside the progress bar, jumping straight to that chapter's start; the button greys out on the first or last chapter.
+- 修正浅睡时按电源键有时怎么按都叫不醒、只能拿起唤醒的问题：醒来读电源芯片失败会重试，积压的事件都清干净，清不掉时改为定时检查按键。万一还是按不醒，按住电源键 10 秒强制关机，再长按开机。
+  Fixed light sleep sometimes ignoring the power key so that only pickup could wake it: a failed read of the power chip after waking is retried, its event backlog is cleared, and if it will not clear the key is checked on a timer. If the key still does nothing, hold it for 10 seconds to force power-off, then long-press to power on.
+- 开机不再占用约 800 KB 没人用的内存（连续 DU 状态表，原来只给已删掉的触摸演示页用），看书、看图时内存更宽裕。
+  About 800 KB of unused memory (the continuous DU state table, used only by the removed touch demo) is no longer taken at boot, leaving more room for reading and images.
+
 ## 2026-11-21 · 番茄安卓 App 1.2.0
 
 - 和固件 1.0.2 一样，看书时点屏幕翻页的区域可以选了（设置 → 翻页区域，点一下换一种）：左右（默认）、中下翻页、点哪都翻。只存在手机上，不和设备同步。

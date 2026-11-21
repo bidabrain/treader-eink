@@ -105,7 +105,7 @@
 #define BOOK_SHAKE_THS_MG 192
 #define BOOK_SHAKE_DUR 2
 #define BOOK_SIZE_SETTLE_MS 400
-#define BOOK_TOOL_COUNT 9
+#define BOOK_TOOL_COUNT 11
 #define SHELF_ROW_TOP TR_S(290)
 #define SHELF_ROW_H TR_S(140)
 #define SHELF_PAGER_Y (TR_TABS_Y - TR_S(84))
@@ -309,6 +309,28 @@ static EpdRect progress_rect(void) {
     EpdRect b = ui_bar_rect(0, 1);
     return (EpdRect){b.x, UI_BAR_TOP, b.width, UI_BAR_H};
 }
+// 工具条开着时页脚两边放“上一章”“下一章”（宽度不放大，只放大高度），进度条夹在中间；收起时进度条占满整行。
+// With the toolbar open the footer gets "previous" and "next chapter" at the sides (widths stay, heights scale) and
+// the track sits between them; closed, the track spans the whole row.
+#define CHAPTER_BTN_W 150
+#define CHAPTER_BTN_GAP 16
+// 工具条开着时页脚占满左右页边距之间（收起时右边留给老的菜单把手位置，不动）。/ With the toolbar open the footer spans
+// the full width between the side margins (closed, it keeps the old handle's space on the right untouched).
+static EpdRect chapter_btn_rect(int dir) {
+    const int x = dir < 0 ? UI_MARGIN : UI_LOCK_WIDTH - UI_MARGIN - CHAPTER_BTN_W;
+    return (EpdRect){x, UI_BAR_TOP + TR_S(8), CHAPTER_BTN_W, TR_S(48)};
+}
+static EpdRect track_rect(void) {
+    EpdRect t = progress_rect();
+    if (!s_toolbar) return t;
+    t.x = UI_MARGIN + CHAPTER_BTN_W + CHAPTER_BTN_GAP;
+    t.width = UI_LOCK_WIDTH - 2 * t.x;
+    return t;
+}
+// 这一方向还有没有章可跳。/ Whether there is a chapter to jump to in this direction.
+static bool chapter_jump_ok(int dir) {
+    return dir < 0 ? s_chapter > 0 : s_chapter + 1 < book_chapter_count();
+}
 // “继续阅读”卡片对应的书在 s_shelf 里的下标，没有返回 -1。/ Shelf index of the continue-card book, or -1.
 static int continue_index(void) {
     if (!s_continue[0]) return -1;
@@ -347,14 +369,16 @@ static EpdRect row_rect(int row, bool toc) {
     const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
     return (EpdRect){UI_MARGIN, top + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - TR_S(12)};
 }
-// 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 排版、5 书架、6 顶部返回、7 自动翻页−、8 自动翻页+。
-// Toolbar: 0 TOC, 1 size-, 2 size+, 3 menu, 4 layout, 5 shelf, 6 top back, 7 auto turn -, 8 auto turn +.
+// 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 排版、5 书架、6 顶部返回、7 自动翻页−、8 自动翻页+、9 上一章、10 下一章。
+// Toolbar: 0 TOC, 1 size-, 2 size+, 3 menu, 4 layout, 5 shelf, 6 top back, 7 auto turn -, 8 auto turn +,
+// 9 previous chapter, 10 next chapter.
 // 宽度占满内容区不放大，只放大高度；自动翻页那行的热区跟着 auto_turn 放大后的按钮。
 // Widths fill the content area and stay; heights scale. The auto-turn row's press areas follow auto_turn's scaled
 // buttons.
 static EpdRect tool_rect(int i) {
-    static const int slot[BOOK_TOOL_COUNT] = {0, -1, -2, 1, 2, 3, -3, -4, -5};
+    static const int slot[BOOK_TOOL_COUNT] = {0, -1, -2, 1, 2, 3, -3, -4, -5, -6, -7};
     int s = slot[i];
+    if (s == -6 || s == -7) return chapter_btn_rect(s == -6 ? -1 : 1);
     if (s >= 0) return (EpdRect){UI_MARGIN + s * 151, TOOL_PANEL_Y + TR_S(80), 151, TR_S(120)};
     if (s == -1) return (EpdRect){UI_MARGIN, TOOL_PANEL_Y + TR_S(226), 200, TR_S(84)};
     if (s == -2) return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - 200, TOOL_PANEL_Y + TR_S(226), 200, TR_S(84)};
@@ -742,10 +766,12 @@ static void draw_reader(uint8_t* fb, size_t page) {
         ui_draw_button(fb, (EpdRect){UI_MARGIN, TR_S(52), ui_content_width(), TR_S(72)},
                        "打开字体页 / 无卡正文可能缺字", false);
     }
-    EpdRect track = progress_rect();
+    EpdRect track = track_rect();
     epd_fill_rect((EpdRect){track.x, track.y + TR_S(16), track.width, TR_S(12)}, UI_GRAY_LIGHT, fb);
     size_t chapters = book_chapter_count();
-    if (chapters <= 40 && book_total_bytes()) {
+    // 工具条开着时进度条变短，刻度太密（间距小于 12）就不画。/ With the toolbar open the track is short; skip the
+    // ticks when they would be closer than 12 px.
+    if (chapters <= 40 && book_total_bytes() && (!s_toolbar || track.width >= (int)chapters * TR_S(12))) {
         for (size_t i = 1; i < chapters; ++i) {
             int x = track.x + (uint64_t)book_chapter_byte_offset(i) * track.width / book_total_bytes();
             epd_fill_rect((EpdRect){x, track.y + TR_S(10), 2, TR_S(24)}, UI_GRAY_BLACK, fb);
@@ -758,10 +784,42 @@ static void draw_reader(uint8_t* fb, size_t page) {
         snprintf(suffix, sizeof(suffix), " · 本章 %u/%u · 全书 %u%%", (unsigned)page + 1,
                  (unsigned)book_layout_page_count(), percent(page));
     else snprintf(suffix, sizeof(suffix), " · 本章 %u/… · 全书 %u%%", (unsigned)page + 1, percent(page));
-    copy_text(name, sizeof(name), s_save_failed ? "进度未保存，稍后重试" : s_title);
-    fit_text(name, UI_PX_CAPTION, track.width - ttf_text_width_px(UI_PX_CAPTION, suffix));
-    snprintf(line, sizeof(line), "%s%s", name, suffix);
-    ui_text(fb, track.x, track.y + TR_S(36), UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    if (s_toolbar) {
+        // 章名已在面板顶行，这里只留页码和百分比，居中在两个按钮之间，放不下就缩字号。
+        // The chapter name is already on the panel's top line; keep only the page and percent, centered between the
+        // buttons, shrinking the size if needed.
+        snprintf(line, sizeof(line), "%s%s", s_save_failed ? "进度未保存" : "", s_save_failed ? suffix : suffix + 4);
+        int px = UI_PX_CAPTION;
+        while (px > TR_S(22) && ttf_text_width_px(px, line) > track.width) px -= 2;
+        // 还放不下：去掉“本章”“全书”，只留数字；没保存时只说没保存。/ Still too wide: drop the words and keep the
+        // numbers; when unsaved, say only that.
+        if (ttf_text_width_px(px, line) > track.width) {
+            if (s_save_failed) copy_text(line, sizeof(line), "进度未保存");
+            else if (book_layout_complete())
+                snprintf(line, sizeof(line), "%u/%u · %u%%", (unsigned)page + 1, (unsigned)book_layout_page_count(),
+                         percent(page));
+            else snprintf(line, sizeof(line), "%u/… · %u%%", (unsigned)page + 1, percent(page));
+        }
+        fit_text(line, px, track.width);
+        ui_text(fb, track.x + track.width / 2, track.y + TR_S(36), px, line, EPD_DRAW_ALIGN_CENTER, false);
+        for (int dir = -1; dir <= 1; dir += 2) {
+            const EpdRect r = chapter_btn_rect(dir);
+            const char* label = dir < 0 ? "‹ 上一章" : "下一章 ›";
+            if (chapter_jump_ok(dir)) {
+                tr_pill(fb, r, label, s_pressed_control == (dir < 0 ? 209 : 210), TR_S(26));
+            } else {
+                // 没有可跳的章：浅灰框、灰字。/ Nothing to jump to: a light frame and gray text.
+                ui_draw_round_rect(fb, r, r.height / 2, TR_GRAY_LINE);
+                tr_text_dim(fb, r.x + r.width / 2, r.y + (r.height - TR_S(26)) / 2 - 2, TR_S(26), label,
+                            EPD_DRAW_ALIGN_CENTER);
+            }
+        }
+    } else {
+        copy_text(name, sizeof(name), s_save_failed ? "进度未保存，稍后重试" : s_title);
+        fit_text(name, UI_PX_CAPTION, track.width - ttf_text_width_px(UI_PX_CAPTION, suffix));
+        snprintf(line, sizeof(line), "%s%s", name, suffix);
+        ui_text(fb, track.x, track.y + TR_S(36), UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    }
     if (s_toolbar) {
         // 顶部：返回书库与书名。/ Top: back to the shelf and the title.
         epd_fill_rect((EpdRect){0, 0, UI_LOCK_WIDTH, TR_S(110)}, UI_GRAY_WHITE, fb);
@@ -1578,6 +1636,23 @@ static void sensor_set(app_ctx_t* ctx, bool on) {
         s_sensor_on = false;
     }
 }
+// 工具条上的“上一章 / 下一章”：跳到那一章开头，收起工具条，保存进度。/ The toolbar's previous / next chapter: jump to
+// that chapter's start, close the toolbar and save progress.
+static app_redraw_t jump_chapter(app_ctx_t* ctx, int dir) {
+    if (!s_text || !chapter_jump_ok(dir)) return APP_REDRAW_NONE;
+    save_progress();
+    if (!load_chapter(ctx, dir < 0 ? s_chapter - 1 : s_chapter + 1, 0, false)) {
+        if (s_view == READING) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? s_chapter / BOOK_TOC_ROWS : 0; }
+        return APP_REDRAW_PAGE;
+    }
+    s_toolbar = false;
+    s_typeset = false;
+    s_auto_ms = ctx->now_ms;
+    invalidate_prep();
+    save_progress();
+    ESP_LOGI(TAG, "jump chapter=%u", (unsigned)s_chapter);
+    return APP_REDRAW_PAGE;
+}
 static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     if (!s_text || s_clear_confirm) return APP_REDRAW_NONE;
     if (dir > 0 && s_page + 1 >= book_layout_page_count() && !book_layout_complete()) {
@@ -1792,10 +1867,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
                     app_settings_set_auto_turn(false, (uint8_t)s_auto_level);
                     return APP_REDRAW_PAGE;
                 }
+                else if (i == 9 || i == 10) return jump_chapter(ctx, i == 9 ? -1 : 1);
                 else { save_progress(); free_book(); s_view = SHELF; scan_shelf(ctx); }
                 return APP_REDRAW_PAGE;
             }
-            EpdRect track = progress_rect();
+            EpdRect track = track_rect();
             if (ui_rect_hit(track, x, y)) {
                 save_progress();
                 uint32_t target = (uint64_t)(x - track.x) * book_total_bytes() / (track.width - 1);
@@ -2051,6 +2127,7 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
             return -1;
         }
         if (s_toolbar && !s_typeset) for (int i = 0; i < BOOK_TOOL_COUNT; ++i) {
+            if ((i == 9 || i == 10) && !chapter_jump_ok(i == 9 ? -1 : 1)) continue;
             *rect = tool_rect(i);
             if (ui_rect_hit(*rect, x, y)) return 200 + i;
         }

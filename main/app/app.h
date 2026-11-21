@@ -60,6 +60,7 @@ typedef struct {
     sc7a20h_handle_t acc;
     cst836u_handle_t tp;
     bool sensor_ready;
+    /// 现在恒为 false：开机不再初始化连续 DU。/ Always false now: continuous DU is not set up at boot.
     bool continuous_ready;
     int64_t now_ms;
     /// 去抖后的触摸快照：空槽已清零，抬手后保留最后一次坐标。

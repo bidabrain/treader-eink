@@ -213,6 +213,27 @@ void hr_scenes(void) {
     hr_allow_fit();
     hr_no_bar_check();
     hr_shot("reader_toolbar_pressed");
+#ifndef HR_BASELINE   // 改动前没有上一章 / 下一章 / No previous / next chapter before this change
+    s_pressed_control = 210;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("reader_toolbar_next_pressed");
+    s_pressed_control = -1;
+    s_chapter = 0;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("reader_toolbar_first");
+    s_chapter = 29;
+    s_save_failed = true;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("reader_toolbar_last_unsaved");
+    s_save_failed = false;
+    s_chapter = 5;
+#endif
     s_pressed_control = -1;
     s_typeset = true;
     render(&ctx, hr_fb);
