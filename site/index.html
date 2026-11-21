@@ -66,6 +66,9 @@
   .feat .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .feat h3 { margin: 0 0 6px; font-size: 18px; }
   .feat p { margin: 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .feat.wide { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; }
+  .feat.wide ul { margin: 0; padding-left: 18px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .feat.wide .row { margin-top: 14px; }
   .feat .tag { display: inline-block; margin-top: 12px; font-size: 12px; color: var(--mid); background: var(--chip); border-radius: 6px; padding: 1px 8px; }
 
   /* 截图 / Screens */
@@ -147,7 +150,7 @@
   @media (max-width: 900px) {
     .grid { grid-template-columns: repeat(2, 1fr); }
     .secret .inner { grid-template-columns: 1fr; }
-    .flash, .eco, .dl { grid-template-columns: 1fr; }
+    .flash, .eco, .dl, .feat.wide { grid-template-columns: 1fr; }
     .facts { grid-template-columns: repeat(2, 1fr); }
     .facts div:nth-child(2) { border-right: 0; }
     .facts div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -176,6 +179,7 @@
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.4-1.6M5 16a7.5 7.5 0 0 0 13.4 1.6"/><path d="M19 3v5h-5M5 21v-5h5"/></symbol>
     <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6 0-.6 0-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1 2.8.8.1-.6.3-1 .6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.7v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8L20 3M16.5 6.5l2.5 2.5M14 9l2 2"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
   </defs>
 </svg>
@@ -196,7 +200,7 @@
     <span class="eyebrow">小纸 Pico · Read Pico 开源阅读固件 · 安卓 App</span>
     <h1>为墨水屏<br>重新设计的阅读系统</h1>
     <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
-    <p class="sub">不只是 Pico 上的固件：番茄小说、小红书、微博各有一个安卓 App，黑白灰度、按页翻、和设备一样的排版，在手机上也是墨水屏的阅读体验；番茄的阅读进度和书架还能用 WebDAV 和 Pico 互通。</p>
+    <p class="sub">不只是 Pico 上的固件：番茄小说、小红书、微博各有一个安卓 App，黑白灰度、按页翻、和设备一样的排版，在手机上也是墨水屏的阅读体验；番茄的阅读进度和书架还能用 WebDAV 和 Pico 互通。还有离线的两步验证码：设备上的验证器，加上能把账号发送到 Pico 的安卓 App。</p>
     <div class="cta">
       <a class="btn solid" href="#flash">在线刷机</a>
       <a class="btn" href="#download"><svg><use href="#i-down"/></svg>下载固件</a>
@@ -229,6 +233,23 @@
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>传书</h3><p>Wi-Fi 网页上传书、字体和漫画；或者用数据线把 TF 卡当 U 盘直接拷。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>同步与升级</h3><p>WebDAV 同步阅读进度和番茄书架；设备上点“检查更新”就能在线升级（先下到 TF 卡，断了接着下，校验通过才写入），也可以把固件放进 TF 卡升级，起不来自动退回旧版。</p></div>
+    </div>
+    <div class="feat wide" id="auth">
+      <div>
+        <div class="ic"><svg><use href="#i-key"/></svg></div>
+        <h3>验证器 · 两步验证码</h3>
+        <p>离线显示 TOTP 两步验证码，和 Google Authenticator 算出的一样，不连任何服务器。从 1.0.0 起在“全部”里；手机上有同样功能的安卓 App，能把账号直接发送到小纸 Pico。</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/docs/TREADER.md#验证器">使用说明</a>
+          <a class="btn small solid" data-release="auth-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
+        </div>
+      </div>
+      <ul>
+        <li>账号用验证器口令加密在 TF 卡上，要口令加上这台设备才解得开；口令和开机密码分开</li>
+        <li>导入：设备开热点，手机网页里扫 Google Authenticator 导出的二维码、粘贴 otpauth 链接或手填密钥，在设备上点“导入”才写入</li>
+        <li>每次锁屏、重启都会上锁，也可以设成离开验证器 5 分钟就上锁；口令输错多次要等待，逐次加倍</li>
+        <li>请一直保留手机上的验证器作备份：不导出密钥、不做云同步，忘了口令只能清空重来</li>
+      </ul>
     </div>
     <details class="secret" id="hidden-tab">
       <summary>
@@ -272,6 +293,7 @@
       <button data-img="screens-hupu">虎扑</button>
       <button data-img="screens-settings">设置与全部</button>
       <button data-img="screens-lock">锁屏密码</button>
+      <button data-img="screens-auth">验证器</button>
     </div>
     <div class="shot"><img id="shotImg" src="img/screens-reading.png" width="1508" height="708" alt="Treader 界面截图"></div>
     <p class="shot-note">截图用固件真实的界面代码画出，内容是演示数据。每个页面的功能说明见 <a href="https://github.com/bidabrain/treader-eink/blob/main/docs/design/ui.html">设计稿</a>（下载后用浏览器打开）。</p>

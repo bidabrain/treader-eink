@@ -47,6 +47,12 @@
     ["demo_pin/gate_100.png", "输入密码解锁"],
     ["demo_pin/locked_100.png", "输错太多次"]
   ],
+  "screens-auth": [
+    ["demo_auth/list_100.png", "验证器"],
+    ["demo_auth/detail_100.png", "单个账号"],
+    ["demo_auth/unlock_100.png", "输入口令解锁"],
+    ["demo_auth/settings_100.png", "验证器设置"]
+  ],
   "site-hero": [
     ["demo_book/shelf_100.png", "书库"],
     ["demo_book/reader_100.png", "阅读"],

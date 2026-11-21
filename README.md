@@ -132,6 +132,10 @@
 
 ![自动锁屏与锁屏密码](docs/images/screens-lock.png)
 
+**验证器**
+
+![验证器](docs/images/screens-auth.png)
+
 全部界面和每个页面的功能：[docs/design/ui.html](docs/design/ui.html)（下载后用浏览器打开，每一屏都是真实界面代码画出的截图）。
 
 ## 硬件
