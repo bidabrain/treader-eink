@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 默认不许明文；只有小纸 Pico 热点上的 192.168.4.1 可以用 http。/ No cleartext by default; only 192.168.4.1 on the
+     Read Pico hotspot may use http. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.4.1</domain>
+    </domain-config>
+</network-security-config>

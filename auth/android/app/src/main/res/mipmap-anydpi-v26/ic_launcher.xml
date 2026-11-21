@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- #EEEEEE 底上画固件验证器标签的黑色钥匙，和“全部”页图块一样；系统“主题图标”也用同一个图形。/ The firmware
+     Authenticator tab's black key on #EEEEEE, like an All-page tile; themed icons use the same glyph. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

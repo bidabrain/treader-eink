@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · 验证器安卓 App 1.0.0
+
+- 新的独立安卓 App“验证器”：功能和界面照固件验证器标签，离线显示两步验证码；扫 Google Authenticator 导出二维码、粘贴链接或手动导入；账号加密存在 App 里（口令加手机 Keystore 密钥），不进备份、禁止截图。可以把账号“发送到小纸 Pico”：扫设备导入页的热点二维码，手机自动连上热点发过去，在设备上确认，固件不用改。
+  New standalone Android app "Authenticator": mirrors the firmware Authenticator tab with offline two-step codes; imports by scanning the Google Authenticator export QR, pasting links or manual entry; accounts are encrypted in the app (passphrase plus a phone Keystore key), excluded from backups, with screenshots blocked. "Send to Read Pico" scans the hotspot QR on the device's import page, joins it automatically and sends the accounts for confirmation on the device, with no firmware change.
+
 ## 2026-11-21 · Treader 1.0.0
 
 - 新功能“验证器”：在设备上离线显示两步验证码（和 Google Authenticator 一样的 TOTP），不需要服务器。账号加密存在 TF 卡上，要验证器口令加这台设备才能解开；锁屏、重启、拔卡都会上锁。用设备热点上的网页导入（GA 导出二维码照片、otpauth 链接或手动填），在设备上确认后写入；长按删除；时间可能不准时提醒校时。口令、自动上锁、清空在设置 → 内容来源 → 验证器。默认在“全部”页里。

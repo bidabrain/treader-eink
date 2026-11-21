@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动图标底色：固件“全部”页图块的 #EEEEEE。/ Launcher background: #EEEEEE like the firmware All-page tiles. -->
+    <color name="ic_launcher_background">#EEEEEE</color>
+</resources>
