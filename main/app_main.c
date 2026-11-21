@@ -23,6 +23,7 @@
 #include "read_pico_init.h"
 #include "read_pico_pmu.h"
 #include "settings.h"
+#include "tomato.h"
 #include "sleep.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
@@ -76,6 +77,8 @@ void app_main(void) {
     uint8_t pins[TR_TAB_MAX];
     const int pin_n = app_settings_tab_pins(pins);
     tr_tabs_configure(app_settings_hidden_tabs(), pins, pin_n);
+    // 虎扑下不下图跟设置走（默认不下）。/ Whether Hupu downloads images follows settings (off by default).
+    tomato_hupu_set_images(app_settings_hupu_images());
     const bool vcom_ok = resolve_vcom_at_boot();
     pmu_selftest_bind(hw.sensor);
     app_sleep_bind(hw.touch, hw.sensor);

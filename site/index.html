@@ -328,8 +328,10 @@
         <div class="row">
           <a class="btn solid small" id="dlFull" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">完整镜像（第一次刷）</a>
           <a class="btn small" id="dlUp" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">升级包</a>
+          <a class="btn small" id="dlSd" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">TF 卡文件</a>
           <a class="dl-more" href="https://github.com/bidabrain/treader-eink/releases">全部版本 ›</a>
         </div>
+        <p><b>第一次刷机还要准备 TF 卡：</b>下载“TF 卡文件”（<code>treader-版本-sdcard.zip</code>，含中文字体和拼音词库），解压后把里面的<b>全部内容</b>复制到 FAT32 格式 TF 卡的根目录（不是复制解压出来的文件夹本身）。少了它界面会缺字、不能输入中文。以后升级固件不用再复制。</p>
       </div>
       <div class="dl-note">
         <b>番茄小说需要自建服务器</b>
@@ -389,7 +391,7 @@
             <li>小纸 Pico <b>没有 BOOT 键</b>，不用按任何键。设备要先开机（锁屏选“关机”时 USB 不工作）。</li>
             <li>连接不上：换一根能传数据的线（官方建议 USB-A 转 C）；关掉占用串口的程序（串口监视器、别的刷机页）；拔插 USB；让设备睡眠再唤醒一次，或关机重开。</li>
             <li>固件用上面下载的，或者自己编译的 <code>build/treader-full.bin</code>（<code>build/Read_Pico.bin</code>）。自己编译时可以把番茄服务器内置进去，见 <a href="https://github.com/bidabrain/treader-eink#内置默认服务器可选">项目说明</a>；这样编出的固件不要公开。</li>
-            <li>第一次刷机后，TF 卡需要放好 <code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库）。</li>
+            <li><b>第一次刷机后</b>，把上面下载的“TF 卡文件”解压，里面的全部内容复制到 TF 卡根目录：<code>fonts/</code>（中文字体）和 <code>ime/</code>（拼音词库）是必需的，少了会缺字、不能输入中文。</li>
           </ul>
         </div>
       </div>
@@ -420,15 +422,17 @@ fetch("https://api.github.com/repos/bidabrain/treader-eink/releases?per_page=30"
     a.textContent = "安卓 App " + rel.tag_name.slice(a.dataset.release.length);
   }))
   .catch(() => {});
-// 最新构建的两个文件直接给下载链接，并写上版本和日期。/ Link the latest build's two files directly, with version and date.
+// 最新构建的三个文件直接给下载链接，并写上版本和日期。/ Link the latest build's three files directly, with version and date.
 fetch("https://api.github.com/repos/bidabrain/treader-eink/releases/tags/treader-latest")
   .then((r) => (r.ok ? r.json() : null))
   .then((rel) => {
     if (!rel) return;
     const full = rel.assets.find((a) => a.name.endsWith("-full.bin"));
     const up = rel.assets.find((a) => a.name.endsWith("-upgrade.bin"));
+    const sd = rel.assets.find((a) => a.name.endsWith("-sdcard.zip"));
     if (full) document.getElementById("dlFull").href = full.browser_download_url;
     if (up) document.getElementById("dlUp").href = up.browser_download_url;
+    if (sd) document.getElementById("dlSd").href = sd.browser_download_url;
     const ver = (full || up || {}).name?.match(/treader-(.+?)-(full|upgrade)\.bin/);
     const day = (rel.published_at || "").slice(0, 10);
     document.getElementById("dlVer").textContent = (ver ? ver[1] : "") + (day ? " · " + day : "");

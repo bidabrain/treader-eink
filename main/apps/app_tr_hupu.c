@@ -28,6 +28,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "hupu_img.h"
+#include "settings.h"
 #include "tomato.h"
 #include "tr_nav.h"
 #include "tr_time.h"
@@ -434,7 +435,8 @@ static void load_list_file(const char* path, bool with_thumbs) {
         snprintf(x->meta, sizeof(x->meta), "%s%s%s 回复", zone, zone[0] ? " · " : "", replies[0] ? replies : "0");
         x->jpg[0] = 0;
         const cJSON* img = cJSON_GetObjectItemCaseSensitive(it, "img");
-        if (with_thumbs && cJSON_IsString(img) && img->valuestring[0])
+        // 设置里关了图片就不排缩略图，标题占满一行。/ With images off in settings, no thumbnail; the title takes the row.
+        if (with_thumbs && app_settings_hupu_images() && cJSON_IsString(img) && img->valuestring[0])
             tomato_hupu_img_path(img->valuestring, x->jpg, sizeof(x->jpg));
         s_item_count++;
     }
@@ -793,7 +795,11 @@ static bool load_post(const char* tid) {
         block_t* x = &s_blocks[s_block_count];
         memset(x, 0, sizeof(*x));
         const cJSON* img = cJSON_GetObjectItemCaseSensitive(b, "i");
-        if (cJSON_IsString(img)) {
+        // 关了图片：正文里的图写成一行“[图片]”，不下载、不解码。/ Images off: a body image becomes a "[图片]" line,
+        // neither downloaded nor decoded.
+        if (cJSON_IsString(img) && !app_settings_hupu_images()) {
+            x->text = "[图片]";
+        } else if (cJSON_IsString(img)) {
             x->image = true;
             tomato_hupu_img_path(img->valuestring, x->jpg, sizeof(x->jpg));
             int iw = 4, ih = 3;
@@ -1647,6 +1653,14 @@ static app_redraw_t tap_post(uint16_t x, uint16_t y) {
     if (s_tab == T_BODY) {
         if (s_line_count) {
             const int img = image_hit(x, y);
+            const block_t* blk = img >= 0 ? image_at(img) : NULL;
+            // 没下好的图：点一下重新下载（后台空了就开始）。/ An image not downloaded: a tap fetches it again (as soon as
+            // the worker is free).
+            if (blk && !exists(blk->jpg) && !job_running(TOMATO_HUPU_POST)) {
+                s_msg[0] = 0;
+                start_job(TOMATO_HUPU_POST, s_tid, NULL, 0, true);
+                return APP_REDRAW_PAGE;
+            }
             if (img >= 0) { s_image = img; s_view = V_IMAGE; hupu_img_drop_pending(); return APP_REDRAW_PAGE; }
         }
         if (x < TR_W * 3 / 10) return turn(-1);

@@ -221,7 +221,11 @@ static void fetch_covers(void) {
 // 详情页点“下载到书库”没能开始时的原因。/ Why "下载到书库" on a detail page could not start.
 static char s_detail_note[64];
 
+// 刷新被下载或同步挡住时的提示。/ The note when a refresh is blocked by a download or sync.
+static const char* s_blocked;
+
 static bool claim_sync(queued_t q) {
+    s_blocked = NULL;
     if (!tomato_sync_busy()) return true;
     if (s_op == OP_COVER) {
         s_queued = q;
@@ -230,9 +234,13 @@ static bool claim_sync(queued_t q) {
     }
     // 别的页留下的浏览任务：取消；还没停下就记下 q，停了马上做。/ A browsing job from another page: cancel it; if it
     // has not stopped yet, queue q and run it once the worker is free.
-    if (s_op != OP_NONE) return false;
+    if (s_op != OP_NONE) {
+        if (s_op == OP_DOWNLOAD) s_blocked = "正在下载，完成后再刷新";
+        return false;
+    }
     const tomato_preempt_t room = tomato_sync_preempt();
     if (room == TOMATO_PREEMPT_STOPPING) s_queued = q;
+    if (room == TOMATO_PREEMPT_BLOCKED) s_blocked = "后台正在下载或同步，完成后再刷新";
     return room == TOMATO_PREEMPT_FREE;
 }
 
@@ -286,6 +294,7 @@ static void draw_home(uint8_t* fb) {
     char line[96];
     const bool fetching = tomato_sync_busy() && s_op == OP_RANK;
     if (fetching) snprintf(line, sizeof(line), "%s", busy_text());
+    else if (s_blocked) snprintf(line, sizeof(line), "%s", s_blocked);
     else if (last_is(OP_RANK) && s_status.phase == TOMATO_FAILED) snprintf(line, sizeof(line), "%s", s_status.message);
     else if (s_cat_count >= 0) snprintf(line, sizeof(line), "榜单 %s", s_date[0] ? s_date : "已缓存");
     else snprintf(line, sizeof(line), "还没有榜单");
@@ -298,7 +307,12 @@ static void draw_home(uint8_t* fb) {
                TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
     tr_message(fb, TR_MARGIN, TR_S(258 + SEARCH_DY), TR_S(246 + SEARCH_DY), TR_W - 2 * TR_MARGIN - TR_S(160), TR_S(28),
                line, EPD_DRAW_ALIGN_LEFT, false);
-    if (!tomato_sync_busy() || s_op == OP_COVER) {
+    // 刷新一直在（自己在取榜单时除外）：后台在跑别的，点了由 claim_sync 让路或说明原因。原来后台一忙就藏起来，
+    // 别的页留下的任务结束后这页不重画，按钮就一直不见。
+    // Refresh always shows (except while this page fetches ranks): with other work running, claim_sync makes room or
+    // says why. It used to hide whenever the worker was busy and never came back, as this page does not redraw when
+    // another page's job ends.
+    if (!fetching) {
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(96), TR_S(274 + SEARCH_DY), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(254 + SEARCH_DY), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
@@ -564,7 +578,7 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_NONE;
     }
     if (y >= TR_S(240 + SEARCH_DY) && y < TR_S(310 + SEARCH_DY) && x > TR_W - TR_MARGIN - TR_S(160) &&
-        (!tomato_sync_busy() || s_op == OP_COVER)) {
+        !(tomato_sync_busy() && s_op == OP_RANK)) {
         if (claim_sync(Q_INDEX)) start_op(OP_RANK, tomato_sync_start_rank(NULL));
         return APP_REDRAW_PAGE;
     }

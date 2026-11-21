@@ -149,7 +149,7 @@
 
 ### 1. 准备 TF 卡
 
-格式化成 FAT32，把仓库 [`sdcard/`](sdcard/README.md) 文件夹里的**全部内容**复制到卡的根目录，结构就齐了：
+格式化成 FAT32，把仓库 [`sdcard/`](sdcard/README.md) 文件夹里的**全部内容**复制到卡的根目录，结构就齐了。不想下载整个仓库的话，[Releases](https://github.com/bidabrain/treader-eink/releases/tag/treader-latest) 里的 `treader-版本号-sdcard.zip` 就是同样的内容，解压后复制里面的全部内容（刷机网页上也有“TF 卡文件”按钮）：
 
 | 卡上路径 | 来源 | 说明 |
 | --- | --- | --- |
@@ -174,7 +174,7 @@ idf.py build
 
 想把自己的番茄服务器编进固件（类似安卓版的 `local.properties`），见[内置默认服务器](#内置默认服务器可选)。
 
-**不想自己编译**：GitHub Actions 在固件每次改动后自动编译并发布到 [Releases](https://github.com/bidabrain/treader-eink/releases)：“最新构建”（`treader-latest`）随时是最新的，每个新版本号另有一个 `treader-v版本号`。用的是和真机一样的配置，可以直接刷；`treader-版本号-full.bin` 第一次刷或分区表有变化时用，`treader-版本号-upgrade.bin` 用来升级。这些固件**不带内置番茄服务器**，要用番茄小说先[自建下载服务器](#自建番茄下载服务器)，再在设备“设置 › 内容来源 › 番茄小说”填地址和密码；书城默认用 FanqieRankTracker 榜单。刷机网页上也有下载按钮。
+**不想自己编译**：GitHub Actions 在固件每次改动后自动编译并发布到 [Releases](https://github.com/bidabrain/treader-eink/releases)：“最新构建”（`treader-latest`）随时是最新的，每个新版本号另有一个 `treader-v版本号`。用的是和真机一样的配置，可以直接刷；`treader-版本号-full.bin` 第一次刷或分区表有变化时用，`treader-版本号-upgrade.bin` 用来升级，`treader-版本号-sdcard.zip` 是第一次刷机要放进 TF 卡的字体和拼音词库。这些固件**不带内置番茄服务器**，要用番茄小说先[自建下载服务器](#自建番茄下载服务器)，再在设备“设置 › 内容来源 › 番茄小说”填地址和密码；书城默认用 FanqieRankTracker 榜单。刷机网页上也有下载按钮。
 
 ### 3. 刷机
 

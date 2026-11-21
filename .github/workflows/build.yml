@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     # 只改文档、网页、服务器或安卓 App 时不用编固件。/ Skip the firmware build for docs, site, servers and apps.
-    paths-ignore: ["**.md", "docs/**", "site/**", "rednote/**", "weibo/**", "tomato/**", ".github/workflows/pages.yml", ".github/workflows/rednote-image.yml", ".github/workflows/weibo-image.yml", ".github/workflows/tomato-image.yml", ".github/workflows/rednote-android.yml", ".github/workflows/weibo-android.yml", ".github/workflows/tomato-android.yml", "x/**", ".github/workflows/x-image.yml", ".github/workflows/x-android.yml"]
+    paths-ignore: ["**.md", "docs/**", "site/**", "rednote/**", "weibo/**", "tomato/**", ".github/workflows/pages.yml", ".github/workflows/rednote-image.yml", ".github/workflows/weibo-image.yml", ".github/workflows/tomato-image.yml", ".github/workflows/rednote-android.yml", ".github/workflows/weibo-android.yml", ".github/workflows/tomato-android.yml", "x/**", ".github/workflows/x-image.yml", ".github/workflows/x-android.yml", "auth/**", ".github/workflows/auth-android.yml"]
   pull_request:
   workflow_dispatch:
 
@@ -66,12 +66,27 @@ jobs:
           mkdir -p ../out
           cp treader-full.bin "../out/treader-${ver}-full.bin"
           cp Read_Pico.bin "../out/treader-${ver}-upgrade.bin"
+          # TF 卡文件包：仓库 sdcard/ 里的全部内容（字体、拼音词库、空文件夹），第一次刷机解压到 TF 卡根目录。
+          # The TF card pack: everything in the repo's sdcard/ (font, pinyin lexicon, empty folders), unzipped to the
+          # card root after the first flash.
+          python3 - "../sdcard" "../out/treader-${ver}-sdcard.zip" <<'PY'
+          import os, sys, zipfile
+          src, dest = sys.argv[1], sys.argv[2]
+          with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+              for root, dirs, files in os.walk(src):
+                  rel = os.path.relpath(root, src)
+                  if rel != ".":
+                      z.write(root, rel + "/")
+                  for f in files:
+                      if f != ".gitkeep":
+                          z.write(os.path.join(root, f), os.path.normpath(os.path.join(rel, f)))
+          PY
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: treader-firmware-${{ steps.pkg.outputs.version }}
-          path: out/*.bin
+          path: out/*
           if-no-files-found: error
 
       # 发布只在 main 上做（PR 只编译、上传构建产物）。/ Publish only on main (pull requests just build and upload).
@@ -118,9 +133,10 @@ jobs:
 
             - `treader-${{ steps.pkg.outputs.version }}-full.bin`：完整镜像。第一次刷 Treader、或者分区表有变化时，用网页刷机的“完整安装”。
             - `treader-${{ steps.pkg.outputs.version }}-upgrade.bin`：只有主程序。网页刷机选“升级”，或者放进 TF 卡 `update/` 在设备上升级。
+            - `treader-${{ steps.pkg.outputs.version }}-sdcard.zip`：TF 卡文件（中文字体、拼音词库和文件夹）。**第一次刷机必须**：解压后把里面的全部内容复制到 FAT32 TF 卡根目录，否则会缺字、不能输入中文。
 
             网页刷机：https://bidabrain.github.io/treader-eink/ 。改了什么见 docs/CHANGELOG.md。
-          files: out/*.bin
+          files: out/*
           make_latest: true
 
       - name: Publish version
@@ -132,6 +148,6 @@ jobs:
           name: Treader ${{ steps.pkg.outputs.version }}
           body: |
             Treader ${{ steps.pkg.outputs.version }} 第一次构建。之后同一版本号上的修改只更新“最新构建”（treader-latest）。
-            不带内置番茄服务器；书城默认用 FanqieRankTracker 榜单。刷机见 https://bidabrain.github.io/treader-eink/ 。
-          files: out/*.bin
+            不带内置番茄服务器；书城默认用 FanqieRankTracker 榜单。第一次刷机还要把 `-sdcard.zip` 解压到 TF 卡根目录。刷机见 https://bidabrain.github.io/treader-eink/ 。
+          files: out/*
           make_latest: false

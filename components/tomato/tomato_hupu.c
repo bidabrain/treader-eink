@@ -340,7 +340,12 @@ static esp_err_t fetch_page(const char* url, const volatile bool* cancel, cJSON*
     return *out ? ESP_OK : ESP_ERR_INVALID_RESPONSE;
 }
 
-// 下载缺的图；返回成功张数。/ Fetch missing images; returns how many succeeded.
+static volatile bool s_images;   // 设置里的“显示图片” / The "show images" setting
+
+void tomato_hupu_set_images(bool on) { s_images = on; }
+
+// 下载缺的图；返回成功张数。失败的原因留在 tomato_http_detail()。/ Fetch missing images; returns how many
+// succeeded. The failure reason stays in tomato_http_detail().
 static int fetch_images(const cJSON* urls, const volatile bool* cancel, tomato_hupu_progress_t progress, int done) {
     int ok = 0, total = done + cJSON_GetArraySize(urls), misses = 0;
     const cJSON* u;
@@ -454,9 +459,14 @@ esp_err_t tomato_hupu_home(const volatile bool* cancel, tomato_hupu_progress_t p
         return err;
     }
     // 第 1 步完成：列表已可显示，页面据此先刷出文字。/ Step 1 done: the list can show; the page draws text first.
-    progress(1, 1 + cJSON_GetArraySize(thumbs));
-    prune_images(thumbs);
-    fetch_images(thumbs, cancel, progress, 1);
+    // 不显示图片时只取文字，旧图留着（打开开关后还能用）。/ With images off, text only; old images stay for later.
+    if (s_images) {
+        progress(1, 1 + cJSON_GetArraySize(thumbs));
+        prune_images(thumbs);
+        fetch_images(thumbs, cancel, progress, 1);
+    } else {
+        progress(1, 1);
+    }
     cJSON_Delete(thumbs);
     snprintf(msg, cap, "已更新");
     return cancel && *cancel ? ESP_ERR_INVALID_STATE : ESP_OK;
@@ -532,6 +542,13 @@ static void prune_posts(const char* keep) {
 static cJSON* read_json(const char* file);
 
 // 只补图：读缓存里的帖子，下还没下的图。/ Images only: read the cached post and fetch the images still missing.
+// 图没下好的提示，带上原因。/ The missing-images note with its reason.
+static void image_failure(char* msg, size_t cap, int missing) {
+    const char* why = tomato_http_detail();
+    if (why[0]) snprintf(msg, cap, "有 %d 张图没下好（%s），点图重试", missing, why);
+    else snprintf(msg, cap, "有 %d 张图没下好，点图重试", missing);
+}
+
 static esp_err_t post_images_only(const char* tid, const volatile bool* cancel, tomato_hupu_progress_t progress,
                                   char* msg, size_t cap) {
     char file[96];
@@ -546,10 +563,11 @@ static esp_err_t post_images_only(const char* tid, const volatile bool* cancel, 
     cJSON_Delete(post);
     if (!images) { snprintf(msg, cap, "内存不足"); return ESP_ERR_NO_MEM; }
     progress(1, 1 + cJSON_GetArraySize(images));
+    tomato_http_clear_detail();
     const int got = fetch_images(images, cancel, progress, 1), want = cJSON_GetArraySize(images);
     cJSON_Delete(images);
     if (cancel && *cancel) return ESP_ERR_INVALID_STATE;
-    if (got < want) { snprintf(msg, cap, "有 %d 张图没下好，检查网络", want - got); return ESP_FAIL; }
+    if (got < want) { image_failure(msg, cap, want - got); return ESP_FAIL; }
     snprintf(msg, cap, "已加载");
     return ESP_OK;
 }
@@ -557,7 +575,10 @@ static esp_err_t post_images_only(const char* tid, const volatile bool* cancel, 
 esp_err_t tomato_hupu_post(const char* tid, bool images_only, const volatile bool* cancel,
                            tomato_hupu_progress_t progress, char* msg, size_t cap) {
     make_dirs();
-    if (images_only) return post_images_only(tid, cancel, progress, msg, cap);
+    if (images_only) {
+        if (!s_images) { snprintf(msg, cap, "已加载"); return ESP_OK; }
+        return post_images_only(tid, cancel, progress, msg, cap);
+    }
     char url[96];
     snprintf(url, sizeof(url), "https://m.hupu.com/bbs/%.20s.html", tid);
     cJSON* page = NULL;
@@ -630,14 +651,20 @@ esp_err_t tomato_hupu_post(const char* tid, bool images_only, const volatile boo
         return err;
     }
     prune_posts(dest);
-    progress(1, 1 + cJSON_GetArraySize(images));
-    if (images) {
+    progress(1, 1 + (s_images ? cJSON_GetArraySize(images) : 0));
+    int missing = 0;
+    if (images && s_images) {
         prune_images(images);
-        fetch_images(images, cancel, progress, 1);
-        cJSON_Delete(images);
+        tomato_http_clear_detail();
+        missing = cJSON_GetArraySize(images) - fetch_images(images, cancel, progress, 1);
     }
+    cJSON_Delete(images);
+    if (cancel && *cancel) return ESP_ERR_INVALID_STATE;
+    // 正文已经存好；图没下全就报失败并说明原因（原来不吭声，只显示“图片未下载”）。/ The text is saved; missing
+    // images report a failure with the reason (it used to stay silent with only "image not downloaded").
+    if (missing > 0) { image_failure(msg, cap, missing); return ESP_FAIL; }
     snprintf(msg, cap, "已加载");
-    return cancel && *cancel ? ESP_ERR_INVALID_STATE : ESP_OK;
+    return ESP_OK;
 }
 
 /* ---- 第二期：专区、专区帖子、关注 / Phase two: zones, zone posts, follows ---- */

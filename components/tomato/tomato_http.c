@@ -282,10 +282,11 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
     size_t len = 0;
     esp_err_t err = ESP_FAIL;
     int status = 0;
+    int64_t length = -1;
     for (int hop = 0; hop < 4; hop++) {
         err = tomato_http_open(c, 0);
         if (err != ESP_OK) break;
-        esp_http_client_fetch_headers(c);
+        length = esp_http_client_fetch_headers(c);
         status = esp_http_client_get_status_code(c);
         if (status < 300 || status >= 400) break;
         // 跟随跳转。/ Follow the redirect.
@@ -294,11 +295,16 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
     }
     if (err == ESP_OK && status != 200) err = ESP_ERR_NOT_FOUND;
     // 多留一个字节放结尾 0，文本可以直接当字符串用。/ One spare byte for a NUL so text can be used as a string.
-    if (err == ESP_OK && !(buf = heap_caps_malloc(max + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) err = ESP_ERR_NO_MEM;
+    // 知道长度就只申请这么多（虎扑一张图几十 KB，原来每张都先要 1 MB，PSRAM 碎了就失败）；多 1 字节用来发现
+    // 实际比声明的长。/ With a known length, allocate just that (a Hupu image is tens of KB; asking 1 MB per image
+    // failed once PSRAM fragmented); one extra byte catches a body longer than declared.
+    if (err == ESP_OK && length > (int64_t)max) err = ESP_ERR_INVALID_SIZE;
+    const size_t cap = err == ESP_OK && length > 0 ? (size_t)length + 1 : max;
+    if (err == ESP_OK && !(buf = heap_caps_malloc(cap + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) err = ESP_ERR_NO_MEM;
     while (err == ESP_OK) {
         if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }
-        if (len >= max) { err = ESP_ERR_INVALID_SIZE; break; }
-        int n = esp_http_client_read(c, (char*)buf + len, (int)(max - len));
+        if (len >= cap) { err = ESP_ERR_INVALID_SIZE; break; }
+        int n = esp_http_client_read(c, (char*)buf + len, (int)(cap - len));
         if (n < 0) { err = ESP_FAIL; break; }
         if (n == 0) break;
         len += (size_t)n;

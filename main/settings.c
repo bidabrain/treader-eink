@@ -39,6 +39,7 @@
 #define NVS_KEY_LOCK_IDLE "lock_idle"
 #define NVS_KEY_DISPLAY "disp_size"   // 显示大小档位 / Display size level
 #define NVS_KEY_TIME_AUTO "time_auto"
+#define NVS_KEY_HUPU_IMG "hupu_img"   // 虎扑显示图片 / Hupu shows images
 #define NVS_KEY_TZ "tz"
 #define NVS_KEY_PIN_FAILS "pin_fails" // 连续输错次数 / Consecutive wrong PIN tries
 #define NVS_KEY_PIN "pin_hash"      // 8 字节盐 + 32 字节 SHA-256 / 8-byte salt + 32-byte SHA-256
@@ -66,6 +67,7 @@ static uint8_t s_lock_idle = 1;
 static uint8_t s_display;
 static uint8_t s_pin_fails;
 static bool s_time_auto = true;
+static bool s_hupu_img;   // 默认不显示图片 / Images off by default
 static uint8_t s_tz;
 static bool s_pin_on;
 static uint8_t s_pin[PIN_SALT_LEN + PIN_HASH_LEN];
@@ -168,6 +170,8 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_DISPLAY, &display) == ESP_OK && display < APP_DISPLAY_SIZES) s_display = display;
     uint8_t time_auto = 1, tz = 0;
     if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
+    uint8_t hupu_img = 0;
+    if (nvs_get_u8(h, NVS_KEY_HUPU_IMG, &hupu_img) == ESP_OK) s_hupu_img = hupu_img != 0;
     if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
     size_t pin_len = sizeof(s_pin);
     s_pin_on = nvs_get_blob(h, NVS_KEY_PIN, s_pin, &pin_len) == ESP_OK && pin_len == sizeof(s_pin);
@@ -473,6 +477,14 @@ void app_settings_set_pin_fails(uint8_t fails) {
 }
 
 /* ---- 时间与时区 / Time and zone ---- */
+
+bool app_settings_hupu_images(void) { return s_hupu_img; }
+
+void app_settings_set_hupu_images(bool on) {
+    if (on == s_hupu_img) return;
+    s_hupu_img = on;
+    nvs_put_u8(NVS_KEY_HUPU_IMG, on ? 1 : 0);
+}
 
 bool app_settings_time_auto(void) {
     return s_time_auto;

@@ -80,7 +80,7 @@ extern const char server_form_start[] asm("_binary_server_form_html_start");
 extern const char server_form_end[] asm("_binary_server_form_html_end");
 
 typedef enum {
-    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SYNC, P_POWER, P_ABOUT,
+    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SYNC, P_POWER, P_ABOUT,
     P_TIME, P_TZ, P_TSET
 } page_t;
 
@@ -126,6 +126,7 @@ enum {
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
+    R_HIMG,
 };
 
 static const row_t DISPLAY_ROWS[] = {
@@ -143,6 +144,9 @@ static const row_t SERVER_ROWS[] = {
     {R_TOKEN, NULL, "设备令牌", 346},
     {R_TEST, NULL, "测试连接", 418},
     {R_LIST, NULL, "列表条数", 490},
+};
+static const row_t HUPU_ROWS[] = {
+    {R_HIMG, NULL, "显示图片", 190},
 };
 static const row_t SYNC_ROWS[] = {
     {R_DAV, NULL, "WebDAV", 190},
@@ -167,9 +171,11 @@ static const row_t TIME_ROWS[] = {
 // 网页填写的二维码不随显示大小放大（和图片一样），扫码不受影响。/ The web-form QR code keeps its size (like
 // images); scanning is unaffected.
 #define WEB_QR 220
-// 内容来源页：番茄、各个自建服务器，最后是验证器。/ Content sources page: Tomato, each self-hosted server, then
-// the authenticator.
-#define SOURCES (2 + S_COUNT)
+// 内容来源页：番茄、各个自建服务器、虎扑，最后是验证器。/ Content sources page: Tomato, each self-hosted server,
+// Hupu, then the authenticator.
+#define SOURCES (3 + S_COUNT)
+#define SRC_HUPU (1 + S_COUNT)
+#define SRC_AUTH (2 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
 #define TAB_TOP TR_S(210)   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
@@ -636,6 +642,8 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, s_web_on);
         } else if (r->id == R_TAUTO) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_time_auto());
+        } else if (r->id == R_HIMG) {
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_hupu_images());
         } else {
             // 右边的值让开左边的名字（正常档至少留 220）。/ The value keeps clear of the label (220 at least).
             char value[160];
@@ -905,10 +913,54 @@ static void draw_sources(uint8_t* fb) {
                  s_has_host[i] ? host_of(s_host[i].url) : "未设置");
         draw_cat(fb, CAT_TOP + (1 + i) * h, h, SERVERS[i].icon, SERVERS[i].name, sum, false);
     }
+    draw_cat(fb, CAT_TOP + SRC_HUPU * h, h, TR_ICON_BALL, "虎扑",
+             app_settings_hupu_images() ? "显示图片" : "只看文字（图片已关）", false);
     const int n = tr_auth_count();
     if (n >= 0) snprintf(sum, sizeof(sum), "%d 个账号 · 口令与自动上锁", n);
     else snprintf(sum, sizeof(sum), "%s · 口令与自动上锁", auth_state_text());
-    draw_cat(fb, CAT_TOP + (1 + S_COUNT) * h, h, TR_ICON_KEY, "验证器", sum, true);
+    draw_cat(fb, CAT_TOP + SRC_AUTH * h, h, TR_ICON_KEY, "验证器", sum, true);
+}
+
+/* ---- 虎扑 / Hupu ---- */
+
+// 打开“显示图片”前的提醒。/ The warning before turning "show images" on.
+static bool s_hupu_ask;
+
+static EpdRect ask_rect(void) { return (EpdRect){TR_MARGIN, TR_S(330), TR_W - 2 * TR_MARGIN, TR_S(470)}; }
+static EpdRect ask_btn(bool ok) {
+    const EpdRect d = ask_rect();
+    const int w = (d.width - TR_S(96)) / 2;
+    return (EpdRect){ok ? d.x + d.width - TR_S(36) - w : d.x + TR_S(36), d.y + d.height - TR_S(104), w, TR_S(72)};
+}
+
+static void draw_hupu(uint8_t* fb) {
+    draw_back_title(fb, "虎扑");
+    draw_message(fb);
+    draw_rows(fb, HUPU_ROWS, COUNT(HUPU_ROWS));
+    tr_wrap(fb, TR_MARGIN, TR_S(300), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+            "默认只看文字：帖子里的图写成“[图片]”，列表不带缩略图，不下载也不解码图片。打开后才加载图片，设备负担会大很多。", 4);
+    if (!s_hupu_ask) return;
+    const EpdRect d = ask_rect();
+    epd_fill_rect(d, UI_GRAY_WHITE, fb);
+    ui_draw_round_rect(fb, d, TR_S(24), UI_GRAY_BLACK);
+    ui_draw_round_rect(fb, ui_inset_rect(d, 1), TR_S(24) - 1, UI_GRAY_BLACK);
+    tr_text(fb, d.x + TR_S(36), d.y + TR_S(36), TR_S(36), "打开虎扑图片？", EPD_DRAW_ALIGN_LEFT, true);
+    tr_wrap(fb, d.x + TR_S(36), d.y + TR_S(100), d.width - TR_S(72), TR_S(28), TR_S(42),
+            "加载图片会大大增加设备的负担（下载、解码都占内存和时间），可能让设备变慢甚至卡死。卡住时长按电源键重启，再到这里关掉。", 6);
+    tr_pill(fb, ask_btn(false), "取消", false, TR_S(30));
+    tr_pill(fb, ask_btn(true), "打开", true, TR_S(30));
+}
+
+static app_redraw_t touch_hupu_ask(uint16_t x, uint16_t y) {
+    const bool ok = ui_rect_hit(ask_btn(true), x, y);
+    if (!ok && !ui_rect_hit(ask_btn(false), x, y)) return APP_REDRAW_NONE;
+    s_hupu_ask = false;
+    if (ok) {
+        app_settings_set_hupu_images(true);
+        tomato_hupu_set_images(true);
+        snprintf(s_message, sizeof(s_message), "已打开虎扑图片");
+    }
+    return APP_REDRAW_PAGE;
 }
 
 static void draw_server(uint8_t* fb) {
@@ -1211,6 +1263,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         draw_rows(fb, TOMATO_ROWS, COUNT(TOMATO_ROWS));
         break;
     case P_SRC_SERVER: draw_server(fb); break;
+    case P_SRC_HUPU: draw_hupu(fb); break;
     case P_SYNC: draw_back_title(fb, "同步"); draw_message(fb); draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS)); break;
     case P_POWER:
         draw_back_title(fb, "电源与设备");
@@ -1321,9 +1374,10 @@ static app_redraw_t open_page(page_t p) {
 
 static app_redraw_t go_back(void) {
     s_message[0] = 0;
+    s_hupu_ask = false;
     if (s_page == P_SRC_SERVER) web_stop();
     s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
-             s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER ? P_SOURCES : P_HOME;
+             s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU ? P_SOURCES : P_HOME;
     return APP_REDRAW_PAGE;
 }
 
@@ -1332,7 +1386,8 @@ static app_redraw_t touch_sources(app_ctx_t* ctx, uint16_t y) {
     if (y < CAT_TOP || y >= CAT_TOP + SOURCES * h) return APP_REDRAW_NONE;
     const int i = (y - CAT_TOP) / h;
     if (i == 0) return open_page(P_SRC_TOMATO);
-    if (i == 1 + S_COUNT) {
+    if (i == SRC_HUPU) return open_page(P_SRC_HUPU);
+    if (i == SRC_AUTH) {
         // 验证器的设置由它自己的页面画，看起来仍在设置里。/ The authenticator draws its own settings, still under
         // Settings.
         app_tr_auth_request_settings();
@@ -1479,6 +1534,13 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         tr_time_apply_settings();
         snprintf(s_message, sizeof(s_message), "%s", app_settings_time_auto() ? "下次联网时自动对时" : "已关闭自动校时");
         return APP_REDRAW_PAGE;
+    case R_HIMG:
+        // 关：马上生效；开：先提醒。/ Off takes effect at once; on asks first.
+        if (!app_settings_hupu_images()) { s_hupu_ask = true; return APP_REDRAW_PAGE; }
+        app_settings_set_hupu_images(false);
+        tomato_hupu_set_images(false);
+        snprintf(s_message, sizeof(s_message), "已关闭虎扑图片");
+        return APP_REDRAW_PAGE;
     case R_TZONE:
         // 从当前时区所在的那一页开始。/ Start on the page holding the current zone.
         s_tz_page = app_settings_tz() / tz_per_page();
@@ -1554,6 +1616,10 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case P_SOURCES: return touch_sources(ctx, y);
     case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
     case P_SRC_SERVER: id = row_hit(SERVER_ROWS, s_web_on ? 1 : COUNT(SERVER_ROWS), y); break;
+    case P_SRC_HUPU:
+        if (s_hupu_ask) return touch_hupu_ask(x, y);
+        id = row_hit(HUPU_ROWS, COUNT(HUPU_ROWS), y);
+        break;
     case P_TRANSFER: return touch_transfer(ctx, y);
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
     case P_SYNC: id = row_hit(SYNC_ROWS, COUNT(SYNC_ROWS), y); break;
@@ -1603,11 +1669,14 @@ static void on_enter(app_ctx_t* ctx) {
     } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO || s_open_source == TR_TAB_X) {
         s_srv = s_open_source == TR_TAB_XHS ? S_RED : s_open_source == TR_TAB_WEIBO ? S_WB : S_X;
         s_page = P_SRC_SERVER;
+    } else if (s_open_source == TR_TAB_HUPU) {
+        s_page = P_SRC_HUPU;
     } else if (s_open_source >= 0) {
         s_page = P_SOURCES;
     }
     s_open_source = -1;
     s_open_transfer = false;
+    s_hupu_ask = false;
     s_message[0] = 0;
     // 离开期间同步可能已结束。/ The sync may have finished while away.
     if (s_syncing && !tomato_sync_busy()) s_syncing = false;

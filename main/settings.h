@@ -104,6 +104,11 @@ const char* app_settings_lock_idle_label(uint8_t level);
 bool app_settings_time_auto(void);
 void app_settings_set_time_auto(bool on);
 
+/// 虎扑显示图片（默认关）：关着时只取文字，不下载也不解码图片。/ Hupu shows images (off by default): when off, only
+/// text is fetched and no image is downloaded or decoded.
+bool app_settings_hupu_images(void);
+void app_settings_set_hupu_images(bool on);
+
 /// 时区，按表里的序号存；默认 0（北京时间 UTC+8）。夏令时按 POSIX 规则自动切换。
 /// Time zone stored as an index into the table; 0 (Beijing, UTC+8) by default. Daylight saving follows the POSIX rule.
 int app_settings_tz_count(void);

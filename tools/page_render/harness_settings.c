@@ -116,6 +116,12 @@ void hr_scenes(void) {
     s_mock_busy = false;
     hr_allow_fit();
     page(P_SOURCES, "sources");
+#ifndef HR_BASELINE   // 改动前没有虎扑设置页 / No Hupu settings page before this change
+    page(P_SRC_HUPU, "hupu");
+    s_hupu_ask = true;
+    page(P_SRC_HUPU, "hupu_ask");
+    s_hupu_ask = false;
+#endif
     page(P_SRC_TOMATO, "src_tomato");
     s_srv = S_RED;
     page(P_SRC_SERVER, "server");

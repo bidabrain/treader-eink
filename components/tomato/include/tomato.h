@@ -263,6 +263,9 @@ void tomato_hupu_cache_unlock(void);
 void tomato_hupu_post_path(const char* tid, char* out, size_t cap);
 /// 图片地址对应的本地 JPG（缩略图缓存同名加尺寸）。/ Local JPEG for an image URL (thumbnail caches share the name).
 void tomato_hupu_img_path(const char* url, char* out, size_t cap);
+/// 虎扑要不要下图（缩略图和正文图）；关着时只取文字。主程序按设置调用，默认关。/ Whether Hupu downloads images
+/// (thumbnails and body images); off fetches text only. The app sets it from settings; off by default.
+void tomato_hupu_set_images(bool on);
 /// 从虎扑图片文件名里读原图尺寸（…_w_1920_h_967_…）。/ Read the original size from a Hupu image name.
 bool tomato_hupu_img_size(const char* url, int* w, int* h);
 /// 专区帖子、赛程、评分的缓存文件。/ Cache files for zone posts, schedules and ratings.

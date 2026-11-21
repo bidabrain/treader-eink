@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · Treader 1.0.1
+
+- 虎扑加“显示图片”开关（设置 → 内容来源 → 虎扑），默认关：只看文字，不下载也不解码图片；打开前提醒会大大增加设备负担。图片下载按实际大小申请内存（原来每张先要 1 MB，内存碎了就下不了），没下好的图会说明原因，点图重试。
+  Hupu gets a "show images" switch (Settings > Content sources > Hupu), off by default: text only, no image downloads or decoding; turning it on warns about the much heavier load. Image downloads allocate by the real size (each used to ask for 1 MB and failed once memory fragmented); missing images say why, and tapping one retries.
+- 番茄书城的“刷新”一直显示：原来后台在跑别的任务时会藏起来，任务结束后也不回来；现在点了会让浏览类任务让路，或者说明在等下载、同步。
+  The Tomato bookstore's Refresh always shows: it used to hide while another job ran and never came back; now a tap makes browsing jobs yield or says it is waiting for a download or sync.
+- 发布里多了 `treader-版本号-sdcard.zip`（中文字体、拼音词库和文件夹），刷机网页加了“TF 卡文件”按钮和第一次刷机要复制到 TF 卡的说明。
+  Releases now include `treader-<version>-sdcard.zip` (Chinese font, pinyin lexicon and folders), and the flashing page adds a "TF card files" button with first-flash instructions.
+
 ## 2026-11-21 · 验证器安卓 App 1.0.0
 
 - 新的独立安卓 App“验证器”：功能和界面照固件验证器标签，离线显示两步验证码；扫 Google Authenticator 导出二维码、粘贴链接或手动导入；账号加密存在 App 里（口令加手机 Keystore 密钥），不进备份、禁止截图。可以把账号“发送到小纸 Pico”：扫设备导入页的热点二维码，手机自动连上热点发过去，在设备上确认，固件不用改。
