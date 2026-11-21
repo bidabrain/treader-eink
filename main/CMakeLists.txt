@@ -3,6 +3,7 @@ set(main_requires
     read_pico_transfer
     read_pico_usb
     read_pico_search
+    read_pico_totp
     tomato
     pinyin_ime
     espressif__qrcode
@@ -40,6 +41,7 @@ idf_component_register(
         "ui/tr_kbd.c"
         "app/tr_nav.c"
         "app/tr_time.c"
+        "app/tr_auth.c"
         "app/auto_turn.c"
         "apps/app_tr_tomato.c"
         "apps/app_tr_settings.c"
@@ -52,6 +54,7 @@ idf_component_register(
         "apps/app_tr_weibo.c"
         "apps/app_tr_x.c"
         "apps/app_tr_all.c"
+        "apps/app_tr_auth.c"
         "apps/tr_pin.c"
         "apps/tr_wallsave.c"
         "apps/tr_lock.c"
@@ -90,6 +93,7 @@ idf_component_register(
         "assets/builtin.ttf"
     EMBED_TXTFILES
         "apps/server_form.html"
+        "apps/auth_form.html"
 )
 
 # 图片解码器碰到损坏的图会让有符号整数溢出，用 -fwrapv 把它定义为回绕（与原来生成的结果一致）。

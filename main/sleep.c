@@ -26,6 +26,7 @@
 #include "read_pico_pmu.h"
 #include "sc7a20h_lab.h"
 #include "settings.h"
+#include "tr_auth.h"
 #include "ui_kit.h"
 
 static const char* TAG = "read_pico";
@@ -280,6 +281,9 @@ app_wake_source_t app_light_sleep_wait(sc7a20h_handle_t acc) {
 }
 
 esp_err_t app_enter_host_sleep(app_sleep_mode_t mode) {
+    // 验证器先上锁（深睡和关机本来也会清掉内存，浅睡不会）。/ Lock the authenticator first (deep sleep and power-off
+    // clear RAM anyway; light sleep does not).
+    tr_auth_lock();
     // 先关屏轨和 VCOM 再让 PMU 断主机：SY_EN / VCOM_EN 在常开的 IO 扩展器上，主机断电后电平还保持着，
     // 刚画完锁屏的高压轨会一直开着，面板慢慢变黑（像渗墨）。关掉以后 IO 扩展器休眠时也会把 MODE 一起拉低。
     // Drop the panel rails and VCOM before the PMU cuts the host: SY_EN / VCOM_EN sit on the always-on IO expander and
@@ -310,6 +314,10 @@ void enter_lock_and_sleep(
     // 乐曲的 32 kHz 采样中断和线圈电流会干扰锁屏整屏刷新，先停再上屏轨。
     // The score's 32 kHz sample ISR and coil current disturb the lock-face full refresh; stop it before the rails come up.
     if (read_pico_buzzer_score_busy()) (void)read_pico_buzzer_score_stop();
+    // 每次锁屏都把验证器上锁，钥匙和账号表清零；锁屏画面整屏重画，验证码不会留在屏上。
+    // Every lock locks the authenticator and zeroes its key and table; the lock face redraws the whole screen, so no
+    // code stays visible.
+    tr_auth_lock();
     uint8_t* framebuffer = epd_hl_get_framebuffer(hl);
     tr_lock_prepare();
     epd_poweron();

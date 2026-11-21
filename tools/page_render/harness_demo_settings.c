@@ -39,6 +39,11 @@ static const esp_app_desc_t s_desc = {.version = "0.9.0", .date = "Nov 21 2026",
 const esp_app_desc_t* esp_app_get_description(void) { return &s_desc; }
 // 演示二维码：三个定位角加伪随机的模块，看起来像一张真的二维码。/ Demo QR code: three finder squares plus
 // pseudo-random modules, so it reads like a real code.
+// 验证器：已设置、已上锁。/ Authenticator: set up and locked.
+#ifndef HR_BASELINE   // 改动前的代码还没有验证器 / The pre-change code has no authenticator
+tr_auth_state_t tr_auth_state(void) { return TR_AUTH_LOCKED; }
+int tr_auth_count(void) { return -1; }
+#endif
 void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
     enum { N = 29 };
     const int m = area.width / (N + 4), ox = area.x + (area.width - N * m) / 2, oy = area.y + (area.height - N * m) / 2;

@@ -736,28 +736,49 @@ static esp_err_t wifi_handler(httpd_req_t *req) {
 // Web form: GET reads current values, POST submits; POST must be same-origin (like provisioning) so other pages
 // cannot submit on the user's behalf.
 static esp_err_t form_handler(httpd_req_t *req) {
-    // GET 回地址（最多 159 字节）加服务器名、面板名和示例地址。/ GET returns the address (up to 159 bytes) plus the
-    // server name, panel name and example address.
-    char reply[512] = "{}";
+    // 默认 GET 回地址（最多 159 字节）加服务器名、面板名和示例地址，512 字节够用；调用方可以放大。
+    // By default GET returns the address (up to 159 bytes) plus the server name, panel name and example address, and
+    // 512 bytes suffice; callers may raise the limits.
+    const size_t body_max = s_cfg.form_body_max ? s_cfg.form_body_max : 1024;
+    const size_t reply_max = s_cfg.form_reply_max ? s_cfg.form_reply_max : 512;
+    char *reply = calloc(1, reply_max);
+    if (!reply) return wifi_response(req, "500 Internal Server Error", "{\"error\":\"内存不足\"}");
+    snprintf(reply, reply_max, "{}");
     int status = 200;
     if (req->method == HTTP_GET) {
-        status = s_cfg.form_cb(NULL, 0, reply, sizeof(reply));
+        status = s_cfg.form_cb(NULL, 0, reply, reply_max);
     } else {
-        if (!management_request(req)) return wifi_response(req, "403 Forbidden", "{\"error\":\"请从设备显示的地址打开网页\"}");
-        if (!req->content_len || req->content_len > 1024)
+        if (!management_request(req)) {
+            free(reply);
+            return wifi_response(req, "403 Forbidden", "{\"error\":\"请从设备显示的地址打开网页\"}");
+        }
+        if (!req->content_len || req->content_len > body_max) {
+            free(reply);
             return wifi_response(req, "400 Bad Request", "{\"error\":\"内容长度不对\"}");
-        char body[1025] = {0};
+        }
+        char *body = calloc(1, body_max + 1);
+        if (!body) {
+            free(reply);
+            return wifi_response(req, "500 Internal Server Error", "{\"error\":\"内存不足\"}");
+        }
         if (!receive_credentials_body(body, req->content_len, receive_body, receive_stopped, receive_now, req)) {
-            clear_secret(body, sizeof(body));
+            clear_secret(body, body_max + 1);
+            free(body);
+            free(reply);
             return wifi_response(req, "408 Request Timeout", "{\"error\":\"接收超时，请重试\"}");
         }
-        status = s_cfg.form_cb(body, req->content_len, reply, sizeof(reply));
-        clear_secret(body, sizeof(body));
+        status = s_cfg.form_cb(body, req->content_len, reply, reply_max);
+        clear_secret(body, body_max + 1);
+        free(body);
     }
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    httpd_resp_set_status(req, status == 200 ? "200 OK" : status == 400 ? "400 Bad Request" : "500 Internal Server Error");
-    return httpd_resp_sendstr(req, reply);
+    httpd_resp_set_status(req, status == 200 ? "200 OK" : status == 400 ? "400 Bad Request" :
+                               status == 409 ? "409 Conflict" : "500 Internal Server Error");
+    const esp_err_t err = httpd_resp_sendstr(req, reply);
+    clear_secret(reply, reply_max);
+    free(reply);
+    return err;
 }
 
 static int receive_http(void *ctx, char *buf, size_t n) {
@@ -1100,9 +1121,11 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
         uint8_t mac[6];
         err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP); if (err != ESP_OK) goto fail;
         snprintf((char *)wifi.ap.ssid, sizeof(wifi.ap.ssid), "ReadPico-%02X%02X", mac[4], mac[5]);
-        strcpy((char *)wifi.ap.password, READ_PICO_TRANSFER_PASSWORD);
+        const char *ap_pass = cfg->ap_password ? cfg->ap_password : READ_PICO_TRANSFER_PASSWORD;
+        if (strlen(ap_pass) < 8 || strlen(ap_pass) > 63) { err = ESP_ERR_INVALID_ARG; goto fail; }
+        snprintf((char *)wifi.ap.password, sizeof(wifi.ap.password), "%s", ap_pass);
         wifi.ap.ssid_len = strlen((char *)wifi.ap.ssid); wifi.ap.channel = 1;
-        wifi.ap.max_connection = 2; wifi.ap.authmode = WIFI_AUTH_WPA2_PSK;
+        wifi.ap.max_connection = cfg->ap_max_conn ? cfg->ap_max_conn : 2; wifi.ap.authmode = WIFI_AUTH_WPA2_PSK;
         portENTER_CRITICAL(&s_lock); strcpy(s_status.ssid, (char *)wifi.ap.ssid); portEXIT_CRITICAL(&s_lock);
     } else {
         memcpy(wifi.sta.ssid, saved.ssid, strlen(saved.ssid));

@@ -52,6 +52,11 @@ typedef struct {
     /// GET passes body NULL for current values; POST passes the request body. Write a JSON reply; return the HTTP
     /// status. Runs on the HTTP task.
     int (*form_cb)(const char *body, size_t len, char *reply, size_t cap);
+    size_t form_body_max; ///< 表单请求体上限，0 表示 1024 / Form body limit, 0 means 1024
+    size_t form_reply_max; ///< 表单回复上限，0 表示 512 / Form reply limit, 0 means 512
+    /// 可选：热点口令（8～63 个字符），NULL 用默认口令。/ Optional hotspot passphrase (8-63 chars); NULL uses the default.
+    const char *ap_password;
+    uint8_t ap_max_conn; ///< 热点最多几台设备，0 表示 2 / Hotspot station limit, 0 means 2
 } read_pico_transfer_cfg_t;
 
 typedef struct {

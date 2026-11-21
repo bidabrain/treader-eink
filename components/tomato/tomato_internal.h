@@ -22,6 +22,9 @@
 esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel);
 /// 断网并释放全部 Wi-Fi 资源；可重复调用。/ Disconnect and release all Wi-Fi resources; repeatable.
 void tomato_net_down(void);
+/// 已联网时跑一次 SNTP（不管自动校时开关），成功返回真。/ Run SNTP once while online (regardless of the auto-time
+/// switch); true on success.
+bool tomato_net_sync_time(int wait_ms);
 /// 改用公共 DNS；已经换过或没联网返回 false。/ Switch to public DNS; false if already switched or offline.
 bool tomato_net_use_public_dns(void);
 /// 打开 HTTP 连接；域名解析失败时换公共 DNS 再试一次，失败原因留给提示用。

@@ -66,5 +66,14 @@
  "㉚ 全部专区": "demo_hupu/ui45_100.png",
  "㉛ 专区帖子": "demo_hupu/ui46_100.png",
  "㉜ 虎扑 · 比分": "demo_hupu/ui47_100.png",
- "㉝ 比赛评分": "demo_hupu/ui48_100.png"
+ "㉝ 比赛评分": "demo_hupu/ui48_100.png",
+ "V1 验证器 · 第一次": "demo_auth/unset_100.png",
+ "V2 输入口令": "demo_auth/unlock_wrong_100.png",
+ "V3 验证码列表": "demo_auth/list_100.png",
+ "V4 时间可能不准": "demo_auth/list_drift_100.png",
+ "V5 单个账号": "demo_auth/detail_100.png",
+ "V6 删除账号": "demo_auth/delete_100.png",
+ "V7 导入账号": "demo_auth/import_100.png",
+ "V8 设备上确认导入": "demo_auth/import_confirm_100.png",
+ "V9 设置 › 内容来源 › 验证器": "demo_auth/settings_100.png"
 }

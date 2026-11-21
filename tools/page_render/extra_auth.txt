@@ -1,0 +1,2 @@
+@SRC@/main/ui/tr_kbd.c
+@SRC@/main/ui/ui_menu.c

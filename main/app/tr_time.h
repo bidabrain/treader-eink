@@ -25,3 +25,8 @@ void tr_time_apply_settings(void);
 esp_err_t tr_time_set_local(int year, int month, int day, int hour, int minute);
 /// 系统时间有没有设过。/ Whether the system time has been set.
 bool tr_time_valid(void);
+/// 估计现在的时间可能差几秒：上次校准时的误差（联网 0、手动 30 秒）加上按测得的漂移（没测过按每天 2 秒）
+/// 走过的部分。时间无效返回 -1。验证器用它提醒校时。
+/// Estimated clock error in seconds: the error at the last set (0 online, 30 by hand) plus drift since then at the
+/// measured rate (2 s a day until measured). -1 when the time is invalid. The authenticator uses it to ask for a sync.
+int tr_time_error_s(void);

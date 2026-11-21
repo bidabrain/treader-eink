@@ -13,9 +13,12 @@
 
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include <stdlib.h>
+#include <limits.h>
+#include <sys/time.h>
 #include <time.h>
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -56,6 +59,8 @@ bool tomato_net_use_public_dns(void) {
     return true;
 }
 static volatile bool s_time_fresh;
+static bool s_synced_now;   // 这次联网已经对过时 / Already synced during this connection
+static volatile int32_t s_time_fix_ms;   // 最近一次对时把系统时间改了多少 / How far the last sync moved the clock
 
 bool tomato_take_time_synced(void) {
     bool fresh = s_time_fresh;
@@ -63,8 +68,34 @@ bool tomato_take_time_synced(void) {
     return fresh;
 }
 
+int32_t tomato_last_time_fix_ms(void) { return s_time_fix_ms; }
+
 // 2025 年以后才算对过时。/ Treat time as set once it is past 2025.
 void tomato_net_set_sntp(bool on) { s_sntp_allowed = on; }
+
+// 跑一次 SNTP，记下系统时间被改了多少（对时前时间无效时记 INT32_MIN）。/ Run SNTP once and record how far the
+// clock moved (INT32_MIN when the time was invalid before).
+static bool sntp_once(int wait_ms) {
+    if (!s_sntp) {
+        esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("ntp.aliyun.com");
+        if (esp_netif_sntp_init(&sc) != ESP_OK) return false;
+        s_sntp = true;
+    }
+    const bool was_valid = tomato_time_valid();
+    struct timeval a, b;
+    gettimeofday(&a, NULL);
+    const int64_t m0 = esp_timer_get_time();
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(wait_ms)) != ESP_OK || !tomato_time_valid()) return false;
+    gettimeofday(&b, NULL);
+    const int64_t moved = ((int64_t)b.tv_sec - a.tv_sec) * 1000 + (b.tv_usec - a.tv_usec) / 1000 -
+                          (esp_timer_get_time() - m0) / 1000;
+    s_time_fix_ms = !was_valid || moved > INT32_MAX || moved < -INT32_MAX ? INT32_MIN : (int32_t)moved;
+    s_time_fresh = true;
+    s_synced_now = true;
+    return true;
+}
+
+bool tomato_net_sync_time(int wait_ms) { return s_inited && (s_synced_now || sntp_once(wait_ms)); }
 
 bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
 
@@ -158,11 +189,7 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
     // 顺便对时，最多等 3 秒；失败不影响后续操作。SNTP 给的是 UTC，显示用哪个时区由主程序设定；关了自动校时就不对。
     // Sync time on the way, waiting at most 3 s; failure is harmless. SNTP gives UTC and the app sets the display
     // zone; with auto time off nothing is synced.
-    esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("ntp.aliyun.com");
-    if (s_sntp_allowed && esp_netif_sntp_init(&sc) == ESP_OK) {
-        s_sntp = true;
-        if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(3000)) == ESP_OK && tomato_time_valid()) s_time_fresh = true;
-    }
+    if (s_sntp_allowed) sntp_once(3000);
     return ESP_OK;
 
 fail:
@@ -174,6 +201,7 @@ fail:
 
 void tomato_net_down(void) {
     s_public_dns = false;
+    s_synced_now = false;
     if (s_sntp) { esp_netif_sntp_deinit(); s_sntp = false; }
     // 先注销回调，免得断开事件又触发重连。/ Unregister first so the disconnect event cannot trigger a reconnect.
     if (s_wifi_h) { esp_event_handler_instance_unregister(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, s_wifi_h); s_wifi_h = NULL; }

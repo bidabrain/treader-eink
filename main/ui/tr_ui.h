@@ -46,7 +46,7 @@ extern "C" {
 /// 功能的身份（不是位置），也是“隐藏功能”位掩码里的位号。/ Feature identity, not position, and the bit number in the
 /// hidden-feature mask.
 typedef enum {
-    TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_X, TR_TAB_SETTINGS, TR_TAB_MAX
+    TR_TAB_LIBRARY = 0, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_X, TR_TAB_SETTINGS, TR_TAB_AUTH, TR_TAB_MAX
 } tr_tab_t;
 
 /// 底部最后一格“全部”（tr_tab_hit 的返回值、tr_tab_bar 的选中值）。/ The last bar cell, "All" (a tr_tab_hit result and a
@@ -62,6 +62,7 @@ typedef enum {
     TR_ICON_SEARCH, TR_ICON_SYNC, TR_ICON_IMPORT,
     TR_ICON_TOC, TR_ICON_MENU, TR_ICON_REFRESH, TR_ICON_BALL, TR_ICON_COMIC,
     TR_ICON_XHS, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_POWER, TR_ICON_USB, TR_ICON_WEIBO, TR_ICON_X,
+    TR_ICON_KEY, TR_ICON_LOCK,
 } tr_icon_t;
 
 /// 文字，按行上沿定位；bold 用可变字体 700 字重。/ Text by line top; bold uses VF weight 700.
@@ -100,7 +101,7 @@ void tr_title(uint8_t* fb, const char* title);
 /// 告诉本文件哪些功能隐藏、哪些放在底部（书库之后，按顺序）。开机和改设置时由调用方告知，本文件不读设置。
 /// Tell this file which features are hidden and which are pinned after the library, in order. Callers set it at boot
 /// and on change; this file never reads settings.
-void tr_tabs_configure(uint8_t hidden, const uint8_t* pins, int n);
+void tr_tabs_configure(uint16_t hidden, const uint8_t* pins, int n);
 /// 底部一共几格（含书库和“全部”）：正常 6、大 5、特大 4。/ Bar cells in total, the library and "All" included:
 /// 6 normal, 5 large, 4 largest.
 int tr_tab_slots(void);

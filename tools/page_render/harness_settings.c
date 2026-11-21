@@ -35,6 +35,11 @@ bool tomato_config_has_builtin(void) { return s_mock_builtin; }
 bool tr_time_valid(void) { return s_mock_time; }
 static const esp_app_desc_t s_desc = {.version = "1.42.0", .date = "Nov 21 2026", .time = "15:43:00"};
 const esp_app_desc_t* esp_app_get_description(void) { return &s_desc; }
+// 验证器：已设置、已上锁。/ Authenticator: set up and locked.
+#ifndef HR_BASELINE   // 改动前的代码还没有验证器 / The pre-change code has no authenticator
+tr_auth_state_t tr_auth_state(void) { return TR_AUTH_LOCKED; }
+int tr_auth_count(void) { return -1; }
+#endif
 void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
     epd_fill_rect(area, 0x00, fb);
     epd_fill_rect((EpdRect){area.x + 12, area.y + 12, area.width - 24, area.height - 24}, 0xFF, fb);
@@ -62,7 +67,7 @@ static void edit(edit_t e, const char* text, const char* name) {
     s_edit = E_NONE;
 }
 
-static void set_pins(const uint8_t* pins, int n, uint8_t hidden) {
+static void set_pins(const uint8_t* pins, int n, uint16_t hidden) {
     app_settings_set_tab_pins(pins, n);
     app_settings_set_hidden_tabs(hidden);
     tr_tabs_configure(app_settings_hidden_tabs(), pins, n);

@@ -39,7 +39,7 @@
 
 typedef enum {
     OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X,
-    OP_OTA_CHECK, OP_OTA_DOWNLOAD
+    OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME
 } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
@@ -725,7 +725,7 @@ static void sync_task(void* arg) {
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
     const bool needs_server =
         s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU && s_op != OP_RED &&
-        s_op != OP_WB && s_op != OP_X && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD;
+        s_op != OP_WB && s_op != OP_X && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD && s_op != OP_TIME;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -819,6 +819,11 @@ static void sync_task(void* arg) {
         else fail(s_cancel ? ESP_ERR_INVALID_STATE : err, msg);
         break;
     }
+    case OP_TIME:
+        set_phase(TOMATO_CHECKING, "正在校时");
+        if (tomato_net_sync_time(8000)) set_phase(TOMATO_DONE, "已校时");
+        else fail(ESP_FAIL, "校时失败，连不上时间服务器");
+        break;
     case OP_WEBDAV: {
         set_phase(TOMATO_WEBDAV, "正在同步");
         char msg[64];
@@ -900,6 +905,7 @@ esp_err_t tomato_sync_start_x(const tomato_x_req_t* req) {
     return start(OP_X);
 }
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
+esp_err_t tomato_sync_start_time(void) { return start(OP_TIME); }
 
 esp_err_t tomato_sync_start_ota_check(void) { return start(OP_OTA_CHECK); }
 

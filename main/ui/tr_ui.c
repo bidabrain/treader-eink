@@ -443,6 +443,24 @@ void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t 
         epd_fill_rect((EpdRect){cx - P(6), y + P(4), P(12), P(12)}, bg, fb);
         thick_line(fb, cx, y + P(5), cx, y + P(19), c);
         break;
+    case TR_ICON_KEY:
+        // 钥匙：左边圆环，右边钥匙杆和两个齿。/ Key: a ring on the left, the shaft and two teeth on the right.
+        thick_circle(fb, x + P(12), cy, P(7), c);
+        thick_line(fb, x + P(19), cy, x + P(36), cy, c);
+        thick_line(fb, x + P(30), cy, x + P(30), cy + P(7), c);
+        thick_line(fb, x + P(35), cy, x + P(35), cy + P(6), c);
+        break;
+    case TR_ICON_LOCK:
+        // 锁：上面半圆锁环，下面锁身和锁孔。/ Padlock: a half-ring shackle over the body with a keyhole.
+        thick_circle(fb, cx, y + P(15), P(8), c);
+        epd_fill_rect((EpdRect){cx - P(10), y + P(15), P(20), P(6)}, bg, fb);
+        thick_line(fb, cx - P(8), y + P(15), cx - P(8), y + P(19), c);
+        thick_line(fb, cx + P(8), y + P(15), cx + P(8), y + P(19), c);
+        ui_draw_round_rect(fb, (EpdRect){x + P(8), y + P(19), P(24), P(17)}, P(3), c);
+        ui_draw_round_rect(fb, (EpdRect){x + P(8) + 1, y + P(19) + 1, P(24) - 2, P(17) - 2}, P(3) - 1, c);
+        epd_fill_circle(cx, y + P(26), P(2), c, fb);
+        thick_line(fb, cx, y + P(26), cx, y + P(31), c);
+        break;
     case TR_ICON_IMPORT:
         thick_line(fb, x + P(20), y + P(6), x + P(20), y + P(26), c);
         thick_line(fb, x + P(12), y + P(18), x + P(20), y + P(26), c);
@@ -460,16 +478,18 @@ void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t 
 
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
-static uint8_t s_hidden = 1u << TR_TAB_X;
+static uint16_t s_hidden = 1u << TR_TAB_X;
 static uint8_t s_pins[TR_TAB_MAX] = {TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU};
 static int s_pin_n = 4;
 
-static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置"};
+static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置",
+                                                     "验证器"};
 static const tr_icon_t TAB_ICONS[TR_TAB_MAX] = {TR_ICON_BOOKS, TR_ICON_COMIC, TR_ICON_TOMATO, TR_ICON_XHS,
-                                                TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_X, TR_ICON_SETTINGS};
+                                                TR_ICON_BALL, TR_ICON_WEIBO, TR_ICON_X, TR_ICON_SETTINGS,
+                                                TR_ICON_KEY};
 
-void tr_tabs_configure(uint8_t hidden, const uint8_t* pins, int n) {
-    s_hidden = hidden & (uint8_t)~TR_TABS_FIXED;
+void tr_tabs_configure(uint16_t hidden, const uint8_t* pins, int n) {
+    s_hidden = hidden & (uint16_t)~TR_TABS_FIXED;
     s_pin_n = 0;
     // 只收合法、没隐藏、不重复、不是书库的。/ Keep valid, visible, unique, non-library entries only.
     for (int i = 0; pins && i < n && s_pin_n < TR_TAB_MAX; i++) {

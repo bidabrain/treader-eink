@@ -451,6 +451,14 @@ bool tomato_time_valid(void);
 /// 上次取走之后是否又用 SNTP 对过时（取走即清零）。主程序据此把时间写进 PMU 的 RTC。
 /// Whether SNTP set the time since the last call (cleared on read); the app then writes it to the PMU RTC.
 bool tomato_take_time_synced(void);
+/// 最近一次 SNTP 对时把系统时间往前（正）或往后（负）挪了多少毫秒；对时前时间无效时为 INT32_MIN。
+/// How many milliseconds the last SNTP sync moved the clock forward (positive) or back; INT32_MIN when the time was
+/// invalid before.
+int32_t tomato_last_time_fix_ms(void);
+/// 只联网对一次时（不管“自动校时”开没开），结果看 tomato_sync_get_status。验证器的“校时”用。
+/// Go online just to sync the time once (regardless of the auto-time switch); see tomato_sync_get_status. Used by the
+/// authenticator's "sync time".
+esp_err_t tomato_sync_start_time(void);
 /// 判断一个路径是不是阅读器正开着的书；是的话更新会跳过它（阅读器还持有旧文件）。
 /// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
 typedef bool (*tomato_open_check_t)(const char* path);

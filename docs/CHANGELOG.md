@@ -3,7 +3,12 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 未发布 / Unreleased
+## 2026-11-21 · Treader 1.0.0
+
+- 新功能“验证器”：在设备上离线显示两步验证码（和 Google Authenticator 一样的 TOTP），不需要服务器。账号加密存在 TF 卡上，要验证器口令加这台设备才能解开；锁屏、重启、拔卡都会上锁。用设备热点上的网页导入（GA 导出二维码照片、otpauth 链接或手动填），在设备上确认后写入；长按删除；时间可能不准时提醒校时。口令、自动上锁、清空在设置 → 内容来源 → 验证器。默认在“全部”页里。
+  New Authenticator feature: offline two-step codes on the device (the same TOTP as Google Authenticator), no server needed. Accounts are encrypted on the TF card and need the authenticator passphrase plus this device to open; locking, restarting or removing the card locks it. Import through a web page on the device hotspot (a photo of the GA export QR code, otpauth links or manual entry), written after confirming on the device; long-press to delete; it asks for a time sync when the clock may be off. Passphrase, auto-lock and clearing live under Settings > Content sources > Authenticator. It starts on the All page.
+- 功能多于 8 个后，底部标签的隐藏设置改存 16 位（升级时自动换算）。
+  With more than 8 features, the hidden-tab setting is now stored as 16 bits (converted automatically on upgrade).
 
 - USB 传书页的提示把“点 ⏏”改成“点“推出””：默认字体里没有这个符号，以前显示成空方框。
   The USB transfer hint now says to click "推出" instead of showing the ⏏ symbol, which the default font lacks and drew as an empty box.

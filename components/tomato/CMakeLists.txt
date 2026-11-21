@@ -5,7 +5,7 @@ idf_component_register(
          "tomato_rednote.c" "tomato_selfhost.c" "tomato_weibo.c" "tomato_x.c" "tomato_ota.c"
     INCLUDE_DIRS "include"
     REQUIRES espressif__cjson
-    PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif lwip esp_event esp_http_client esp-tls mbedtls heap fatfs nvs_flash
+    PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif lwip esp_event esp_http_client esp-tls mbedtls heap fatfs nvs_flash esp_timer
                   esp_timer
 )
 

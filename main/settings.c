@@ -30,7 +30,8 @@
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_BOOK_STYLE "bk_style"
 #define NVS_KEY_HIDE_HUPU "hide_hupu"   // 旧版，只读来迁移 / Old key, read only to migrate
-#define NVS_KEY_TABS_OFF "tabs_off"
+#define NVS_KEY_TABS_OFF "tabs_off"   // 旧版 8 位掩码，降级回旧固件时用 / Old 8-bit mask, kept for downgrades
+#define NVS_KEY_TABS_OFF16 "tabs_off16" // 16 位掩码（功能超过 8 个）/ 16-bit mask (more than 8 features)
 #define NVS_KEY_TABS_X "tabs_x"     // X 标签已按默认关闭迁移过 / X tab already migrated to hidden
 #define NVS_KEY_TAB_PINS "tab_pins" // 底部常用功能的顺序 / Order of the pinned features
 #define NVS_KEY_BOOK_AUTO "bk_auto"
@@ -56,7 +57,7 @@ static bool s_book_shake;
 // Defaults: standard line spacing, small paragraph gap, medium margins, indent as written, no rules (the old layout).
 static uint8_t s_book_style = 0x15;
 // X 标签默认关闭。/ The X tab starts hidden.
-static uint8_t s_tabs_off = 1u << TR_TAB_X;
+static uint16_t s_tabs_off = 1u << TR_TAB_X;
 // 底部常用功能（书库之后），-1 表示还没读过或要迁移。/ Pinned features after the library; -1 means not loaded.
 static uint8_t s_pins[TR_TAB_MAX];
 static int s_pin_n = -1;
@@ -142,14 +143,18 @@ void app_settings_init(void) {
     uint8_t book_style = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_STYLE, &book_style) == ESP_OK) s_book_style = book_style;
     uint8_t tabs_off = 0, hide_hupu = 0;
-    if (nvs_get_u8(h, NVS_KEY_TABS_OFF, &tabs_off) == ESP_OK) s_tabs_off = tabs_off;
+    uint16_t tabs_off16 = 0;
+    // 先读 16 位掩码；没有就从旧的 8 位换算，新加的功能（验证器）默认不隐藏。/ Prefer the 16-bit mask; otherwise
+    // convert the old 8-bit one, and newer features (the authenticator) start visible.
+    if (nvs_get_u16(h, NVS_KEY_TABS_OFF16, &tabs_off16) == ESP_OK) s_tabs_off = tabs_off16;
+    else if (nvs_get_u8(h, NVS_KEY_TABS_OFF, &tabs_off) == ESP_OK) s_tabs_off = tabs_off;
     else if (nvs_get_u8(h, NVS_KEY_HIDE_HUPU, &hide_hupu) == ESP_OK && hide_hupu) s_tabs_off = 1u << TR_TAB_HUPU;
     // 加 X 标签之前存的掩码没有它的位：第一次读到时把 X 关上，免得升级后多出一个标签。/ Masks saved before the X tab
     // lack its bit: hide X the first time so an upgrade does not add a tab.
     uint8_t tabs_x = 0;
     const bool migrate_x = nvs_get_u8(h, NVS_KEY_TABS_X, &tabs_x) != ESP_OK;
     if (migrate_x) s_tabs_off |= 1u << TR_TAB_X;
-    s_tabs_off &= (uint8_t)~TR_TABS_FIXED;
+    s_tabs_off &= (uint16_t)~TR_TABS_FIXED;
     uint8_t book_auto = 0, comic_auto = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_AUTO, &book_auto) == ESP_OK) s_book_auto = book_auto;
     if (nvs_get_u8(h, NVS_KEY_COMIC_AUTO, &comic_auto) == ESP_OK) s_comic_auto = comic_auto;
@@ -176,7 +181,7 @@ void app_settings_init(void) {
     }
     nvs_close(h);
     if (migrate_x) {
-        nvs_put_u8(NVS_KEY_TABS_OFF, s_tabs_off);
+        nvs_put_u8(NVS_KEY_TABS_OFF, (uint8_t)s_tabs_off);
         nvs_put_u8(NVS_KEY_TABS_X, 1);
     }
     ESP_LOGI(
@@ -288,11 +293,11 @@ void app_settings_set_book_style(const app_book_style_t* style) {
     nvs_put_u8(NVS_KEY_BOOK_STYLE, v);
 }
 
-uint8_t app_settings_hidden_tabs(void) {
+uint16_t app_settings_hidden_tabs(void) {
     return s_tabs_off;
 }
 
-int app_settings_tab_pins(uint8_t out[8]) {
+int app_settings_tab_pins(uint8_t* out) {
     // 没存过（包括新机 NVS 里还没有本命名空间、读设置提前返回时）：旧版底部显示的标签（书库、设置除外）按原顺序
     // 放到底部，隐藏的不放。
     // Never saved (including a fresh device whose NVS namespace does not exist yet, where loading returns early):
@@ -300,7 +305,8 @@ int app_settings_tab_pins(uint8_t out[8]) {
     if (s_pin_n < 0) {
         s_pin_n = 0;
         for (int t = 0; t < TR_TAB_MAX; t++) {
-            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || (s_tabs_off & (1u << t))) continue;
+            // 验证器不默认放到底部，只在“全部”里。/ The authenticator is not pinned by default; it lives on All.
+            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || t == TR_TAB_AUTH || (s_tabs_off & (1u << t))) continue;
             s_pins[s_pin_n++] = (uint8_t)t;
         }
     }
@@ -324,11 +330,18 @@ void app_settings_set_tab_pins(const uint8_t* pins, int n) {
     nvs_close(h);
 }
 
-void app_settings_set_hidden_tabs(uint8_t mask) {
-    mask &= (uint8_t)~TR_TABS_FIXED;
+void app_settings_set_hidden_tabs(uint16_t mask) {
+    mask &= (uint16_t)~TR_TABS_FIXED;
     if (s_tabs_off == mask) return;
     s_tabs_off = mask;
-    nvs_put_u8(NVS_KEY_TABS_OFF, mask);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u16(h, NVS_KEY_TABS_OFF16, mask);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    // 低 8 位照旧存一份，降级回旧固件时还认得。/ Keep the low 8 bits in the old key for downgrades.
+    nvs_put_u8(NVS_KEY_TABS_OFF, (uint8_t)mask);
     // 存过就说明掩码已经包含 X 的位，以后开机不再迁移（否则新设备打开 X 后重启又被关掉）。/ A saved mask already
     // covers the X bit; never migrate it again (otherwise a new device that turned X on would lose it on reboot).
     nvs_put_u8(NVS_KEY_TABS_X, 1);

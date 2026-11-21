@@ -39,6 +39,7 @@ idf.py build
 | `main/display.*` `sleep.*` `settings.*` | 刷屏封装、睡眠/锁屏、NVS 设置。/ Present helpers, sleep/lock, NVS. |
 | `components/read_pico/` | 板级 BSP：I2C、EPD 板定义与扫描时序、TF 卡、蜂鸣器、flash HPM。/ Board BSP. |
 | `components/read_pico_search/` | 离线拼音/首字母/英文书名匹配，设备和网页共用；字表由工具生成。/ Shared offline pinyin, initials and English matching with a generated table. |
+| `components/read_pico_totp/` | 验证器：RFC 6238 验证码、base32、账号表、TF 卡 AES-256-GCM 加密文件（PSA Crypto），不碰 NVS 和界面，主机测试 `tools/run_totp_host_test.sh`。/ Authenticator: RFC 6238 codes, base32, account table and the AES-256-GCM file on the TF card (PSA Crypto); no NVS or UI; host test `tools/run_totp_host_test.sh`. |
 | `components/read_pico_usb/` | USB 传书：esp_tinyusb MSC 把 SD 卡交给电脑，报告连接、弹出和读写量。/ USB transfer: esp_tinyusb MSC exposes the SD card and reports connection, eject and bytes moved. |
 | `components/read_pico_pmu/` | CW32L010 协议主机端。线格式在 `read_pico_pmu_protocol.h`。/ PMU host. |
 | `components/epdiy/` | 上游裁剪 fork（LCD 路径）。改动清单在其 LICENSE。不要为注释去改它。/ Trimmed upstream fork. Leave it alone for comment work. |
@@ -92,13 +93,14 @@ One file, one `app_desc_t`.
 | `app_tr_xhs.c` | 小红书标签：关注 / 推荐列表、一屏一张看图、正文与评论；只读自建 rednote 服务器写到 TF 卡 `rednote/` 的缓存。/ Xiaohongshu tab: following and recommendation lists, one image per screen, text and comments; reads only the `rednote/` cache fetched from the self-hosted rednote server. | `tomato`（`tomato_rednote.c`）, `hupu_img` |
 | `app_tr_weibo.c` | 微博标签：关注 / 热门列表（一行一条带缩略图）、全文、一屏一张看图、评论；只读自建 weibo 服务器写到 TF 卡 `weibo/` 的缓存。/ Weibo tab: following and hot lists (one post per row with a thumbnail), full text, one image per screen, comments; reads only the `weibo/` cache fetched from the self-hosted weibo server. | `tomato`（`tomato_weibo.c`）, `hupu_img` |
 | `app_tr_x.c` | X 标签（默认隐藏）：为你推荐 / 正在关注、全文、一屏一张看图、回复；服务器关掉正在关注时这一段变灰；只读自建 x 服务器写到 TF 卡 `x/` 的缓存。/ X tab (hidden by default): For You / Following, full text, one image per screen, replies; Following greys out when the server turns it off; reads only the `x/` cache fetched from the self-hosted x server. | `tomato`（`tomato_x.c`）, `hupu_img` |
+| `app_tr_auth.c` | 验证器标签：口令解锁、验证码列表与单独大字、长按删除、设备热点网页导入（设备上确认）、从设置进来时画自己的设置页；会话在 `main/app/tr_auth.c`，锁屏时 `sleep.c` 上锁。/ Authenticator tab: passphrase unlock, code list and large single view, long-press delete, hotspot web import confirmed on the device, and its own settings view when opened from Settings; the session is `main/app/tr_auth.c` and `sleep.c` locks it on every lock. | `read_pico_totp`, `tr_auth`, `read_pico_transfer` |
 | `app_tr_all.c` | “全部”页：没隐藏的功能排成大图标网格、翻页；底部最后一格、KEY3、工具条“菜单”、老页面把手都打开它，最后一页 KEY3 回到来处。/ The All page: every visible feature as a paged large-icon grid; opened by the bar's last cell, KEY3, the toolbar Menu and the legacy handle; KEY3 on the last page returns. | `tr_ui`, `tr_nav` |
 | `app_usb.c` | USB 传书：开始前说明；开始后卸 TF 卡交给电脑当 U 盘，只显示这一页（接管三键、占 PMU、无标签栏）；结束一律重启。/ USB transfer: intro, then the TF card goes to the computer as a USB drive with only this page shown (owns keys and PMU, no tab bar); ending always restarts. | `read_pico_usb`, `read_pico_sd` |
 | `app_transfer.c` | 设备热点/已有 WiFi 传 TXT/EPUB 与 TF 卡 TTF 字体，触屏/网页配网与热点二维码，离页停止；停留期间不计空闲自动休眠；停止按钮返回进入前的位置。/ AP/STA book and TF font upload with touchscreen/web provisioning and hotspot QR; stops on exit; idle auto-sleep does not run while the page is current; the stop button returns to the entry origin. | `read_pico_transfer`, `book_store` |
 
-加页：在 `main/apps/` 新建文件，实现需要的回调，加进 `main/CMakeLists.txt`。要作为一个功能出现在底部和“全部”页，在 `tr_ui.h` 的 `tr_tab_t` 里加一项（标签名、图标在 `tr_ui.c`），在 `tr_nav.c` 的 `tr_nav_tab_app()` 映射到页面；页面内的子页由所属功能页用 `request_app` 打开。隐藏掩码是 `uint8_t`，功能超过 8 个时要先把它加宽。不要改 `app_loop.c`。
+加页：在 `main/apps/` 新建文件，实现需要的回调，加进 `main/CMakeLists.txt`。要作为一个功能出现在底部和“全部”页，在 `tr_ui.h` 的 `tr_tab_t` 里加一项（标签名、图标在 `tr_ui.c`），在 `tr_nav.c` 的 `tr_nav_tab_app()` 映射到页面；页面内的子页由所属功能页用 `request_app` 打开。隐藏掩码是 `uint16_t`，功能超过 16 个时要先把它加宽。不要改 `app_loop.c`。
 
-To add a page: new file in `main/apps/`, implement the callbacks you need, add it to `main/CMakeLists.txt`. To make it a feature in the bar and on the All page, add a `tr_tab_t` entry (label and icon in `tr_ui.c`) and map it in `tr_nav_tab_app()` in `tr_nav.c`; sub-pages are opened by their feature page with `request_app`. The hidden mask is a `uint8_t`; widen it before going past 8 features. Leave `app_loop.c` alone.
+To add a page: new file in `main/apps/`, implement the callbacks you need, add it to `main/CMakeLists.txt`. To make it a feature in the bar and on the All page, add a `tr_tab_t` entry (label and icon in `tr_ui.c`) and map it in `tr_nav_tab_app()` in `tr_nav.c`; sub-pages are opened by their feature page with `request_app`. The hidden mask is a `uint16_t`; widen it before going past 16 features. Leave `app_loop.c` alone.
 
 ## `app_desc_t` 契约 / Contract
 

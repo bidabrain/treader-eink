@@ -4,15 +4,16 @@
  *
  * 设置：首页六个大分类（显示与阅读、底部标签、Wi-Fi 与传书、内容来源、同步、电源与设备），点进去是二级页。
  * 二级页里：字体、壁纸、睡眠、传书、TF 卡、概览等跳到各自页面；底部标签开关、番茄与 WebDAV 的地址在本页用键盘
- * 编辑；内容来源再分番茄、小红书、微博三页，小红书和微博共用一个服务器页（地址、令牌、测试），还能打开“手机网页
- * 填写”，用传书的网页服务收地址和令牌；“关于 Treader”在本页显示。
+ * 编辑；内容来源再分番茄、小红书、微博、X 和验证器，小红书、微博和 X 共用一个服务器页（地址、令牌、测试），还能
+ * 打开“手机网页填写”，用传书的网页服务收地址和令牌；验证器那一行打开验证器页自己画的设置；“关于 Treader”在本页显示。
  *
  * English: Settings. The home lists six categories (display and reading, tab bar, Wi-Fi and transfer, content sources,
  * sync, power and device); each opens a second-level page. There: font, wallpaper, sleep, transfer, TF card and
  * overview jump to their own pages; tab switches and the Tomato and WebDAV addresses are edited here with the keyboard;
- * content sources split into Tomato, Xiaohongshu and Weibo pages, the last two sharing one server page (address,
- * token, test) that can also serve a phone web form (through the transfer web service) for the address and token;
- * "About Treader" shows here.
+ * content sources split into Tomato, Xiaohongshu, Weibo, X and the authenticator; Xiaohongshu, Weibo and X share one
+ * server page (address, token, test) that can also serve a phone web form (through the transfer web service) for the
+ * address and token; the authenticator row opens the settings view drawn by the authenticator page; "About Treader"
+ * shows here.
  *
  * 冻结：书库和设置两个功能不能隐藏，书库固定在底部第一格；网页填写只收当前服务器页的地址和令牌，
  * 离开本页或关掉开关就停；令牌从不显示原值。
@@ -44,6 +45,7 @@
 #include "read_pico_transfer.h"
 #include "settings.h"
 #include "tomato.h"
+#include "tr_auth.h"
 #include "tr_kbd.h"
 #include "tr_lock.h"
 #include "tr_nav.h"
@@ -71,6 +73,8 @@ extern const app_desc_t app_selftest;
 extern const app_desc_t app_tr_wall;
 extern const app_desc_t app_tr_card;
 extern const app_desc_t app_tr_update;
+extern const app_desc_t app_tr_auth;
+void app_tr_auth_request_settings(void);
 
 extern const char server_form_start[] asm("_binary_server_form_html_start");
 extern const char server_form_end[] asm("_binary_server_form_html_end");
@@ -163,8 +167,9 @@ static const row_t TIME_ROWS[] = {
 // 网页填写的二维码不随显示大小放大（和图片一样），扫码不受影响。/ The web-form QR code keeps its size (like
 // images); scanning is unaffected.
 #define WEB_QR 220
-// 内容来源页：番茄加各个自建服务器。/ Content sources page: Tomato plus each self-hosted server.
-#define SOURCES (1 + S_COUNT)
+// 内容来源页：番茄、各个自建服务器，最后是验证器。/ Content sources page: Tomato, each self-hosted server, then
+// the authenticator.
+#define SOURCES (2 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
 #define TAB_TOP TR_S(210)   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
@@ -502,6 +507,23 @@ static int home_cat_h(void) {
     return (TR_TABS_Y - TR_S(8) - CAT_TOP) / C_COUNT;
 }
 
+// 内容来源页行高：放不下就压低。/ Content-source row height, shortened when the rows do not fit.
+static int source_h(void) {
+    if (CAT_TOP + SOURCES * CAT_H <= TR_TABS_Y - TR_S(8)) return CAT_H;
+    return (TR_TABS_Y - TR_S(8) - CAT_TOP) / SOURCES;
+}
+
+// 验证器的状态一句话。/ The authenticator state in a few words.
+static const char* auth_state_text(void) {
+    switch (tr_auth_state()) {
+    case TR_AUTH_UNSET: return "未设置";
+    case TR_AUTH_LOCKED: return "已上锁";
+    case TR_AUTH_OPEN: return "已解锁";
+    case TR_AUTH_NOCARD: return "没有 TF 卡";
+    default: return "需要处理";
+    }
+}
+
 static void cat_summary(cat_t c, char* out, size_t cap) {
     char a[120], b[120];
     switch (c) {
@@ -521,9 +543,9 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     }
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
     case C_SOURCES:
-        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置",
-                 s_has_host[S_RED] ? "已设置" : "未设置", s_has_host[S_WB] ? "已设置" : "未设置",
-                 s_has_host[S_X] ? "已设置" : "未设置");
+        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s · 验证器%s",
+                 !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置", s_has_host[S_RED] ? "已设置" : "未设置",
+                 s_has_host[S_WB] ? "已设置" : "未设置", s_has_host[S_X] ? "已设置" : "未设置", auth_state_text());
         break;
     case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
     case C_POWER:
@@ -701,7 +723,7 @@ enum { TB_OVER = 3, TB_HEADS };
 
 static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[TB_HEADS]) {
     s_tb_pin_n = app_settings_tab_pins(s_tb_pins);
-    const uint8_t hidden = app_settings_hidden_tabs();
+    const uint16_t hidden = app_settings_hidden_tabs();
     const int cap = tb_capacity();
     // 放大后一行放不下名字、说明和三个按钮，超出的常用改放到小标题下面。/ At larger sizes a row cannot hold the
     // name, the note and three buttons, so pins beyond the bar go under a sub-heading.
@@ -876,12 +898,17 @@ static void draw_sources(uint8_t* fb) {
     char sum[200];
     snprintf(sum, sizeof(sum), "%.150s · 书城榜单", !s_has_cfg ? "番茄服务器未设置" : s_cfg.builtin ? "内置服务器" :
              host_of(s_cfg.url));
-    draw_cat(fb, CAT_TOP, CAT_H, TR_ICON_TOMATO, "番茄小说", sum, false);
+    const int h = source_h();
+    draw_cat(fb, CAT_TOP, h, TR_ICON_TOMATO, "番茄小说", sum, false);
     for (int i = 0; i < S_COUNT; i++) {
         snprintf(sum, sizeof(sum), "%s 服务器 · %.150s", SERVERS[i].panel,
                  s_has_host[i] ? host_of(s_host[i].url) : "未设置");
-        draw_cat(fb, CAT_TOP + (1 + i) * CAT_H, CAT_H, SERVERS[i].icon, SERVERS[i].name, sum, i + 1 == S_COUNT);
+        draw_cat(fb, CAT_TOP + (1 + i) * h, h, SERVERS[i].icon, SERVERS[i].name, sum, false);
     }
+    const int n = tr_auth_count();
+    if (n >= 0) snprintf(sum, sizeof(sum), "%d 个账号 · 口令与自动上锁", n);
+    else snprintf(sum, sizeof(sum), "%s · 口令与自动上锁", auth_state_text());
+    draw_cat(fb, CAT_TOP + (1 + S_COUNT) * h, h, TR_ICON_KEY, "验证器", sum, true);
 }
 
 static void draw_server(uint8_t* fb) {
@@ -1300,10 +1327,18 @@ static app_redraw_t go_back(void) {
     return APP_REDRAW_PAGE;
 }
 
-static app_redraw_t touch_sources(uint16_t y) {
-    if (y < CAT_TOP || y >= CAT_TOP + SOURCES * CAT_H) return APP_REDRAW_NONE;
-    const int i = (y - CAT_TOP) / CAT_H;
+static app_redraw_t touch_sources(app_ctx_t* ctx, uint16_t y) {
+    const int h = source_h();
+    if (y < CAT_TOP || y >= CAT_TOP + SOURCES * h) return APP_REDRAW_NONE;
+    const int i = (y - CAT_TOP) / h;
     if (i == 0) return open_page(P_SRC_TOMATO);
+    if (i == 1 + S_COUNT) {
+        // 验证器的设置由它自己的页面画，看起来仍在设置里。/ The authenticator draws its own settings, still under
+        // Settings.
+        app_tr_auth_request_settings();
+        ctx->request_app = &app_tr_auth;
+        return APP_REDRAW_NONE;
+    }
     s_srv = (srv_t)(i - 1);
     return open_page(P_SRC_SERVER);
 }
@@ -1342,7 +1377,7 @@ static app_redraw_t touch_transfer(app_ctx_t* ctx, uint16_t y) {
 
 // 保存常用和隐藏，交给标签栏，整页重画（标签栏也跟着变）。/ Save pins and hidden features, hand them to the bar,
 // and redraw the whole page (the bar changes with it).
-static app_redraw_t tb_apply(uint8_t hidden) {
+static app_redraw_t tb_apply(uint16_t hidden) {
     app_settings_set_tab_pins(s_tb_pins, s_tb_pin_n);
     app_settings_set_hidden_tabs(hidden);
     tr_tabs_configure(app_settings_hidden_tabs(), s_tb_pins, s_tb_pin_n);
@@ -1353,7 +1388,7 @@ static app_redraw_t touch_tabs(uint16_t x, uint16_t y) {
     tb_row_t rows[TR_TAB_MAX];
     int sec_y[TB_HEADS];
     const int n = tb_layout(rows, sec_y);
-    uint8_t hidden = app_settings_hidden_tabs();
+    uint16_t hidden = app_settings_hidden_tabs();
     for (int i = 0; i < n; i++) {
         const tb_row_t* r = &rows[i];
         for (int b = 0; b < TB_BTN_COUNT; b++) {
@@ -1382,8 +1417,8 @@ static app_redraw_t touch_tabs(uint16_t x, uint16_t y) {
                 s_tb_pin_n--;
                 break;
             case TB_IN: s_tb_pins[s_tb_pin_n++] = (uint8_t)r->tab; break;
-            case TB_HIDE: hidden |= (uint8_t)(1u << r->tab); break;
-            case TB_SHOW: hidden &= (uint8_t)~(1u << r->tab); break;
+            case TB_HIDE: hidden |= (uint16_t)(1u << r->tab); break;
+            case TB_SHOW: hidden &= (uint16_t)~(1u << r->tab); break;
             default: return APP_REDRAW_NONE;
             }
             return tb_apply(hidden);
@@ -1516,7 +1551,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     int id = -1;
     switch (s_page) {
     case P_TABS: return touch_tabs(x, y);
-    case P_SOURCES: return touch_sources(y);
+    case P_SOURCES: return touch_sources(ctx, y);
     case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
     case P_SRC_SERVER: id = row_hit(SERVER_ROWS, s_web_on ? 1 : COUNT(SERVER_ROWS), y); break;
     case P_TRANSFER: return touch_transfer(ctx, y);

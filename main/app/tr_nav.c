@@ -15,6 +15,7 @@ extern const app_desc_t app_tr_weibo;
 extern const app_desc_t app_tr_x;
 extern const app_desc_t app_tr_store;
 extern const app_desc_t app_tr_all;
+extern const app_desc_t app_tr_auth;
 
 // 番茄标签上次停留的页面（书架或书城）。/ Last page under the Tomato tab (shelf or store).
 static const app_desc_t* s_tomato_page = &app_tr_tomato;
@@ -33,6 +34,7 @@ const app_desc_t* tr_nav_tab_app(int tab) {
     case TR_TAB_WEIBO: return &app_tr_weibo;
     case TR_TAB_X: return &app_tr_x;
     case TR_TAB_SETTINGS: return &app_tr_settings;
+    case TR_TAB_AUTH: return &app_tr_auth;
     case TR_TAB_ALL: return &app_tr_all;
     default: return NULL;
     }

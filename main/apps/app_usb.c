@@ -33,6 +33,7 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
+#include "tr_auth.h"
 
 #define TAG "app_usb"
 #define CW (TR_W - 2 * TR_MARGIN)
@@ -321,6 +322,8 @@ static app_redraw_t start(void) {
     book_cover_release();
     pinyin_ime_unload();
     void* card = NULL;
+    // 卡要交给电脑：验证器先上锁。/ The card goes to the computer: lock the authenticator first.
+    tr_auth_lock();
     esp_err_t err = read_pico_sd_take_for_usb(&card);
     if (err == ESP_ERR_NOT_FINISHED || err == ESP_ERR_NOT_FOUND) {
         snprintf(s_msg, sizeof(s_msg), err == ESP_ERR_NOT_FOUND ? "没有 TF 卡。" : "TF 卡正忙，稍后再试。");
