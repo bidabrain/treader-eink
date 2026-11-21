@@ -676,8 +676,13 @@ $("go").addEventListener("click", async () => {
     });
     $("bar").style.width = "100%";
     log("写入完成，正在重启设备…");
-    await loader.after("hard_reset");
-    setStatus("完成。设备已重启，可以拔线了。", "ok");
+    // esptool-js 0.7.0 的 hard_reset 只把 RTS 拉低、不先拉高；连接时 RTS 已经是低的，芯片收不到复位脉冲，
+    // 设备停在下载模式。这里自己给一个完整脉冲：DTR 低（不进下载模式），RTS 高 200 ms 再放开。
+    // esptool-js 0.7.0's hard_reset only drops RTS without raising it first; RTS is already low after connecting, so
+    // the chip gets no reset pulse and stays in download mode. Send a full pulse: DTR low (no download mode), RTS high
+    // for 200 ms, then released.
+    await loader.after("custom_reset", undefined, "D0|R1|W200|R0|W200");
+    setStatus("完成。已让设备重启，屏幕出现 Treader 界面后就可以拔线。", "ok");
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     log("错误：" + msg);
