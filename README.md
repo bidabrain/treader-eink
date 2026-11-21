@@ -442,7 +442,8 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico) | 拼音输入引擎与词库格式（Apache-2.0） |
 | jieba、pypinyin | 拼音词库数据（MIT） |
 | 寒蝉端黑体 ChillDuanSans | 中文字体（SIL OFL-1.1） |
-| stb_truetype、stb_image、TJpgDec、JPEGDEC、cJSON | 字体渲染、图片解码、JSON 解析 |
+| [JPEGDEC](https://github.com/bitbank2/JPEGDEC)（BitBank Software） | 普通基线 JPG 的快速解码，解码时直接转灰度并缩小（Apache-2.0） |
+| stb_truetype、stb_image、TJpgDec、cJSON | 字体渲染、图片解码（其余 JPG 和 PNG）、JSON 解析 |
 | [jsQR](https://github.com/cozmo/jsQR) | 验证器导入网页识别二维码照片（Apache-2.0） |
 
 RickyOS 和 Take Easy 都是小纸 Pico 社区的优秀系统，Treader 只参考了它们的设计和功能思路，没有使用它们的代码。
