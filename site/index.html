@@ -136,6 +136,12 @@
   .dl-ic { width: 22px; height: 22px; margin-right: 8px; color: var(--ink); }
   .dl-ver { font-weight: 500; color: var(--mid); font-size: 14px; margin-left: 8px; }
   .dl-more { color: var(--mid); font-size: 14px; }
+  .tip { border: 2px solid var(--ink); border-radius: 18px; background: var(--card); padding: 20px 22px; margin-bottom: 20px; }
+  .tip h3 { margin: 0 0 8px; font-size: 18px; }
+  .tip p { margin: 0 0 10px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .tip p:last-child { margin-bottom: 0; }
+  .tip .url { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .tip .url code { font-size: 14px; background: var(--chip); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; color: var(--ink); }
   .dl-note { border-left: 3px solid var(--ink); padding-left: 16px; }
   .dl-note b { display: block; margin-bottom: 4px; }
   .dl-note p { margin: 0; }
@@ -227,7 +233,7 @@
     <div class="grid">
       <div class="feat"><div class="ic"><svg><use href="#i-book"/></svg></div><h3>书库与阅读</h3><p>TXT、EPUB 书架和封面，拼音首字母搜索；行距、段距、页边距都能调，逐书记住进度，定时自动翻页。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-comic"/></svg></div><h3>漫画</h3><p>CBZ 按系列整理，一屏一页，一话看完自动接下一话；网页上传时先转成灰度，翻页更快。</p></div>
-      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。手机上有同样功能的安卓 App。</p><a class="tag" href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">需要自建下载服务器 ›</a></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>番茄小说</h3><p>搜索、下载、检查更新，书城按榜单分类浏览；下载好的书和普通书一样在书库里读。手机上有同样功能的安卓 App。</p><a class="tag" href="https://github.com/bidabrain/treader-eink#自建番茄下载服务器">需要自建下载服务器 ›</a> <a class="tag" href="#store-tip">书城连不上 ›</a></div>
       <div class="feat"><div class="ic"><svg><use href="#i-xhs"/></svg></div><h3>小红书</h3><p>关注博主和首页推荐，两列封面卡片；看图一屏一张，再看正文和评论，大图还能存成锁屏壁纸。</p><span class="tag">经自建 rednote 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-weibo"/></svg></div><h3>微博</h3><p>关注的人和热门，卡片排版、转发灰框、图片宫格；长微博补全文，评论按需取。不用登录微博。</p><span class="tag">经自建 weibo 服务器</span></div>
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
@@ -361,6 +367,13 @@
       </div>
     </div>
 
+    <div class="tip" id="store-tip">
+      <h3>书城榜单总是连不上？</h3>
+      <p>书城默认从 GitHub Pages（<code>bidabrain.github.io</code>）取榜单，国内很多时候连不上。可以在设备“设置 › 内容来源 › 番茄小说 › 书城榜单”（番茄安卓 App 在“设置 › 书城榜单”）把地址改成下面这个 jsDelivr 镜像：</p>
+      <div class="url"><code id="storeMirror">https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code><button class="btn small" type="button" id="copyMirror">复制</button></div>
+      <p>镜像最多晚半天更新。也可以 fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> 自建榜单（打开 GitHub Pages 后填你自己的网站地址），说明见 <a href="https://github.com/bidabrain/treader-eink#书城榜单">书城榜单</a>。</p>
+    </div>
+
     <div class="card unsupported" id="unsupported">
       这个浏览器不支持网页串口（Web Serial）。请用电脑上的 <b>Chrome</b> 或 <b>Edge</b> 打开本页；手机和 Safari、Firefox 都不行。
     </div>
@@ -444,6 +457,12 @@ fetch("https://api.github.com/repos/bidabrain/treader-eink/releases?per_page=30"
     a.textContent = "安卓 App " + rel.tag_name.slice(a.dataset.release.length);
   }))
   .catch(() => {});
+// 复制书城镜像地址。/ Copy the bookstore mirror URL.
+document.getElementById("copyMirror").addEventListener("click", (e) => {
+  navigator.clipboard?.writeText(document.getElementById("storeMirror").textContent)
+    .then(() => { e.target.textContent = "已复制"; setTimeout(() => (e.target.textContent = "复制"), 1500); })
+    .catch(() => {});
+});
 // 最新构建的三个文件直接给下载链接，并写上版本和日期。/ Link the latest build's three files directly, with version and date.
 fetch("https://api.github.com/repos/bidabrain/treader-eink/releases/tags/treader-latest")
   .then((r) => (r.ok ? r.json() : null))

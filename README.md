@@ -374,9 +374,9 @@ STORE_URL=https://bidabrain.github.io/FanqieRankTracker
 
 书城的数据是 [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) 网站上的番茄分类榜单 JSON（由 GitHub Actions 定期抓取，发布在 GitHub Pages）。默认地址是 `https://bidabrain.github.io/FanqieRankTracker`。
 
-- 想用自己的榜单：fork 这个仓库并打开 GitHub Pages，然后在 设置 → 书城榜单 填你的网站地址（或在 `local.properties` 里设 `STORE_URL`）。填安卓版用的 `.../api/lastest/all.json` 也可以，会自动截到网站根。
+- 想用自己的榜单：fork 这个仓库并打开 GitHub Pages，然后在 设置 → 内容来源 → 番茄小说 → 书城榜单 填你的网站地址（或在 `local.properties` 里设 `STORE_URL`）。填安卓版用的 `.../api/lastest/all.json` 也可以，会自动截到网站根。
 - 设备按分类取数据（每个约 55 KB），取过的缓存在 TF 卡 `tomato/store/`，点“刷新”才重新联网。
-- 国内直连 `*.github.io` 常超时。地址是 `https://用户.github.io/仓库` 时，失败后会依次改用 `https://{fastly,gcore,cdn}.jsdelivr.net/gh/用户/仓库@main`（读仓库 main 分支里提交的 `api/lastest/`），用通的那个记到重启。jsDelivr 对分支内容最多缓存 12 小时，经镜像看到的榜单可能晚半天。也可以直接在 设置 → 书城榜单 填其中一个镜像地址。
+- 国内直连 `*.github.io` 常超时。地址是 `https://用户.github.io/仓库` 时，失败后会依次改用 `https://{fastly,gcore,cdn}.jsdelivr.net/gh/用户/仓库@main`（读仓库 main 分支里提交的 `api/lastest/`），用通的那个记到重启。jsDelivr 对分支内容最多缓存 12 小时，经镜像看到的榜单可能晚半天。也可以直接在 设置 → 内容来源 → 番茄小说 → 书城榜单 填其中一个镜像地址，比如 `https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main`。
 
 ## 联网排查
 
