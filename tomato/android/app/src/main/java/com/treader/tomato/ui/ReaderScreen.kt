@@ -190,19 +190,44 @@ private fun Tools(vm: AppVm, r: ReaderState, autoLevel: Int, setAuto: (Int) -> U
                 T(if (autoLevel == 0) "关" else "${autoLevel * 3} 秒", 16.sp, align = TextAlign.Center, modifier = Modifier.width(72.dp))
                 Pill("+", false, Modifier.width(52.dp), height = 32.dp) { setAuto((autoLevel + 1).coerceAtMost(10)) }
             }
+            // 进度条两边是上一章 / 下一章（照固件）：跳到那一章开头并收起工具条，首末章对应的按钮变灰。
+            // Previous / next chapter beside the bar (after the firmware): jump to that chapter's start and close the
+            // toolbar; the button greys out on the first or last chapter.
             Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).height(24.dp).pointerInput(r.chapter) {
-                    detectTapGestures { p ->
-                        // 点进度条：跳到原文这个位置所在的章。/ Tap the bar: jump to the chapter at that source position.
-                        val at = (p.x / size.width * r.source.total).toInt()
-                        var c = 0
-                        while (c + 1 < r.source.chapterCount && r.source.chapterSourceOffset(c + 1) <= at) c++
-                        r.chapter = c; r.off = 0
-                    }
-                }, contentAlignment = Alignment.Center) { BookBar(r.pct()) }
-                T("全书 ${r.pct()}%", 13.sp, modifier = Modifier.padding(start = 10.dp))
+                ChapterPill("‹ 上一章", r.chapter > 0) {
+                    r.chapter -= 1; r.off = 0; r.toEnd = false; show(Panel.NONE)
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.fillMaxWidth().height(24.dp).pointerInput(r.chapter) {
+                        detectTapGestures { p ->
+                            // 点进度条：跳到原文这个位置所在的章。/ Tap the bar: jump to the chapter at that source position.
+                            val at = (p.x / size.width * r.source.total).toInt()
+                            var c = 0
+                            while (c + 1 < r.source.chapterCount && r.source.chapterSourceOffset(c + 1) <= at) c++
+                            r.chapter = c; r.off = 0
+                        }
+                    }, contentAlignment = Alignment.Center) { BookBar(r.pct()) }
+                    T("全书 ${r.pct()}%", 13.sp)
+                }
+                ChapterPill("下一章 ›", r.chapter + 1 < r.source.chapterCount) {
+                    r.chapter += 1; r.off = 0; r.toEnd = false; show(Panel.NONE)
+                }
             }
         }
+    }
+}
+
+/** 上一章 / 下一章：能跳时是普通描边按钮，不能跳时浅灰框灰字、不响应。/ Previous / next chapter: an outlined button
+ *  when there is somewhere to go, otherwise a light frame with gray text that ignores taps. */
+@Composable
+private fun ChapterPill(label: String, enabled: Boolean, onClick: () -> Unit) {
+    if (enabled) {
+        Pill(label, false, Modifier.width(96.dp), height = 38.dp, onClick = onClick)
+        return
+    }
+    val shape = RoundedCornerShape(19.dp)
+    Box(Modifier.width(96.dp).height(38.dp).clip(shape).border(OutlineWidth, Line, shape), contentAlignment = Alignment.Center) {
+        T(label, 16.sp, color = Mid, maxLines = 1)
     }
 }
 

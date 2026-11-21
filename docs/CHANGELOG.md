@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-21 · 番茄安卓 App 1.3.0
+
+- 和固件 1.0.3 一样，阅读工具条的进度条两边加了“上一章”“下一章”，点了跳到那一章开头并收起工具条；第一章和最后一章对应的按钮变灰。
+  As in firmware 1.0.3, the reading toolbar gets "previous chapter" and "next chapter" beside the progress bar, jumping to that chapter's start and closing the toolbar; the button greys out on the first or last chapter.
+
 ## 2026-11-21 · Treader 1.0.3
 
 - 阅读工具条的进度条两边加了“上一章”“下一章”，点了直接跳到那一章开头；第一章和最后一章对应的按钮变灰。
