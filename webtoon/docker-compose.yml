@@ -11,6 +11,11 @@
 # Plugin feature (optional, about 1 GB more memory): put COMPOSE_PROFILES=mihon in .env and run docker compose up -d
 # to add a Suwayomi-Server that runs Mihon extensions. This project ships no extension repository; only add sources you
 # have the right to access.
+#
+# 有的插件站点要过 Cloudflare 验证（报错带 cloudflare / flaresolverr）：改成 COMPOSE_PROFILES=mihon,flaresolverr，
+# 多起一个 FlareSolverr（无头 Chromium，再多占约 500 MB 内存）替插件过验证。
+# Some extension sites need a Cloudflare check (errors mention cloudflare / flaresolverr): use
+# COMPOSE_PROFILES=mihon,flaresolverr to add FlareSolverr (headless Chromium, about 500 MB more memory) to pass it.
 services:
   hub:
     image: ghcr.io/bidabrain/treader-webtoon:latest
@@ -42,6 +47,11 @@ services:
       WEB_UI_ENABLED: "false"
       KCEF_ENABLED: "false"
       JAVA_TOOL_OPTIONS: "-Xmx${MIHON_HEAP:-768m}"
+      # 一直指向 flaresolverr：只在站点要过 Cloudflare 验证时才用；没开 flaresolverr 时那几话照样失败，hub 会提示怎么开。
+      # Always pointed at flaresolverr: used only when a site needs a Cloudflare check; without the flaresolverr
+      # profile those episodes fail as before and the hub says how to turn it on.
+      FLARESOLVERR_ENABLED: "true"
+      FLARESOLVERR_URL: http://flaresolverr:8191
     volumes:
       - ./data/mihon:/hub:ro
       - suwayomi:/home/suwayomi/.local/share/Tachidesk
@@ -49,6 +59,15 @@ services:
       # Your own local comics (Mihon local-source layout: a folder per title, a subfolder or CBZ per chapter):
       # uncomment the next line.
       # - ./local:/home/suwayomi/.local/share/Tachidesk/local
+
+  flaresolverr:
+    profiles: ["flaresolverr"]
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
+    container_name: webtoon-flaresolverr
+    restart: unless-stopped
+    # 不映射端口：只有 suwayomi 在 compose 内网里访问它。/ No published port: only suwayomi reaches it inside compose.
+    environment:
+      LOG_LEVEL: info
 
 volumes:
   suwayomi:

@@ -390,3 +390,11 @@ def test_mihon_unavailable(monkeypatch):
         r = c.get("/api/device/v1/sources", headers=h).json()
         assert r == {"mihon": False, "items": [{"key": "webtoon", "name": "WEBTOON", "lang": "", "latest": False,
                                                 "nsfw": False}]}
+
+
+def test_cloudflare_hint():
+    from app import mihon
+    assert mihon.CF_HINT in mihon._short("Exception while fetching data (/x) : java.lang.Exception: Cloudflare bypass currently disabled")
+    assert mihon.CF_HINT in mihon.cf_hint("java.net.UnknownHostException: flaresolverr")
+    assert mihon.CF_HINT not in mihon.cf_hint("FlareSolverr failed to solve the challenge")
+    assert mihon._short("plain error") == "plain error"

@@ -43,7 +43,7 @@ docker compose up -d
 | --- | --- | --- |
 | `WEBTOON_PORT` | `8095` | 面板和设备接口在宿主机上的端口；被占用时改成别的 |
 | `WEBTOON_BIND` | `0.0.0.0` | 监听哪个地址；只想让本机访问（比如前面还有反向代理）就写 `127.0.0.1` |
-| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；不写就只有 WEBTOON |
+| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；写 `mihon,flaresolverr` 再加上 FlareSolverr，替插件过 [Cloudflare 验证](#cloudflare-验证)；不写就只有 WEBTOON |
 | `MIHON_HEAP` | `768m` | Suwayomi 最多用的 Java 内存；插件多、图大时可以改成 `1g` |
 
 例如打开插件、换到 8096 端口：
@@ -105,8 +105,20 @@ COMPOSE_PROFILES=mihon
 - **第一次启动**：要先下载约 2 GB 的 Suwayomi 镜像；它等 hub 正常后才启动，再过一两分钟面板上才出现“插件”页签。
 - **装插件**：面板 → 插件 → 添加仓库（`index.min.json` 地址）→ 刷新列表 → 安装；在“设备上的来源”里勾选、保存，设备或 App 在发现页点一次“刷新”就能选这个来源。卸载点“卸载”；已下载的话留着，那个来源的订阅检查更新会报错，可以在我的漫画里取消订阅。
 - **安全**：Suwayomi 不映射端口，只有 hub 能在 compose 内网里访问它。两边用的密码在 hub 第一次启动时生成，存在 `data/mihon/suwayomi.secret`。Suwayomi 自己的网页界面是关掉的。插件数据存在 Docker 卷 `suwayomi` 里。
-- **WebView**：没有装 Chromium（`KCEF_ENABLED=false`）。必须过网页验证的来源会报错。
+- **WebView**：Suwayomi 里没有装 Chromium（`KCEF_ENABLED=false`）。要过 Cloudflare 验证的来源见下面的 [Cloudflare 验证](#cloudflare-验证)；必须在网页里登录的来源用不了。
 - **本地漫画**：把 `docker-compose.yml` 里 `./local` 那一行的 `#` 去掉，就能用 Mihon 本地来源读 `./local` 里的漫画（每部一个文件夹，每话一个子文件夹或一个 CBZ）。
+
+### Cloudflare 验证
+
+有的插件站点会让请求先过 Cloudflare 的人机验证，连续下很多话时更容易被拦。没准备好时，这些话会失败，错误里带 `Cloudflare bypass currently disabled` 或连不上 `flaresolverr`，hub 会在后面提示怎么打开。打开办法是在 `.env` 里改成：
+
+```
+COMPOSE_PROFILES=mihon,flaresolverr
+```
+
+再执行 `docker compose up -d`（从 0.2.3 以前升级的先按[升级](#升级)换新的 compose 文件）。会多起一个 [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) 容器：它用无头 Chromium 打开站点、过验证，把拿到的 Cookie 交给 Suwayomi，再多占约 500 MB 内存。它不映射端口，只有 Suwayomi 在 compose 内网里用它，而且只在站点要求验证时才用。FlareSolverr 也不是每次都能过；还是失败时，过一会儿再检查更新。
+
+失败的话不用手动补：设备（Treader 1.0.7 起）和 App 下次“检查更新”都会从第一话没下好的开始重下，卡上已有的跳过。
 
 **面板 → 插件**：
 
@@ -158,7 +170,7 @@ comics/
 {"id": "8420", "lang": "zh-hant", "title": "我的虎系青梅竹马", "author": "GIMAN、ETER", "last": 66, "added": 1795275780}
 ```
 
-`last` 是已下载的最大话号；检查更新时把它发给服务器。文件夹改名、整个拷到另一张卡都不影响订阅。取消订阅就是删掉 `.webtoon`（已下载的话留着，变成普通的本地漫画）。
+`last` 是“已经下好到第几话”：检查更新时把它发给服务器，只推进到第一话没下好的前面，所以失败的话下次检查会再问到。文件夹改名、整个拷到另一张卡都不影响订阅。取消订阅就是删掉 `.webtoon`（已下载的话留着，变成普通的本地漫画）。
 
 ## 测试
 

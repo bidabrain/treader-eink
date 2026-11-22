@@ -75,10 +75,23 @@ def client() -> httpx.AsyncClient:
     return _client
 
 
+CF_HINT = "（站点要过 Cloudflare 验证，服务器没开 FlareSolverr：在 .env 的 COMPOSE_PROFILES 加上 flaresolverr）"
+
+
+def cf_hint(msg: str) -> str:
+    """站点要过 Cloudflare 验证、但 FlareSolverr 没开或连不上时，在错误后面说怎么开。/ When a site needs a Cloudflare
+    check and FlareSolverr is off or unreachable, append how to turn it on."""
+    low = (msg or "").lower()
+    if ("cloudflare" in low or "flaresolverr" in low) and any(
+            k in low for k in ("disabled", "connect", "unknownhost", "unresolved", "refused")):
+        return msg + CF_HINT
+    return msg
+
+
 def _short(msg: str) -> str:
     """Suwayomi 的错误带整段 Java 堆栈，只留第一行。/ Suwayomi errors carry a whole Java stack; keep the first line."""
     line = (msg or "").strip().splitlines()[0] if msg else ""
-    return re.sub(r"^Exception while fetching data \([^)]*\) : ", "", line)[:200] or "插件服务出错"
+    return cf_hint(re.sub(r"^Exception while fetching data \([^)]*\) : ", "", line)[:200]) or "插件服务出错"
 
 
 async def gql(query: str, variables: dict | None = None, partial: bool = False) -> dict:
@@ -409,8 +422,21 @@ async def get_image(url: str, pace: bool = True) -> bytes:
     except httpx.HTTPError as e:
         raise SourceError(502, f"取图失败（{e.__class__.__name__}）") from None
     if r.status_code != 200:
-        raise SourceError(502, f"取图失败（HTTP {r.status_code}）")
+        raise SourceError(502, cf_hint(f"取图失败（HTTP {r.status_code}）" + _body_hint(r)))
     return r.content
+
+
+def _body_hint(r: httpx.Response) -> str:
+    """出错的图片响应里提到 Cloudflare 时带上第一行，好让 cf_hint 认出来。/ Keep the first line of a failed image
+    response that mentions Cloudflare so cf_hint can recognize it."""
+    try:
+        text = r.text[:2000]
+    except Exception:
+        return ""
+    low = text.lower()
+    if "cloudflare" not in low and "flaresolverr" not in low:
+        return ""
+    return "：" + _short(text)[:160]
 
 
 def cover_url(tid: str) -> str:
