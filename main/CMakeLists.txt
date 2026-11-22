@@ -55,6 +55,7 @@ idf_component_register(
         "apps/app_tr_x.c"
         "apps/app_tr_all.c"
         "apps/app_tr_auth.c"
+        "apps/app_tr_wt.c"
         "apps/tr_pin.c"
         "apps/tr_wallsave.c"
         "apps/tr_lock.c"

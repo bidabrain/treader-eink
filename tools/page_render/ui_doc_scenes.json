@@ -75,5 +75,11 @@
  "V6 删除账号": "demo_auth/delete_100.png",
  "V7 导入账号": "demo_auth/import_100.png",
  "V8 设备上确认导入": "demo_auth/import_confirm_100.png",
- "V9 设置 › 内容来源 › 验证器": "demo_auth/settings_100.png"
+ "V9 设置 › 内容来源 › 验证器": "demo_auth/settings_100.png",
+ "M1 漫画 · WEBTOON 订阅": "demo_comic/shelf_wt_100.png",
+ "M2 发现漫画": "demo_wt/rank_100.png",
+ "M3 发现 · 类型": "demo_wt/genre_100.png",
+ "M4 搜索漫画": "demo_wt/search_100.png",
+ "M5 作品详情": "demo_wt/detail_100.png",
+ "M6 已订阅": "demo_wt/detail_subscribed_100.png"
 }

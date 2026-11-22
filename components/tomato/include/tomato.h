@@ -48,6 +48,15 @@ extern "C" {
 #define TOMATO_X_FORYOU_FILE TOMATO_X_DIR "/foryou.json"
 #define TOMATO_X_FOLLOWING_FILE TOMATO_X_DIR "/following.json"
 #define TOMATO_X_STATE_FILE TOMATO_X_DIR "/state.json"
+/// WEBTOON 发现缓存：store.json（上次的列表）、search.json、t/<id>.json（作品详情）、c/<id>.jpg（封面）。下载的漫画
+/// 不在这里，在我的漫画的 comics/<作品名>/。/ WEBTOON store cache: store.json (the last list), search.json,
+/// t/<id>.json (title details), c/<id>.jpg (covers). Downloaded comics live on the comic shelf under comics/<title>/.
+#define TOMATO_WT_DIR "/sdcard/webtoon"
+#define TOMATO_WT_STORE_FILE TOMATO_WT_DIR "/store.json"
+#define TOMATO_WT_SEARCH_FILE TOMATO_WT_DIR "/search.json"
+#define TOMATO_WT_COMICS "/sdcard/comics"
+/// 订阅标记：comics/<作品名>/.webtoon。/ Subscription marker: comics/<title>/.webtoon.
+#define TOMATO_WT_MARK ".webtoon"
 #define TOMATO_RANK_CAT_MAX 48
 #define TOMATO_RANK_BOOK_MAX 20
 #define TOMATO_RANK_INTRO_LEN 900
@@ -400,6 +409,83 @@ typedef struct {
 } tomato_x_req_t;
 
 esp_err_t tomato_sync_start_x(const tomato_x_req_t* req);
+
+/* ---- WEBTOON 漫画（经自建 webtoon 服务器）/ WEBTOON comics via the self-hosted webtoon server ---- */
+
+typedef tomato_srv_config_t tomato_wt_config_t;
+
+/// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
+esp_err_t tomato_wt_config_load(tomato_wt_config_t* out);
+esp_err_t tomato_wt_config_save(const tomato_wt_config_t* cfg);
+/// 每保存一次加一（设置页据此发现网页填写已提交）。/ Bumped on every save (settings notices a web submission).
+uint32_t tomato_wt_config_revision(void);
+
+/// 语言版本：0 繁体中文（默认），1 English。/ Language version: 0 traditional Chinese (default), 1 English.
+#define TOMATO_WT_LANGS 2
+int tomato_wt_lang(void);
+esp_err_t tomato_wt_lang_set(int lang);
+const char* tomato_wt_lang_code(int lang);
+const char* tomato_wt_lang_name(int lang);
+/// 中文版文字转成简体显示（默认开）。/ Show the Chinese edition's text in simplified characters (on by default).
+bool tomato_wt_simp(void);
+esp_err_t tomato_wt_simp_set(bool on);
+/// 每次检查更新最多下载几话：5 / 10 / 20 / 50，默认 10。/ Most episodes downloaded per update check: 5 / 10 / 20 /
+/// 50, 10 by default.
+int tomato_wt_max(void);
+esp_err_t tomato_wt_max_set(int n);
+
+/// 订阅标记的内容（comics/<作品名>/.webtoon，JSON）。/ The subscription marker (comics/<title>/.webtoon, JSON).
+typedef struct {
+    char id[16];          ///< 作品编号，Canvas 作品前面带 c / Title id, Canvas ids start with c
+    char lang[12];        ///< 语言版本 / Language version
+    char title[96];
+    char author[64];
+    int last;             ///< 已下载的最大话号 / Highest downloaded episode
+    int fresh;            ///< 上次打开这部以后新下载的话数 / Episodes downloaded since the series was last opened
+    uint32_t added;       ///< 订阅时间（秒）/ Subscription time (seconds)
+} tomato_wt_mark_t;
+
+/// 读写一个系列文件夹的订阅标记；没有标记返回 false。/ Read or write a series folder's marker; false without one.
+bool tomato_wt_mark_read(const char* folder, tomato_wt_mark_t* out);
+esp_err_t tomato_wt_mark_write(const char* folder, const tomato_wt_mark_t* m);
+/// 找订阅了 id 的系列文件夹。/ Find the series folder subscribed to id.
+bool tomato_wt_find(const char* id, char* folder, size_t cap);
+/// 订阅：建 comics/<作品名>/（重名的本地文件夹另起名）并写标记，last 是“已下载到第几话”的起点。folder 返回文件夹。
+/// Subscribe: create comics/<title>/ (renaming around a same-named local folder) and write the marker; last is the
+/// starting "downloaded up to" episode. folder gets the folder path.
+esp_err_t tomato_wt_subscribe(const char* id, const char* title, const char* author, int last, char* folder,
+                              size_t cap);
+/// 第 no 话的文件名：“第0012话 标题.cbz”（标题就是“第12话”时省掉）。/ Episode file name: "第0012话 title.cbz" (the
+/// title is dropped when it is just "第12话").
+void tomato_wt_episode_name(int no, const char* title, char* out, size_t cap);
+/// 系列文件夹里已经有第 no 话。/ Whether the series folder already has episode no.
+bool tomato_wt_has_episode(const char* folder, int no);
+/// 作品详情缓存和封面的路径。/ Paths of a title's detail cache and cover.
+void tomato_wt_title_path(const char* id, char* out, size_t cap);
+void tomato_wt_cover_path(const char* id, char* out, size_t cap);
+
+/// 书城后台任务种类。/ Store background jobs.
+typedef enum {
+    TOMATO_WT_STORE,    ///< 发现页列表和封面；列表写好时进度到 1 / A store list and covers; progress 1 once the list is written
+    TOMATO_WT_SEARCH,   ///< 搜索和封面 / Search and covers
+    TOMATO_WT_TITLE,    ///< 作品详情和封面 / Title details and cover
+    TOMATO_WT_UPDATE,   ///< 检查更新并下载新话（id 为空时检查全部订阅）；进度按话 / Check and download new episodes (all subscriptions when id is empty); progress counts episodes
+    TOMATO_WT_TEST,     ///< 测试连接 / Connection test
+} tomato_wt_job_t;
+
+typedef struct {
+    tomato_wt_job_t job;
+    char seg[8];          ///< 书城：rank / genre / day / done
+    char key[24];         ///< 书城：榜单、类型或星期，空为默认 / Store: ranking, genre or weekday; empty for the default
+    char q[64];           ///< 搜索词 / Search query
+    char id[16];          ///< 详情、更新：作品编号 / Detail and update: title id
+    bool fill;            ///< 更新：补全缺的话（包括更早的），而不是只下比 last 新的 / Update: fill every missing episode (earlier ones too), not only those after last
+} tomato_wt_req_t;
+
+esp_err_t tomato_sync_start_wt(const tomato_wt_req_t* req);
+/// 后台正在检查或下载 WEBTOON 更新（不管是哪个页面发起的）。/ Whether the worker is checking or downloading WEBTOON
+/// updates (whichever page started it).
+bool tomato_wt_updating(void);
 
 /* ---- 在线升级 / Online upgrade ---- */
 

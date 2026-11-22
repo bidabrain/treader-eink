@@ -10,6 +10,7 @@
  * Frozen: CBZ only, one folder level, never touch files outside comics/.
  */
 #include "comic_store.h"
+#include "tomato.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -291,7 +292,13 @@ int comic_store_scan(comic_entry_t* out, int max) {
             e->series = true;
             snprintf(e->name, sizeof(e->name), "%s", d->d_name);
             tally_series(e);
-            if (!e->volumes) continue;
+            tomato_wt_mark_t m;
+            if (tomato_wt_mark_read(e->path, &m)) {
+                e->webtoon = true;
+                e->fresh = (uint16_t)(m.fresh > 0 ? m.fresh : 0);
+                snprintf(e->wt_id, sizeof(e->wt_id), "%s", m.id);
+            }
+            if (!e->volumes && !e->webtoon) continue;
         } else if (is_cbz(d->d_name)) {
             snprintf(e->name, sizeof(e->name), "%.*s", (int)strlen(d->d_name) - 4, d->d_name);
             e->volumes = 1;

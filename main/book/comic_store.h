@@ -36,6 +36,9 @@ typedef struct {
     uint16_t done;               ///< 看完的话数 / Finished episodes
     uint32_t stamp;              ///< 最近阅读的顺序号，0 为没看过 / Recent-read counter, 0 if never read
     uint8_t pct;                 ///< 单本的进度百分比 / Single-book progress percent
+    bool webtoon;                ///< 系列文件夹里有 WEBTOON 订阅标记 / The series folder has a WEBTOON subscription marker
+    uint16_t fresh;              ///< WEBTOON：上次打开后新下载的话数 / WEBTOON: episodes downloaded since last opened
+    char wt_id[16];              ///< WEBTOON 作品编号 / WEBTOON title id
 } comic_entry_t;
 
 /// 一话（一个 CBZ）的进度。/ Progress of one episode (one CBZ).
@@ -48,7 +51,9 @@ typedef struct {
 
 /// 自然排序比较（数字按数值比）。/ Natural comparison (digit runs compare by value).
 int comic_name_cmp(const char* a, const char* b);
-/// 扫描书架；返回项数，没卡或没有 comics/ 返回 0。/ Scan the shelf; returns the count, 0 without a card or folder.
+/// 扫描书架；返回项数，没卡或没有 comics/ 返回 0。有 WEBTOON 订阅标记的系列即使还没下载到话也列出。
+/// Scan the shelf; returns the count, 0 without a card or folder. Series with a WEBTOON marker are listed even before
+/// any episode is downloaded.
 int comic_store_scan(comic_entry_t* out, int max);
 /// 列出系列里的 CBZ 文件名，按自然顺序。/ List a series' CBZ file names in natural order.
 int comic_store_volumes(const char* series_path, char (*names)[COMIC_NAME_MAX], int max);

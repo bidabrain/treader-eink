@@ -1,0 +1,16 @@
+# webtoon：给小纸 Pico 的 WEBTOON 发现与追更服务器。设备问哪一话，服务器才从 webtoons.com 拉公开免费的原图、转成墨水屏
+# 用的灰度页面、打包成 CBZ。服务器不保存订阅（订阅在设备的 TF 卡上）。自己部署、只给自己用。
+# webtoon: the comic store and update server for the Read Pico. Only when the device asks for an episode does the
+# server fetch its free public images from webtoons.com, turn them into e-ink gray pages and pack a CBZ. The server keeps
+# no subscriptions (they live on the device's TF card). Self-hosted for personal use.
+#
+# 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:8095
+services:
+  hub:
+    image: ghcr.io/bidabrain/treader-webtoon:latest
+    container_name: webtoon-hub
+    restart: unless-stopped
+    ports:
+      - "${WEBTOON_BIND:-0.0.0.0}:${WEBTOON_PORT:-8095}:8095"
+    volumes:
+      - ./data:/data

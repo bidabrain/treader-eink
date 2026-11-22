@@ -318,12 +318,35 @@ static void setup_reader(void) {
     s_message[0] = 0;
 }
 
+#ifndef HR_BASELINE   // WEBTOON 替身（改动前的代码没有）/ WEBTOON stand-ins (absent from the pre-change code)
+bool tomato_wt_updating(void) { return false; }
+void tomato_sync_get_status(tomato_status_t* out) { memset(out, 0, sizeof(*out)); }
+#endif
+
 void hr_scenes(void) {
     app_ctx_t ctx = {.fb = hr_fb};
     setup();
     s_view = V_SHELF;
     render(&ctx, hr_fb);
     hr_shot("shelf");
+
+#ifndef HR_BASELINE
+    // WEBTOON：设置了漫画服务器，两部订阅（一部有新话）。/ WEBTOON: a comic server and two subscriptions (one with
+    // new episodes).
+    setup();
+    s_view = V_SHELF;
+    s_wt_cfg = true;
+    s_wt_series = 2;
+    s_shelf[0].webtoon = true;
+    s_shelf[0].fresh = 2;
+    s_shelf[2].webtoon = true;
+    snprintf(s_message, sizeof(s_message), "下载了 3 话");
+    render(&ctx, hr_fb);
+    hr_shot("shelf_wt");
+    s_wt_cfg = false;
+    s_wt_series = 0;
+    s_message[0] = 0;
+#endif
 
     setup();
     s_view = V_READ;

@@ -84,29 +84,32 @@ typedef enum {
     P_TIME, P_TZ, P_TSET, P_TURN
 } page_t;
 
-// 自建服务器页：小红书、微博和 X 共用，按 s_srv 选。/ Self-hosted server page shared by Xiaohongshu, Weibo and X,
-// picked by s_srv.
-typedef enum { S_RED, S_WB, S_X, S_COUNT } srv_t;
+// 自建服务器页：小红书、微博、X 和漫画（WEBTOON）共用，按 s_srv 选。/ Self-hosted server page shared by
+// Xiaohongshu, Weibo, X and comics (WEBTOON), picked by s_srv.
+typedef enum { S_RED, S_WB, S_X, S_WT, S_COUNT } srv_t;
 
 static const struct {
     const char* name;      // 页面和提示里的称呼 / Name in titles and hints
     const char* panel;     // 服务器面板叫什么 / What the server panel is called
+    const char* what;      // 这台服务器给哪个功能用 / The feature this server feeds
     const char* example;   // 地址示例 / Address example
     tr_icon_t icon;
     esp_err_t (*load)(tomato_srv_config_t* out);
     esp_err_t (*save)(const tomato_srv_config_t* cfg);
     uint32_t (*revision)(void);
-    int (*list)(void);                 // 列表条数 / List size
+    int (*list)(void);                 // 列表条数；漫画没有 / List size; comics have none
     esp_err_t (*list_set)(int n);
     const char* unit;                  // 条数的量词 / Counter word for the list size
 } SERVERS[S_COUNT] = {
-    [S_RED] = {"小红书", "rednote", "http://192.168.1.20:8091", TR_ICON_XHS, tomato_red_config_load,
+    [S_RED] = {"小红书", "rednote", "", "http://192.168.1.20:8091", TR_ICON_XHS, tomato_red_config_load,
                tomato_red_config_save, tomato_red_config_revision, tomato_red_list_limit, tomato_red_list_limit_set,
                "篇"},
-    [S_WB] = {"微博", "weibo", "http://192.168.1.20:8092", TR_ICON_WEIBO, tomato_wb_config_load,
+    [S_WB] = {"微博", "weibo", "", "http://192.168.1.20:8092", TR_ICON_WEIBO, tomato_wb_config_load,
               tomato_wb_config_save, tomato_wb_config_revision, tomato_wb_list_limit, tomato_wb_list_limit_set, "条"},
-    [S_X] = {"X", "x", "http://192.168.1.20:8093", TR_ICON_X, tomato_x_config_load, tomato_x_config_save,
+    [S_X] = {"X", "x", "", "http://192.168.1.20:8093", TR_ICON_X, tomato_x_config_load, tomato_x_config_save,
              tomato_x_config_revision, tomato_x_list_limit, tomato_x_list_limit_set, "条"},
+    [S_WT] = {"漫画", "webtoon", "WEBTOON 发现与追更", "http://192.168.1.20:8095", TR_ICON_COMIC, tomato_wt_config_load,
+              tomato_wt_config_save, tomato_wt_config_revision, NULL, NULL, ""},
 };
 
 // 首页分类。/ Home categories.
@@ -122,7 +125,7 @@ typedef struct {
 
 enum {
     R_SIZE, R_FONT, R_WALL, R_TURN,
-    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST,
+    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
@@ -155,6 +158,19 @@ static const row_t SERVER_ROWS[] = {
     {R_TEST, NULL, "测试连接", 418},
     {R_LIST, NULL, "列表条数", 490},
 };
+// 漫画服务器页：没有列表条数，换成语言版本、简体显示和每次最多下载几话。/ The comic server page: no list size;
+// language version, simplified display and episodes per check instead.
+static const row_t WT_ROWS[] = {
+    {R_WEB, NULL, "手机网页填写", 190},
+    {R_URL, NULL, "服务器地址", 274},
+    {R_TOKEN, NULL, "设备令牌", 346},
+    {R_TEST, NULL, "测试连接", 418},
+    {R_WT_LANG, NULL, "语言版本", 490},
+    {R_WT_SIMP, NULL, "简体显示", 562},
+    {R_WT_MAX, NULL, "每次最多下载", 634},
+};
+#define SRV_ROWS (s_srv == S_WT ? WT_ROWS : SERVER_ROWS)
+#define SRV_ROW_COUNT (s_srv == S_WT ? COUNT(WT_ROWS) : COUNT(SERVER_ROWS))
 static const row_t HUPU_ROWS[] = {
     {R_HIMG, NULL, "显示图片", 190},
 };
@@ -340,6 +356,9 @@ static void row_value(int id, char* out, size_t cap) {
         else snprintf(out, cap, s_has_host[s_srv] ? "点一下测试 ›" : "先填地址");
         break;
     case R_LIST: snprintf(out, cap, "%d %s ›", SERVERS[s_srv].list(), SERVERS[s_srv].unit); break;
+    case R_WT_LANG: snprintf(out, cap, "%s ›", tomato_wt_lang_name(tomato_wt_lang())); break;
+    case R_WT_SIMP: snprintf(out, cap, "%s ›", tomato_wt_simp() ? "开" : "关"); break;
+    case R_WT_MAX: snprintf(out, cap, "%d 话 ›", tomato_wt_max()); break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -489,9 +508,12 @@ static void start_test(srv_t which) {
     } else if (which == S_WB) {
         const tomato_wb_req_t req = {.job = TOMATO_WB_TEST};
         err = tomato_sync_start_wb(&req);
-    } else {
+    } else if (which == S_X) {
         const tomato_x_req_t req = {.job = TOMATO_X_TEST};
         err = tomato_sync_start_x(&req);
+    } else {
+        const tomato_wt_req_t req = {.job = TOMATO_WT_TEST};
+        err = tomato_sync_start_wt(&req);
     }
     if (err == ESP_OK) {
         s_testing = true;
@@ -560,9 +582,10 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
     }
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
     case C_SOURCES:
-        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s · 验证器%s",
+        snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s · 漫画%s · 验证器%s",
                  !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置", s_has_host[S_RED] ? "已设置" : "未设置",
-                 s_has_host[S_WB] ? "已设置" : "未设置", s_has_host[S_X] ? "已设置" : "未设置", auth_state_text());
+                 s_has_host[S_WB] ? "已设置" : "未设置", s_has_host[S_X] ? "已设置" : "未设置",
+                 s_has_host[S_WT] ? "已设置" : "未设置", auth_state_text());
         break;
     case C_SYNC: snprintf(out, cap, "%.100s", s_has_dav ? host_of(s_dav.url) : "WebDAV 未设置"); break;
     case C_POWER:
@@ -920,8 +943,11 @@ static void draw_sources(uint8_t* fb) {
     const int h = source_h();
     draw_cat(fb, CAT_TOP, h, TR_ICON_TOMATO, "番茄小说", sum, false);
     for (int i = 0; i < S_COUNT; i++) {
-        snprintf(sum, sizeof(sum), "%s 服务器 · %.150s", SERVERS[i].panel,
-                 s_has_host[i] ? host_of(s_host[i].url) : "未设置");
+        if (SERVERS[i].what[0])
+            snprintf(sum, sizeof(sum), "%s · %.150s", SERVERS[i].what, s_has_host[i] ? host_of(s_host[i].url) : "未设置");
+        else
+            snprintf(sum, sizeof(sum), "%s 服务器 · %.150s", SERVERS[i].panel,
+                     s_has_host[i] ? host_of(s_host[i].url) : "未设置");
         draw_cat(fb, CAT_TOP + (1 + i) * h, h, SERVERS[i].icon, SERVERS[i].name, sum, false);
     }
     draw_cat(fb, CAT_TOP + SRC_HUPU * h, h, TR_ICON_BALL, "虎扑",
@@ -982,17 +1008,27 @@ static void draw_server(uint8_t* fb) {
         draw_web_box(fb);
         return;
     }
-    draw_rows(fb, SERVER_ROWS, COUNT(SERVER_ROWS));
+    draw_rows(fb, SRV_ROWS, SRV_ROW_COUNT);
     char hint[200];
     snprintf(hint, sizeof(hint), "地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。",
              SERVERS[s_srv].panel);
-    const int n = tr_wrap(fb, TR_MARGIN, TR_S(582), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), hint, 3);
+    // 漫画多两行设置，说明往下挪两行。/ Comics have two more rows; the notes move down two rows.
+    const int top = s_srv == S_WT ? 726 : 582;
+    // 漫画页行多：放大后标签栏上面剩几行就写几行，放不下的说明不写。/ The comic page has more rows: scaled up, write
+    // only the note lines that fit above the tab bar and skip the rest.
+    const int room = s_srv == S_WT ? (TR_TABS_Y - TR_S(8) - TR_S(top)) / TR_S(36) : 3;
+    if (room <= 0) return;
+    const int n = tr_wrap(fb, TR_MARGIN, TR_S(top), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), hint, room < 3 ? room : 3);
     // 第二段跟在第一段后面（放大后第一段可能多折一行）。/ The second note follows the first (which may wrap to an
     // extra line at larger sizes).
-    int y = TR_S(700);
-    if (y < TR_S(582) + n * TR_S(36) + TR_S(10)) y = TR_S(582) + n * TR_S(36) + TR_S(10);
-    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
-            "列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。", 3);
+    int y = TR_S(top + 118);
+    if (y < TR_S(top) + n * TR_S(36) + TR_S(10)) y = TR_S(top) + n * TR_S(36) + TR_S(10);
+    const int room2 = s_srv == S_WT ? (TR_TABS_Y - TR_S(8) - y) / TR_S(36) : 3;
+    if (room2 <= 0) return;
+    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), s_srv == S_WT ?
+            "语言版本、简体显示：点一下切换，下次刷新发现页时生效。每次最多下载：一次“检查更新”最多下几话，5、10、20、50 轮换。" :
+            "列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。",
+            room2 < 3 ? room2 : 3);
 }
 
 static void draw_edit(uint8_t* fb) {
@@ -1637,7 +1673,15 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         return APP_REDRAW_PAGE;
     case R_URL: begin_edit(E_HOST_URL, s_has_host[s_srv] ? s_host[s_srv].url : "http://"); return APP_REDRAW_PAGE;
     case R_TOKEN: begin_edit(E_HOST_TOKEN, ""); return APP_REDRAW_PAGE;
+    case R_WT_LANG: tomato_wt_lang_set((tomato_wt_lang() + 1) % TOMATO_WT_LANGS); return APP_REDRAW_PAGE;
+    case R_WT_SIMP: tomato_wt_simp_set(!tomato_wt_simp()); return APP_REDRAW_PAGE;
+    case R_WT_MAX: {
+        const int n = tomato_wt_max();
+        tomato_wt_max_set(n == 5 ? 10 : n == 10 ? 20 : n == 20 ? 50 : 5);
+        return APP_REDRAW_PAGE;
+    }
     case R_LIST: {
+        if (!SERVERS[s_srv].list) return APP_REDRAW_NONE;
         const int n = SERVERS[s_srv].list();
         SERVERS[s_srv].list_set(n >= TOMATO_LIST_LIMIT_MAX ? TOMATO_LIST_LIMIT_MIN : n + 100);
         return APP_REDRAW_PAGE;
@@ -1681,7 +1725,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     case P_TABS: return touch_tabs(x, y);
     case P_SOURCES: return touch_sources(ctx, y);
     case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
-    case P_SRC_SERVER: id = row_hit(SERVER_ROWS, s_web_on ? 1 : COUNT(SERVER_ROWS), y); break;
+    case P_SRC_SERVER: id = row_hit(SRV_ROWS, s_web_on ? 1 : SRV_ROW_COUNT, y); break;
     case P_SRC_HUPU:
         if (s_hupu_ask) return touch_hupu_ask(x, y);
         id = row_hit(HUPU_ROWS, COUNT(HUPU_ROWS), y);
@@ -1739,8 +1783,10 @@ static void on_enter(app_ctx_t* ctx) {
     s_page = s_open_transfer ? P_TRANSFER : P_HOME;
     if (s_open_source == TR_TAB_TOMATO) {
         s_page = P_SRC_TOMATO;
-    } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO || s_open_source == TR_TAB_X) {
-        s_srv = s_open_source == TR_TAB_XHS ? S_RED : s_open_source == TR_TAB_WEIBO ? S_WB : S_X;
+    } else if (s_open_source == TR_TAB_XHS || s_open_source == TR_TAB_WEIBO || s_open_source == TR_TAB_X ||
+               s_open_source == TR_TAB_COMIC) {
+        s_srv = s_open_source == TR_TAB_XHS ? S_RED : s_open_source == TR_TAB_WEIBO ? S_WB :
+                s_open_source == TR_TAB_X ? S_X : S_WT;
         s_page = P_SRC_SERVER;
     } else if (s_open_source == TR_TAB_HUPU) {
         s_page = P_SRC_HUPU;

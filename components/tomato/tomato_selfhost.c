@@ -37,6 +37,7 @@
 // 微博两个列表各 300 条时，列表里的目录最多 600 个。/ Two Weibo lists of 300 hold up to 600 listed folders.
 #define DIRS_MAX 700
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#define COMIC_TMP_PATH 320
 
 /* ---- 设置 / Settings ---- */
 
@@ -106,11 +107,25 @@ bool tomato_file_exists(const char* path) {
 
 /* ---- HTTP ---- */
 
-esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, int timeout_ms,
-                         const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap) {
+// 非 200 时把服务器给的原因（JSON 的 detail）写进 msg；返回对应的错误码。/ On a non-200 status put the server's
+// reason (the JSON detail) into msg; returns the matching error.
+static esp_err_t status_error(int status, const uint8_t* body, char* msg, size_t cap) {
+    cJSON* j = body ? cJSON_Parse((const char*)body) : NULL;
+    const cJSON* d = cJSON_GetObjectItemCaseSensitive(j, "detail");
+    if (cJSON_IsString(d) && d->valuestring[0]) tomato_copy_utf8(msg, cap, d->valuestring);
+    else if (status == 401) snprintf(msg, cap, "设备令牌不对");
+    else snprintf(msg, cap, "服务器返回 HTTP %d", status);
+    cJSON_Delete(j);
+    return status == 401 ? ESP_ERR_INVALID_RESPONSE : ESP_ERR_NOT_FOUND;
+}
+
+// body 为 NULL 时 GET，否则把它当 JSON POST 出去（POST 不跟随跳转）。/ GET when body is NULL; otherwise POST it as
+// JSON (POST does not follow redirects).
+static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const char* body, size_t max, int timeout_ms,
+                             const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap) {
     *out = NULL;
     *out_len = 0;
-    char url[sizeof(srv->cfg->url) + 112];
+    char url[sizeof(srv->cfg->url) + 160];
     snprintf(url, sizeof(url), "%s%s", srv->cfg->url, path);
     esp_http_client_config_t hc = {
         .url = url,
@@ -118,20 +133,24 @@ esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, 
         .buffer_size = IO_CHUNK,
         .buffer_size_tx = 2048,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .method = body ? HTTP_METHOD_POST : HTTP_METHOD_GET,
     };
     esp_http_client_handle_t c = esp_http_client_init(&hc);
     if (!c) { snprintf(msg, cap, "服务器地址格式不对"); return ESP_ERR_INVALID_ARG; }
     esp_http_client_set_header(c, srv->header, srv->cfg->token);
+    const int body_len = body ? (int)strlen(body) : 0;
+    if (body) esp_http_client_set_header(c, "Content-Type", "application/json");
     esp_err_t err = ESP_FAIL;
     int status = 0;
     int64_t length = -1;
     // 跟随跳转（比如 http 被跳到 https）。/ Follow redirects (say, http forced to https).
     for (int hop = 0; hop < 4; hop++) {
-        err = tomato_http_open(c, 0);
+        err = tomato_http_open(c, body_len);
         if (err != ESP_OK) break;
+        if (body_len && esp_http_client_write(c, body, body_len) != body_len) { err = ESP_FAIL; break; }
         length = esp_http_client_fetch_headers(c);
         status = esp_http_client_get_status_code(c);
-        if (status < 300 || status >= 400) break;
+        if (status < 300 || status >= 400 || body) break;
         if (esp_http_client_set_redirection(c) != ESP_OK) { err = ESP_FAIL; break; }
         esp_http_client_close(c);
     }
@@ -162,13 +181,7 @@ esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, 
     if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
     if (err == ESP_OK && status != 200) {
         buf[len] = 0;
-        cJSON* j = cJSON_Parse((const char*)buf);
-        const cJSON* d = cJSON_GetObjectItemCaseSensitive(j, "detail");
-        if (cJSON_IsString(d) && d->valuestring[0]) tomato_copy_utf8(msg, cap, d->valuestring);
-        else if (status == 401) snprintf(msg, cap, "设备令牌不对");
-        else snprintf(msg, cap, "服务器返回 HTTP %d", status);
-        cJSON_Delete(j);
-        err = status == 401 ? ESP_ERR_INVALID_RESPONSE : ESP_ERR_NOT_FOUND;
+        err = status_error(status, buf, msg, cap);
     } else if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         if (tomato_http_detail()[0] == 0) tomato_http_set_detail(esp_err_to_name(err));
         snprintf(msg, cap, "连不上 %s 服务器（%s）", srv->name, tomato_http_detail());
@@ -180,6 +193,86 @@ esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, 
     *out = buf;
     *out_len = len;
     return ESP_OK;
+}
+
+esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, int timeout_ms,
+                         const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap) {
+    return srv_request(srv, path, NULL, max, timeout_ms, cancel, out, out_len, msg, cap);
+}
+
+esp_err_t tomato_srv_post(const tomato_srv_t* srv, const char* path, const char* body, int timeout_ms,
+                          const volatile bool* cancel, cJSON** out, char* msg, size_t cap) {
+    uint8_t* buf;
+    size_t len;
+    *out = NULL;
+    esp_err_t err = srv_request(srv, path, body ? body : "{}", TOMATO_SRV_JSON_MAX, timeout_ms, cancel, &buf, &len,
+                                msg, cap);
+    if (err != ESP_OK) return err;
+    tomato_json_use_psram();
+    *out = cJSON_Parse((const char*)buf);
+    heap_caps_free(buf);
+    if (!*out) { snprintf(msg, cap, "服务器返回的内容看不懂"); return ESP_FAIL; }
+    return ESP_OK;
+}
+
+esp_err_t tomato_srv_download(const tomato_srv_t* srv, const char* path, const char* dest, size_t max, int timeout_ms,
+                              const volatile bool* cancel, char* msg, size_t cap) {
+    char url[sizeof(srv->cfg->url) + 160], part[COMIC_TMP_PATH];
+    snprintf(url, sizeof(url), "%s%s", srv->cfg->url, path);
+    snprintf(part, sizeof(part), "%s.part", dest);
+    if (cap) msg[0] = 0;
+    esp_http_client_config_t hc = {
+        .url = url,
+        .timeout_ms = timeout_ms,
+        .buffer_size = IO_CHUNK,
+        .buffer_size_tx = 2048,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    if (!c) { snprintf(msg, cap, "服务器地址格式不对"); return ESP_ERR_INVALID_ARG; }
+    esp_http_client_set_header(c, srv->header, srv->cfg->token);
+    esp_err_t err = tomato_http_open(c, 0);
+    const int64_t length = err == ESP_OK ? esp_http_client_fetch_headers(c) : -1;
+    const int status = err == ESP_OK ? esp_http_client_get_status_code(c) : 0;
+    uint8_t* buf = heap_caps_malloc(IO_CHUNK, PSRAM_CAPS);
+    FILE* f = NULL;
+    size_t total = 0;
+    if (err == ESP_OK && status != 200) {
+        int n = buf ? esp_http_client_read(c, (char*)buf, IO_CHUNK - 1) : 0;
+        if (buf) buf[n > 0 ? n : 0] = 0;
+        err = status_error(status, n > 0 ? buf : NULL, msg, cap);
+    } else if (err == ESP_OK && (length > (int64_t)max || !buf)) {
+        err = buf ? ESP_ERR_INVALID_SIZE : ESP_ERR_NO_MEM;
+    } else if (err == ESP_OK && !(f = fopen(part, "wb"))) {
+        err = ESP_FAIL;
+        snprintf(msg, cap, "写不进 TF 卡");
+    }
+    while (err == ESP_OK) {
+        if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }
+        int n = esp_http_client_read(c, (char*)buf, IO_CHUNK);
+        if (n < 0) { err = ESP_FAIL; break; }
+        if (n == 0) break;
+        total += (size_t)n;
+        if (total > max) { err = ESP_ERR_INVALID_SIZE; break; }
+        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { err = ESP_FAIL; snprintf(msg, cap, "写不进 TF 卡"); break; }
+    }
+    if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
+    if (f && fclose(f) != 0 && err == ESP_OK) { err = ESP_FAIL; snprintf(msg, cap, "写不进 TF 卡"); }
+    if (err == ESP_OK) {
+        remove(dest);
+        if (rename(part, dest) != 0) { err = ESP_FAIL; snprintf(msg, cap, "写不进 TF 卡"); }
+    }
+    if (err != ESP_OK) {
+        remove(part);
+        if (!msg[0] && err != ESP_ERR_INVALID_STATE) {
+            if (tomato_http_detail()[0] == 0) tomato_http_set_detail(esp_err_to_name(err));
+            snprintf(msg, cap, "下载失败（%s）", tomato_http_detail());
+        }
+    }
+    heap_caps_free(buf);
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
+    return err;
 }
 
 esp_err_t tomato_srv_json(const tomato_srv_t* srv, const char* path, int timeout_ms, const volatile bool* cancel,

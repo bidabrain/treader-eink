@@ -38,7 +38,7 @@
 #define DEFER_MAX 8
 
 typedef enum {
-    OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X,
+    OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X, OP_WT,
     OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME
 } op_t;
 
@@ -71,6 +71,7 @@ static tomato_hupu_req_t s_hupu;
 static tomato_red_req_t s_red;
 static tomato_wb_req_t s_wb;
 static tomato_x_req_t s_x;
+static tomato_wt_req_t s_wt;
 static tomato_ota_info_t s_ota;        // 检查结果，也是下载目标 / Check result, also the download target
 static bool s_ota_valid;
 // 每启动一次任务加一；页面据此认出“这是不是我发起的那个任务”。/ Bumped per started job so a page can tell its own job.
@@ -143,13 +144,19 @@ int tomato_sync_hits(tomato_hit_t* out, int max) {
 bool tomato_sync_busy(void) { return s_busy; }
 void tomato_sync_cancel(void) { s_cancel = true; }
 
-// 浏览类任务（虎扑、小红书、微博、X、书城、搜索）可以让给前台；下载、检查更新和 WebDAV 同步不打断。
-// Browsing jobs (Hupu, Xiaohongshu, Weibo, X, bookstore, search) yield to the foreground; downloads, update checks and
-// WebDAV sync are never interrupted.
+// 浏览类任务（虎扑、小红书、微博、X、书城、WEBTOON 发现、搜索）可以让给前台；下载（包括 WEBTOON 更新）、检查更新
+// 和 WebDAV 同步不打断。
+// Browsing jobs (Hupu, Xiaohongshu, Weibo, X, bookstores, search) yield to the foreground; downloads (WEBTOON updates
+// included), update checks and WebDAV sync are never interrupted.
+static bool browsing(void) {
+    return s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X ||
+           (s_op == OP_WT && s_wt.job != TOMATO_WT_UPDATE) || s_op == OP_RANK || s_op == OP_RANK_COVER ||
+           s_op == OP_SEARCH;
+}
+
 bool tomato_sync_preemptible(void) {
     portENTER_CRITICAL(&s_lock);
-    const bool yes = s_busy && (s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X ||
-                                s_op == OP_RANK || s_op == OP_RANK_COVER || s_op == OP_SEARCH);
+    const bool yes = s_busy && browsing();
     portEXIT_CRITICAL(&s_lock);
     return yes;
 }
@@ -157,8 +164,7 @@ bool tomato_sync_preemptible(void) {
 tomato_preempt_t tomato_sync_preempt(void) {
     portENTER_CRITICAL(&s_lock);
     const bool busy = s_busy;
-    const bool browse = s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X || s_op == OP_RANK ||
-                        s_op == OP_RANK_COVER || s_op == OP_SEARCH;
+    const bool browse = browsing();
     if (busy && browse) s_cancel = true;
     portEXIT_CRITICAL(&s_lock);
     if (!busy) return TOMATO_PREEMPT_FREE;
@@ -725,7 +731,7 @@ static void sync_task(void* arg) {
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
     const bool needs_server =
         s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU && s_op != OP_RED &&
-        s_op != OP_WB && s_op != OP_X && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD && s_op != OP_TIME;
+        s_op != OP_WB && s_op != OP_X && s_op != OP_WT && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD && s_op != OP_TIME;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -787,6 +793,14 @@ static void sync_task(void* arg) {
         set_phase(TOMATO_DOWNLOADING, "正在加载");
         char msg[96] = "";
         err = tomato_x_run(&s_x, &s_cancel, set_progress, msg, sizeof(msg));
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(err, s_cancel ? "已取消" : msg);
+        break;
+    }
+    case OP_WT: {
+        set_phase(TOMATO_DOWNLOADING, s_wt.job == TOMATO_WT_UPDATE ? "正在检查更新" : "正在加载");
+        char msg[96] = "";
+        err = tomato_wt_run(&s_wt, &s_cancel, set_progress, msg, sizeof(msg));
         if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
         else fail(err, s_cancel ? "已取消" : msg);
         break;
@@ -903,6 +917,23 @@ esp_err_t tomato_sync_start_x(const tomato_x_req_t* req) {
     s_x = *req;
     s_x.id[sizeof(s_x.id) - 1] = 0;
     return start(OP_X);
+}
+bool tomato_wt_updating(void) {
+    portENTER_CRITICAL(&s_lock);
+    const bool yes = s_busy && s_op == OP_WT && s_wt.job == TOMATO_WT_UPDATE;
+    portEXIT_CRITICAL(&s_lock);
+    return yes;
+}
+
+esp_err_t tomato_sync_start_wt(const tomato_wt_req_t* req) {
+    if (!req) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    s_wt = *req;
+    s_wt.seg[sizeof(s_wt.seg) - 1] = 0;
+    s_wt.key[sizeof(s_wt.key) - 1] = 0;
+    s_wt.q[sizeof(s_wt.q) - 1] = 0;
+    s_wt.id[sizeof(s_wt.id) - 1] = 0;
+    return start(OP_WT);
 }
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
 esp_err_t tomato_sync_start_time(void) { return start(OP_TIME); }

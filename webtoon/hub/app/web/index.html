@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>webtoon 面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" method="post" action="#" onsubmit="return false" class="card narrow">
+    <h1>webtoon 面板</h1>
+    <p id="gateHint" class="muted"></p>
+    <input id="gatePassword" type="password" autocomplete="current-password" placeholder="面板密码" required>
+    <button type="submit">进入</button>
+    <p id="gateMsg" class="err"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <b>webtoon 面板</b><span id="ver" class="muted"></span>
+    <nav>
+      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="device">设备与外网</a>
+      <a data-tab="settings">设置</a>
+    </nav>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+
+  <main>
+    <section data-panel="home">
+      <div class="grid" id="stats"></div>
+      <div class="card">
+        <h2>最近转换</h2>
+        <p class="muted">设备要哪一话，服务器才去 WEBTOON 拉原图、转灰度、按屏幕切页，打包成 CBZ 缓存一阵。服务器不保存订阅，订阅在设备的 TF 卡上。</p>
+        <ul id="recent" class="list"></ul>
+      </div>
+      <div class="card">
+        <h2>说明</h2>
+        <p class="muted">只拉网页上公开免费的话，不登录、不碰付费和抢先看。请自己部署、只给自己用，不要把服务器开放给别人。</p>
+      </div>
+    </section>
+
+    <section data-panel="store" hidden>
+      <div class="card">
+        <div class="row">
+          <select id="lang"></select>
+          <input id="q" placeholder="搜索作品名或作者（简体也行）">
+          <button id="qGo">搜索</button>
+        </div>
+        <div id="segs" class="chips"></div>
+        <div id="keys" class="chips"></div>
+        <p id="storeMsg" class="muted"></p>
+        <div id="covers" class="notes"></div>
+      </div>
+      <div class="card" id="detail" hidden>
+        <h2 id="dTitle"></h2>
+        <p id="dMeta" class="muted"></p>
+        <p id="dSummary"></p>
+        <p class="muted">在这里可以试转一话，下载 CBZ 看看切页效果；订阅请在设备的发现漫画里点。</p>
+        <ul id="dEps" class="list"></ul>
+      </div>
+    </section>
+
+    <section data-panel="device" hidden>
+      <div class="card">
+        <h2>设备</h2>
+        <p>设备上要填的地址和令牌（设备：设置 → 内容来源 → 漫画，打开“手机网页填写”后粘贴）：</p>
+        <p>地址：<code id="devUrl"></code>（局域网）<span id="devTunnelUrl"></span></p>
+        <p>令牌：<code id="devToken"></code> <button id="rotate" class="ghost">换一个</button></p>
+        <p class="muted">换令牌后，设备上要重新填。</p>
+      </div>
+      <div class="card">
+        <h2>外网访问（Cloudflare Tunnel）</h2>
+        <p class="muted">隧道只转发设备接口（/api/device/），面板不会出现在外网。</p>
+        <label><input type="radio" name="tmode" value="off"> 关闭</label>
+        <label><input type="radio" name="tmode" value="quick"> 快速隧道（随机 trycloudflare.com 地址，重启会变）</label>
+        <label><input type="radio" name="tmode" value="token"> 隧道令牌（固定域名）</label>
+        <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌（服务填 http://localhost:8095）">
+        <button id="tApply">保存并应用</button>
+        <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="settings" hidden>
+      <form id="setForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>转换</h2>
+        <label>页面宽度 <input name="page_w" type="number" min="200" max="2000"> 像素（小纸 Pico 是 648）</label>
+        <label>页面高度 <input name="page_h" type="number" min="200" max="3000"> 像素（小纸 Pico 是 1000）</label>
+        <label>JPEG 质量 <input name="quality" type="number" min="40" max="95"></label>
+        <h2>请求</h2>
+        <label>两张原图之间等待（秒，随机取这两者之间） <input name="delay_min" type="number" step="0.1" min="0"> ～ <input name="delay_max" type="number" step="0.1" min="0"></label>
+        <label>列表和详情缓存（分钟） <input name="list_cache_min" type="number" min="1"></label>
+        <h2>缓存</h2>
+        <label>转好的话保留天数 <input name="keep_days" type="number" min="1"></label>
+        <label>缓存上限（MB） <input name="max_mb" type="number" min="100"></label>
+        <button id="setSave">保存</button> <button id="cacheClear" class="ghost">清空缓存</button>
+        <span id="setMsg" class="muted"></span>
+      </form>
+      <form id="pwForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>面板密码</h2>
+        <input id="pw" type="password" autocomplete="new-password" placeholder="新密码（至少 8 位）">
+        <button>修改</button> <span id="pwMsg" class="muted"></span>
+      </form>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

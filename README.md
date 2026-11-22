@@ -29,6 +29,7 @@
 - 封面网格、“继续看”、系列的话列表；一屏一页，左右点按或滑动翻页，一话看完自动接下一话，可切换从右往左
 - 用传书网页上传时，手机浏览器先把每页转成灰度 JPEG、缩到屏幕大小（WebP、PNG 都行，太长的条漫按屏切开），体积约为原来的 1/5，设备翻页快
 - 每部漫画记住看到第几页和翻页方向，长按可清进度或删除
+- WEBTOON 发现与追更（需要自建 [webtoon 服务器](webtoon/README.md)）：我的漫画右上角“发现”逛排行、类型、星期更新表、已完结，或搜索；订阅后“检查更新”把新话下载成 CBZ 放进我的漫画。服务器把竖长条转灰度、在分镜之间的空白处按屏幕切页，翻页和本地漫画一样快；我的漫画可按 全部 / 本地 / WEBTOON 筛选，订阅的标“WT”和“N 话新”。只拉公开免费的话，自己部署、只给自己用
 
 **番茄小说**（需要[自建下载服务器](#自建番茄下载服务器)）
 - 搜索：点结果先看简介、分类、章节、字数，再决定下载
@@ -107,6 +108,10 @@
 **漫画与传书**
 
 ![漫画与传书](docs/images/screens-comics.png)
+
+**发现漫画（WEBTOON）**
+
+![发现漫画](docs/images/screens-webtoon.png)
 
 **番茄小说与书城**
 
@@ -423,6 +428,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [tomato/README.md](tomato/README.md) | 番茄下载服务器一键部署：官方下载器 + 面板（设备密码、Cloudflare Tunnel） |
 | [weibo/README.md](weibo/README.md) | 微博内容服务器：不登录、Docker 部署、关注管理、WebDAV 备份；设备上的微博标签读它 |
 | [x/README.md](x/README.md) | X 内容服务器：VNC 手动登录、随机间隔和睡眠时段、Docker 部署；设备上的 X 标签读它 |
+| [webtoon/README.md](webtoon/README.md) | WEBTOON 发现与追更服务器：读 WEBTOON 公开免费的话、转灰度按屏切页打包 CBZ、不保存订阅、Docker 部署；设备上的发现漫画读它 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
 | [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |
 | [docs/official/](docs/official/README.zh-CN.md) | 官方示例固件的原版说明：硬件表、引脚、底层组件 |

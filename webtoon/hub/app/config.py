@@ -1,0 +1,81 @@
+"""配置与路径：所有状态都放在 /data（宿主机的 ./data），方便备份和迁移。服务器不保存任何人的订阅。
+
+Settings and paths: all state lives in /data (./data on the host). The server keeps nobody's subscriptions.
+"""
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import threading
+from pathlib import Path
+from typing import Any
+
+DATA = Path(os.environ.get("DATA_DIR", "/data"))
+CACHE_DIR = DATA / "cache"
+CONFIG_PATH = DATA / "config.json"
+AUTH_PATH = DATA / "auth.json"
+PORT = int(os.environ.get("PORT", "8095"))
+VERSION = "0.1.0"
+BASE = os.environ.get("WEBTOON_BASE", "https://www.webtoons.com").rstrip("/")
+MOBILE = os.environ.get("WEBTOON_MOBILE", "https://m.webtoons.com").rstrip("/")
+
+DEFAULTS: dict[str, Any] = {
+    # 设备访问令牌。/ Device access token.
+    "device_token": "",
+    # 外网访问：off / quick / token。/ Public access: off / quick / token.
+    "tunnel_mode": "off",
+    "tunnel_token": "",
+    # 页面尺寸：缩到这个宽度，按这个高度切页（小纸 Pico 漫画区域）。/ Page size: scale to this width and cut at this
+    # height (the Read Pico comic area).
+    "page_w": 648,
+    "page_h": 1000,
+    # 每页 JPEG 质量。/ JPEG quality per page.
+    "quality": 85,
+    # 两次下载原图之间随机等待的秒数。/ Random wait between source image downloads, in seconds.
+    "delay_min": 0.4,
+    "delay_max": 1.2,
+    # 列表和详情在服务器上缓存几分钟。/ Minutes lists and details stay cached on the server.
+    "list_cache_min": 30,
+    # 转好的 CBZ 保留天数和总大小上限（MB）。/ Converted CBZ retention in days and size cap in MB.
+    "keep_days": 14,
+    "max_mb": 3000,
+}
+
+_lock = threading.Lock()
+
+
+def ensure_dirs() -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load() -> dict[str, Any]:
+    with _lock:
+        cfg = dict(DEFAULTS)
+        if CONFIG_PATH.exists():
+            try:
+                cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                pass
+        if not cfg.get("device_token"):
+            cfg["device_token"] = secrets.token_urlsafe(24)
+            _write(cfg)
+        return cfg
+
+
+def save(update: dict[str, Any]) -> dict[str, Any]:
+    cfg = load()
+    with _lock:
+        for key, value in update.items():
+            if key in DEFAULTS:
+                cfg[key] = value
+        _write(cfg)
+    return cfg
+
+
+def _write(cfg: dict[str, Any]) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, CONFIG_PATH)

@@ -11,6 +11,12 @@
     ["demo_transfer/home_100.png", "Wi-Fi 传书"],
     ["demo_usb/running_100.png", "USB 传书中"]
   ],
+  "screens-webtoon": [
+    ["demo_comic/shelf_wt_100.png", "我的漫画 · WEBTOON 订阅"],
+    ["demo_wt/rank_100.png", "发现漫画"],
+    ["demo_wt/detail_100.png", "作品详情与订阅"],
+    ["demo_comic/reader_100.png", "一屏一页阅读"]
+  ],
   "screens-tomato": [
     ["demo_tomato/shelf_100.png", "番茄 · 书架"],
     ["demo_store/home_100.png", "书城"],

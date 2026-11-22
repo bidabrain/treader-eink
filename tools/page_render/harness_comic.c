@@ -30,6 +30,15 @@ bool comic_progress_get(const char* path, comic_progress_t* out) {
     return true;
 }
 
+#ifndef HR_BASELINE   // WEBTOON 替身（改动前的代码没有）/ WEBTOON stand-ins (absent from the pre-change code)
+static bool s_hr_updating;
+bool tomato_wt_updating(void) { return s_hr_updating; }
+void tomato_sync_get_status(tomato_status_t* out) {
+    memset(out, 0, sizeof(*out));
+    if (s_hr_updating) { out->current = 2; out->total = 6; }
+}
+#endif
+
 static comic_entry_t s_fake_shelf[8];
 static char s_fake_vols[12][COMIC_NAME_MAX];
 static uint8_t s_fake_px[684 * 1160];
@@ -137,4 +146,44 @@ void hr_scenes(void) {
     s_confirm_delete = true;
     snprintf(s_message, sizeof(s_message), "删除没有完成，检查 TF 卡");
     shot("detail_single", true);
+
+#ifndef HR_BASELINE   // 改动前没有 WEBTOON / No WEBTOON before this change
+    // 我的漫画：设置了漫画服务器，两部订阅（一部有新话、一部还没下载），在更新。/ Shelf with a comic server, two
+    // subscriptions (one with new episodes, one not downloaded yet), updating.
+    setup();
+    s_view = V_SHELF;
+    s_wt_cfg = true;
+    s_wt_series = 2;
+    s_shelf[0].webtoon = true;
+    s_shelf[0].fresh = 3;
+    s_shelf[2].webtoon = true;
+    s_shelf[2].volumes = 0;
+    s_shelf[2].done = 0;
+    shot("shelf_wt", true);
+    s_hr_updating = true;
+    s_src = 2;
+    snprintf(s_message, sizeof(s_message), "下载了 3 话，1 话失败：服务器转换太久了");
+    shot("shelf_wt_updating", true);
+    s_hr_updating = false;
+    s_src = 0;
+    s_message[0] = 0;
+
+    // 订阅系列的详情。/ A subscribed series' detail.
+    s_view = V_DETAIL;
+    snprintf(s_detail_name, sizeof(s_detail_name), "我的虎系青梅竹马");
+    s_detail_series = true;
+    s_detail_wt = true;
+    snprintf(s_detail_info[0], sizeof(s_detail_info[0]), "系列 · 24 话");
+    snprintf(s_detail_info[1], sizeof(s_detail_info[1]), "WEBTOON 订阅 · 下载到第 66 话");
+    s_confirm_delete = false;
+    s_confirm_unsub = true;
+    shot("detail_wt", true);
+    s_hr_updating = true;
+    s_confirm_unsub = false;
+    shot("detail_wt_updating", true);
+    s_hr_updating = false;
+    s_detail_wt = false;
+    s_wt_cfg = false;
+    s_wt_series = 0;
+#endif
 }

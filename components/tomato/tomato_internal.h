@@ -103,6 +103,10 @@ esp_err_t tomato_red_run(const tomato_red_req_t* r, const volatile bool* cancel,
 esp_err_t tomato_wb_run(const tomato_wb_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
                         char* msg, size_t cap);
 
+/// WEBTOON（webtoon 服务器）任务，在同步任务里调用。/ WEBTOON (webtoon server) job, run on the sync task.
+esp_err_t tomato_wt_run(const tomato_wt_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
+                        char* msg, size_t cap);
+
 /// X（x 服务器）任务，在同步任务里调用。/ X (x server) job, run on the sync task.
 esp_err_t tomato_x_run(const tomato_x_req_t* r, const volatile bool* cancel, tomato_hupu_progress_t progress,
                        char* msg, size_t cap);
@@ -130,6 +134,14 @@ esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, 
                          const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap);
 esp_err_t tomato_srv_json(const tomato_srv_t* srv, const char* path, int timeout_ms, const volatile bool* cancel,
                           cJSON** out, char* msg, size_t cap);
+/// 带令牌 POST 一段 JSON，返回解析好的 JSON。出错时同 tomato_srv_get。/ POST a JSON body with the token and parse the
+/// reply. Errors as tomato_srv_get.
+esp_err_t tomato_srv_post(const tomato_srv_t* srv, const char* path, const char* body, int timeout_ms,
+                          const volatile bool* cancel, cJSON** out, char* msg, size_t cap);
+/// 带令牌把一个大文件边收边写到 dest（先写 .part，完整了再改名），最多 max 字节。/ Stream a large file with the token
+/// into dest (write .part, rename once complete), at most max bytes.
+esp_err_t tomato_srv_download(const tomato_srv_t* srv, const char* path, const char* dest, size_t max, int timeout_ms,
+                              const volatile bool* cancel, char* msg, size_t cap);
 /// 慢请求的轮询：先 GET first，返回里 key 为 true 就隔 POLL 秒 GET again（again 为 NULL 时重复 first），直到 key 不再为
 /// true，或者等满 max_ms。每次请求服务器都马上回话，等待时每 100 ms 看一次取消，所以前台随时能插队。超时返回
 /// ESP_ERR_TIMEOUT。

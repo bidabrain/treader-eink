@@ -240,6 +240,23 @@
       <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>传书</h3><p>Wi-Fi 网页上传书、字体和漫画；或者用数据线把 TF 卡当 U 盘直接拷。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>同步与升级</h3><p>WebDAV 同步阅读进度和番茄书架；设备上点“检查更新”就能在线升级（先下到 TF 卡，断了接着下，校验通过才写入），也可以把固件放进 TF 卡升级，起不来自动退回旧版。</p></div>
     </div>
+    <div class="feat wide" id="webtoon">
+      <div>
+        <div class="ic"><svg><use href="#i-comic"/></svg></div>
+        <h3>发现漫画 · WEBTOON 追更</h3>
+        <p>我的漫画右上角的“发现”里逛 WEBTOON 的排行、类型、星期更新表和已完结，搜作品名（打简体也能搜到繁体中文版）；订阅后点“检查更新”，新话下载成 CBZ 放进我的漫画，和本地漫画一起看。手机上有同样功能的安卓 App。</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/webtoon#readme">部署说明</a>
+          <a class="btn small solid" data-release="webtoon-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
+        </div>
+      </div>
+      <ul>
+        <li>服务器把一话的竖长条转成灰度，在分镜之间的空白处按屏幕切页，不把画格和对白切成两半；翻页和本地漫画一样快</li>
+        <li>订阅只存在设备 TF 卡上（作品文件夹里一个标记文件），服务器不保存；换服务器、重装都不丢</li>
+        <li>我的漫画里按 全部 / 本地 / WEBTOON 筛选，订阅的封面标“WT”，新下好没看的写“N 话新”</li>
+        <li>只拉网页上公开免费的话，不登录、不碰付费；请自己部署、只给自己用</li>
+      </ul>
+    </div>
     <div class="feat wide" id="auth">
       <div>
         <div class="ic"><svg><use href="#i-key"/></svg></div>
@@ -293,6 +310,7 @@
     <div class="tabs" id="shotTabs">
       <button class="on" data-img="screens-reading">书库与阅读</button>
       <button data-img="screens-comics">漫画与传书</button>
+      <button data-img="screens-webtoon">发现漫画</button>
       <button data-img="screens-tomato">番茄小说</button>
       <button data-img="screens-xhs">小红书</button>
       <button data-img="screens-weibo">微博</button>
@@ -337,6 +355,15 @@
         <div class="row">
           <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/weibo#readme">部署说明</a>
           <a class="btn small solid" data-release="weibo-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-comic"/></svg></div>
+        <h3>webtoon · 发现漫画服务器</h3>
+        <ul><li>读 WEBTOON 公开免费的话，不登录、不保存订阅</li><li>设备要哪一话才转：灰度、按屏在分镜空白处切页、打包 CBZ</li><li>安卓 App：发现页、订阅、检查更新、一屏一页阅读</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/webtoon#readme">部署说明</a>
+          <a class="btn small solid" data-release="webtoon-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
         </div>
       </div>
     </div>

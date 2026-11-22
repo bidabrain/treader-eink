@@ -9,6 +9,15 @@
  * toolbar, and a detail page (clear progress, delete). Managed apart from the library; only reads comics/ on the TF
  * card. Layout follows the "comics" section of docs/design/ui.html.
  *
+ * WEBTOON（设置了漫画服务器才出现）：我的漫画右上角“发现”打开发现漫画（app_tr_wt.c）；排序旁边的来源胶囊在 全部 / 本地 /
+ * WEBTOON 之间切换；“检查更新”在后台下载所有订阅的新话。订阅的系列文件夹里有 .webtoon 标记，封面角上标“WT”，新下载
+ * 没看的写“N 话新”；长按的详情页多出检查这部的更新、补全缺的话、取消订阅。阅读和本地漫画完全一样。
+ * WEBTOON (only with a comic server set): "发现" at the shelf's top right opens the comic store (app_tr_wt.c); a source
+ * pill beside the sort pill cycles All / Local / WEBTOON; "检查更新" downloads every subscription's new episodes in the
+ * background. A subscribed series folder holds a .webtoon marker; its cover gets a "WT" corner tag and new unread
+ * downloads show as "N 话新"; the long-press detail adds checking this title, filling missing episodes and
+ * unsubscribing. Reading is exactly the same as for local comics.
+ *
  * 冻结：只解 JPEG / PNG（网页上传时已统一转成灰度 JPEG）；页面按整页缩放，不做滚动；解码放在主循环里一次一页。
  * Frozen: decode JPEG / PNG only (web uploads are converted to grayscale JPEG); pages fit the screen, no scrolling;
  * decoding runs on the main loop one page at a time.
@@ -18,6 +27,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "app.h"
 #include "app_registry.h"
@@ -29,6 +39,7 @@
 #include "esp_log.h"
 #include "hupu_img.h"
 #include "settings.h"
+#include "tomato.h"
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
@@ -57,6 +68,10 @@
 #define CARD (EpdRect){TR_MARGIN, TR_S(284), TR_W - 2 * TR_MARGIN, TR_S(136)}
 #define SORT_PILL (EpdRect){TR_MARGIN, TR_S(212), TR_S(150), TR_S(54)}
 #define IMPORT_X 592
+// WEBTOON 的两个胶囊（只在设置了漫画服务器时画）：来源筛选、检查更新。/ The two WEBTOON pills (drawn only with a
+// comic server set): source filter and update check.
+#define SRC_PILL (EpdRect){TR_MARGIN + TR_S(166), TR_S(212), TR_S(170), TR_S(54)}
+#define UPDATE_PILL (EpdRect){TR_W - TR_MARGIN - TR_S(196), TR_S(212), TR_S(196), TR_S(54)}
 #define GRID_TOP (TR_S(284) + TR_S(136) + TR_S(34))
 #define GRID_PITCH (COVER_H + TR_S(94))
 #define CELL_TEXT_H (TR_S(74) + (BIG ? TR_S(28) : 0))   // 放大后状态行可折成两行 / The status may fold to 2 lines
@@ -113,9 +128,22 @@ static int draw_split(uint8_t* fb, int x, int y, int px, int pitch, int w, const
 
 typedef enum { V_SHELF, V_SERIES, V_READ, V_DETAIL } view_t;
 
+extern const app_desc_t app_tr_wt;
+
 /* ---- 状态 / State ---- */
 
 static view_t s_view;
+// WEBTOON：设置了服务器、书架上有几部订阅、来源筛选（0 全部 1 本地 2 WEBTOON）、本页发起的更新、上次看到的进度。
+// WEBTOON: server set, subscriptions on the shelf, source filter (0 all, 1 local, 2 WEBTOON), the update this page
+// started, and the last progress seen.
+static bool s_wt_cfg;
+static int s_wt_series;
+static int s_src;
+static bool s_wt_ours;
+static uint32_t s_wt_seq;
+static bool s_wt_was;
+static int s_wt_progress;
+static int64_t s_wt_poll_ms;
 static comic_entry_t* s_shelf;
 static int s_count;
 static bool s_sort_name;
@@ -168,6 +196,9 @@ static int64_t s_auto_tick;
 static bool s_mark_done;   // 这一话翻到过最后一页 / This episode reached its last page
 
 // 详情。/ Detail.
+static bool s_detail_wt;               // 详情是一部 WEBTOON 订阅 / The detail shows a WEBTOON subscription
+static char s_detail_wt_id[16];
+static bool s_confirm_unsub;
 static char s_detail_path[COMIC_PATH_MAX];
 static char s_detail_name[COMIC_NAME_MAX];
 static bool s_detail_series;
@@ -290,9 +321,15 @@ static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w
     return ok;
 }
 
-// 封面来源：系列取第一话，单本取自己。/ Cover source: a series' first episode, or the single itself.
+// 封面来源：WEBTOON 系列取发现页封面（有的话），其余系列取第一话，单本取自己。/ Cover source: a WEBTOON series uses
+// its store cover when present, other series their first episode, a single itself.
 static bool cover_source(const comic_entry_t* e, char* out, size_t cap) {
     if (!e->series) { snprintf(out, cap, "%s", e->path); return true; }
+    if (e->webtoon && e->wt_id[0]) {
+        struct stat st;
+        tomato_wt_cover_path(e->wt_id, out, cap);
+        if (stat(out, &st) == 0 && st.st_size > 0) return true;
+    }
     if (!s_vols) return false;
     char (*names)[COMIC_NAME_MAX] = heap_caps_malloc(COMIC_NAME_MAX * COMIC_VOLUME_MAX, PSRAM_CAPS);
     if (!names) return false;
@@ -341,9 +378,21 @@ static void cover_build(const comic_entry_t* e) {
     uint8_t* gray = NULL;
     uint16_t gw = 0, gh = 0;
     int entry = -1;
-    if (zip_open(src, &z) == ESP_OK) entry = first_image(z);
-    const bool ok = entry >= 0 && decode_entry(z, entry, &gray, &gw, &gh);
-    zip_close(z);
+    bool ok = false;
+    const size_t slen = strlen(src);
+    if (slen > 4 && !strcasecmp(src + slen - 4, ".jpg")) {
+        // WEBTOON 发现封面是一张小 JPEG。/ A WEBTOON store cover is one small JPEG.
+        uint8_t* data = st.st_size > 0 && st.st_size < 512 * 1024 ? heap_caps_malloc((size_t)st.st_size, PSRAM_CAPS) : NULL;
+        FILE* jf = data ? fopen(src, "rb") : NULL;
+        ok = jf && fread(data, 1, (size_t)st.st_size, jf) == (size_t)st.st_size &&
+             book_image_decode(data, (size_t)st.st_size, 648u * 1000u, &gray, &gw, &gh);
+        if (jf) fclose(jf);
+        heap_caps_free(data);
+    } else {
+        if (zip_open(src, &z) == ESP_OK) entry = first_image(z);
+        ok = entry >= 0 && decode_entry(z, entry, &gray, &gw, &gh);
+        zip_close(z);
+    }
     if (!ok) { c->failed = true; return; }
     cover_fill(c, gray, gw, gh);
     free(gray);
@@ -399,6 +448,17 @@ static void load_last(void) {
 
 static void scan(void) {
     s_count = s_shelf ? comic_store_scan(s_shelf, COMIC_SHELF_MAX) : 0;
+    // 来源筛选：先数 WEBTOON 订阅，再只留选中的那一类。/ Source filter: count WEBTOON subscriptions first, then keep
+    // only the chosen kind.
+    s_wt_series = 0;
+    for (int i = 0; i < s_count; i++) s_wt_series += s_shelf[i].webtoon;
+    if (!s_wt_cfg && !s_wt_series) s_src = 0;
+    if (s_src) {
+        int n = 0;
+        for (int i = 0; i < s_count; i++)
+            if (s_shelf[i].webtoon == (s_src == 2)) s_shelf[n++] = s_shelf[i];
+        s_count = n;
+    }
     if (s_count > 1) qsort(s_shelf, (size_t)s_count, sizeof(*s_shelf), cmp_entry);
     if (s_page >= shelf_pages()) s_page = shelf_pages() - 1;
     // 排序变了，按路径找回当前系列。/ The order changed; find the current series again by path.
@@ -417,15 +477,44 @@ static void draw_series_stack(uint8_t* fb, int x, int y) {
     }
 }
 
+// WEBTOON 的胶囊画不画：设置了服务器，或者书架上已经有订阅。/ Whether the WEBTOON pills show: a server is set, or
+// the shelf already has subscriptions.
+static bool wt_shown(void) { return s_wt_cfg || s_wt_series > 0; }
+
+static int store_text_x(void) { return IMPORT_X - TR_S(18); }
+
 static void draw_shelf(uint8_t* fb) {
-    tr_title(fb, "漫画");
+    // 有 WEBTOON 时和“发现”对应叫“我的漫画”，没有时和以前一样。/ "我的漫画" next to "发现" with WEBTOON; unchanged without.
+    tr_title(fb, wt_shown() ? "我的漫画" : "漫画");
     tr_icon(fb, TR_ICON_IMPORT, IMPORT_X + 20, TR_S(116), false);
+    if (s_wt_cfg) tr_text(fb, store_text_x(), TR_S(98), TR_S(30), "发现", EPD_DRAW_ALIGN_RIGHT, true);
     char line[96];
     snprintf(line, sizeof(line), "%d 部 · %s", s_count, s_sort_name ? "按名字" : "按最近");
     tr_text_dim(fb, TR_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
     tr_pill(fb, SORT_PILL, s_sort_name ? "按名字" : "按最近", false, TR_S(28));
-    if (s_message[0])
+    if (wt_shown()) {
+        static const char* const SRC[3] = {"全部", "本地", "WEBTOON"};
+        tr_pill(fb, SRC_PILL, SRC[s_src % 3], s_src != 0, TR_S(26));
+        if (s_wt_cfg && s_wt_series) {
+            char up[32];
+            if (tomato_wt_updating()) {
+                tomato_status_t st;
+                tomato_sync_get_status(&st);
+                if (st.total > 0) snprintf(up, sizeof(up), "更新中 %d/%d", st.current, st.total);
+                else snprintf(up, sizeof(up), "更新中…");
+            } else {
+                snprintf(up, sizeof(up), "检查更新");
+            }
+            tr_pill(fb, UPDATE_PILL, up, !tomato_wt_updating(), TR_S(26));
+        }
+        // 胶囊占了右边，提示放到上面那一行右边。/ The pills take the right side; the message goes right of the line above.
+        if (s_message[0]) {
+            const int w = TR_W - 2 * TR_MARGIN - ttf_text_width_px(TR_S(28), line) - TR_S(20);
+            tr_message(fb, TR_W - TR_MARGIN, TR_S(158), TR_S(150), w, TR_S(24), s_message, EPD_DRAW_ALIGN_RIGHT, false);
+        }
+    } else if (s_message[0]) {
         tr_message(fb, TR_W - TR_MARGIN, TR_S(220), TR_S(210), 400, TR_S(26), s_message, EPD_DRAW_ALIGN_RIGHT, false);
+    }
     if (!s_count) {
         tr_wrap(fb, TR_MARGIN, TR_S(330), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                 "还没有漫画。设置 → Wi-Fi 与传书，用手机网页上传 CBZ；也可以用读卡器把 CBZ 放进 TF 卡的 comics 文件夹，"
@@ -465,12 +554,23 @@ static void draw_shelf(uint8_t* fb) {
         const int x = CELL_X[k % 3], y = cell_y(k);
         if (e->series) draw_series_stack(fb, x, y);
         draw_cover(fb, (EpdRect){x, y, CELL_W, COVER_H}, e->path, e->name, false);
+        if (e->webtoon) {
+            // 左上角黑底白字“WT”。/ A white-on-black "WT" in the top left corner.
+            const int bw = ttf_text_width_px(TR_S(20), "WT") + TR_S(14);
+            ui_fill_round_rect(fb, (EpdRect){x + 4, y + 4, bw, TR_S(28)}, TR_S(6), UI_GRAY_BLACK);
+            tr_text_inv(fb, x + 4 + bw / 2, y + 4 + TR_S(3), TR_S(20), "WT", EPD_DRAW_ALIGN_CENTER, true);
+        }
         char name[COMIC_NAME_MAX];
         snprintf(name, sizeof(name), "%s", e->name);
         tr_fit(name, TR_S(24), CELL_W);
         tr_text(fb, x, y + COVER_H + TR_S(8), TR_S(24), name, EPD_DRAW_ALIGN_LEFT, true);
         bool done = e->series ? e->done == e->volumes : e->done;
-        if (e->series) {
+        if (e->series && e->webtoon && e->fresh) {
+            snprintf(line, sizeof(line), "%u 话 · %u 话新", (unsigned)e->volumes, (unsigned)e->fresh);
+            done = true;    // 新话加粗提醒 / New episodes stand out in bold
+        } else if (e->series && e->webtoon && !e->volumes) {
+            snprintf(line, sizeof(line), "%s", tomato_wt_updating() ? "下载中…" : "还没下载");
+        } else if (e->series) {
             if (done) snprintf(line, sizeof(line), "%u 话 · 看完", (unsigned)e->volumes);
             else if (e->done) snprintf(line, sizeof(line), "%u 话 · 看完 %u", (unsigned)e->volumes, (unsigned)e->done);
             else snprintf(line, sizeof(line), "%u 话 · %s", (unsigned)e->volumes, e->stamp ? "在看" : "未看");
@@ -562,6 +662,17 @@ static void series_stats(void) {
 }
 
 static void open_series(int index) {
+    // WEBTOON：打开过就不再算“新”（后台正在下载时先不改标记，免得同时写）。/ WEBTOON: once opened the episodes are no
+    // longer new (the marker is left alone while a download may be writing it).
+    comic_entry_t* e = &s_shelf[index];
+    if (e->webtoon && e->fresh && !tomato_wt_updating()) {
+        tomato_wt_mark_t m;
+        if (tomato_wt_mark_read(e->path, &m)) {
+            m.fresh = 0;
+            tomato_wt_mark_write(e->path, &m);
+        }
+        e->fresh = 0;
+    }
     s_series = index;
     snprintf(s_series_path, sizeof(s_series_path), "%s", s_shelf[index].path);
     list_vols();
@@ -957,6 +1068,11 @@ static void open_detail(const char* path, const char* name, bool series, view_t 
     s_detail_series = series;
     s_detail_back = back;
     s_confirm_delete = false;
+    s_confirm_unsub = false;
+    tomato_wt_mark_t m;
+    s_detail_wt = series && tomato_wt_mark_read(path, &m);
+    s_detail_wt_id[0] = 0;
+    if (s_detail_wt) snprintf(s_detail_wt_id, sizeof(s_detail_wt_id), "%s", m.id);
     s_message[0] = 0;
     s_view = V_DETAIL;
     // 文件信息在这里查好，render 只画。/ Look up file info here so render only draws.
@@ -967,6 +1083,7 @@ static void open_detail(const char* path, const char* name, bool series, view_t 
         const int n = names ? comic_store_volumes(path, names, COMIC_VOLUME_MAX) : 0;
         heap_caps_free(names);
         snprintf(s_detail_info[0], sizeof(s_detail_info[0]), "系列 · %d 话", n);
+        if (s_detail_wt) snprintf(s_detail_info[1], sizeof(s_detail_info[1]), "WEBTOON 订阅 · 下载到第 %d 话", m.last);
     } else {
         if (stat(path, &st) == 0) snprintf(s_detail_info[0], sizeof(s_detail_info[0]), "CBZ · %.1f MB", st.st_size / 1048576.0);
         else snprintf(s_detail_info[0], sizeof(s_detail_info[0]), "CBZ");
@@ -981,7 +1098,40 @@ static void open_detail(const char* path, const char* name, bool series, view_t 
 #define DETAIL_CLEAR (EpdRect){TR_MARGIN, TR_S(640), TR_W - 2 * TR_MARGIN, TR_S(84)}
 #define DETAIL_DELETE (EpdRect){TR_MARGIN, TR_S(748), TR_W - 2 * TR_MARGIN, TR_S(84)}
 
+// WEBTOON 订阅的详情：三排按钮（检查更新 | 补全缺的话、清除进度、取消订阅 | 删除），排得紧一点放大后也放得下。
+// A WEBTOON subscription's detail: three rows (check | fill, clear progress, unsubscribe | delete), packed tighter so
+// they still fit at larger sizes.
+#define WT_ROW_Y(i) (TR_S(620) + (i) * TR_S(96))
+static EpdRect wt_btn(int row, int col, int cols) {
+    const int gap = TR_S(16), w = (TR_W - 2 * TR_MARGIN - (cols - 1) * gap) / cols;
+    return (EpdRect){TR_MARGIN + col * (w + gap), WT_ROW_Y(row), w, TR_S(76)};
+}
+
+static void draw_detail_wt(uint8_t* fb) {
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_S(96), TR_S(100), TR_S(36), "系列详情", EPD_DRAW_ALIGN_LEFT, true);
+    tr_wrap(fb, TR_MARGIN, TR_S(190), TR_W - 2 * TR_MARGIN, TR_S(40), TR_S(56), s_detail_name, 3);
+    tr_text_dim(fb, TR_MARGIN, TR_S(380), TR_S(30), s_detail_info[0], EPD_DRAW_ALIGN_LEFT);
+    tr_text(fb, TR_MARGIN, TR_S(430), TR_S(30), s_detail_info[1], EPD_DRAW_ALIGN_LEFT, false);
+    char line[96];
+    if (tomato_wt_updating()) {
+        tomato_status_t st;
+        tomato_sync_get_status(&st);
+        if (st.total > 0) snprintf(line, sizeof(line), "正在下载 %d / %d 话…", st.current, st.total);
+        else snprintf(line, sizeof(line), "正在检查更新…");
+    } else {
+        snprintf(line, sizeof(line), "%s", s_message[0] ? s_message : "取消订阅只删订阅标记，下载好的话留着。");
+    }
+    tr_message(fb, TR_MARGIN, TR_S(530), TR_S(518), TR_W - 2 * TR_MARGIN, TR_S(26), line, EPD_DRAW_ALIGN_LEFT, false);
+    tr_pill(fb, wt_btn(0, 0, 2), "检查这部的更新", true, TR_S(28));
+    tr_pill(fb, wt_btn(0, 1, 2), "补全缺的话", false, TR_S(28));
+    tr_pill(fb, wt_btn(1, 0, 1), "清除这部的全部进度", false, TR_S(28));
+    tr_pill(fb, wt_btn(2, 0, 2), s_confirm_unsub ? "再点取消订阅" : "取消订阅", s_confirm_unsub, TR_S(28));
+    tr_pill(fb, wt_btn(2, 1, 2), s_confirm_delete ? "再点确认删除" : "删除", s_confirm_delete, TR_S(28));
+}
+
 static void draw_detail(uint8_t* fb) {
+    if (s_detail_wt) { draw_detail_wt(fb); return; }
     tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(fb, TR_S(96), TR_S(100), TR_S(36), s_detail_series ? "系列详情" : "漫画详情", EPD_DRAW_ALIGN_LEFT, true);
     tr_wrap(fb, TR_MARGIN, TR_S(190), TR_W - 2 * TR_MARGIN, TR_S(40), TR_S(56), s_detail_name, 3);
@@ -1003,9 +1153,53 @@ static app_redraw_t detail_back(void) {
     return APP_REDRAW_PAGE;
 }
 
+static void start_wt_update(const char* id, bool fill) {
+    if (tomato_wt_updating()) return;
+    if (tomato_sync_busy()) {
+        if (tomato_sync_preemptible()) tomato_sync_cancel();
+        snprintf(s_message, sizeof(s_message), "后台正忙，稍后再点一次");
+        return;
+    }
+    tomato_wt_req_t r = {.job = TOMATO_WT_UPDATE, .fill = fill};
+    if (id) snprintf(r.id, sizeof(r.id), "%s", id);
+    if (tomato_sync_start_wt(&r) == ESP_OK) {
+        s_wt_ours = true;
+        s_wt_seq = tomato_sync_seq();
+        s_wt_progress = -1;
+        s_message[0] = 0;
+    } else {
+        snprintf(s_message, sizeof(s_message), "无法开始检查更新");
+    }
+}
+
+static app_redraw_t touch_detail_wt(uint16_t x, uint16_t y) {
+    if (ui_rect_hit(wt_btn(0, 0, 2), x, y)) { start_wt_update(s_detail_wt_id, false); return APP_REDRAW_PAGE; }
+    if (ui_rect_hit(wt_btn(0, 1, 2), x, y)) { start_wt_update(s_detail_wt_id, true); return APP_REDRAW_PAGE; }
+    if (ui_rect_hit(wt_btn(2, 0, 2), x, y)) {
+        if (!s_confirm_unsub) { s_confirm_unsub = true; s_confirm_delete = false; return APP_REDRAW_PAGE; }
+        char marker[COMIC_PATH_MAX + 16];
+        snprintf(marker, sizeof(marker), "%s/" TOMATO_WT_MARK, s_detail_path);
+        const bool ok = remove(marker) == 0;
+        rmdir(s_detail_path);   // 一话都没有的空文件夹顺手删掉 / Drop the folder if it is empty
+        s_confirm_unsub = false;
+        scan();
+        snprintf(s_message, sizeof(s_message), ok ? "已取消订阅" : "取消订阅没有完成，检查 TF 卡");
+        s_view = V_SHELF;
+        return APP_REDRAW_PAGE;
+    }
+    return APP_REDRAW_NONE;
+}
+
 static app_redraw_t touch_detail(uint16_t x, uint16_t y) {
     if (y < TR_S(160) && x < TR_S(160)) return detail_back();
-    if (ui_rect_hit(DETAIL_CLEAR, x, y)) {
+    // WEBTOON 详情：清除和删除换了位置。/ WEBTOON detail: clear and delete sit elsewhere.
+    const EpdRect clear = s_detail_wt ? wt_btn(1, 0, 1) : DETAIL_CLEAR;
+    const EpdRect del = s_detail_wt ? wt_btn(2, 1, 2) : DETAIL_DELETE;
+    if (s_detail_wt) {
+        const app_redraw_t r = touch_detail_wt(x, y);
+        if (r != APP_REDRAW_NONE) return r;
+    }
+    if (ui_rect_hit(clear, x, y)) {
         comic_progress_forget(s_detail_path);
         snprintf(s_message, sizeof(s_message), comic_progress_flush() == ESP_OK ? "进度已清除" : "保存失败，检查 TF 卡");
         // 内存里的表已经清掉；按它重算“继续看”，卡片不再指向刚清的那一话。
@@ -1015,8 +1209,8 @@ static app_redraw_t touch_detail(uint16_t x, uint16_t y) {
         s_confirm_delete = false;
         return APP_REDRAW_PAGE;
     }
-    if (ui_rect_hit(DETAIL_DELETE, x, y)) {
-        if (!s_confirm_delete) { s_confirm_delete = true; return APP_REDRAW_PAGE; }
+    if (ui_rect_hit(del, x, y)) {
+        if (!s_confirm_delete) { s_confirm_delete = true; s_confirm_unsub = false; return APP_REDRAW_PAGE; }
         const esp_err_t err = comic_store_delete(s_detail_path);
         s_confirm_delete = false;
         // 删了单本或系列回书架；删了系列里的一话回话列表。/ Deleting a single or series returns to the shelf; an
@@ -1056,6 +1250,22 @@ static app_redraw_t open_entry(int i) {
 
 static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_COMIC)) return APP_REDRAW_NONE;
+    if (s_wt_cfg && y >= TR_S(86) && y < TR_S(150) && x >= store_text_x() - ttf_text_width_px(TR_S(30), "发现") - 20 &&
+        x < IMPORT_X - 10) {
+        ctx->request_app = &app_tr_wt;
+        return APP_REDRAW_NONE;
+    }
+    if (wt_shown() && ui_rect_hit(SRC_PILL, x, y)) {
+        s_src = (s_src + 1) % 3;
+        s_page = 0;
+        scan();
+        return APP_REDRAW_PAGE;
+    }
+    if (s_wt_cfg && s_wt_series && ui_rect_hit(UPDATE_PILL, x, y)) {
+        if (tomato_wt_updating()) return APP_REDRAW_NONE;
+        start_wt_update(NULL, false);
+        return APP_REDRAW_PAGE;
+    }
     if (y >= TR_S(86) && y < TR_S(150) && x >= IMPORT_X - 10) {
         // 先到“设置 › 传书”选 Wi-Fi 还是 USB。/ Go to Settings > Transfer to pick Wi-Fi or USB.
         app_tr_settings_request_transfer();
@@ -1306,6 +1516,34 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     }
     auto_turn_set_active(false);
     s_auto_was_on = false;
+    // WEBTOON 更新：进度变了重画书架或详情，结束时重扫书架并显示结果。/ WEBTOON updates: redraw the shelf or detail
+    // when progress moves; when done, rescan and show the result.
+    if ((s_view == V_SHELF || s_view == V_DETAIL) && ctx->now_ms - s_wt_poll_ms >= 500) {
+        s_wt_poll_ms = ctx->now_ms;
+        const bool updating = tomato_wt_updating();
+        if (updating) {
+            tomato_status_t st;
+            tomato_sync_get_status(&st);
+            s_wt_was = true;
+            if (st.current != s_wt_progress) {
+                s_wt_progress = st.current;
+                if (st.current > 0) scan();   // 新下好的话进书架 / Newly downloaded episodes join the shelf
+                return APP_REDRAW_PAGE;
+            }
+        } else if (s_wt_was) {
+            s_wt_was = false;
+            s_wt_progress = -1;
+            if (s_wt_ours && tomato_sync_seq() == s_wt_seq) {
+                tomato_status_t st;
+                tomato_sync_get_status(&st);
+                snprintf(s_message, sizeof(s_message), "%s", st.message);
+            }
+            s_wt_ours = false;
+            scan();
+            if (s_view == V_DETAIL && s_detail_wt) open_detail(s_detail_path, s_detail_name, true, s_detail_back);
+            return APP_REDRAW_PAGE;
+        }
+    }
     if (s_view != V_SHELF && s_view != V_SERIES) return APP_REDRAW_NONE;
     const comic_entry_t* need = NULL;
     if (s_view == V_SHELF) {
@@ -1336,6 +1574,11 @@ static void on_enter(app_ctx_t* ctx) {
     if (!s_vols) s_vols = heap_caps_calloc(COMIC_VOLUME_MAX, COMIC_NAME_MAX, PSRAM_CAPS);
     s_buf[0].idx = s_buf[1].idx = -1;
     s_message[0] = 0;
+    tomato_wt_config_t wt;
+    s_wt_cfg = tomato_wt_config_load(&wt) == ESP_OK;
+    memset(&wt, 0, sizeof(wt));
+    s_wt_was = tomato_wt_updating();
+    s_wt_progress = -1;
     s_auto_level = app_settings_auto_turn(true);
     s_auto_ms = ctx->now_ms;
     s_auto_done = false;
@@ -1416,6 +1659,10 @@ static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
     return (EpdRect){0, 0, TR_W, TR_H};
 }
+
+// 发现页订阅或取消后让我的漫画下次进来时重扫（进页本来就扫，这里留给以后）。/ After the store subscribes or unsubscribes,
+// have the shelf rescan on its next entry (entry always scans; kept as the hook).
+void app_comic_request_rescan(void) {}
 
 const app_desc_t app_comic = {
     .title = "漫画",

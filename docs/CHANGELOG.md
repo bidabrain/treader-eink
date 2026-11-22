@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.0.4
+
+- 漫画新增 WEBTOON 发现和追更：连自建的 [webtoon 服务器](../webtoon/README.md)，在我的漫画右上角“发现”里逛排行、类型、星期更新表、已完结，或搜索（打简体也能搜到繁体中文版）；点开作品看简介和免费话数，选“从第 1 话 / 只追新的 / 最近 5 话”订阅。服务器把每一话的竖长条转成灰度、在分镜之间的空白处按屏幕切页，设备下载成 CBZ 放进我的漫画，阅读和本地漫画一样快。
+  Comics gain a WEBTOON store and follow-along: with a self-hosted [webtoon server](../webtoon/README.md), "发现" at the comic shelf's top right browses rankings, genres, the weekday schedule and completed titles, or searches (simplified input finds the traditional Chinese edition); a title shows its summary and free episode count and subscribes "from episode 1 / new only / latest 5". The server grays each episode's tall strip and cuts it into screens in the gaps between panels; the device downloads CBZ files onto the comic shelf, read as fast as local comics.
+- 订阅存在作品文件夹里的 `.webtoon` 标记，服务器不保存。我的漫画加“全部 / 本地 / WEBTOON”筛选和“检查更新”，订阅的封面角上标“WT”，新下好没看的写“N 话新”；长按系列可以检查这部的更新、补全缺的话或取消订阅（下载好的留着）。
+  Subscriptions are `.webtoon` markers in each title's folder; the server keeps none. The comic shelf adds an All / Local / WEBTOON filter and "检查更新"; subscribed covers carry a "WT" tag and unread new downloads show "N 话新"; a long press on a series checks its updates, fills missing episodes or unsubscribes (downloads stay).
+- 设置 › 内容来源 › 漫画：手机网页填写服务器地址和令牌、测试连接、语言版本（繁体中文 / English）、简体显示、每次最多下载几话。只拉网页上公开免费的话，请自己部署、只给自己用。
+  Settings › Content sources › 漫画: server address and token by phone, connection test, language version, simplified display and episodes per check. Only free public episodes are fetched; self-host for personal use only.
+
 ## 2026-11-21 · 番茄安卓 App 1.3.0
 
 - 和固件 1.0.3 一样，阅读工具条的进度条两边加了“上一章”“下一章”，点了跳到那一章开头并收起工具条；第一章和最后一章对应的按钮变灰。

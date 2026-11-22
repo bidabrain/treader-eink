@@ -29,6 +29,10 @@ void tomato_sync_get_status(tomato_status_t* out) { memset(out, 0, sizeof(*out))
 int tomato_red_list_limit(void) { return 200; }
 int tomato_wb_list_limit(void) { return 100; }
 int tomato_x_list_limit(void) { return 300; }
+int tomato_wt_lang(void) { return 0; }
+const char* tomato_wt_lang_name(int lang) { (void)lang; return "繁体中文"; }
+bool tomato_wt_simp(void) { return true; }
+int tomato_wt_max(void) { return 10; }
 bool tomato_sync_busy(void) { return s_mock_busy; }
 bool tomato_sync_preemptible(void) { return false; }
 bool tomato_config_has_builtin(void) { return s_mock_builtin; }
@@ -134,6 +138,10 @@ void hr_scenes(void) {
     s_test_result[S_RED][0] = 0;
     s_srv = S_X;
     page(P_SRC_SERVER, "server_x_empty");
+#ifndef HR_BASELINE   // 改动前没有漫画服务器 / No comic server before this change
+    s_srv = S_WT;
+    page(P_SRC_SERVER, "server_comic");
+#endif
     s_srv = S_RED;
     s_web_on = true;
     memset(&s_web_status, 0, sizeof(s_web_status));
