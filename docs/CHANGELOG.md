@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · webtoon 服务器 0.2.1
+
+- 服务器不再按内容分级替用户过滤插件来源：装好的来源（包括标成成人的）都发给设备和 App，用哪个由用户自己选；面板去掉“显示成人来源”开关，只在“设备上的来源”里标“成人”。面板里手动勾掉的来源照旧不发。
+  The server no longer filters extension sources by content rating: every installed source, adult-rated ones included, reaches devices and the app, and the user chooses; the panel drops the "显示成人来源" switch and only labels such sources "成人" under "设备上的来源". Sources unticked in the panel are still left out.
+
 ## 2026-11-22 · WEBTOON 安卓 App 1.1.0
 
 - 和固件 1.0.6 一样，发现页支持 [webtoon 服务器 0.2.0](../webtoon/README.md) 的插件来源：服务器开了 Mihon 插件时多一行“来源”，可以在 WEBTOON 和各个插件来源之间切换；插件来源按“人气 / 最新”逛，搜索只搜当前来源，订阅、检查更新和下载照旧。服务器没开插件或是旧版本时界面不变。

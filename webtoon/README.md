@@ -111,7 +111,7 @@ COMPOSE_PROFILES=mihon
 **面板 → 插件**：
 
 - 添加或删除插件仓库；安装、更新、卸载插件。
-- **设备上的来源**：勾选哪些来源出现在设备上，调整顺序；成人来源默认不显示，勾选“显示成人来源”后才显示。
+- **设备上的来源**：勾选哪些来源出现在设备上，调整顺序。装好的来源默认全部发给设备；服务器不按内容分级替你过滤，成人来源只在面板里标“成人”，用哪个由你在设备或 App 上自己选。
 - **同一话有多个版本**（不同汉化组）：默认只留最先出现的那个。
 - **跨页**（横向的整张图）：默认拆成两页、右页在前；也可以改成左页在前、旋转 90° 或整张缩小。
 
@@ -127,7 +127,7 @@ COMPOSE_PROFILES=mihon
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/sources` | `{mihon, items:[{key,name,lang,latest,nsfw}]}`。第一项总是 `webtoon`；开了插件功能时，后面是面板里没有隐藏的插件来源，`key` 是来源编号（字符串），`latest` 表示这个来源有“最新” |
+| `GET /api/device/v1/sources` | `{mihon, items:[{key,name,lang,latest,nsfw}]}`。第一项总是 `webtoon`；开了插件功能时，后面是面板里没有隐藏的插件来源，`key` 是来源编号（字符串），`latest` 表示这个来源有“最新”，`nsfw` 只是标记（服务器不按它过滤） |
 | `GET /api/device/v1/store?seg=rank\|genre\|day\|done&key=…&limit=60` | `{seg, key, keys:[{key,name}], items:[{id,title,author,genre,likes,canvas,adult}]}`。`rank` 的 key 是 `trending` / `popular` / `originals`；`genre` 的 key 从 `keys` 里来；`day` 的 key 是 `monday`…`sunday`（不带时是今天）；`done` 是已完结 |
 | `GET /api/device/v1/search?q=…` | `{q, items:[…同上]}`，官方作品排前面 |
 | `GET /api/device/v1/title/{id}` | `{id,title,author,genre,summary,done,latest,episodes:[{no,title,date}]}`，`episodes` 是全部免费话，从旧到新 |

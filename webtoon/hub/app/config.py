@@ -16,7 +16,7 @@ CACHE_DIR = DATA / "cache"
 CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8095"))
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 BASE = os.environ.get("WEBTOON_BASE", "https://www.webtoons.com").rstrip("/")
 MOBILE = os.environ.get("WEBTOON_MOBILE", "https://m.webtoons.com").rstrip("/")
 
@@ -40,12 +40,13 @@ DEFAULTS: dict[str, Any] = {
     # 转好的 CBZ 保留天数和总大小上限（MB）。/ Converted CBZ retention in days and size cap in MB.
     "keep_days": 14,
     "max_mb": 3000,
-    # Mihon 插件来源：设备上隐藏的来源、来源顺序、是否显示成人来源、同一话多个版本只留一个、跨页怎么放。
-    # Mihon extension sources: sources hidden on devices, source order, whether adult sources show, keep one version
-    # per chapter number, and how spreads are laid out.
+    # Mihon 插件来源：设备上隐藏的来源（用户自己勾的）、来源顺序、同一话多个版本只留一个、跨页怎么放。服务器不按内容
+    # 分级替用户过滤来源，成人来源也照样发给设备，由用户在客户端自己选。
+    # Mihon extension sources: sources hidden on devices (the user's own choice), source order, keep one version per
+    # chapter number, and how spreads are laid out. The server never filters sources by content rating for the user;
+    # adult sources reach devices too and the user picks on the client.
     "mihon_hidden": [],
     "mihon_order": [],
-    "mihon_nsfw": False,
     "mihon_dedupe": True,
     "mihon_spread": "split_rtl",
 }

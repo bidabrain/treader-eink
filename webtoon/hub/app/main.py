@@ -330,7 +330,7 @@ async def _sources(for_device: bool) -> dict:
 @app.get("/api/panel/mihon")
 async def panel_mihon():
     cfg = config.load()
-    return await _sources(False) | {k: cfg[k] for k in ("mihon_nsfw", "mihon_dedupe", "mihon_spread")}
+    return await _sources(False) | {k: cfg[k] for k in ("mihon_dedupe", "mihon_spread")}
 
 
 @app.get("/api/panel/mihon/extensions")
@@ -363,7 +363,6 @@ async def panel_mihon_extension(body: ExtBody):
 class MihonSettings(BaseModel):
     mihon_hidden: list[str] | None = None
     mihon_order: list[str] | None = None
-    mihon_nsfw: bool | None = None
     mihon_dedupe: bool | None = None
     mihon_spread: str | None = None
 

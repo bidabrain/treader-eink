@@ -179,7 +179,7 @@ let srcAll = [];
 loaders.mihonSources = async () => {
   const r = await api('/api/panel/mihon');
   srcAll = r.items.filter((s) => s.key !== 'webtoon');
-  $('#mNsfw').checked = r.mihon_nsfw; $('#mDedupe').checked = r.mihon_dedupe; $('#mSpread').value = r.mihon_spread;
+  $('#mDedupe').checked = r.mihon_dedupe; $('#mSpread').value = r.mihon_spread;
   drawSrcs();
 };
 function drawSrcs() {
@@ -196,7 +196,7 @@ $('#mSave').onclick = async () => {
   try {
     await api('/api/panel/mihon/settings', { method: 'POST', body: {
       mihon_hidden: srcAll.filter((s) => s.hidden).map((s) => s.key), mihon_order: srcAll.map((s) => s.key),
-      mihon_nsfw: $('#mNsfw').checked, mihon_dedupe: $('#mDedupe').checked, mihon_spread: $('#mSpread').value } });
+      mihon_dedupe: $('#mDedupe').checked, mihon_spread: $('#mSpread').value } });
     $('#mMsg').textContent = '已保存'; loadSources();
   } catch (e) { $('#mMsg').textContent = e.message; }
 };

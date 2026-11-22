@@ -292,7 +292,7 @@ def _fake_mihon(monkeypatch):
 
     monkeypatch.setattr(mihon, "gql", gql)
     monkeypatch.setattr(mihon, "get_image", get_image)
-    monkeypatch.setattr(mihon, "_alive", (0.0, False))
+    monkeypatch.setattr(mihon, "_alive", (float("-inf"), False))
     mihon.forget()
 
 
@@ -302,8 +302,10 @@ def test_device_api_mihon(monkeypatch):
     with TestClient(main.app) as c:
         h = {"x-webtoon-token": config.load()["device_token"]}
         r = c.get("/api/device/v1/sources", headers=h).json()
-        # 成人来源默认不显示，本地来源按名字排在后面。/ Adult sources hidden by default; local sorts by name.
-        assert r["mihon"] and [s["key"] for s in r["items"]] == ["webtoon", "77", "0"]
+        # 成人来源也发给设备（只带 nsfw 标记），按名字排。/ Adult sources reach the device too (flagged nsfw only),
+        # sorted by name.
+        assert r["mihon"] and [s["key"] for s in r["items"]] == ["webtoon", "88", "77", "0"]
+        assert [s["nsfw"] for s in r["items"]] == [False, True, False, False]
         r = c.get("/api/device/v1/store?src=77&seg=pop", headers=h).json()
         assert [i["id"] for i in r["items"]] == ["m1", "m2"] and r["items"][0]["author"] == "Art"
         assert r["items"][0]["src"] == "Shelf (EN)" and r["keys"] == []
@@ -326,10 +328,9 @@ def test_device_api_mihon(monkeypatch):
         assert "<Manga>YesAndRightToLeft</Manga>" in info and "<Series>Pages</Series>" in info
         assert jobs.cbz_path("mihon", "m9", 2).exists()
         assert c.get("/api/device/v1/episode/m9x/1", headers=h).status_code == 400
-        # 面板隐藏来源、打开成人来源。/ The panel hides a source and allows adult ones.
+        # 面板里用户自己勾掉的来源才不发。/ Only sources the user unticked in the panel are left out.
         c.post("/api/panel/setup", json={"password": "password123"})
-        r = c.post("/api/panel/mihon/settings", json={"mihon_hidden": ["0"], "mihon_nsfw": True,
-                                                        "mihon_order": ["88", "77"]}).json()
+        r = c.post("/api/panel/mihon/settings", json={"mihon_hidden": ["0"], "mihon_order": ["88", "77"]}).json()
         assert [s["key"] for s in r["items"]] == ["webtoon", "88", "77", "0"] and r["items"][3]["hidden"]
         r = c.get("/api/device/v1/sources", headers=h).json()
         assert [s["key"] for s in r["items"]] == ["webtoon", "88", "77"]
@@ -358,7 +359,7 @@ def test_mihon_unavailable(monkeypatch):
     async def down(*a, **k):
         raise source.SourceError(502, "down")
     monkeypatch.setattr(mihon, "gql", down)
-    monkeypatch.setattr(mihon, "_alive", (0.0, False))
+    monkeypatch.setattr(mihon, "_alive", (float("-inf"), False))
     with TestClient(main.app) as c:
         h = {"x-webtoon-token": config.load()["device_token"]}
         r = c.get("/api/device/v1/sources", headers=h).json()

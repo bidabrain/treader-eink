@@ -48,7 +48,7 @@ DONE = {"COMPLETED", "PUBLISHING_FINISHED", "CANCELLED"}
 SEGS = {"pop": "POPULAR", "latest": "LATEST"}
 
 _client: httpx.AsyncClient | None = None
-_alive: tuple[float, bool] = (0.0, False)
+_alive: tuple[float, bool] = (float("-inf"), False)   # 还没查过 / Never checked
 _cache: dict[str, tuple[float, Any]] = {}
 _db_lock = threading.Lock()
 
@@ -154,15 +154,16 @@ async def all_sources() -> list[dict]:
 
 
 async def sources(for_device: bool) -> list[dict]:
-    """设备看到的来源：去掉面板里隐藏的，成人来源要在面板里打开才显示；按面板排的顺序。/ Sources a device sees: those
-    hidden in the panel are dropped and adult ones need the panel switch; in the panel's order."""
+    """设备看到的来源：只去掉用户在面板里自己勾掉的，按面板排的顺序。成人来源不另外过滤（nsfw 只是标记），由用户在
+    客户端自己选。/ Sources a device sees: only those the user unticked in the panel are dropped, in the panel's
+    order. Adult sources are not filtered (nsfw is only a flag); the user picks on the client."""
     cfg = config.load()
     items = await all_sources()
     hidden = set(cfg.get("mihon_hidden") or [])
     order = {k: i for i, k in enumerate(cfg.get("mihon_order") or [])}
     items.sort(key=lambda s: (order.get(s["key"], len(order)), s["name"]))
     if for_device:
-        items = [s for s in items if s["key"] not in hidden and (cfg.get("mihon_nsfw") or not s["nsfw"])]
+        items = [s for s in items if s["key"] not in hidden]
     else:
         for s in items:
             s["hidden"] = s["key"] in hidden
