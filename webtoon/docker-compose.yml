@@ -5,6 +5,12 @@
 # no subscriptions (they live on the device's TF card). Self-hosted for personal use.
 #
 # 用法 / Usage:  docker compose up -d   然后打开 / then open  http://服务器IP:8095
+#
+# 插件功能（可选，多占约 1 GB 内存）：在 .env 里写 COMPOSE_PROFILES=mihon 再 docker compose up -d，会多起一个
+# Suwayomi-Server 运行 Mihon 插件。本项目不提供任何插件仓库，只添加你有权访问的来源。
+# Plugin feature (optional, about 1 GB more memory): put COMPOSE_PROFILES=mihon in .env and run docker compose up -d
+# to add a Suwayomi-Server that runs Mihon extensions. This project ships no extension repository; only add sources you
+# have the right to access.
 services:
   hub:
     image: ghcr.io/bidabrain/treader-webtoon:latest
@@ -14,3 +20,35 @@ services:
       - "${WEBTOON_BIND:-0.0.0.0}:${WEBTOON_PORT:-8095}:8095"
     volumes:
       - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/api/panel/state', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+
+  suwayomi:
+    profiles: ["mihon"]
+    image: ghcr.io/suwayomi/suwayomi-server:v2.4.2373
+    container_name: webtoon-suwayomi
+    restart: unless-stopped
+    depends_on:
+      hub:
+        condition: service_healthy       # hub 先生成共用的密码文件 / The hub writes the shared password file first
+    # 不映射端口：只有 hub 在 compose 内网里访问它。/ No published port: only the hub reaches it inside compose.
+    environment:
+      AUTH_MODE: basic_auth
+      AUTH_USERNAME: hub
+      AUTH_PASSWORD_FILE: /hub/suwayomi.secret
+      WEB_UI_ENABLED: "false"
+      KCEF_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "-Xmx${MIHON_HEAP:-768m}"
+    volumes:
+      - ./data/mihon:/hub:ro
+      - suwayomi:/home/suwayomi/.local/share/Tachidesk
+      # 自己的本地漫画（Mihon 本地来源的格式：一部一个文件夹，每话一个子文件夹或 CBZ）：去掉下一行的 # 号。
+      # Your own local comics (Mihon local-source layout: a folder per title, a subfolder or CBZ per chapter):
+      # uncomment the next line.
+      # - ./local:/home/suwayomi/.local/share/Tachidesk/local
+
+volumes:
+  suwayomi:

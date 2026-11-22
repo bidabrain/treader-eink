@@ -14,11 +14,27 @@ import os
 import time
 from pathlib import Path
 
-from . import config, convert, source
+from . import config, convert, mihon, source
 
 _state: dict[tuple[str, str, int], dict] = {}
 _queue: asyncio.Queue | None = None
 recent: list[dict] = []          # 面板显示最近做过的 / Recent jobs for the panel
+
+
+def is_mihon(tid: str) -> bool:
+    return tid.startswith("m")
+
+
+async def _info(lang: str, tid: str) -> dict:
+    return await (mihon.title(tid) if is_mihon(tid) else source.title(lang, tid))
+
+
+async def _images(lang: str, tid: str, no: int) -> list[str]:
+    return await (mihon.images(tid, no) if is_mihon(tid) else source.images(lang, tid, no))
+
+
+async def _fetch(tid: str, url: str, pace: bool = True) -> bytes:
+    return await (mihon.get_image(url, pace) if is_mihon(tid) else source.get_image(url, pace))
 
 
 def cbz_path(lang: str, tid: str, no: int) -> Path:
@@ -62,7 +78,7 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
     lang, tid, no = key
     st = _state[key]
     cfg = config.load()
-    urls = await source.images(lang, tid, no)
+    urls = await _images(lang, tid, no)
     st["total"] = len(urls)
     path = cbz_path(lang, tid, no)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,9 +87,14 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
     # JPEGs; only the strip being cut stays in memory.
     writer = convert.CbzWriter(tmp, cfg["quality"])
     try:
-        pager = convert.Pager(cfg["page_w"], cfg["page_h"], sink=writer.add)
+        # WEBTOON 一定是竖长条；插件来源先看前几张图再决定。/ WEBTOON is always a tall strip; extension sources
+        # look at the first few images before deciding.
+        if is_mihon(tid):
+            pager = convert.AutoPager(cfg["page_w"], cfg["page_h"], sink=writer.add, spread=cfg["mihon_spread"])
+        else:
+            pager = convert.Pager(cfg["page_w"], cfg["page_h"], sink=writer.add)
         for i, url in enumerate(urls):
-            data = await source.get_image(url)
+            data = await _fetch(tid, url)
             await asyncio.to_thread(pager.feed, data)
             del data
             st["done"] = i + 1
@@ -82,7 +103,11 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
             raise source.SourceError(502, "这一话没有可用的图片")
         for page in rest:
             await asyncio.to_thread(writer.add, page)
-        await asyncio.to_thread(writer.close, {**meta, "no": no, "lang": lang})
+        strip = not isinstance(pager, convert.AutoPager) or pager.strip
+        rtl = not strip and cfg["mihon_spread"] == "split_rtl"
+        await asyncio.to_thread(writer.close, {**meta, "no": no, "lang": "" if is_mihon(tid) else lang,
+                                               "format": "Webtoon" if strip else "",
+                                               "manga": "YesAndRightToLeft" if rtl else "No"})
         os.replace(tmp, path)
     except BaseException:
         writer.abort()
@@ -97,10 +122,11 @@ async def worker() -> None:
         key = await _queue.get()
         lang, tid, no = key
         t0 = time.time()
-        meta = {"web": f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
+        meta = {"web": "" if is_mihon(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
         try:
             try:
-                info = await source.title(lang, tid)
+                info = await _info(lang, tid)
+                meta["web"] = meta["web"] or info.get("web", "")
                 ep = next((e for e in info["episodes"] if e["no"] == no), None)
                 meta.update(series=info["title"], author=info["author"], title=ep["title"] if ep else "")
             except source.SourceError:
@@ -165,7 +191,7 @@ async def cover(lang: str, tid: str, url: str) -> Path | None:
     if not url:
         return None
     try:
-        data = await source.get_image(url, pace=False)
+        data = await _fetch(tid, url, pace=False)
         out = await asyncio.to_thread(convert.cover, data)
     except Exception:  # noqa: BLE001
         return None

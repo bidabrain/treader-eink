@@ -181,3 +181,186 @@ def test_prune():
     old = 1_000_000
     os.utime(p, (old, old))
     assert jobs.prune() >= 1 and not p.exists()
+
+
+# ---- Mihon 插件来源 / Mihon extension sources ----
+
+from app import mihon  # noqa: E402
+
+
+def _ch(cid, order, num, url=None, name=None):
+    return {"id": cid, "sourceOrder": order, "chapterNumber": num, "url": url or f"/c/{cid}",
+            "name": name or f"Ch {num}", "uploadDate": "1795311762452"}
+
+
+def test_assign_numbers_stay_put():
+    # 第一次按来源顺序从旧到新编号；之后新章节接在后面，补档也不打乱已有话号。/ First numbering follows source order
+    # oldest first; later chapters append and a back-filled chapter never renumbers the others.
+    eps = mihon.assign(101, [_ch(11, 1, 1), _ch(12, 2, 2), _ch(13, 3, 3)])
+    assert [(e["no"], e["chapter"]) for e in eps] == [(1, 11), (2, 12), (3, 13)]
+    eps = mihon.assign(101, [_ch(11, 1, 1), _ch(15, 2, 1.5), _ch(12, 3, 2), _ch(13, 4, 3), _ch(14, 5, 4)])
+    assert [(e["no"], e["chapter"]) for e in eps] == [(1, 11), (2, 12), (3, 13), (4, 15), (5, 14)]
+    # 章节 id 变了（插件刷新）话号不变；消失的章节不列出。/ A changed chapter id keeps its number; vanished chapters
+    # are not listed.
+    eps = mihon.assign(101, [_ch(21, 1, 1, url="/c/11"), _ch(13, 2, 3)])
+    assert [(e["no"], e["chapter"]) for e in eps] == [(1, 21), (3, 13)]
+    assert all(e["date"] == 1795311762 for e in eps)
+
+
+def test_assign_flipped_order_and_dedupe():
+    # sourceOrder 反过来的插件也是从旧到新；同一话号的第二个版本不列出；没有话号的章节照样编号。
+    # An extension with reversed sourceOrder still numbers oldest first; a second version of a chapter number is
+    # dropped; chapters without a number still get one.
+    eps = mihon.assign(202, [_ch(1, 1, 3), _ch(2, 2, 2), _ch(3, 3, 2, name="other group"), _ch(4, 4, 1),
+                             _ch(5, 5, -1, name="Extra")])
+    assert [e["title"] for e in eps] == ["Extra", "Ch 1", "other group", "Ch 3"]
+    eps = mihon.assign(203, [_ch(1, 1, 1), _ch(2, 2, 1, name="dup")], dedupe=False)
+    assert [e["no"] for e in eps] == [1, 2]
+
+
+def _img(w, h):
+    im = Image.new("RGB", (w, h), "white")
+    ImageDraw.Draw(im).rectangle((10, 10, w - 10, h - 10), fill=(60, 60, 60))
+    out = io.BytesIO()
+    im.save(out, "JPEG")
+    return out.getvalue()
+
+
+def test_page_pager_and_spreads():
+    p = convert.PagePager(648, 1000)
+    p.feed(_img(800, 1200))
+    p.feed(_img(1600, 1200))                    # 跨页拆成两页 / A spread splits in two
+    pages = p.finish()
+    assert len(pages) == 3 and all(pg.width <= 648 and pg.height <= 1000 for pg in pages)
+    assert pages[0].width == 648 or pages[0].height == 1000
+    rot = convert.PagePager(648, 1000, spread="rotate")
+    rot.feed(_img(1600, 1200))
+    (pg,) = rot.finish()
+    assert pg.height > pg.width
+    # 右页在前：左半边画个白块，右页先出来就没有白块。/ Right page first: mark the left half and the first page
+    # must be the unmarked right half.
+    im = Image.new("L", (1600, 1200), 60)
+    ImageDraw.Draw(im).rectangle((100, 100, 300, 300), fill=255)
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    rtl = convert.PagePager(648, 1000)
+    rtl.feed(buf.getvalue())
+    first, second = rtl.finish()
+    assert first.getextrema()[1] < 200 and second.getextrema()[1] > 200
+
+
+def test_auto_pager_decides():
+    a = convert.AutoPager(648, 1000)
+    for _ in range(3):
+        a.feed(_strip(3000, [(100, 900), (1100, 2900)]))
+    a.finish()
+    assert a.strip and a.count >= 3
+    b = convert.AutoPager(648, 1000)
+    for _ in range(2):
+        b.feed(_img(800, 1200))
+    assert len(b.finish()) == 2 and not b.strip     # 不到 3 张也能收尾 / Finishes with fewer than 3 images
+
+
+def _fake_mihon(monkeypatch):
+    async def gql(query, variables=None, partial=False):
+        if "sources" in query and "totalCount" in query:
+            return {"sources": {"totalCount": 2}}
+        if "sources" in query:
+            return {"sources": {"nodes": [
+                {"id": "0", "name": "Local source", "lang": "localsourcelang", "displayName": "Local source",
+                 "supportsLatest": True, "contentWarning": "SAFE"},
+                {"id": "77", "name": "Shelf", "lang": "en", "displayName": "Shelf (EN)", "supportsLatest": False,
+                 "contentWarning": "SAFE"},
+                {"id": "88", "name": "Adult", "lang": "en", "displayName": "Adult", "supportsLatest": True,
+                 "contentWarning": "NSFW"}]}}
+        if "fetchSourceManga" in query:
+            return {"fetchSourceManga": {"hasNextPage": variables["page"] < 2, "mangas": [
+                {"id": variables["page"], "title": f"T{variables['page']}", "author": None, "artist": "Art",
+                 "thumbnailUrl": None}]}}
+        if "fetchMangaAndChapters" in query:
+            return {"fetchMangaAndChapters": {
+                "manga": {"id": variables["id"], "title": "Pages", "author": "Au", "artist": None, "description": " d ",
+                          "genre": ["A", "B"], "status": "COMPLETED", "thumbnailUrl": None, "sourceId": "77",
+                          "url": f"/m/{variables['id']}", "realUrl": "https://x/m", "source": {"displayName": "Shelf"}},
+                "chapters": [_ch(31, 1, 1), _ch(32, 2, 2)]}}
+        if "fetchChapterPages" in query:
+            return {"fetchChapterPages": {"pages": ["/p/0", "/p/1"]}}
+        raise AssertionError(query)
+
+    async def get_image(url, pace=True):
+        return _img(800, 1200)
+
+    monkeypatch.setattr(mihon, "gql", gql)
+    monkeypatch.setattr(mihon, "get_image", get_image)
+    monkeypatch.setattr(mihon, "_alive", (0.0, False))
+    mihon.forget()
+
+
+def test_device_api_mihon(monkeypatch):
+    _fake_source(monkeypatch)
+    _fake_mihon(monkeypatch)
+    with TestClient(main.app) as c:
+        h = {"x-webtoon-token": config.load()["device_token"]}
+        r = c.get("/api/device/v1/sources", headers=h).json()
+        # 成人来源默认不显示，本地来源按名字排在后面。/ Adult sources hidden by default; local sorts by name.
+        assert r["mihon"] and [s["key"] for s in r["items"]] == ["webtoon", "77", "0"]
+        r = c.get("/api/device/v1/store?src=77&seg=pop", headers=h).json()
+        assert [i["id"] for i in r["items"]] == ["m1", "m2"] and r["items"][0]["author"] == "Art"
+        assert r["items"][0]["src"] == "Shelf (EN)" and r["keys"] == []
+        assert c.get("/api/device/v1/store?src=abc", headers=h).status_code == 400
+        t = c.get("/api/device/v1/title/m9?lang=zh-hant", headers=h).json()
+        assert t["done"] and t["latest"] == 2 and t["summary"] == "d" and t["genre"] == "A、B"
+        assert [e["no"] for e in t["episodes"]] == [1, 2]
+        r = c.post("/api/device/v1/check", headers=h,
+                   json={"titles": [{"id": "m9", "last": 1}, {"id": "5", "last": 2}]}).json()
+        assert [e["no"] for e in r["titles"][0]["new"]] == [2] and [e["no"] for e in r["titles"][1]["new"]] == [3]
+        for _ in range(100):
+            st = c.get("/api/device/v1/episode/m9/2?lang=zh-hant", headers=h).json()
+            if st["state"] != "pending":
+                break
+            asyncio.run(asyncio.sleep(0.05))
+        assert st["state"] == "ready", st
+        z = zipfile.ZipFile(io.BytesIO(c.get("/api/device/v1/episode/m9/2.cbz", headers=h).content))
+        assert z.namelist() == ["0001.jpg", "0002.jpg", "ComicInfo.xml"]
+        info = z.read("ComicInfo.xml").decode()
+        assert "<Manga>YesAndRightToLeft</Manga>" in info and "<Series>Pages</Series>" in info
+        assert jobs.cbz_path("mihon", "m9", 2).exists()
+        assert c.get("/api/device/v1/episode/m9x/1", headers=h).status_code == 400
+        # 面板隐藏来源、打开成人来源。/ The panel hides a source and allows adult ones.
+        c.post("/api/panel/setup", json={"password": "password123"})
+        r = c.post("/api/panel/mihon/settings", json={"mihon_hidden": ["0"], "mihon_nsfw": True,
+                                                        "mihon_order": ["88", "77"]}).json()
+        assert [s["key"] for s in r["items"]] == ["webtoon", "88", "77", "0"] and r["items"][3]["hidden"]
+        r = c.get("/api/device/v1/sources", headers=h).json()
+        assert [s["key"] for s in r["items"]] == ["webtoon", "88", "77"]
+        assert c.post("/api/panel/mihon/settings", json={"mihon_spread": "x"}).status_code == 400
+
+
+def test_mihon_identity_guard(monkeypatch):
+    _fake_mihon(monkeypatch)
+    asyncio.run(mihon.title("m500"))
+    mihon.forget()
+    # 同一个 id 的作品变了（Suwayomi 数据库重置过）：拒绝。/ The same id now names another title (Suwayomi's database
+    # was reset): refuse.
+    with mihon._db_lock:
+        con = mihon._db()
+        con.execute("UPDATE mangas SET url = '/other' WHERE manga = 500")
+        con.commit()
+        con.close()
+    try:
+        asyncio.run(mihon.title("m500"))
+        raise AssertionError("expected SourceError")
+    except source.SourceError as e:
+        assert e.status == 409
+
+
+def test_mihon_unavailable(monkeypatch):
+    async def down(*a, **k):
+        raise source.SourceError(502, "down")
+    monkeypatch.setattr(mihon, "gql", down)
+    monkeypatch.setattr(mihon, "_alive", (0.0, False))
+    with TestClient(main.app) as c:
+        h = {"x-webtoon-token": config.load()["device_token"]}
+        r = c.get("/api/device/v1/sources", headers=h).json()
+        assert r == {"mihon": False, "items": [{"key": "webtoon", "name": "WEBTOON", "lang": "", "latest": False,
+                                                "nsfw": False}]}

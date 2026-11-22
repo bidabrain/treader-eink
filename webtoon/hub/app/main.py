@@ -6,8 +6,10 @@ card and the device asks whether there are new episodes.
 面板只在局域网用：从 Cloudflare 隧道进来的请求（带 CF-Connecting-IP）只能访问 /api/device/。
 The panel is LAN only: requests arriving through Cloudflare (CF-Connecting-IP) may only reach /api/device/.
 
-只拉网页上公开免费的话；自己部署、只给自己用，不提供公共服务。
-Only free public episodes are fetched; self-hosted for personal use, never a public service.
+只拉网页上公开免费的话；自己部署、只给自己用，不提供公共服务。开了插件功能时，编号以 m 开头的作品走 mihon.py
+（Suwayomi 运行的 Mihon 插件）。
+Only free public episodes are fetched; self-hosted for personal use, never a public service. With the plugin feature
+on, titles whose id starts with m go through mihon.py (Mihon extensions run by Suwayomi).
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, jobs, source, tunnel
+from . import auth, config, convert, jobs, mihon, source, tunnel
 
 WEB = Path(__file__).parent / "web"
 LIST_MAX = 120
@@ -31,7 +33,8 @@ CHECK_MAX = 200
 async def lifespan(app: FastAPI):
     config.ensure_dirs()
     config.load()
-    tasks = [asyncio.create_task(jobs.worker()), asyncio.create_task(jobs.pruner())]
+    mihon.password()        # Suwayomi 启动前密码文件要在 / The password file must exist before Suwayomi starts
+    tasks =[asyncio.create_task(jobs.worker()), asyncio.create_task(jobs.pruner())]
     await tunnel.apply()
     yield
     for t in tasks:
@@ -63,6 +66,18 @@ async def source_error(_request: Request, e: source.SourceError):
 
 # ---- 共用 / Shared ----
 
+WEBTOON = "webtoon"     # 来源里 WEBTOON 自己的 key / WEBTOON's own key among the sources
+
+
+def _check(lang: str, tid: str) -> str:
+    """检查编号和语言，返回实际用的语言（插件作品一律是 mihon，设备发来的 lang 不管）。/ Validate the id and language
+    and return the language actually used (always mihon for extension titles, whatever the device sent)."""
+    if jobs.is_mihon(tid):
+        mihon._mid(tid)
+        return mihon.LANG
+    source._check(lang, tid)
+    return lang
+
 _covers: dict[tuple[str, str], str] = {}   # 记下列表里见过的封面地址 / Cover URLs seen in lists
 COVERS_MAX = 5000
 
@@ -89,19 +104,35 @@ def _cards(lang: str, items: list[dict], zh: str, limit: int) -> list[dict]:
     return out
 
 
-async def _store(lang: str, seg: str, key: str, zh: str, limit: int) -> dict:
+async def _store(lang: str, seg: str, key: str, zh: str, limit: int, src: str = WEBTOON) -> dict:
+    if src != WEBTOON:
+        r = await mihon.store(src, seg)
+        return {"seg": r["seg"], "key": "", "keys": [], "src": src, "items": _mcards(r["items"], limit)}
     r = await source.store(lang, seg, key)
     conv = _simp(lang, zh)
     return {"seg": r["seg"], "key": r["key"], "keys": [{"key": k["key"], "name": conv(k["name"])} for k in r["keys"]],
             "items": _cards(lang, r["items"], zh, limit)}
 
 
-async def _search(lang: str, q: str, zh: str) -> dict:
+def _mcards(items: list[dict], limit: int) -> list[dict]:
+    return [{k: c[k] for k in ("id", "title", "author", "genre", "likes", "canvas", "adult", "src")}
+            for c in items[:max(1, min(limit, LIST_MAX))]]
+
+
+async def _search(lang: str, q: str, zh: str, src: str = WEBTOON) -> dict:
+    if src != WEBTOON:
+        r = await mihon.search(src, q)
+        return {"q": r["q"], "src": src, "items": _mcards(r["items"], LIST_MAX)}
     r = await source.search(lang, q)
     return {"q": r["q"], "items": _cards(lang, r["items"], zh, LIST_MAX)}
 
 
 async def _title(lang: str, tid: str, zh: str) -> dict:
+    if jobs.is_mihon(tid):
+        _check(lang, tid)
+        t = await mihon.title(tid)
+        return {k: t[k] for k in ("id", "title", "author", "genre", "summary", "done", "latest", "src", "error")} | {
+            "episodes": [{"no": e["no"], "title": e["title"], "date": e["date"]} for e in t["episodes"]]}
     t = await source.title(lang, tid)
     conv = _simp(lang, zh)
     _remember_cover(lang, tid, t["cover"])
@@ -111,9 +142,12 @@ async def _title(lang: str, tid: str, zh: str) -> dict:
 
 
 async def _cover(lang: str, tid: str) -> FileResponse:
-    if not source.ID_RE.match(tid) or not source.LANG_RE.match(lang):
+    if jobs.is_mihon(tid):
+        lang, url = _check(lang, tid), mihon.cover_url(tid)
+    elif not source.ID_RE.match(tid) or not source.LANG_RE.match(lang):
         raise HTTPException(400, "路径不对")
-    url = _covers.get((lang, tid), "")
+    else:
+        url = _covers.get((lang, tid), "")
     if not url and not jobs.cover_path(lang, tid).exists():
         try:
             url = (await source.title(lang, tid))["cover"]
@@ -186,13 +220,13 @@ async def panel_status():
 
 
 @app.get("/api/panel/store")
-async def panel_store(lang: str = "zh-hant", seg: str = "rank", key: str = "", zh: str = "s"):
-    return await _store(lang, seg, key, zh, LIST_MAX)
+async def panel_store(lang: str = "zh-hant", seg: str = "rank", key: str = "", zh: str = "s", src: str = WEBTOON):
+    return await _store(lang, seg, key, zh, LIST_MAX, src)
 
 
 @app.get("/api/panel/search")
-async def panel_search(q: str, lang: str = "zh-hant", zh: str = "s"):
-    return await _search(lang, q, zh)
+async def panel_search(q: str, lang: str = "zh-hant", zh: str = "s", src: str = WEBTOON):
+    return await _search(lang, q, zh, src)
 
 
 @app.get("/api/panel/title/{tid}")
@@ -209,8 +243,7 @@ async def panel_cover(tid: str, lang: str = "zh-hant"):
 async def panel_episode(tid: str, no: int, lang: str = "zh-hant"):
     """面板里“试转一话”：返回状态；转好后用 .cbz 地址下载。/ The panel's "try one episode": returns the state; download
     from the .cbz address once ready."""
-    source._check(lang, tid)
-    return jobs.status(lang, tid, no)
+    return jobs.status(_check(lang, tid), tid, no)
 
 
 @app.get("/api/panel/episode/{tid}/{no:int}.cbz")
@@ -284,6 +317,69 @@ async def tunnel_set(body: TunnelBody):
     return tunnel.state
 
 
+# ---- 面板：插件 / Panel: extensions ----
+
+async def _sources(for_device: bool) -> dict:
+    items = [{"key": WEBTOON, "name": "WEBTOON", "lang": "", "latest": False, "nsfw": False}]
+    on = await mihon.available()
+    if on:
+        items += await mihon.sources(for_device)
+    return {"mihon": on, "items": items}
+
+
+@app.get("/api/panel/mihon")
+async def panel_mihon():
+    cfg = config.load()
+    return await _sources(False) | {k: cfg[k] for k in ("mihon_nsfw", "mihon_dedupe", "mihon_spread")}
+
+
+@app.get("/api/panel/mihon/extensions")
+async def panel_mihon_extensions():
+    return await mihon.extensions()
+
+
+class StoreBody(BaseModel):
+    url: str
+    remove: bool = False
+
+
+@app.post("/api/panel/mihon/store")
+async def panel_mihon_store(body: StoreBody):
+    await (mihon.store_remove(body.url) if body.remove else mihon.store_add(body.url))
+    return await mihon.extensions()
+
+
+class ExtBody(BaseModel):
+    pkg: str
+    action: str
+
+
+@app.post("/api/panel/mihon/extension")
+async def panel_mihon_extension(body: ExtBody):
+    await mihon.extension_do(body.pkg, body.action)
+    return await mihon.extensions()
+
+
+class MihonSettings(BaseModel):
+    mihon_hidden: list[str] | None = None
+    mihon_order: list[str] | None = None
+    mihon_nsfw: bool | None = None
+    mihon_dedupe: bool | None = None
+    mihon_spread: str | None = None
+
+
+@app.post("/api/panel/mihon/settings")
+async def panel_mihon_settings(body: MihonSettings):
+    up = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "mihon_spread" in up and up["mihon_spread"] not in convert.SPREADS:
+        raise HTTPException(400, "跨页方式不对")
+    for k in ("mihon_hidden", "mihon_order"):
+        if k in up:
+            up[k] = [x for x in up[k] if mihon.SRC_RE.match(x)][:500]
+    config.save(up)
+    return await panel_mihon()
+
+
 # ---- 设备接口 / Device API ----
 
 def _device(request: Request) -> None:
@@ -292,20 +388,29 @@ def _device(request: Request) -> None:
         raise HTTPException(401, "设备令牌不对")
 
 
+@app.get("/api/device/v1/sources")
+async def device_sources(request: Request):
+    """可选的来源：WEBTOON 总在第一个；开了插件功能时后面是面板里没隐藏的插件来源。/ Available sources: WEBTOON
+    always first, then the extension sources not hidden in the panel when the plugin feature is on."""
+    _device(request)
+    return await _sources(True)
+
+
 @app.get("/api/device/v1/store")
 async def device_store(request: Request, lang: str = "zh-hant", seg: str = "rank", key: str = "", zh: str = "s",
-                       limit: int = 60):
+                       limit: int = 60, src: str = WEBTOON):
     """发现页列表。seg：rank（key 为 trending / popular / originals）、genre（key 为类型）、day（key 为星期）、done。
     返回 keys 给设备画二级分段。/ A store list. seg: rank (key trending / popular / originals), genre (key a genre),
-    day (key a weekday) or done; keys feed the device's second-level segment."""
+    day (key a weekday) or done; keys feed the device's second-level segment. src 是插件来源时 seg 是 pop / latest。
+    With an extension source in src, seg is pop / latest."""
     _device(request)
-    return await _store(lang, seg, key, zh, limit)
+    return await _store(lang, seg, key, zh, limit, src)
 
 
 @app.get("/api/device/v1/search")
-async def device_search(request: Request, q: str, lang: str = "zh-hant", zh: str = "s"):
+async def device_search(request: Request, q: str, lang: str = "zh-hant", zh: str = "s", src: str = WEBTOON):
     _device(request)
-    return await _search(lang, q, zh)
+    return await _search(lang, q, zh, src)
 
 
 @app.get("/api/device/v1/title/{tid}")
@@ -342,8 +447,12 @@ async def device_check(request: Request, body: CheckBody):
     out = []
     for t in body.titles[:CHECK_MAX]:
         try:
-            eps = await source.episodes(t.id) if source.ID_RE.match(t.id) else []
-            new = [{"no": e["no"], "title": conv(e["title"])} for e in eps if e["no"] > t.last]
+            if mihon.ID_RE.match(t.id):
+                mihon.forget(t.id)       # 检查更新要最新的章节表 / An update check needs the current chapter list
+                eps, cv = await mihon.episodes(t.id), (lambda s: s)
+            else:
+                eps, cv = (await source.episodes(t.id) if source.ID_RE.match(t.id) else []), conv
+            new = [{"no": e["no"], "title": cv(e["title"])} for e in eps if e["no"] > t.last]
             out.append({"id": t.id, "latest": eps[-1]["no"] if eps else 0, "new": new})
         except source.SourceError as e:
             out.append({"id": t.id, "error": str(e), "new": []})
@@ -357,14 +466,14 @@ async def device_episode(request: Request, tid: str, no: int, lang: str = "zh-ha
     images) / error; starts converting when needed. The device asks again every few seconds and downloads from the
     .cbz address once ready; split because tunnels drop a request after about 100 s."""
     _device(request)
-    source._check(lang, tid)
+    lang = _check(lang, tid)
     if no <= 0:
         raise HTTPException(400, "话号不对")
     return jobs.status(lang, tid, no)
 
 
 def _episode_file(lang: str, tid: str, no: int) -> FileResponse:
-    source._check(lang, tid)
+    lang = _check(lang, tid)
     path = jobs.cbz_path(lang, tid, no)
     if not path.exists():
         raise HTTPException(404, "这一话还没转好")

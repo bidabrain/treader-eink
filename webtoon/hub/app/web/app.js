@@ -23,6 +23,7 @@ async function boot() {
   if (!s.signed_in) return showGate(s.setup);
   $('#gate').hidden = true; $('#app').hidden = false;
   show('home');
+  loadSources().catch((e) => console.warn(e));
 }
 function showGate(setup) {
   setupMode = !!setup;
@@ -61,7 +62,20 @@ loaders.home = async () => {
 // ---- 发现页 / Store ----
 const LANGS = { 'zh-hant': '繁體中文', en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', th: 'ภาษาไทย', id: 'Indonesia' };
 const SEGS = [['rank', '排行'], ['genre', '类型'], ['day', '星期'], ['done', '完结']];
-let seg = 'rank', key = '';
+const MSEGS = [['pop', '人气'], ['latest', '最新']];
+let seg = 'rank', key = '', srcs = [];
+const src = () => $('#src').value || 'webtoon';
+const isWt = () => src() === 'webtoon';
+async function loadSources() {
+  const r = await api('/api/panel/mihon');
+  srcs = r.items.filter((s) => !s.hidden);
+  $('#mihonTab').hidden = !r.mihon;
+  $('#src').hidden = !r.mihon;
+  const cur = src();
+  $('#src').innerHTML = srcs.map((s) => `<option value="${esc(s.key)}">${esc(s.name)}${s.lang ? ' · ' + esc(s.lang) : ''}</option>`).join('');
+  if (srcs.some((s) => s.key === cur)) $('#src').value = cur;
+  return r;
+}
 $('#lang').innerHTML = Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
 const lang = () => $('#lang').value;
 function chips(el, list, cur, pick) {
@@ -74,10 +88,13 @@ function covers(items) {
   $$('#covers figure').forEach((f) => { f.onclick = () => openTitle(f.dataset.id); });
 }
 async function loadStore() {
-  chips($('#segs'), SEGS, seg, (k) => { seg = k; key = ''; loadStore(); });
+  $('#lang').hidden = !isWt();
+  const segs = isWt() ? SEGS : MSEGS.filter(([k]) => k === 'pop' || (srcs.find((s) => s.key === src()) || {}).latest);
+  if (!segs.some(([k]) => k === seg)) seg = segs[0][0];
+  chips($('#segs'), segs, seg, (k) => { seg = k; key = ''; loadStore(); });
   $('#storeMsg').textContent = '加载中…';
   try {
-    const r = await api(`/api/panel/store?lang=${lang()}&seg=${seg}&key=${encodeURIComponent(key)}`);
+    const r = await api(`/api/panel/store?lang=${lang()}&seg=${seg}&key=${encodeURIComponent(key)}&src=${encodeURIComponent(src())}`);
     key = r.key;
     chips($('#keys'), r.keys.map((k) => [k.key, k.name]), key, (k) => { key = k; loadStore(); });
     $('#storeMsg').textContent = `${r.items.length} 部`;
@@ -86,12 +103,13 @@ async function loadStore() {
 }
 loaders.store = loadStore;
 $('#lang').onchange = () => { key = ''; loadStore(); };
+$('#src').onchange = () => { key = ''; $('#detail').hidden = true; loadStore(); };
 $('#qGo').onclick = async () => {
   const q = $('#q').value.trim();
   if (!q) return loadStore();
   $('#storeMsg').textContent = '搜索中…'; $('#keys').innerHTML = '';
   try {
-    const r = await api(`/api/panel/search?lang=${lang()}&q=${encodeURIComponent(q)}`);
+    const r = await api(`/api/panel/search?lang=${lang()}&q=${encodeURIComponent(q)}&src=${encodeURIComponent(src())}`);
     $('#storeMsg').textContent = `“${r.q}”：${r.items.length} 部`;
     covers(r.items);
   } catch (e) { $('#storeMsg').textContent = e.message; }
@@ -101,7 +119,7 @@ async function openTitle(id) {
   try {
     const t = await api(`/api/panel/title/${id}?lang=${lang()}`);
     $('#dTitle').textContent = t.title;
-    $('#dMeta').textContent = `${t.author} · ${t.genre} · 免费 ${t.episodes.length} 话${t.done ? ' · 已完结' : ''}`;
+    $('#dMeta').textContent = `${t.src ? t.src + ' · ' : ''}${t.author} · ${t.genre} · ${t.src ? '' : '免费 '}${t.episodes.length} 话${t.done ? ' · 已完结' : ''}${t.error ? ' · ' + t.error : ''}`;
     $('#dSummary').textContent = t.summary;
     $('#dEps').innerHTML = t.episodes.slice().reverse().slice(0, 30).map((e) =>
       `<li><span>#${e.no} ${esc(e.title)}</span><span><span class="muted" id="ep${e.no}"></span> <button class="ghost" data-no="${e.no}">试转</button></span></li>`).join('');
@@ -119,6 +137,70 @@ async function tryEpisode(id, no) {
     await new Promise((r) => setTimeout(r, 2000));
   }
 }
+
+// ---- 插件 / Extensions ----
+let exts = [];
+function showExts(r) {
+  exts = r.extensions;
+  $('#repos').innerHTML = r.stores.length ? r.stores.map((s) =>
+    `<li><span>${esc(s.name || '')} <code>${esc(s.indexUrl)}</code></span><button class="ghost" data-url="${esc(s.indexUrl)}">删除</button></li>`).join('')
+    : '<li class="muted">还没有添加仓库</li>';
+  $$('#repos button').forEach((b) => { b.onclick = () => repo(b.dataset.url, true); });
+  filterExts();
+}
+function filterExts() {
+  const q = $('#extQ').value.trim().toLowerCase();
+  const list = exts.filter((e) => !q || (e.name + ' ' + e.lang).toLowerCase().includes(q))
+    .sort((a, b) => (b.isInstalled - a.isInstalled) || a.name.localeCompare(b.name)).slice(0, 200);
+  $('#exts').innerHTML = list.length ? list.map((e) => {
+    const acts = e.isInstalled ? (e.hasUpdate ? [['update', '更新']] : []).concat([['uninstall', '卸载']]) : [['install', '安装']];
+    return `<li><span>${esc(e.name)} <span class="muted">${esc(e.lang)} · ${esc(e.versionName)}${e.contentWarning && e.contentWarning !== 'SAFE' ? ' · 成人' : ''}${e.isObsolete ? ' · 已失效' : ''}</span></span>
+      <span>${acts.map(([a, n]) => `<button class="ghost" data-pkg="${esc(e.pkgName)}" data-a="${a}">${n}</button>`).join(' ')}</span></li>`;
+  }).join('') : '<li class="muted">没有插件（先添加仓库）</li>';
+  $$('#exts button').forEach((b) => { b.onclick = () => extDo(b, b.dataset.pkg, b.dataset.a); });
+}
+async function repo(url, remove) {
+  $('#repoMsg').textContent = remove ? '删除中…' : '添加中…';
+  try { showExts(await api('/api/panel/mihon/store', { method: 'POST', body: { url, remove } })); $('#repoMsg').textContent = ''; $('#repoUrl').value = ''; }
+  catch (e) { $('#repoMsg').textContent = e.message; }
+}
+async function extDo(btn, pkg, action) {
+  btn.disabled = true; btn.textContent = '处理中…';
+  try { showExts(await api('/api/panel/mihon/extension', { method: 'POST', body: { pkg, action } })); loaders.mihonSources(); loadSources(); }
+  catch (e) { btn.textContent = e.message; }
+}
+$('#repoAdd').onclick = () => { const u = $('#repoUrl').value.trim(); if (u) repo(u, false); };
+$('#extQ').oninput = filterExts;
+$('#extLoad').onclick = () => {
+  $('#exts').innerHTML = '<li class="muted">加载中…</li>';
+  api('/api/panel/mihon/extensions').then(showExts).catch((e) => { $('#exts').innerHTML = `<li class="err">${esc(e.message)}</li>`; });
+};
+let srcAll = [];
+loaders.mihonSources = async () => {
+  const r = await api('/api/panel/mihon');
+  srcAll = r.items.filter((s) => s.key !== 'webtoon');
+  $('#mNsfw').checked = r.mihon_nsfw; $('#mDedupe').checked = r.mihon_dedupe; $('#mSpread').value = r.mihon_spread;
+  drawSrcs();
+};
+function drawSrcs() {
+  $('#srcs').innerHTML = srcAll.length ? srcAll.map((s, i) =>
+    `<li><label><input type="checkbox" data-i="${i}"${s.hidden ? '' : ' checked'}> ${esc(s.name)} <span class="muted">${esc(s.lang)}${s.nsfw ? ' · 成人' : ''}</span></label>
+     <span><button class="ghost" data-up="${i}">↑</button> <button class="ghost" data-down="${i}">↓</button></span></li>`).join('')
+    : '<li class="muted">还没有装插件</li>';
+  $$('#srcs input').forEach((c) => { c.onchange = () => { srcAll[c.dataset.i].hidden = !c.checked; }; });
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= srcAll.length) return; [srcAll[i], srcAll[j]] = [srcAll[j], srcAll[i]]; drawSrcs(); };
+  $$('#srcs [data-up]').forEach((b) => { b.onclick = () => move(+b.dataset.up, -1); });
+  $$('#srcs [data-down]').forEach((b) => { b.onclick = () => move(+b.dataset.down, 1); });
+}
+$('#mSave').onclick = async () => {
+  try {
+    await api('/api/panel/mihon/settings', { method: 'POST', body: {
+      mihon_hidden: srcAll.filter((s) => s.hidden).map((s) => s.key), mihon_order: srcAll.map((s) => s.key),
+      mihon_nsfw: $('#mNsfw').checked, mihon_dedupe: $('#mDedupe').checked, mihon_spread: $('#mSpread').value } });
+    $('#mMsg').textContent = '已保存'; loadSources();
+  } catch (e) { $('#mMsg').textContent = e.message; }
+};
+loaders.mihon = async () => { await loaders.mihonSources(); $('#extLoad').onclick(); };
 
 // ---- 设备与外网 / Device and tunnel ----
 loaders.device = async () => {

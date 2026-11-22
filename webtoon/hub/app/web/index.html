@@ -21,7 +21,7 @@
   <header>
     <b>webtoon 面板</b><span id="ver" class="muted"></span>
     <nav>
-      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="device">设备与外网</a>
+      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="device">设备与外网</a>
       <a data-tab="settings">设置</a>
     </nav>
     <button id="logout" class="ghost">退出</button>
@@ -44,6 +44,7 @@
     <section data-panel="store" hidden>
       <div class="card">
         <div class="row">
+          <select id="src" hidden></select>
           <select id="lang"></select>
           <input id="q" placeholder="搜索作品名或作者（简体也行）">
           <button id="qGo">搜索</button>
@@ -59,6 +60,36 @@
         <p id="dSummary"></p>
         <p class="muted">在这里可以试转一话，下载 CBZ 看看切页效果；订阅请在设备的发现漫画里点。</p>
         <ul id="dEps" class="list"></ul>
+      </div>
+    </section>
+
+    <section data-panel="mihon" hidden>
+      <div class="card">
+        <h2>插件仓库</h2>
+        <p class="muted">插件由同一个 compose 里的 Suwayomi-Server 运行。本项目不提供也不推荐任何插件仓库：只添加你有权访问的来源（比如自己的 Komga / Kavita 书库、官方免费连载），请遵守来源网站的条款。</p>
+        <div class="row"><input id="repoUrl" placeholder="仓库的 index.min.json 地址"><button id="repoAdd">添加</button></div>
+        <ul id="repos" class="list"></ul>
+        <p id="repoMsg" class="muted"></p>
+      </div>
+      <div class="card">
+        <h2>插件</h2>
+        <div class="row"><input id="extQ" placeholder="按名字或语言筛选"><button id="extLoad" class="ghost">刷新列表</button></div>
+        <ul id="exts" class="list"></ul>
+      </div>
+      <div class="card">
+        <h2>设备上的来源</h2>
+        <p class="muted">勾掉的来源不在设备的“来源”里出现；用 ↑ ↓ 排顺序。</p>
+        <ul id="srcs" class="list"></ul>
+        <label><input type="checkbox" id="mNsfw"> 显示成人来源</label>
+        <label><input type="checkbox" id="mDedupe"> 同一话有多个版本（不同汉化组）时只留最先出现的</label>
+        <label>跨页（横向的整张图）
+          <select id="mSpread">
+            <option value="split_rtl">拆成两页，右页在前（日漫）</option>
+            <option value="split_ltr">拆成两页，左页在前</option>
+            <option value="rotate">旋转 90° 整页显示</option>
+            <option value="fit">整张缩小显示</option>
+          </select></label>
+        <button id="mSave">保存</button> <span id="mMsg" class="muted"></span>
       </div>
     </section>
 

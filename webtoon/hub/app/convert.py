@@ -138,6 +138,112 @@ class Pager:
         return self.pages
 
 
+STRIP_RATIO = 2.0         # 原图高宽比中位数超过它就当竖长条 / A median height/width ratio above this means a tall strip
+SNIFF = 3                 # 看前几张图来判断 / Images looked at before deciding
+SPREAD_RATIO = 1.1        # 宽超过高的这么多倍算跨页 / Wider than this times the height counts as a spread
+SPREADS = ("split_rtl", "split_ltr", "rotate", "fit")
+
+
+def _autocrop(im: Image.Image) -> Image.Image:
+    """裁掉四边接近纯白的边，墨水屏上能多放一点画面；裁剩太少就不裁。/ Trim near-white borders so more of the drawing fits
+    the e-ink screen; skip when too little would remain."""
+    box = im.point(lambda v: 255 if v < 235 else 0).getbbox()
+    if not box:
+        return im
+    x0, y0, x1, y1 = box
+    if (x1 - x0) * (y1 - y0) < im.width * im.height * 0.5:
+        return im
+    pad = 4
+    return im.crop((max(0, x0 - pad), max(0, y0 - pad), min(im.width, x1 + pad), min(im.height, y1 + pad)))
+
+
+class PagePager:
+    """一张图就是一页的普通漫画：裁白边、等比缩进页面大小，跨页按设置拆开、旋转或整页缩小。和 Pager 用法一样。
+    Ordinary one-image-per-page comics: trim white borders and fit inside the page box; spreads are split, rotated or
+    shrunk whole per the setting. Used like Pager."""
+
+    def __init__(self, width: int, height: int, sink: Callable[[Image.Image], None] | None = None,
+                 spread: str = "split_rtl"):
+        self.w, self.h = width, height
+        self.sink = sink
+        self.spread = spread if spread in SPREADS else "split_rtl"
+        self.pages: list[Image.Image] = []
+        self.count = 0
+
+    def _fit(self, im: Image.Image) -> Image.Image:
+        s = min(self.w / im.width, self.h / im.height)
+        if abs(s - 1) > 0.001:
+            im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.Resampling.LANCZOS)
+        return im
+
+    def _out(self, page: Image.Image) -> None:
+        self.count += 1
+        if self.sink:
+            self.sink(page)
+        else:
+            self.pages.append(page)
+
+    def feed(self, data: bytes) -> None:
+        im = _gray(data)
+        if im.width > im.height * SPREAD_RATIO and self.spread != "fit":
+            if self.spread == "rotate":
+                self._out(self._fit(_autocrop(im.rotate(90, expand=True))))
+                return
+            half = im.width // 2
+            left, right = im.crop((0, 0, half, im.height)), im.crop((half, 0, im.width, im.height))
+            for part in ((right, left) if self.spread == "split_rtl" else (left, right)):
+                self._out(self._fit(_autocrop(part)))
+            return
+        self._out(self._fit(_autocrop(im)))
+
+    def finish(self) -> list[Image.Image]:
+        return self.pages
+
+
+class AutoPager:
+    """先看前几张图的形状再决定：竖长条走 Pager（在空白处切），否则走 PagePager（一张一页）。
+    Look at the first few images first: tall strips go to Pager (cut in gutters), anything else to PagePager (one
+    image per page)."""
+
+    def __init__(self, width: int, height: int, sink: Callable[[Image.Image], None] | None = None,
+                 spread: str = "split_rtl"):
+        self.args = (width, height, sink, spread)
+        self.held: list[bytes] = []
+        self.ratios: list[float] = []
+        self.inner: Pager | PagePager | None = None
+
+    @property
+    def count(self) -> int:
+        return self.inner.count if self.inner else 0
+
+    @property
+    def strip(self) -> bool:
+        return isinstance(self.inner, Pager)
+
+    def _decide(self) -> None:
+        w, h, sink, spread = self.args
+        r = sorted(self.ratios)[len(self.ratios) // 2] if self.ratios else 0
+        self.inner = Pager(w, h, sink) if r > STRIP_RATIO else PagePager(w, h, sink, spread)
+        held, self.held = self.held, []
+        for data in held:
+            self.inner.feed(data)
+
+    def feed(self, data: bytes) -> None:
+        if self.inner:
+            self.inner.feed(data)
+            return
+        with Image.open(io.BytesIO(data)) as im:
+            self.ratios.append(im.height / max(1, im.width))
+        self.held.append(data)
+        if len(self.held) >= SNIFF:
+            self._decide()
+
+    def finish(self) -> list[Image.Image]:
+        if not self.inner:
+            self._decide()
+        return self.inner.finish()
+
+
 def jpeg(page: Image.Image, quality: int) -> bytes:
     out = io.BytesIO()
     page = page.filter(ImageFilter.UnsharpMask(radius=1, percent=50, threshold=2))
@@ -164,7 +270,9 @@ class CbzWriter:
             f"<Series>{escape(meta.get('series', ''))}</Series><Number>{int(meta.get('no', 0))}</Number>"
             f"<Title>{escape(meta.get('title', ''))}</Title><Writer>{escape(meta.get('author', ''))}</Writer>"
             f"<Web>{escape(meta.get('web', ''))}</Web><LanguageISO>{escape(meta.get('lang', ''))}</LanguageISO>"
-            f"<PageCount>{self.n}</PageCount><Manga>No</Manga></ComicInfo>\n")
+            f"<PageCount>{self.n}</PageCount>"
+            + (f"<Format>{escape(meta['format'])}</Format>" if meta.get("format") else "")
+            + f"<Manga>{escape(meta.get('manga') or 'No')}</Manga></ComicInfo>\n")
         self.z.writestr("ComicInfo.xml", info)
         self.z.close()
 
