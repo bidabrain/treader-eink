@@ -3,6 +3,23 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · webtoon 服务器 0.2.3
+
+- 新增可选的 FlareSolverr：插件站点要过 Cloudflare 验证时（报错“Cloudflare bypass currently disabled”），在 `.env` 里写 `COMPOSE_PROFILES=mihon,flaresolverr`，多起一个 FlareSolverr 替插件过验证。没开时这类错误后面会提示怎么打开。需要换新的 `docker-compose.yml`。
+  Added optional FlareSolverr: when an extension site needs a Cloudflare check ("Cloudflare bypass currently disabled"), set `COMPOSE_PROFILES=mihon,flaresolverr` in `.env` to add FlareSolverr, which passes the check for extensions. Without it, such errors now say how to turn it on. Needs the new `docker-compose.yml`.
+
+## 2026-11-22 · Treader 1.0.7
+
+- WEBTOON 检查更新时，失败的话下次检查会自动重下：“下载到第几话”只推进到第一话没下好的前面（失败、取消、超过每次上限），以前会越过失败的话、只能靠“补全缺的话”找回。卡上已有的话照旧跳过。
+  WEBTOON update checks now retry failed episodes on the next check: the downloaded-through episode only moves up to just before the first episode not downloaded (failed, cancelled or past the per-check cap). Before, it moved past failures and only 补全缺的话 brought them back. Episodes already on the card are still skipped.
+- 修正设备上订阅插件来源的作品失败：作品编号是 m 开头，订阅时被当成无效编号。
+  Fixed subscribing to extension-source titles on the device: their ids start with m and were rejected as invalid.
+
+## 2026-11-22 · WEBTOON 安卓 App 1.2.0
+
+- 已订阅作品的详情里加“补全缺的话”，照固件：按服务器的全部话列表，下手机上没有的，包括订阅起点之前的和自己删掉的，同样受每次上限限制。失败的话本来就会在下次检查更新时重下。
+  Added 补全缺的话 to subscribed title details, like the firmware: every episode in the server's list that is not on the phone is downloaded, including ones before the subscription start and ones you deleted, within the per-check cap. Failed episodes were already retried on the next update check.
+
 ## 2026-11-22 · webtoon 服务器 0.2.2
 
 - 修正插件来源的话号顺序：有的插件按章节名字符串排章节（“第100话”排在“第10话”前面），服务器照搬后“从第 1 话订阅”下到的是第 100 话。现在大半章节有章节号时按章节号编话号。已经编错的作品在面板的作品详情里点“重新编号”，再在设备或 App 上取消订阅、删掉下错的话后重新订阅。

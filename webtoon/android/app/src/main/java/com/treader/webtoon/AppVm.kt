@@ -95,14 +95,14 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun currentSeries(): Series? = openSeries?.let { d -> series.firstOrNull { it.dir == d } }
 
-    /** 检查更新；onlyId 只查这一部（刚订阅时）。/ Check for updates; onlyId checks just that title (right after
-     *  subscribing). */
-    fun checkUpdates(onlyId: String? = null) {
+    /** 检查更新；onlyId 只查这一部（刚订阅时）；fill 补全这一部缺的话。/ Check for updates; onlyId checks just that
+     *  title (right after subscribing); fill downloads that title's missing episodes. */
+    fun checkUpdates(onlyId: String? = null, fill: Boolean = false) {
         if (update.running) return
         update = UpdateStatus(running = true, line = "正在检查…")
         updateJob = viewModelScope.launch {
             val msg = try {
-                updater.run(onlyId, prefs.perCheck) { s ->
+                updater.run(onlyId, prefs.perCheck, fill) { s ->
                     // 每下完一话就刷新我的漫画，新话马上能看。/ Refresh the shelf after each episode so it is readable at once.
                     if (s.done != update.done) refreshShelf()
                     update = s

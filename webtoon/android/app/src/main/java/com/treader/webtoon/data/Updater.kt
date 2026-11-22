@@ -27,16 +27,25 @@ data class UpdateStatus(
  */
 class Updater(private val api: Api, private val shelf: Shelf) {
 
-    suspend fun run(onlyId: String?, cap: Int, report: (UpdateStatus) -> Unit): String {
+    /**
+     * fill 时只补 onlyId 这一部：按服务器的全部话列表，下手机上没有的（包括订阅起点之前的和删掉的），照固件“补全缺的话”。
+     * With fill, only onlyId is handled: every episode in the server's list that is not on the phone is downloaded
+     * (including ones before the subscription start and deleted ones), like the firmware's fill.
+     */
+    suspend fun run(onlyId: String?, cap: Int, fill: Boolean = false, report: (UpdateStatus) -> Unit): String {
         val subs = withContext(Dispatchers.IO) { shelf.scan() }
             .filter { it.mark != null && (onlyId == null || it.mark.id == onlyId) }
         if (subs.isEmpty()) return "还没有订阅"
-        report(UpdateStatus(true, "正在检查 ${subs.size} 部…"))
+        report(UpdateStatus(true, if (fill) "正在取话列表…" else "正在检查 ${subs.size} 部…"))
 
         val byId = subs.associateBy { it.mark!!.id }
         val results = ArrayList<CheckResult>()
         val errors = ArrayList<String>()
-        for ((lang, group) in subs.groupBy { it.mark!!.lang }) {
+        if (fill && onlyId != null) {
+            val m = subs.first().mark!!
+            val t = api.title(m.id, m.lang)
+            results += CheckResult(m.id, t.latest, t.episodes.filter { it.no > 0 }.sortedBy { it.no }, "")
+        } else for ((lang, group) in subs.groupBy { it.mark!!.lang }) {
             try {
                 results += api.check(lang, group.map { it.mark!!.id to it.mark.last })
             } catch (e: Api.ApiError) {
@@ -86,10 +95,13 @@ class Updater(private val api: Api, private val shelf: Shelf) {
 
         val left = waiting - ok - failed.size
         return buildString {
-            append(if (plan.isEmpty() && errors.isEmpty()) "没有新话" else "下载了 $ok 话")
-            if (offline.isNotEmpty()) append("；网络断了，先停下。还有 $left 话，网络好了再点一次检查更新\n$offline")
-            else if (left > 0) append("；还有 $left 话，再点一次检查更新")
-            if (failed.isNotEmpty()) append("\n${failed.size} 话失败：\n" + failed.joinToString("\n"))
+            append(if (plan.isEmpty() && errors.isEmpty()) (if (fill) "没有缺的话" else "没有新话") else "下载了 $ok 话")
+            // 补全时缺的话可能在订阅起点之前，检查更新不会再问到，要再点补全。/ When filling, missing episodes may lie
+            // before the subscription start, which update checks never ask about, so fill again.
+            val again = if (fill) "补全缺的话" else "检查更新"
+            if (offline.isNotEmpty()) append("；网络断了，先停下。还有 $left 话，网络好了再点一次$again\n$offline")
+            else if (left > 0) append("；还有 $left 话，再点一次$again")
+            if (failed.isNotEmpty()) append("\n${failed.size} 话失败，再点一次${again}会重下：\n" + failed.joinToString("\n"))
             if (errors.isNotEmpty()) append("\n检查出错：\n" + errors.joinToString("\n"))
         }
     }

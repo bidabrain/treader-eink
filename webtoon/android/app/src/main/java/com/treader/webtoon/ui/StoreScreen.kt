@@ -162,6 +162,17 @@ fun DetailScreen(vm: AppVm, d: Detail) {
                 }
                 Spacer(Modifier.height(16.dp))
             }
+            // 已订阅时多一排：补全缺的话（后台下，进度在我的漫画）。/ Subscribed titles get one more row: fill the
+            // missing episodes (in the background, progress on the shelf).
+            if (sub != null) Row(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill(if (vm.update.running) "正在下载…" else "补全缺的话", false, Modifier.weight(1f)) {
+                    if (!vm.update.running) {
+                        sub.mark?.let { vm.checkUpdates(it.id, fill = true) }
+                        // 回到我的漫画列表，进度和结果显示在那里。/ Back to the shelf list, where progress and the result show.
+                        vm.detail = null; vm.tab = Tab.SHELF; vm.openSeries = null
+                    }
+                }
+            }
             Row(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (sub != null) {
                     Pill("去我的漫画", true, Modifier.weight(1f)) {
