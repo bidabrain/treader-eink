@@ -69,7 +69,7 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Paper)) {
         val marginPx = with(density) { intArrayOf(12, 20, 32)[style.margin.coerceIn(0, 2)].dp.toPx() }
         val topPx = with(density) { 16.dp.toPx() }
-        val footPx = with(density) { 30.dp.toPx() }
+        val footPx = with(density) { 36.dp.toPx() }
         val wPx = constraints.maxWidth
         val hPx = constraints.maxHeight
         val bodyW = (wPx - 2 * marginPx).toInt()
@@ -144,10 +144,14 @@ fun ReaderScreen(vm: AppVm, r: ReaderState) {
         ) {
             layout.draw(drawContext.canvas.nativeCanvas, r.page, marginPx, topPx, rule)
         }
-        // 页脚：本章名，右边“页 / 页数　全书%”。/ Footer: chapter name, then "page / pages  book%".
-        Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(30.dp).padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            T(r.source.chapterTitle(r.chapter), 11.sp, color = Mid, maxLines = 1, modifier = Modifier.weight(1f))
-            T("${r.page + 1} / ${layout.pageCount}　${r.pct()}%", 11.sp, color = Mid)
+        // 页脚，照固件：上面一条胶囊全书进度条，下面本章名，右边“页/页数 · 全书%”。
+        // Footer, like the firmware: a capsule whole-book bar above the chapter name and "page/pages · book%".
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(36.dp).padding(horizontal = 20.dp)) {
+            BookBar(r.pct(), 4.dp)
+            Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                T(r.source.chapterTitle(r.chapter), 11.sp, color = Mid, maxLines = 1, modifier = Modifier.weight(1f))
+                T("${r.page + 1}/${layout.pageCount} · ${r.pct()}%", 11.sp, color = Mid)
+            }
         }
 
         when (panel) {
@@ -258,13 +262,15 @@ private fun RowScope.ToolButton(label: String, icon: @Composable () -> Unit, onC
     }
 }
 
-/** 全书进度条（阅读页样子）：黑色已读段接浅灰剩余段。/ Whole-book bar as in the reader: a black read part followed by a
- *  light gray remainder. */
+/** 胶囊全书进度条，照固件：圆头浅灰底，已读部分圆头黑色（太短时至少画成一个圆点）。/ Capsule whole-book bar like the
+ *  firmware: a round-ended light gray track and a round-ended black read part (at least a dot when tiny). */
 @Composable
-private fun BookBar(pct: Int) = Canvas(Modifier.fillMaxWidth().height(6.dp)) {
-    val w = size.width * pct.coerceIn(0, 100) / 100f
-    drawRect(Selected)
-    drawRect(Ink, size = androidx.compose.ui.geometry.Size(w, size.height))
+private fun BookBar(pct: Int, height: androidx.compose.ui.unit.Dp = 8.dp) = Canvas(Modifier.fillMaxWidth().height(height)) {
+    val r = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+    drawRoundRect(Selected, cornerRadius = r)
+    var w = size.width * pct.coerceIn(0, 100) / 100f
+    if (w > 0f && w < size.height) w = size.height
+    if (w > 0f) drawRoundRect(Ink, size = androidx.compose.ui.geometry.Size(w, size.height), cornerRadius = r)
 }
 
 @Composable

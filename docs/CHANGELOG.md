@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · 番茄安卓 App 1.3.1
+
+- 修正番茄下载的书只显示“Part 1、Part 2…”，章节识别和固件 1.0.8 一样：章名在 40 个字以内都能认出，行首有空格或全角空格的章名也能认出。已经打开过的书重新打开后生效。
+  Fixed Tomato books showing only "Part 1, Part 2…", with the same chapter detection as firmware 1.0.8: titles up to 40 characters are recognized, including ones indented with spaces or ideographic spaces. Takes effect when a book is reopened.
+- 阅读页脚照固件加一条胶囊形全书进度条，工具条里的进度条也改成胶囊形。
+  The reading footer gains a capsule whole-book bar like the firmware, and the toolbar's bar is a capsule too.
+
 ## 2026-11-22 · Treader 1.0.8
 
 - 阅读页脚改小：上面一条胶囊形进度条，下面一行小字（章名、页码 · 百分比），每页能多放一两行字。打开工具条时的进度条也改成胶囊形，章节分界是条上的白色细缝。
