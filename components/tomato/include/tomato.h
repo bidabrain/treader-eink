@@ -448,11 +448,11 @@ esp_err_t tomato_wt_src_set(const char* key);
 bool tomato_wt_is_ext(const char* id);
 /// 订阅标记的内容（comics/<作品名>/.webtoon，JSON）。/ The subscription marker (comics/<title>/.webtoon, JSON).
 typedef struct {
-    char id[16];          ///< 作品编号，Canvas 作品前面带 c / Title id, Canvas ids start with c
+    char id[16];          ///< 作品编号，Canvas 作品前面带 c，插件来源带 m / Title id; Canvas ids start with c, extension ids with m
     char lang[12];        ///< 语言版本 / Language version
     char title[96];
     char author[64];
-    int last;             ///< 已下载的最大话号 / Highest downloaded episode
+    int last;             ///< 检查更新从这话之后问；只推进到第一个没下好的话前面 / Checks ask for episodes after this; it only moves up to just before the first episode not yet downloaded
     int fresh;            ///< 上次打开这部以后新下载的话数 / Episodes downloaded since the series was last opened
     uint32_t added;       ///< 订阅时间（秒）/ Subscription time (seconds)
 } tomato_wt_mark_t;

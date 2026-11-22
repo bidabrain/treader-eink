@@ -22,6 +22,7 @@
  */
 
 #include <dirent.h>
+#include <limits.h>
 #include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +46,8 @@
 #define RETRY_WAIT_MS 10000
 #define TITLES_MAX 200
 #define PATH_LEN 320
+// 一次检查最多记这么多条服务器回的话号，用来推进 last。/ Episode numbers from one check kept for moving last forward.
+#define SEEN_MAX 4096
 
 /* ---- 设置 / Settings ---- */
 
@@ -286,7 +289,8 @@ esp_err_t tomato_wt_subscribe(const char* id, const char* title, const char* aut
     char sid[16];
     tomato_safe_id(id, sid, sizeof(sid));
     if (!sid[0]) return ESP_ERR_INVALID_ARG;
-    if (sid[0] != 'c' && (sid[0] < '0' || sid[0] > '9')) return ESP_ERR_INVALID_ARG;
+    // WEBTOON 是数字或 c 开头，插件来源是 m 开头。/ WEBTOON ids are digits or start with c; extension ids start with m.
+    if (sid[0] != 'c' && !tomato_wt_is_ext(sid) && (sid[0] < '0' || sid[0] > '9')) return ESP_ERR_INVALID_ARG;
     tomato_wt_mark_t m = {0};
     // 已经订阅过：只改起点。/ Already subscribed: only move the starting point.
     if (!tomato_wt_find(sid, folder, cap)) {
@@ -443,7 +447,26 @@ static esp_err_t run_title(const tomato_srv_t* srv, const char* id, const volati
 typedef struct {
     char folder[PATH_LEN];
     tomato_wt_mark_t mark;
+    int stop;              // 这次没下好的最小话号（失败、没轮到、超上限）/ Lowest episode not done this run
 } target_t;
+
+// 服务器这次回的一话（新话，或补全时比 last 新的话），下完后用来推进 last。/ One episode from the server this run (new,
+// or newer than last when filling), used afterwards to move last forward.
+typedef struct {
+    int target;
+    int no;
+} seen_t;
+
+typedef struct {
+    seen_t* list;
+    int n;
+} seen_list_t;
+
+static void see(seen_list_t* s, target_t* list, int target, int no) {
+    if (s->n < SEEN_MAX) s->list[s->n++] = (seen_t){.target = target, .no = no};
+    // 记不下就当没下好，last 停在它前面。/ Not recorded: treat it as not done so last stops before it.
+    else if (no < list[target].stop) list[target].stop = no;
+}
 
 typedef struct {
     target_t* list;
@@ -456,6 +479,7 @@ static bool collect_one(const char* folder, const tomato_wt_mark_t* m, void* arg
     if (c->only && c->only[0] && strcmp(c->only, m->id)) return true;
     if (c->n >= c->max) return false;
     snprintf(c->list[c->n].folder, sizeof(c->list[c->n].folder), "%s", folder);
+    c->list[c->n].stop = INT_MAX;
     c->list[c->n++].mark = *m;
     return true;
 }
@@ -476,8 +500,8 @@ typedef struct {
     char title[80];
 } job_t;
 
-// 等服务器转好一话再下载到系列文件夹；成功后更新标记。/ Wait for the server to convert an episode, then download it
-// into the series folder; update the marker on success.
+// 等服务器转好一话再下载到系列文件夹；成功后记新话数。last 不在这里动，全部下完再推进。/ Wait for the server to convert
+// an episode, then download it into the series folder; count it as new on success. last moves only after the run.
 static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t* j, const volatile bool* cancel,
                                char* msg, size_t cap) {
     char path[128], q[48];
@@ -509,7 +533,6 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
     snprintf(path, sizeof(path), "/api/device/v1/episode/%s/%d.cbz?%s", t->mark.id, j->no, q);
     esp_err_t err = tomato_srv_download(srv, path, dest, CBZ_MAX, TIMEOUT_MS * 3, cancel, msg, cap);
     if (err != ESP_OK) return err;
-    if (j->no > t->mark.last) t->mark.last = j->no;
     t->mark.fresh++;
     tomato_wt_mark_write(t->folder, &t->mark);
     return ESP_OK;
@@ -517,8 +540,8 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
 
 // 普通更新：一次问服务器所有订阅里比 last 新的话。/ Normal update: ask the server once for episodes newer than last
 // across all subscriptions.
-static int plan_new(const tomato_srv_t* srv, target_t* list, int n, job_t* jobs, int max, const volatile bool* cancel,
-                    char* msg, size_t cap, esp_err_t* err) {
+static int plan_new(const tomato_srv_t* srv, target_t* list, int n, job_t* jobs, int max, seen_list_t* seen,
+                    const volatile bool* cancel, char* msg, size_t cap, esp_err_t* err) {
     cJSON* body = cJSON_CreateObject();
     cJSON_AddStringToObject(body, "lang", tomato_wt_lang_code(tomato_wt_lang()));
     cJSON_AddStringToObject(body, "zh", tomato_wt_simp() ? "s" : "t");
@@ -546,11 +569,19 @@ static int plan_new(const tomato_srv_t* srv, target_t* list, int n, job_t* jobs,
         if (idx < 0) continue;
         const cJSON* e;
         cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(t, "new")) {
-            if (count >= max) break;
+            const int no = tomato_json_int(e, "no");
+            if (no <= 0) continue;
+            see(seen, list, idx, no);
+            if (tomato_wt_has_episode(list[idx].folder, no)) continue;
+            // 超过每次上限的留到下次。/ Episodes past the per-run cap wait for the next check.
+            if (count >= max) {
+                if (no < list[idx].stop) list[idx].stop = no;
+                continue;
+            }
             jobs[count].target = idx;
-            jobs[count].no = tomato_json_int(e, "no");
+            jobs[count].no = no;
             tomato_json_str(e, "title", jobs[count].title, sizeof(jobs[count].title));
-            if (jobs[count].no > 0 && !tomato_wt_has_episode(list[idx].folder, jobs[count].no)) count++;
+            count++;
         }
     }
     cJSON_Delete(root);
@@ -559,8 +590,8 @@ static int plan_new(const tomato_srv_t* srv, target_t* list, int n, job_t* jobs,
 
 // 补全：取作品的全部免费话，下卡上缺的（从旧到新）。/ Fill: fetch the title's free episodes and download the missing
 // ones, oldest first.
-static int plan_fill(const tomato_srv_t* srv, target_t* t, job_t* jobs, int max, const volatile bool* cancel,
-                     char* msg, size_t cap, esp_err_t* err) {
+static int plan_fill(const tomato_srv_t* srv, target_t* t, job_t* jobs, int max, seen_list_t* seen,
+                     const volatile bool* cancel, char* msg, size_t cap, esp_err_t* err) {
     char q[48], path[128];
     query(q, sizeof(q));
     snprintf(path, sizeof(path), "/api/device/v1/title/%s?%s", t->mark.id, q);
@@ -570,9 +601,14 @@ static int plan_fill(const tomato_srv_t* srv, target_t* t, job_t* jobs, int max,
     int count = 0;
     const cJSON* e;
     cJSON_ArrayForEach(e, cJSON_GetObjectItemCaseSensitive(root, "episodes")) {
-        if (count >= max) break;
         const int no = tomato_json_int(e, "no");
-        if (no <= 0 || tomato_wt_has_episode(t->folder, no)) continue;
+        if (no <= 0) continue;
+        if (no > t->mark.last) see(seen, t, 0, no);
+        if (tomato_wt_has_episode(t->folder, no)) continue;
+        if (count >= max) {
+            if (no < t->stop) t->stop = no;
+            continue;
+        }
         jobs[count].target = 0;
         jobs[count].no = no;
         tomato_json_str(e, "title", jobs[count].title, sizeof(jobs[count].title));
@@ -587,9 +623,11 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
     target_t* list = heap_caps_calloc(TITLES_MAX, sizeof(target_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     const int max = tomato_wt_max();
     job_t* jobs = heap_caps_calloc((size_t)max, sizeof(job_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!list || !jobs) {
+    seen_list_t seen = {.list = heap_caps_calloc(SEEN_MAX, sizeof(seen_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)};
+    if (!list || !jobs || !seen.list) {
         heap_caps_free(list);
         heap_caps_free(jobs);
+        heap_caps_free(seen.list);
         snprintf(msg, cap, "内存不足");
         return ESP_ERR_NO_MEM;
     }
@@ -600,16 +638,17 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
     if (!c.n) {
         snprintf(msg, cap, r->id[0] ? "没找到这部的订阅" : "还没有订阅");
     } else if (r->fill && c.n == 1) {
-        planned = plan_fill(srv, &list[0], jobs, max, cancel, msg, cap, &err);
+        planned = plan_fill(srv, &list[0], jobs, max, &seen, cancel, msg, cap, &err);
     } else {
-        planned = plan_new(srv, list, c.n, jobs, max, cancel, msg, cap, &err);
+        planned = plan_new(srv, list, c.n, jobs, max, &seen, cancel, msg, cap, &err);
     }
     int done = 0, failed = 0;
     char why[96] = "";
     bool stopped = false;
+    int k = 0;
     if (err == ESP_OK && c.n) {
         progress(0, planned);
-        for (int k = 0; k < planned && !*cancel; k++) {
+        for (; k < planned && !*cancel; k++) {
             char m[96] = "";
             esp_err_t e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m));
             // 网络抖一下不算断：等 10 秒再试一次。/ A brief blip is not an outage: wait 10 s and try once more.
@@ -618,21 +657,45 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
                 if (!*cancel) { m[0] = 0; e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m)); }
             }
             if (e == ESP_OK) done++;
-            else if (!*cancel) {
+            else {
+                target_t* t = &list[jobs[k].target];
+                if (jobs[k].no < t->stop) t->stop = jobs[k].no;
+                if (*cancel) break;
                 failed++;
                 if (!why[0]) snprintf(why, sizeof(why), "%s", m);
                 if (!episode_only(e)) { snprintf(why, sizeof(why), "%s", m); stopped = true; break; }
             }
             progress(k + 1, planned);
         }
+        // 没轮到的话（取消或停下）也算没下好。/ Episodes never reached (cancelled or stopped) are not done either.
+        for (int r2 = k; r2 < planned; r2++) {
+            target_t* t = &list[jobs[r2].target];
+            if (jobs[r2].no < t->stop) t->stop = jobs[r2].no;
+        }
+        // 推进 last：服务器回的话里，比第一个没下好的小的都已在卡上，last 推到其中最大的；没下好的下次检查更新再下。
+        // Move last forward: every listed episode below the first one not done is on the card, so last becomes the
+        // largest of them; the ones not done come back on the next check.
+        for (int i = 0; i < c.n; i++) {
+            int last = list[i].mark.last;
+            for (int s = 0; s < seen.n; s++)
+                if (seen.list[s].target == i && seen.list[s].no < list[i].stop && seen.list[s].no > last)
+                    last = seen.list[s].no;
+            if (last != list[i].mark.last) {
+                list[i].mark.last = last;
+                tomato_wt_mark_write(list[i].folder, &list[i].mark);
+            }
+        }
         if (*cancel) { snprintf(msg, cap, "已取消，下载了 %d 话", done); err = ESP_ERR_INVALID_STATE; }
-        else if (stopped) snprintf(msg, cap, "下载了 %d 话后停下：%.60s；下次检查更新接着下", done, why);
+        else if (stopped)
+            snprintf(msg, cap, "下载了 %d 话后停下：%.60s；再%s一次接着下", done, why, r->fill ? "补全" : "检查更新");
         else if (!planned) snprintf(msg, cap, r->fill ? "没有缺的话" : "没有新的话");
-        else if (failed) snprintf(msg, cap, "下载了 %d 话，%d 话失败：%.50s", done, failed, why);
+        else if (failed)
+            snprintf(msg, cap, "下载了 %d 话，%d 话失败，再%s一次会重下：%.40s", done, failed, r->fill ? "补全" : "检查更新", why);
         else snprintf(msg, cap, "下载了 %d 话", done);
     }
     heap_caps_free(list);
     heap_caps_free(jobs);
+    heap_caps_free(seen.list);
     return err;
 }
 
