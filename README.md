@@ -428,7 +428,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [tomato/README.md](tomato/README.md) | 番茄下载服务器一键部署：官方下载器 + 面板（设备密码、Cloudflare Tunnel） |
 | [weibo/README.md](weibo/README.md) | 微博内容服务器：不登录、Docker 部署、关注管理、WebDAV 备份；设备上的微博标签读它 |
 | [x/README.md](x/README.md) | X 内容服务器：VNC 手动登录、随机间隔和睡眠时段、Docker 部署；设备上的 X 标签读它 |
-| [webtoon/README.md](webtoon/README.md) | WEBTOON 发现与追更服务器：读 WEBTOON 公开免费的话、转灰度按屏切页打包 CBZ、不保存订阅、Docker 部署；设备上的发现漫画读它 |
+| [webtoon/README.md](webtoon/README.md) | WEBTOON 发现与追更服务器：读 WEBTOON 公开免费的话、转灰度按屏切页打包 CBZ、不保存订阅、Docker 部署；可选 Mihon 插件来源（Suwayomi 运行插件，不提供仓库）；设备上的发现漫画读它 |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | 版本变更 |
 | [AGENTS.md](AGENTS.md) | 代码约定：页面契约、注释规范、冻结的产品决策 |
 | [docs/official/](docs/official/README.zh-CN.md) | 官方示例固件的原版说明：硬件表、引脚、底层组件 |
