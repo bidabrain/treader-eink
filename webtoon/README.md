@@ -35,6 +35,40 @@ docker compose up -d
 
 打开 `http://服务器IP:8095`，第一次设置面板密码（至少 8 位）。端口被占用时在 `.env` 里写 `WEBTOON_PORT=其他端口`。
 
+### `.env` 设置（可选）
+
+`.env` 是和 `docker-compose.yml` 放在同一个目录的文本文件，每行写一个 `名字=值`。`docker compose` 每次运行都会自动读它，不用改 compose 文件。没有这个文件就全部用默认值。
+
+| 名字 | 默认 | 作用 |
+| --- | --- | --- |
+| `WEBTOON_PORT` | `8095` | 面板和设备接口在宿主机上的端口；被占用时改成别的 |
+| `WEBTOON_BIND` | `0.0.0.0` | 监听哪个地址；只想让本机访问（比如前面还有反向代理）就写 `127.0.0.1` |
+| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；不写就只有 WEBTOON |
+| `MIHON_HEAP` | `768m` | Suwayomi 最多用的 Java 内存；插件多、图大时可以改成 `1g` |
+
+例如打开插件、换到 8096 端口：
+
+```
+COMPOSE_PROFILES=mihon
+WEBTOON_PORT=8096
+```
+
+改了 `.env` 以后执行 `docker compose up -d` 生效。
+
+### 升级
+
+在 `docker-compose.yml` 所在的目录里，先下载最新的 compose 文件（它会覆盖旧的；新版本可能加了服务或设置），再拉新镜像、重建容器：
+
+```bash
+curl -fLO https://raw.githubusercontent.com/bidabrain/treader-eink/main/webtoon/docker-compose.yml
+docker compose pull && docker compose up -d
+```
+
+- `./data`（面板密码、设备令牌、隧道设置、转好的缓存）和 `.env` 都保留，设备不用重新填。
+- 你直接改过 compose 文件（比如端口）的话，那些改动会被覆盖：改成写在 `.env` 里。
+- 升级后面板左上角显示新的版本号。刚推送的版本要等 GitHub 上的镜像构建完（几分钟），太早 `pull` 拿到的还是旧版，过一会再执行一次就好。
+- 重建时 hub 会断开几秒，设备上这时候正在进行的检查更新可能失败一次，下次检查会接着下。
+
 ### 让设备连上来
 
 面板 → **设备与外网** 里有地址和令牌。设备上：设置 → 内容来源 → 漫画，打开“手机网页填写”，用手机把地址和令牌粘贴进去。
@@ -61,13 +95,15 @@ docker compose up -d
 
 > **本项目不提供也不推荐任何插件仓库。** 仓库地址由你自己在面板里添加。只添加你有权访问的来源，比如你自己的 Komga / Kavita 书库、官方免费连载，并遵守来源网站的条款。上面“只给自己用、不开放、不分享”的要求同样适用于所有来源。
 
-**打开**：在 `docker-compose.yml` 旁边的 `.env` 里加一行，然后重新执行 `docker compose up -d`：
+**打开**：在 `docker-compose.yml` 旁边的 [`.env`](#env-设置可选) 里加一行，然后重新执行 `docker compose up -d`（从旧版本升级的先按[升级](#升级)换新的 compose 文件，插件服务定义在里面）：
 
 ```
 COMPOSE_PROFILES=mihon
 ```
 
 - **内存**：Suwayomi 是 Java 程序，要多占约 1 GB 内存。Java 堆默认上限 768 MB，可以在 `.env` 里用 `MIHON_HEAP=1g` 调整。
+- **第一次启动**：要先下载约 2 GB 的 Suwayomi 镜像；它等 hub 正常后才启动，再过一两分钟面板上才出现“插件”页签。
+- **装插件**：面板 → 插件 → 添加仓库（`index.min.json` 地址）→ 刷新列表 → 安装；在“设备上的来源”里勾选、保存，设备或 App 在发现页点一次“刷新”就能选这个来源。卸载点“卸载”；已下载的话留着，那个来源的订阅检查更新会报错，可以在我的漫画里取消订阅。
 - **安全**：Suwayomi 不映射端口，只有 hub 能在 compose 内网里访问它。两边用的密码在 hub 第一次启动时生成，存在 `data/mihon/suwayomi.secret`。Suwayomi 自己的网页界面是关掉的。插件数据存在 Docker 卷 `suwayomi` 里。
 - **WebView**：没有装 Chromium（`KCEF_ENABLED=false`）。必须过网页验证的来源会报错。
 - **本地漫画**：把 `docker-compose.yml` 里 `./local` 那一行的 `#` 去掉，就能用 Mihon 本地来源读 `./local` 里的漫画（每部一个文件夹，每话一个子文件夹或一个 CBZ）。

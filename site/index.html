@@ -361,7 +361,7 @@
       <div class="feat">
         <div class="ic"><svg><use href="#i-comic"/></svg></div>
         <h3>webtoon · 发现漫画服务器</h3>
-        <ul><li>读 WEBTOON 公开免费的话，不登录、不保存订阅</li><li>设备要哪一话才转：灰度、按屏在分镜空白处切页、打包 CBZ</li><li>可选插件来源：Suwayomi 运行 Mihon 插件，面板里管理仓库和插件；本项目不提供仓库，只添加你有权访问的来源</li><li>安卓 App：发现页、订阅、检查更新、一屏一页阅读</li></ul>
+        <ul><li>读 WEBTOON 公开免费的话，不登录、不保存订阅</li><li>设备要哪一话才转：灰度、按屏在分镜空白处切页、打包 CBZ</li><li>可选插件来源：Suwayomi 运行 Mihon 插件，面板里管理仓库和插件；本项目不提供仓库，只添加你有权访问的来源</li><li>部署：下载 <code>docker-compose.yml</code> 后 <code>docker compose up -d</code>；要插件来源，在同目录的 <code>.env</code> 写 <code>COMPOSE_PROFILES=mihon</code> 再 <code>up -d</code>；升级：下载新的 compose 文件，<code>docker compose pull</code> 后 <code>up -d</code>，数据都保留</li><li>安卓 App：发现页、订阅、检查更新、一屏一页阅读</li></ul>
         <div class="row">
           <a class="btn small" href="https://github.com/bidabrain/treader-eink/tree/main/webtoon#readme">部署说明</a>
           <a class="btn small solid" data-release="webtoon-android-v" href="https://github.com/bidabrain/treader-eink/releases">安卓 App</a>
@@ -391,7 +391,7 @@
       </div>
       <div class="dl-note">
         <b>番茄小说需要自建服务器</b>
-        <p>下载的固件不带番茄下载服务器。阅读、漫画、虎扑、书城榜单、传书都能直接用；要搜索和下载番茄小说，用本项目的 <a href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">番茄服务器一键部署</a>（官方 <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> + 面板，<code>docker compose up -d</code> 就行），再在设备“设置 › 内容来源 › 番茄小说”填面板上显示的地址和密码。小红书、微博也各需要自建服务器（见上面“服务器与 App”）。</p>
+        <p>下载的固件不带番茄下载服务器。阅读、漫画、虎扑、书城榜单、传书都能直接用；要搜索和下载番茄小说，用本项目的 <a href="https://github.com/bidabrain/treader-eink/tree/main/tomato#readme">番茄服务器一键部署</a>（官方 <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> + 面板，<code>docker compose up -d</code> 就行），再在设备“设置 › 内容来源 › 番茄小说”填面板上显示的地址和密码。小红书、微博和 WEBTOON 发现漫画也各需要自建服务器（见上面“服务器与 App”）。</p>
       </div>
     </div>
 
