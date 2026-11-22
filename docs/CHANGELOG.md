@@ -3,17 +3,17 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
-## 2026-11-22 · Treader 1.0.5 · WEBTOON 安卓 App 1.0.1
-
-- 修正：检查更新时连不上 webtoon 服务器（断网、域名查不到、手机锁屏后后台没网），不再把剩下每一话都试一遍、报一长串失败；先等 10 秒再试一次，还不行就停下并说明，下次检查更新从断的那一话接着下。只和某一话有关的失败（服务器说不能看、转换出错）仍然跳过它接着下。
-  Fix: when an update check cannot reach the webtoon server (offline, name lookup failed, no background network after the phone locks), it no longer tries every remaining episode and lists a long run of failures; it waits 10 s and tries once more, then stops and says so, and the next check resumes from that episode. Failures that concern only one episode (the server refuses it, conversion fails) are still skipped.
-
 ## 2026-11-22 · webtoon 服务器 0.2.0
 
 - 可选的插件来源：在 `.env` 里写 `COMPOSE_PROFILES=mihon`，会多起一个 Suwayomi-Server 运行 Mihon / Tachiyomi 插件。在面板的“插件”页添加你自己的仓库、安装插件，再选哪些来源出现在设备上。设备接口多了 `/sources` 和 `src` 参数，插件作品的编号以 `m` 开头；订阅、检查更新和下载照旧，没升级的设备和 App 不受影响。本项目不提供任何插件仓库，只添加你有权访问的来源。详见 [webtoon/README](../webtoon/README.md)。
   Optional extension sources: with `COMPOSE_PROFILES=mihon` in `.env`, a Suwayomi-Server runs Mihon / Tachiyomi extensions. The panel's 插件 page adds your own repositories, installs extensions and picks which sources devices see. The device API gains `/sources` and a `src` parameter, and extension titles have ids starting with `m`; subscriptions, update checks and downloads work as before, and devices and apps that have not been updated are unaffected. This project ships no extension repository; only add sources you have the right to access. See [webtoon/README](../webtoon/README.md).
 - 普通漫画（一张图一页）不再按长条切：裁掉白边后整页缩进屏幕，横向跨页默认拆成两页、右页在前（面板可改）；长条照旧在分镜之间的空白处切。插件章节由服务器分配固定的整数话号，同一话有多个汉化组版本时默认只留一个。
   Ordinary one-image-per-page comics are no longer cut like strips: white borders are trimmed and each page fits the screen, and wide spreads split into two pages, right first by default (changeable in the panel); strips are still cut in the gaps between panels. The server gives extension chapters fixed integer numbers and by default keeps one version when several scanlation groups release the same chapter.
+
+## 2026-11-22 · Treader 1.0.5 · WEBTOON 安卓 App 1.0.1
+
+- 修正：检查更新时连不上 webtoon 服务器（断网、域名查不到、手机锁屏后后台没网），不再把剩下每一话都试一遍、报一长串失败；先等 10 秒再试一次，还不行就停下并说明，下次检查更新从断的那一话接着下。只和某一话有关的失败（服务器说不能看、转换出错）仍然跳过它接着下。
+  Fix: when an update check cannot reach the webtoon server (offline, name lookup failed, no background network after the phone locks), it no longer tries every remaining episode and lists a long run of failures; it waits 10 s and tries once more, then stops and says so, and the next check resumes from that episode. Failures that concern only one episode (the server refuses it, conversion fails) are still skipped.
 
 ## 2026-11-22 · Treader 1.0.4
 
