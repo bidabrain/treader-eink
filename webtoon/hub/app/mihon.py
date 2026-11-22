@@ -231,18 +231,40 @@ def _db() -> sqlite3.Connection:
     return con
 
 
+def _num(c: dict) -> float:
+    n = c.get("chapterNumber")
+    return float(n) if n is not None else -1.0
+
+
 def _oldest_first(chapters: list[dict]) -> list[dict]:
-    """来源顺序从旧到新。Suwayomi 的 sourceOrder 一般是旧的小；万一某个插件反过来（话号随它变小），就倒过来。
-    Source order, oldest first. Suwayomi's sourceOrder is normally smaller for older chapters; if an extension has it
-    the other way round (chapter numbers fall as it rises), flip it."""
+    """从旧到新排章节。先按来源顺序（Suwayomi 的 sourceOrder 一般是旧的小；话号随它变小就倒过来），再在大半章节有章节号
+    时按章节号排：有的插件交出来的顺序是按章节名的字符串排的（第100话、第101话…第10话、第110话），不能全信。没有章节号
+    的（番外之类）跟在来源顺序里它前面那一章后面；章节号相同的（不同汉化组）保持来源顺序。
+    Chapters oldest first. Start from source order (Suwayomi's sourceOrder is normally smaller for older chapters; flip
+    it when chapter numbers fall as it rises), then, when most chapters carry a number, sort by chapter number: some
+    extensions hand chapters over sorted by name as strings (第100话, 第101话 … 第10话, 第110话), which cannot be
+    trusted. Chapters without a number (extras and such) follow the chapter before them in source order; chapters with
+    the same number (other scanlators) keep their source order."""
     cs = sorted(chapters, key=lambda c: c.get("sourceOrder") or 0)
-    nums = [c.get("chapterNumber") for c in cs if (c.get("chapterNumber") or -1) >= 0]
+    nums = [_num(c) for c in cs if _num(c) >= 0]
     if len(nums) >= 2:
         down = sum(1 for a, b in zip(nums, nums[1:]) if b < a)
         up = sum(1 for a, b in zip(nums, nums[1:]) if b > a)
         if down > up:
             cs.reverse()
-    return cs
+    if len(nums) * 2 < len(cs):
+        return cs
+    keyed, last, step = [], -1.0, 0
+    for c in cs:
+        n = _num(c)
+        if n >= 0:
+            last, step = n, 0
+            keyed.append((n, c))
+        else:
+            step += 1
+            keyed.append((last + step * 1e-4, c))
+    keyed.sort(key=lambda kc: kc[0])     # 稳定排序：同号保持来源顺序 / Stable: equal numbers keep source order
+    return [c for _, c in keyed]
 
 
 def assign(manga: int, chapters: list[dict], dedupe: bool = True) -> list[dict]:
@@ -259,8 +281,7 @@ def assign(manga: int, chapters: list[dict], dedupe: bool = True) -> list[dict]:
             top = max([r[1] for r in known.values()], default=0)
             numbers = {r[4] for r in known.values() if r[1] > 0 and r[4] is not None and r[4] >= 0}
             for c in _oldest_first([c for c in chapters if c["url"] not in known]):
-                num = c.get("chapterNumber")
-                num = float(num) if num is not None else -1.0
+                num = _num(c)
                 if dedupe and num >= 0 and num in numbers:
                     no = 0
                 else:
@@ -285,6 +306,24 @@ def assign(manga: int, chapters: list[dict], dedupe: bool = True) -> list[dict]:
     current = {c["url"] for c in chapters}
     rows = sorted((r for r in known.values() if r[1] > 0 and r[0] in current), key=lambda r: r[1])
     return [{"no": r[1], "title": r[3] or f"#{r[1]}", "date": r[5], "chapter": r[2]} for r in rows]
+
+
+def renumber(tid: str) -> int:
+    """忘掉一部作品分配过的话号（编错了时用），下次取详情按现在的规则重新编。返回忘掉了几章。已经转好的这部的 CBZ
+    由调用的一方删掉；设备上用旧话号下的话要取消订阅、删掉后重新订阅。
+    Forget a title's assigned episode numbers (when they came out wrong) so the next detail fetch numbers them again by
+    the current rules. Returns how many chapters were forgotten. The caller deletes this title's converted CBZs;
+    episodes downloaded on devices under the old numbers need an unsubscribe, delete and fresh subscription."""
+    mid = _mid(tid)
+    with _db_lock:
+        con = _db()
+        try:
+            n = con.execute("DELETE FROM chapters WHERE manga = ?", (mid,)).rowcount
+            con.commit()
+        finally:
+            con.close()
+    forget(tid)
+    return n
 
 
 def _check_identity(manga: dict) -> None:

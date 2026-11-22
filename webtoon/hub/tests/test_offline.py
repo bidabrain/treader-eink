@@ -218,6 +218,31 @@ def test_assign_flipped_order_and_dedupe():
     assert [e["no"] for e in eps] == [1, 2]
 
 
+def test_assign_name_sorted_source_and_renumber():
+    # 有的插件按章节名的字符串排（第100话…第109话、第10话、第110话…）：按章节号编，第 1 话是第1话；没有章节号的
+    # 番外跟在来源顺序里它前面那一章后面。/ Some extensions sort by name as strings (第100话 … 第109话, 第10话,
+    # 第110话 …): number by chapter number so episode 1 is 第1话; an extra without a number follows the chapter
+    # before it in source order.
+    names = sorted([f"第{n}话" for n in range(1, 121)])
+    chapters = [_ch(1000 + i, i + 1, float(n[1:-1]), name=n) for i, n in enumerate(names)]
+    before = names[2]                                           # 来源顺序里番外前面那一章 / The chapter before the extra
+    chapters.insert(3, _ch(9999, 3.5, -1, name="番外"))
+    eps = mihon.assign(404, chapters)
+    titles = [e["title"] for e in eps]
+    assert titles[:3] == ["第1话", "第2话", "第3话"] and titles[9:11] == ["第10话", "第11话"]
+    assert titles.index("番外") == titles.index(before) + 1 and titles[-1] == "第120话"
+    assert [e["no"] for e in eps] == list(range(1, 122))
+    # 编错的旧编号可以清掉重编。/ Wrong old numbers can be cleared and assigned again.
+    with mihon._db_lock:
+        con = mihon._db()
+        con.execute("UPDATE chapters SET no = 999 WHERE manga = 404 AND name = '第1话'")
+        con.commit()
+        con.close()
+    assert mihon.assign(404, chapters)[-1]["title"] == "第1话"
+    assert mihon.renumber("m404") == 121
+    assert mihon.assign(404, chapters)[0]["title"] == "第1话"
+
+
 def _img(w, h):
     im = Image.new("RGB", (w, h), "white")
     ImageDraw.Draw(im).rectangle((10, 10, w - 10, h - 10), fill=(60, 60, 60))

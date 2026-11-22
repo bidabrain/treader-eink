@@ -379,6 +379,19 @@ async def panel_mihon_settings(body: MihonSettings):
     return await panel_mihon()
 
 
+@app.post("/api/panel/mihon/renumber/{tid}")
+async def panel_mihon_renumber(tid: str):
+    """重新编号一部插件作品：忘掉它的话号、删掉这部转好的 CBZ，再按现在的规则编。/ Renumber one extension title: forget
+    its episode numbers, delete its converted CBZs, and number it again by the current rules."""
+    import shutil
+    if not jobs.is_mihon(tid):
+        raise HTTPException(400, "只有插件作品能重新编号")
+    n = mihon.renumber(tid)
+    shutil.rmtree(jobs.cbz_path(mihon.LANG, tid, 1).parent, ignore_errors=True)
+    t = await _title(mihon.LANG, tid, "t")
+    return {"forgot": n, "title": t}
+
+
 # ---- 设备接口 / Device API ----
 
 def _device(request: Request) -> None:

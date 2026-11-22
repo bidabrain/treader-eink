@@ -124,8 +124,22 @@ async function openTitle(id) {
     $('#dEps').innerHTML = t.episodes.slice().reverse().slice(0, 30).map((e) =>
       `<li><span>#${e.no} ${esc(e.title)}</span><span><span class="muted" id="ep${e.no}"></span> <button class="ghost" data-no="${e.no}">试转</button></span></li>`).join('');
     $$('#dEps button').forEach((b) => { b.onclick = () => tryEpisode(id, b.dataset.no); });
+    // 插件作品可以重新编号。/ Extension titles can be renumbered.
+    $('#dRenum').hidden = !id.startsWith('m');
+    $('#renumBtn').onclick = () => renumber(id);
     $('#detail').scrollIntoView({ behavior: 'smooth' });
   } catch (e) { $('#dTitle').textContent = e.message; }
+}
+async function renumber(id) {
+  if (!confirm('按章节号重新给这部作品编话号？服务器上已经转好的这部的话会删掉。设备和 App 上已订阅的：先取消订阅并删掉已下载的话，再重新订阅。')) return;
+  $('#renumMsg').textContent = '重新编号中…';
+  try {
+    const r = await api(`/api/panel/mihon/renumber/${id}`, { method: 'POST' });
+    const eps = r.title.episodes;
+    const note = eps.length ? `已重新编号：第 1 话是“${eps[0].title}”，第 ${eps[eps.length - 1].no} 话是“${eps[eps.length - 1].title}”` : '已重新编号';
+    await openTitle(id);
+    $('#renumMsg').textContent = note;
+  } catch (e) { $('#renumMsg').textContent = e.message; }
 }
 async function tryEpisode(id, no) {
   const out = $('#ep' + no);

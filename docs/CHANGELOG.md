@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · webtoon 服务器 0.2.2
+
+- 修正插件来源的话号顺序：有的插件按章节名字符串排章节（“第100话”排在“第10话”前面），服务器照搬后“从第 1 话订阅”下到的是第 100 话。现在大半章节有章节号时按章节号编话号。已经编错的作品在面板的作品详情里点“重新编号”，再在设备或 App 上取消订阅、删掉下错的话后重新订阅。
+  Fixed episode order for extension sources: some extensions sort chapters by name as strings (第100话 before 第10话), and the server copied that order, so subscribing "from episode 1" downloaded chapter 100. Episodes are now numbered by chapter number when most chapters have one. For a title already numbered wrong, press 重新编号 in its panel detail, then unsubscribe on the device or app, delete the wrong episodes and subscribe again.
+
 ## 2026-11-22 · WEBTOON 安卓 App 1.1.1
 
 - 修正平板和大字号上发现页只排一行、下面空一大块，封面下的小字被截掉一半：两行字的高度改用设备上真实的字体量，排得下就多排一行（封面缩小一点），换过系统字体、调大字号也能排满。
