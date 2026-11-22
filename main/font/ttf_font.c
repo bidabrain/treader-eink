@@ -1656,8 +1656,30 @@ static glyph_entry_t* cache_lookup(uint32_t codepoint, int size) {
     return NULL;
 }
 
-static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
+// 卡上字体缺界面用的符号时换成长得像的常见字符，免得画成方框（比如“−”缺了画“-”）。
+// / When a card font lacks a symbol the UI uses, fall back to a common look-alike instead of drawing a box (say "-"
+// for a missing "−").
+static int glyph_index(uint32_t codepoint) {
     int gid = stbtt_FindGlyphIndex(&font_info, (int)codepoint);
+    if (gid != 0) return gid;
+    static const uint32_t subs[][3] = {
+        {0x2212, 0xFF0D, '-'}, {0x2013, 0x2212, '-'}, {0x2014, 0x2013, '-'}, {0x2039, 0x3008, '<'},
+        {0x203A, 0x3009, '>'}, {0x2022, 0x00B7, 0x30FB}, {0x00D7, 0xFF58, 'x'}, {0xFF0B, '+', 0},
+        {0x2026, 0x22EF, 0}, {0x00B7, 0x30FB, 0x2022},
+    };
+    for (size_t i = 0; i < sizeof(subs) / sizeof(subs[0]); i++) {
+        if (subs[i][0] != codepoint) continue;
+        for (int k = 1; k < 3 && subs[i][k] != 0; k++) {
+            gid = stbtt_FindGlyphIndex(&font_info, (int)subs[i][k]);
+            if (gid != 0) return gid;
+        }
+        break;
+    }
+    return 0;
+}
+
+static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
+    int gid = glyph_index(codepoint);
     if (!pack_glyph_tree(gid)) return NULL;
 
     float scale = stbtt_ScaleForPixelHeight(&font_info, (float)pixel_height);
@@ -1748,7 +1770,7 @@ static void warm_text_io(int pixel_height, const char* text) {
         if (dup) continue;
         cps[seen++] = cp;
         if (cache_lookup(cp, pixel_height) != NULL) continue;
-        int gid = stbtt_FindGlyphIndex(&font_info, (int)cp);
+        int gid = glyph_index(cp);
         if (gid < 0 || gid >= num_glyphs) continue;
         io_touch(file_glyf_off + file_glyph_off(gid), file_glyph_len(gid));
         if (gvar_ready && current_weight != wght_def && gvar_glyph_off != NULL) {
@@ -1771,7 +1793,7 @@ static int measure_width(int pixel_height, const char* text) {
     while (*cursor != '\0') {
         uint32_t cp = decode_utf8(&cursor);
         int advance = 0, lsb = 0;
-        int gid = stbtt_FindGlyphIndex(&font_info, (int)cp);
+        int gid = glyph_index(cp);
         stbtt_GetGlyphHMetrics(&font_info, gid, &advance, &lsb);
         width += (int)lroundf(advance * scale);
     }

@@ -15,6 +15,9 @@
 #include <limits.h>
 #define READ_BLOCK (64 * 1024)
 #define PART_TARGET (48 * 1024)
+// 标题行最长字节数（约 40 个汉字）；更长的多半是正文。/ Longest title line in bytes (about 40 CJK characters); longer
+// lines are most likely body text.
+#define TITLE_LINE_MAX 120
 typedef struct {
     FILE *file; ///< 只读句柄 / Read-only handle
     unsigned char bytes[READ_BLOCK + 4]; ///< 跨块字符余量 / Room for a cross-block character
@@ -88,20 +91,25 @@ static bool add(book_txt_t *b, uint32_t offset, const char *title) {
 }
 static esp_err_t index_book(reader_t *r, book_txt_t *b) {
     esp_err_t err = reset(r, b, b->bom); if (err) return err;
-    char line[41] = {0}; size_t len = 0; bool overflow = false, too_many = false;
+    // 行首空白（半角空格、Tab、全角空格）跳过；超过 40 字节的标题按前 40 字节判断和保存，整行超过 TITLE_LINE_MAX
+    // 的不算标题。
+    // / Leading blanks (space, tab, ideographic space) are skipped; a title past 40 bytes is judged and kept by its
+    // first 40 bytes, and lines past TITLE_LINE_MAX are never titles.
+    char line[41] = {0}; size_t len = 0, total = 0; bool full = false, too_many = false;
     uint32_t start = b->bom, cp;
     while (next(r, &cp)) {
         if (cp == '\n') {
-            if (!overflow && heading(line) && !add(b, start, line)) too_many = true;
-            start = r->offset; len = 0; line[0] = 0; overflow = false;
-        } else if (cp != '\r') {
+            if (total <= TITLE_LINE_MAX && heading(line) && !add(b, start, line)) too_many = true;
+            start = r->offset; len = 0; total = 0; line[0] = 0; full = false;
+        } else if (cp != '\r' && !(total == 0 && (cp == ' ' || cp == '\t' || cp == 0x3000))) {
             char bytes[4]; size_t n = encode(cp, bytes);
-            if (len + n <= 40 && !overflow) { memcpy(line + len, bytes, n); len += n; line[len] = 0; }
-            else overflow = true;
+            if (len + n <= 40 && !full) { memcpy(line + len, bytes, n); len += n; line[len] = 0; }
+            else full = true;
+            total += n;
         }
     }
     if (ferror(b->file)) return ESP_FAIL;
-    if (!overflow && heading(line) && !add(b, start, line)) too_many = true;
+    if (total <= TITLE_LINE_MAX && heading(line) && !add(b, start, line)) too_many = true;
     bool fallback = b->count < 2 || too_many;
     if (b->count) b->entries[0].offset = 0;
     for (size_t i = 0; i < b->count; ++i) {

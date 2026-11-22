@@ -33,8 +33,13 @@ write("gbk_chapters.txt", chapters, enc="gbk")
 write("digits_units.txt", "".join(f"第{i}{u} 标题\n{body(8)}\n" for i, u in zip(range(1, 15), "章节卷回集部篇章节卷回集部篇")))
 write("english.txt", "".join(f"Chapter {i}: The river\n" + "The boat drifts under the bridge.\n" * 30 for i in range(1, 9)))
 write("english_space.txt", "".join(f"Chapter\t {i}\nline\n" * 1 for i in range(1, 6)) + "Chapter x\nnot a title\n")
-# 不算标题：超过 40 字节、“第”后没有数字、数字后不是章节字。/ Not titles: over 40 bytes, no number, wrong unit.
+# 不算标题：整行超过 120 字节、“第”后没有数字、数字后不是章节字。/ Not titles: lines over 120 bytes, no number, wrong
+# unit.
 write("not_titles.txt", "第一章" + "很长" * 20 + "\n正文\n第章 没有数字\n第一天 不是章\n第十二章 真的\n内容\n第十三章 也是\n内容\n")
+# 番茄常见的长标题（超过 40 字节）和全角空格缩进的标题。/ Long Fanqie-style titles (past 40 bytes) and titles indented
+# with ideographic spaces.
+write("long_titles.txt", "书名\n" + "".join(f"第{i}章 肖清雪也人傻了，或许叶辰天生就是适合这种官司\n{body(4)}\n" for i in range(1, 4))
+      + "".join(f"　　第{i}章 缩进\n{body(4)}\n" for i in range(4, 6)))
 # 没有章节：按 48 KB 后的第一个换行切段。/ No chapters: parts at the first newline after 48 KB.
 write("no_chapters.txt", body(3000))
 # 没有换行的超长文本：在 96 KB 上限前按字符切。/ One huge line: cut by character before the 96 KB cap.

@@ -266,14 +266,19 @@ static void unlock_draw(void) { if (s_draw_lock) xSemaphoreGive(s_draw_lock); }
 static size_t fb_bytes(void) { return (size_t)epd_width() * epd_height() / 2; }
 // 旋转后差分列向32像素对齐，分界必须落在对齐边上才不会驱动进度条。
 // Rotated diff columns expand to 32 pixels; align the boundary so body updates cannot drive the track.
-static EpdRect reader_area(void) { return (EpdRect){0, 0, UI_LOCK_WIDTH, (UI_BAR_TOP / 32) * 32}; }
+// 页脚（工具条收起时）：上面一条胶囊进度条，下面一行小字（章名、页码和百分比）。正文和翻页局刷区到页脚上沿为止。
+// / Footer (toolbar closed): a capsule track above one small line (chapter, page and percent). The body and the
+// page-turn refresh area stop at its top edge.
+#define FOOTER_H TR_S(52)
+static int footer_top(void) { return UI_LOCK_HEIGHT - FOOTER_H; }
+static EpdRect reader_area(void) { return (EpdRect){0, 0, UI_LOCK_WIDTH, (footer_top() / 32) * 32}; }
 static EpdRect body_rect(void) {
     int top = ttf_font_is_builtin() ? TR_S(140) : 24;
     const int m = MARGIN_PX[s_style.margin];
     // 底边不超过翻页局刷区（按 32 对齐）：放大后页脚变高，否则最后一行落在局刷区外、翻页留残影。
     // Keep the bottom inside the 32-aligned page-turn refresh area: with a taller scaled footer the last line would
     // otherwise fall outside it and keep the previous page's ink.
-    const int bottom = UI_BAR_TOP - 8 < reader_area().height ? UI_BAR_TOP - 8 : reader_area().height;
+    const int bottom = footer_top() - 8 < reader_area().height ? footer_top() - 8 : reader_area().height;
     return (EpdRect){m, top, UI_LOCK_WIDTH - 2 * m, bottom - top};
 }
 // 排版面板：五行选项，前三行三选一，后两行二选一。/ Layout panel: five rows; three choices each for the first three.
@@ -758,6 +763,32 @@ static app_redraw_t close_image(void) {
 }
 
 /* ---- 绘制与预渲染 / Drawing and preparation ---- */
+// 胶囊进度条：圆头浅灰底，已读部分圆头黑色。/ Capsule track: a round-ended light gray track and a round-ended black fill.
+static void capsule(uint8_t* fb, int x, int y, int w, int h, unsigned pct) {
+    ui_fill_round_rect(fb, (EpdRect){x, y, w, h}, h / 2, UI_GRAY_LIGHT);
+    int fw = w * (int)pct / 100;
+    if (fw > 0 && fw < h) fw = h;
+    if (fw > 0) ui_fill_round_rect(fb, (EpdRect){x, y, fw, h}, h / 2, UI_GRAY_BLACK);
+}
+// 页脚刷新区：从 32 对齐的翻页局刷区下沿到屏幕底，翻页时单独差分刷。/ Footer refresh area: from the bottom of the
+// 32-aligned page-turn area to the screen bottom, refreshed on its own when turning pages.
+static EpdRect footer_rect(void) {
+    const int top = reader_area().height;
+    return (EpdRect){0, top, UI_LOCK_WIDTH, UI_LOCK_HEIGHT - top};
+}
+static void draw_footer(uint8_t* fb, size_t page) {
+    const int top = footer_top(), x0 = UI_MARGIN, x1 = UI_LOCK_WIDTH - UI_MARGIN, px = TR_S(22), h = TR_S(8);
+    char pages[48], name[96];
+    if (book_layout_complete())
+        snprintf(pages, sizeof(pages), "%u/%u · %u%%", (unsigned)page + 1, (unsigned)book_layout_page_count(),
+                 percent(page));
+    else snprintf(pages, sizeof(pages), "%u/… · %u%%", (unsigned)page + 1, percent(page));
+    copy_text(name, sizeof(name), s_save_failed ? "进度未保存，稍后重试" : s_title);
+    capsule(fb, x0, top + TR_S(2), x1 - x0, h, percent(page));
+    fit_text(name, px, x1 - x0 - ttf_text_width_px(px, pages) - TR_S(24));
+    tr_text(fb, x0, top + TR_S(18), px, name, EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, x1, top + TR_S(18), px, pages, EPD_DRAW_ALIGN_RIGHT, false);
+}
 static void draw_reader(uint8_t* fb, size_t page) {
     ui_clear_page(fb);
     book_layout_draw_page(fb, page, body_rect(), s_px);
@@ -766,19 +797,23 @@ static void draw_reader(uint8_t* fb, size_t page) {
         ui_draw_button(fb, (EpdRect){UI_MARGIN, TR_S(52), ui_content_width(), TR_S(72)},
                        "打开字体页 / 无卡正文可能缺字", false);
     }
+    if (!s_toolbar) { draw_footer(fb, page); return; }
+    // 工具条开着时页脚更高，先把压在下面的正文擦掉。/ With the toolbar open the footer is taller; clear the body
+    // text under it first.
+    epd_fill_rect((EpdRect){0, UI_BAR_TOP, UI_LOCK_WIDTH, UI_LOCK_HEIGHT - UI_BAR_TOP}, UI_GRAY_WHITE, fb);
     EpdRect track = track_rect();
-    epd_fill_rect((EpdRect){track.x, track.y + TR_S(16), track.width, TR_S(12)}, UI_GRAY_LIGHT, fb);
+    // 胶囊进度条，章节分界是条上的白色细缝；进度条短，缝太密（间距小于 12）就不画。
+    // / A capsule track with chapter boundaries as thin white gaps; the track is short, so skip the gaps when they
+    // would be closer than 12 px.
+    const int cap_h = TR_S(10), cap_y = track.y + TR_S(17);
+    capsule(fb, track.x, cap_y, track.width, cap_h, percent(page));
     size_t chapters = book_chapter_count();
-    // 工具条开着时进度条变短，刻度太密（间距小于 12）就不画。/ With the toolbar open the track is short; skip the
-    // ticks when they would be closer than 12 px.
-    if (chapters <= 40 && book_total_bytes() && (!s_toolbar || track.width >= (int)chapters * TR_S(12))) {
+    if (chapters <= 40 && book_total_bytes() && track.width >= (int)chapters * TR_S(12)) {
         for (size_t i = 1; i < chapters; ++i) {
             int x = track.x + (uint64_t)book_chapter_byte_offset(i) * track.width / book_total_bytes();
-            epd_fill_rect((EpdRect){x, track.y + TR_S(10), 2, TR_S(24)}, UI_GRAY_BLACK, fb);
+            epd_fill_rect((EpdRect){x, cap_y, 2, cap_h}, UI_GRAY_WHITE, fb);
         }
     }
-    epd_fill_rect((EpdRect){track.x, track.y + TR_S(16), track.width * (int)percent(page) / 100, TR_S(12)},
-                  UI_GRAY_BLACK, fb);
     char name[96], suffix[64], line[176];
     if (book_layout_complete())
         snprintf(suffix, sizeof(suffix), " · 本章 %u/%u · 全书 %u%%", (unsigned)page + 1,
@@ -1128,7 +1163,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
             // 页码即时更新；百分比不变时轨道像素不变，DU不会擦掉整条轨道。
             // Page numbers stay current; unchanged percentages leave the track unchanged, so DU never wipes the whole track.
             err = (enum EpdDrawError)(err | update_display_area_with(ctx->hl, &E0470_FOLLOW_WAVEFORM,
-                                                                     MODE_DU, progress_rect()));
+                                                                     MODE_DU, footer_rect()));
             ESP_LOGI(TAG, "reader regions body_h=%d footer=diff pct=%u", s_area.height, percent(s_page));
         }
     }

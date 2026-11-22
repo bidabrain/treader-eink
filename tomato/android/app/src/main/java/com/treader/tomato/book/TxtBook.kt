@@ -48,6 +48,9 @@ class TxtBook private constructor(
         const val CHAPTER_BYTES_MAX = 96 * 1024
         private const val READ_BLOCK = 64 * 1024
         private const val PART_TARGET = 48 * 1024
+        // 标题行最长字节数（约 40 个汉字），同固件。/ Longest title line in bytes (about 40 CJK characters), as in the
+        // firmware.
+        private const val TITLE_LINE_MAX = 120
 
         /** 固件的 GBK 表，App 启动时装一次。/ The firmware GBK table, loaded once at startup. */
         lateinit var gbkTable: CharArray
@@ -115,8 +118,8 @@ class TxtBook private constructor(
         private const val NUMS = "零一二三四五六七八九十百千万两"
         private const val UNITS = "章节卷回集部篇"
 
-        // 章节标题：“Chapter 数字”，或“第 + 数字 + 章/节/卷/回/集/部/篇”（行不超过 40 字节）。
-        // A chapter title: "Chapter <digit>", or "第 + number + 章/节/卷/回/集/部/篇" (lines up to 40 bytes).
+        // 章节标题：“Chapter 数字”，或“第 + 数字 + 章/节/卷/回/集/部/篇”（看行首最多 40 字节）。
+        // A chapter title: "Chapter <digit>", or "第 + number + 章/节/卷/回/集/部/篇" (judged on up to the first 40 bytes).
         private fun heading(line: ByteArray): Boolean {
             if (line.size >= 7 && String(line, 0, 7, Charsets.ISO_8859_1) == "Chapter") {
                 var i = 7
@@ -144,25 +147,31 @@ class TxtBook private constructor(
                 entries.add(Entry(offset, title ?: "Part ${entries.size + 1}"))
                 return true
             }
+            // 行首空白（半角空格、Tab、全角空格）跳过；超过 40 字节的标题按前 40 字节判断和保存，整行超过
+            // TITLE_LINE_MAX 的不算标题。
+            // Leading blanks (space, tab, ideographic space) are skipped; a title past 40 bytes is judged and kept by
+            // its first 40 bytes, and lines past TITLE_LINE_MAX are never titles.
             val line = ByteArrayOutputStream(48)
-            var overflow = false
+            var full = false
+            var total = 0
             var start = bom
             var pos = bom
             fun endLine() {
                 val l = line.toByteArray()
-                if (!overflow && heading(l) && !add(start, String(l, Charsets.UTF_8))) tooMany = true
+                if (total <= TITLE_LINE_MAX && heading(l) && !add(start, String(l, Charsets.UTF_8))) tooMany = true
             }
             while (pos < s.size) {
                 val (cp, k) = next(s, pos, gbk)
                 pos += k
                 if (cp == '\n'.code) {
                     endLine()
-                    start = pos; line.reset(); overflow = false
-                } else if (cp != '\r'.code) {
+                    start = pos; line.reset(); full = false; total = 0
+                } else if (cp != '\r'.code && !(total == 0 && (cp == ' '.code || cp == '\t'.code || cp == 0x3000))) {
                     val tmp = ByteArrayOutputStream(4)
                     encode(cp, tmp)
-                    if (line.size() + tmp.size() <= 40 && !overflow) line.write(tmp.toByteArray())
-                    else overflow = true
+                    if (line.size() + tmp.size() <= 40 && !full) line.write(tmp.toByteArray())
+                    else full = true
+                    total += tmp.size()
                 }
             }
             endLine()
