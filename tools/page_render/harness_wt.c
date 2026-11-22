@@ -23,6 +23,12 @@ void tomato_sync_get_status(tomato_status_t* out) {
     if (s_updating) { out->current = 3; out->total = 10; }
 }
 bool tomato_wt_updating(void) { return s_updating; }
+#ifndef HR_BASELINE   // 改动前的代码没有来源 / The pre-change code has no sources
+// 来源：画面里直接改 s_src，这里只给默认值。/ Sources: scenes set s_src directly; these only give the default.
+void tomato_wt_src(char* out, size_t cap) { snprintf(out, cap, "%s", TOMATO_WT_SRC_WEBTOON); }
+esp_err_t tomato_wt_src_set(const char* key) { (void)key; return ESP_OK; }
+bool tomato_wt_is_ext(const char* id) { return id && id[0] == 'm'; }
+#endif
 void tomato_json_use_psram(void) {}
 void tomato_wt_cover_path(const char* id, char* out, size_t cap) { snprintf(out, cap, "/nonexistent/%s.jpg", id); }
 void tomato_wt_title_path(const char* id, char* out, size_t cap) { snprintf(out, cap, "/nonexistent/%s.json", id); }
@@ -144,5 +150,41 @@ void hr_scenes(void) {
     s_detail_loaded = false;
     s_job_active = false;
     shot(&ctx, "detail_loading");
+
+#ifndef HR_BASELINE
+    // 插件来源：搜索栏旁的来源按钮、人气 / 最新、来源列表、插件作品详情。/ Extension sources: the source button by
+    // the search bar, Popular / Latest, the source list and an extension title's detail.
+    static const char* const SRCS[][3] = {{"webtoon", "WEBTOON", ""}, {"77", "一个名字很长很长的插件来源 (EN)", "en"},
+                                          {"0", "本地", ""}, {"88", "Komga", "all"}};
+    for (int i = 0; i < 4; i++) {
+        snprintf(s_srcs[i].key, sizeof(s_srcs[i].key), "%s", SRCS[i][0]);
+        snprintf(s_srcs[i].name, sizeof(s_srcs[i].name), "%s", SRCS[i][1]);
+        snprintf(s_srcs[i].lang, sizeof(s_srcs[i].lang), "%s", SRCS[i][2]);
+        s_srcs[i].latest = i != 1;
+    }
+    s_src_count = 4;
+    s_view = V_LIST;
+    snprintf(s_src, sizeof(s_src), "88");
+    s_seg = 1;
+    s_key_count = 0;
+    items(9);
+    shot(&ctx, "ext_list");
+    snprintf(s_src, sizeof(s_src), "77");
+    s_seg = 0;
+    shot(&ctx, "ext_list_pop_only");
+    s_view = V_SOURCES;
+    s_src_page = 0;
+    shot(&ctx, "sources");
+    s_view = V_DETAIL;
+    snprintf(s_id, sizeof(s_id), "m12");
+    snprintf(s_src_label, sizeof(s_src_label), "Komga");
+    snprintf(s_genre, sizeof(s_genre), "Action、Drama");
+    s_detail_loaded = true;
+    s_subscribed = false;
+    s_ep_count = 120;
+    shot(&ctx, "ext_detail");
+    s_src_count = 0;
+    snprintf(s_src, sizeof(s_src), "%s", TOMATO_WT_SRC_WEBTOON);
+#endif
     s_view = V_LIST;
 }

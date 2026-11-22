@@ -100,6 +100,33 @@ esp_err_t tomato_wt_max_set(int n) {
     return n == 5 || n == 10 || n == 20 || n == 50 ? set_u8("max", n) : ESP_ERR_INVALID_ARG;
 }
 
+#define SRC_MAX 24
+
+void tomato_wt_src(char* out, size_t cap) {
+    nvs_handle_t h;
+    size_t n = cap;
+    if (!cap) return;
+    out[0] = 0;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_str(h, "src", out, &n) != ESP_OK) out[0] = 0;
+        nvs_close(h);
+    }
+    if (!out[0]) snprintf(out, cap, "%s", TOMATO_WT_SRC_WEBTOON);
+}
+
+esp_err_t tomato_wt_src_set(const char* key) {
+    if (!key || !key[0] || strlen(key) >= SRC_MAX) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(h, "src", key);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+bool tomato_wt_is_ext(const char* id) { return id && id[0] == 'm'; }
+
 // 请求里共用的 lang 和 zh 参数。/ The lang and zh query parameters shared by requests.
 static void query(char* out, size_t cap) {
     snprintf(out, cap, "lang=%s&zh=%s", tomato_wt_lang_code(tomato_wt_lang()), tomato_wt_simp() ? "s" : "t");
@@ -282,7 +309,7 @@ esp_err_t tomato_wt_subscribe(const char* id, const char* title, const char* aut
         tomato_wt_mark_read(folder, &m);
     }
     snprintf(m.id, sizeof(m.id), "%s", sid);
-    snprintf(m.lang, sizeof(m.lang), "%s", tomato_wt_lang_code(tomato_wt_lang()));
+    snprintf(m.lang, sizeof(m.lang), "%s", tomato_wt_is_ext(sid) ? "mihon" : tomato_wt_lang_code(tomato_wt_lang()));
     if (title && title[0]) tomato_copy_utf8(m.title, sizeof(m.title), title);
     if (author && author[0]) tomato_copy_utf8(m.author, sizeof(m.author), author);
     m.last = last < 0 ? 0 : last;
@@ -333,25 +360,59 @@ static esp_err_t run_list(const tomato_srv_t* srv, const char* path, const char*
     return ESP_OK;
 }
 
+// 来源参数：WEBTOON 不带（旧服务器也认），插件来源带 &src=。/ The source parameter: none for WEBTOON (old servers
+// accept that too), &src= for an extension source.
+static bool ext_src(const tomato_wt_req_t* r, char* out, size_t cap) {
+    out[0] = 0;
+    if (!r->src[0] || !strcmp(r->src, TOMATO_WT_SRC_WEBTOON)) return false;
+    char esc[64];
+    tomato_url_escape(r->src, esc, sizeof(esc), false);
+    snprintf(out, cap, "&src=%s", esc);
+    return true;
+}
+
+// 刷新发现页时顺带取一次来源列表；旧服务器没有这个接口（404）就删掉缓存，发现页不显示来源按钮。
+// A store refresh also fetches the source list; an older server without it (404) clears the cache and the store
+// shows no source button.
+static void fetch_sources(const tomato_srv_t* srv, const volatile bool* cancel) {
+    cJSON* root = NULL;
+    char m[96];
+    const esp_err_t err = tomato_srv_json(srv, "/api/device/v1/sources", TIMEOUT_MS, cancel, &root, m, sizeof(m));
+    if (err == ESP_OK) {
+        mkdirs();
+        tomato_cache_write_json(TOMATO_WT_SOURCES_FILE, root);
+        cJSON_Delete(root);
+    } else if (err == ESP_ERR_NOT_FOUND) {
+        remove(TOMATO_WT_SOURCES_FILE);
+    }
+}
+
 static esp_err_t run_store(const tomato_srv_t* srv, const tomato_wt_req_t* r, const volatile bool* cancel,
                            tomato_hupu_progress_t progress, char* msg, size_t cap) {
     static const char* const SEGS[] = {"rank", "genre", "day", "done"};
+    char src[80];
+    const bool ext = ext_src(r, src, sizeof(src));
     bool ok = false;
-    for (int i = 0; i < 4; i++) ok |= !strcmp(r->seg, SEGS[i]);
-    char key[48], q[48], path[192];
+    if (ext) ok = !strcmp(r->seg, "pop") || !strcmp(r->seg, "latest");
+    else for (int i = 0; i < 4; i++) ok |= !strcmp(r->seg, SEGS[i]);
+    fetch_sources(srv, cancel);
+    if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
+    char key[48], q[48], path[300];
     tomato_url_escape(r->key, key, sizeof(key), false);
     query(q, sizeof(q));
-    snprintf(path, sizeof(path), "/api/device/v1/store?seg=%s&key=%s&limit=60&%s", ok ? r->seg : "rank", key, q);
+    snprintf(path, sizeof(path), "/api/device/v1/store?seg=%s&key=%s&limit=60&%s%s",
+             ok ? r->seg : ext ? "pop" : "rank", key, q, src);
     return run_list(srv, path, TOMATO_WT_STORE_FILE, cancel, progress, msg, cap);
 }
 
 static esp_err_t run_search(const tomato_srv_t* srv, const tomato_wt_req_t* r, const volatile bool* cancel,
                             tomato_hupu_progress_t progress, char* msg, size_t cap) {
     if (!r->q[0]) { snprintf(msg, cap, "没有关键词"); return ESP_ERR_INVALID_ARG; }
-    char q[200], lq[48], path[300];
+    char q[200], lq[48], src[80], path[400];
     tomato_url_escape(r->q, q, sizeof(q), false);
     query(lq, sizeof(lq));
-    snprintf(path, sizeof(path), "/api/device/v1/search?q=%s&%s", q, lq);
+    ext_src(r, src, sizeof(src));
+    snprintf(path, sizeof(path), "/api/device/v1/search?q=%s&%s%s", q, lq, src);
     return run_list(srv, path, TOMATO_WT_SEARCH_FILE, cancel, progress, msg, cap);
 }
 

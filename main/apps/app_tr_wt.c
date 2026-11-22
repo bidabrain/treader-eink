@@ -6,7 +6,8 @@
  * （榜单、类型或星期几），再下面 3 列封面网格按页翻；点开是作品详情（封面、作者、类型、免费话数、简介），没订阅时
  * 三个订阅按钮（从第 1 话 / 只追新的 / 最近 5 话），订阅后在后台下载，已订阅的可以检查这部的更新或取消订阅。
  * 数据来自用户自建的 webtoon 服务器，components/tomato 的后台任务把列表、详情和灰度封面存到 TF 卡 webtoon/，本页
- * 只读这些缓存；订阅是我的漫画里作品文件夹里的 .webtoon 标记。
+ * 只读这些缓存；订阅是我的漫画里作品文件夹里的 .webtoon 标记。服务器开了插件来源时，搜索栏右边多一个来源按钮，
+ * 点开选 WEBTOON 或某个 Mihon 插件来源；插件来源的分段是 人气 / 最新，作品编号以 m 开头，订阅和下载流程一样。
  *
  * English: the comic store (WEBTOON), opened from the top right of the comic shelf. A search bar and the segments
  * Rankings / Genres / Weekdays / Completed sit on top, a row of second-level choices (ranking, genre or weekday)
@@ -15,13 +16,17 @@
  * subscription downloads in the background, and a subscribed title can check its updates or unsubscribe. Data comes
  * from the user's own webtoon server; the components/tomato task stores lists, details and gray covers under webtoon/
  * on the TF card and this page reads only those caches; a subscription is the .webtoon marker in the title's folder
- * on the comic shelf.
+ * on the comic shelf. When the server has extension sources, a source button right of the search bar picks WEBTOON or
+ * a Mihon extension source; extension sources have the segments Popular / Latest, their title ids start with m, and
+ * subscribing and downloading work the same way.
  *
- * 冻结：只在用户点“刷新”、切到没缓存的列表、打开详情、搜索、订阅和检查更新时联网，进页不自动刷新。取消订阅只删标记，
- * 已下载的话留在我的漫画里。只拉公开免费的话，不登录 WEBTOON。大块数据进页分配、离页释放。
+ * 冻结：只在用户点“刷新”、切到没缓存的列表、打开详情、搜索、订阅和检查更新时联网，进页不自动刷新；来源列表跟着发现页
+ * 列表一起取，换来源不单独联网。取消订阅只删标记，已下载的话留在我的漫画里。只拉公开免费的话，不登录 WEBTOON。大块数据
+ * 进页分配、离页释放。
  * Frozen: network only on Refresh, opening an uncached list, opening details, searching, subscribing and checking
- * updates; entering never refreshes. Unsubscribing only removes the marker and downloaded episodes stay on the comic
- * shelf. Only free public episodes, never a WEBTOON sign-in. Large buffers are allocated on entry and freed on exit.
+ * updates; entering never refreshes; the source list comes with a store list and switching sources adds no request of
+ * its own. Unsubscribing only removes the marker and downloaded episodes stay on the comic shelf. Only free public
+ * episodes, never a WEBTOON sign-in. Large buffers are allocated on entry and freed on exit.
  */
 
 #include <stdio.h>
@@ -60,7 +65,13 @@ void app_comic_request_rescan(void);
 #define ITEMS_MAX 120
 #define KEYS_MAX 40
 #define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - TR_S(200), TR_S(70), TR_S(200), TR_S(80)}
-#define SEARCH_BAR (EpdRect){TR_MARGIN, TR_S(168), CW, TR_S(72)}
+#define SEARCH_FULL (EpdRect){TR_MARGIN, TR_S(168), CW, TR_S(72)}
+#define SRC_W TR_S(190)
+#define SRC_RECT (EpdRect){TR_W - TR_MARGIN - SRC_W, TR_S(168), SRC_W, TR_S(72)}
+// 有来源可选时搜索栏让出右边给来源按钮。/ With sources to pick, the search bar leaves room for the source button.
+#define SEARCH_BAR (s_src_count > 1 ? (EpdRect){TR_MARGIN, TR_S(168), CW - SRC_W - TR_S(14), TR_S(72)} : SEARCH_FULL)
+#define SRC_ROW_Y TR_S(176)
+#define SRC_ROW_H TR_S(92)
 #define SEG_RECT (EpdRect){TR_MARGIN, TR_S(258), CW, TR_S(60)}
 #define CHIPS_Y TR_S(336)
 #define CHIP_H TR_S(56)
@@ -77,10 +88,15 @@ void app_comic_request_rescan(void);
 #define SETUP_TEXT "还没连接漫画服务器。先在电脑或 NAS 上部署 webtoon（见项目 webtoon/ 目录），" \
                    "再到“设置 › 内容来源 › 漫画”填服务器地址和设备令牌。"
 
-typedef enum { V_LIST, V_SEARCH, V_DETAIL } view_t;
-typedef enum { SEG_RANK, SEG_GENRE, SEG_DAY, SEG_DONE, SEG_COUNT } seg_t;
+typedef enum { V_LIST, V_SEARCH, V_DETAIL, V_SOURCES } view_t;
+enum { SEG_RANK, SEG_GENRE, SEG_DAY, SEG_DONE, SEG_COUNT };   // WEBTOON 的分段 / WEBTOON's segments
 static const char* const SEG_KEYS[SEG_COUNT] = {"rank", "genre", "day", "done"};
 static const char* const SEG_NAMES[SEG_COUNT] = {"排行", "类型", "星期", "完结"};
+// 插件来源的分段（来源不支持“最新”时只有人气）。/ Extension source segments (Popular only when the source has no
+// Latest).
+static const char* const MSEG_KEYS[2] = {"pop", "latest"};
+static const char* const MSEG_NAMES[2] = {"人气", "最新"};
+#define SRCS_MAX 48
 
 typedef struct {
     char id[16];
@@ -99,6 +115,13 @@ typedef struct {
     char title[48];
 } ep_t;
 
+typedef struct {
+    char key[24];
+    char name[40];
+    char lang[12];
+    bool latest;
+} src_t;
+
 /* ---- 状态 / State ---- */
 
 static view_t s_view;
@@ -106,7 +129,11 @@ static bool s_has_cfg;
 static char s_msg[112];
 static int64_t s_poll_ms;
 
-static seg_t s_seg;
+static int s_seg;                     // 当前来源的分段下标 / Segment index within the current source
+static char s_src[24];                // 当前来源 key / Current source key
+static src_t* s_srcs;                 // 服务器给的来源（缓存）/ The server's sources (cached)
+static int s_src_count;               // 0 或 1：没有可选的来源 / 0 or 1: nothing to pick
+static int s_src_page;
 static char s_key[24];                // 当前二级选项 / Current second-level choice
 static bool s_searching;              // 列表显示的是搜索结果 / The list shows search results
 static char s_query[64];
@@ -118,10 +145,11 @@ static int s_chip_page;
 static int s_page;
 static char s_list_key[24];           // 列表文件对应的分段和选项 / The segment and choice the list file holds
 static char s_list_seg[8];
+static char s_list_src[24];
 
 // 详情 / Detail
 static char s_id[16];
-static char s_title[96], s_author[64], s_genre[48];
+static char s_title[96], s_author[64], s_genre[48], s_src_label[40];
 static char* s_summary;
 static ep_t* s_eps;
 static int s_ep_count, s_latest;
@@ -152,6 +180,8 @@ static void free_all(void) {
     FREE(s_keys);
     FREE(s_summary);
     FREE(s_eps);
+    FREE(s_srcs);
+    s_src_count = 0;
     s_item_count = -1;
     s_key_count = s_ep_count = 0;
     book_cover_drop_pending();
@@ -162,7 +192,8 @@ static bool alloc_all(void) {
     if (!s_keys) s_keys = heap_caps_calloc(KEYS_MAX, sizeof(wt_key_t), PSRAM_CAPS);
     if (!s_summary) s_summary = heap_caps_calloc(1, 2048, PSRAM_CAPS);
     if (!s_eps) s_eps = heap_caps_calloc(2000, sizeof(ep_t), PSRAM_CAPS);
-    const bool ok = s_items && s_keys && s_summary && s_eps;
+    if (!s_srcs) s_srcs = heap_caps_calloc(SRCS_MAX, sizeof(src_t), PSRAM_CAPS);
+    const bool ok = s_items && s_keys && s_summary && s_eps && s_srcs;
     if (!ok) { ESP_LOGE(TAG, "out of memory"); free_all(); }
     return ok;
 }
@@ -205,6 +236,53 @@ static bool cover_file(const char* id, char* out, size_t cap) {
     return stat(out, &st) == 0 && st.st_size > 0;
 }
 
+/* ---- 来源 / Sources ---- */
+
+static bool is_ext(void) { return strcmp(s_src, TOMATO_WT_SRC_WEBTOON) != 0; }
+
+static const src_t* cur_src(void) {
+    for (int i = 0; i < s_src_count; i++)
+        if (!strcmp(s_srcs[i].key, s_src)) return &s_srcs[i];
+    return NULL;
+}
+
+static int seg_count(void) {
+    if (!is_ext()) return SEG_COUNT;
+    const src_t* c = cur_src();
+    return c && c->latest ? 2 : 1;
+}
+
+static const char* const* seg_names(void) { return is_ext() ? MSEG_NAMES : SEG_NAMES; }
+static const char* seg_key(void) { return is_ext() ? MSEG_KEYS[s_seg < 2 ? s_seg : 0] : SEG_KEYS[s_seg]; }
+
+// 读来源缓存；选中的来源已经不在（服务器关了插件或隐藏了它）就回到 WEBTOON。/ Load the source cache; fall back to
+// WEBTOON when the chosen source is gone (the server turned plugins off or hid it).
+static void load_sources(void) {
+    s_src_count = 0;
+    tomato_wt_src(s_src, sizeof(s_src));
+    cJSON* root = s_srcs ? read_json(TOMATO_WT_SOURCES_FILE) : NULL;
+    if (root && cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "mihon"))) {
+        const cJSON* it;
+        cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "items")) {
+            if (s_src_count >= SRCS_MAX) break;
+            src_t* x = &s_srcs[s_src_count];
+            str(x->key, sizeof(x->key), it, "key");
+            str(x->name, sizeof(x->name), it, "name");
+            str(x->lang, sizeof(x->lang), it, "lang");
+            x->latest = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(it, "latest"));
+            if (x->key[0] && x->name[0]) s_src_count++;
+        }
+    }
+    cJSON_Delete(root);
+    if (s_src_count <= 1) s_src_count = 0;
+    if (is_ext() && !cur_src()) {
+        snprintf(s_src, sizeof(s_src), "%s", TOMATO_WT_SRC_WEBTOON);
+        tomato_wt_src_set(s_src);
+        s_seg = 0;
+    }
+    if (s_seg >= seg_count()) s_seg = 0;
+}
+
 // 读列表文件（发现页或搜索）。/ Load a list file (store or search).
 static void load_list(void) {
     s_item_count = -1;
@@ -214,8 +292,11 @@ static void load_list(void) {
     if (!root) return;
     str(s_list_seg, sizeof(s_list_seg), root, "seg");
     str(s_list_key, sizeof(s_list_key), root, "key");
-    // 发现页文件里存的不是当前分段：当作没有缓存。/ The store file holds another segment: treat it as no cache.
-    if (!s_searching && (strcmp(s_list_seg, SEG_KEYS[s_seg]) || (s_key[0] && strcmp(s_list_key, s_key)))) {
+    str(s_list_src, sizeof(s_list_src), root, "src");
+    if (!s_list_src[0]) snprintf(s_list_src, sizeof(s_list_src), "%s", TOMATO_WT_SRC_WEBTOON);
+    // 文件里存的不是当前来源或分段：当作没有缓存。/ The file holds another source or segment: treat it as no cache.
+    if (strcmp(s_list_src, s_src) ||
+        (!s_searching && (strcmp(s_list_seg, seg_key()) || (s_key[0] && strcmp(s_list_key, s_key))))) {
         cJSON_Delete(root);
         return;
     }
@@ -254,6 +335,7 @@ static void load_detail(void) {
         str(s_title, sizeof(s_title), root, "title");
         str(s_author, sizeof(s_author), root, "author");
         str(s_genre, sizeof(s_genre), root, "genre");
+        str(s_src_label, sizeof(s_src_label), root, "src");
         str(s_summary, 2048, root, "summary");
         s_latest = num(root, "latest");
         s_done = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "done"));
@@ -315,7 +397,8 @@ static const char* loading_text(const char* what) {
 
 static void request_list(void) {
     tomato_wt_req_t r = {.job = s_searching ? TOMATO_WT_SEARCH : TOMATO_WT_STORE};
-    snprintf(r.seg, sizeof(r.seg), "%s", SEG_KEYS[s_seg]);
+    snprintf(r.seg, sizeof(r.seg), "%s", seg_key());
+    snprintf(r.src, sizeof(r.src), "%s", s_src);
     snprintf(r.key, sizeof(r.key), "%s", s_key);
     snprintf(r.q, sizeof(r.q), "%s", s_query);
     start_job(&r);
@@ -436,7 +519,14 @@ static void draw_list(uint8_t* fb) {
     tr_fit(line, TR_S(28), bar.width - TR_S(120));
     tr_text_on(fb, bar.x + TR_S(82), bar.y + (bar.height - TR_S(28)) / 2 - TR_S(2), TR_S(28), line, EPD_DRAW_ALIGN_LEFT,
                false, s_searching ? UI_GRAY_BLACK : TR_GRAY_SECONDARY, TR_GRAY_SURFACE);
-    tr_segment(fb, SEG_RECT, SEG_NAMES, SEG_COUNT, s_searching ? -1 : (int)s_seg);
+    if (s_src_count > 1) {
+        const src_t* c = cur_src();
+        snprintf(line, sizeof(line), "%s", c ? c->name : "WEBTOON");
+        tr_fit(line, TR_S(26), SRC_W - TR_S(56));
+        strncat(line, " ›", sizeof(line) - strlen(line) - 1);
+        tr_pill(fb, SRC_RECT, line, false, TR_S(26));
+    }
+    tr_segment(fb, SEG_RECT, seg_names(), seg_count(), s_searching ? -1 : s_seg);
     if (s_searching) {
         tr_pill(fb, (EpdRect){TR_MARGIN, CHIPS_Y, TR_S(200), CHIP_H}, "‹ 回到发现", false, TR_S(26));
     } else if (s_key_count) {
@@ -488,7 +578,8 @@ static void draw_search(uint8_t* fb) {
     epd_fill_rect((EpdRect){f.x + TR_S(22) + ttf_text_width_px(px, tail), f.y + TR_S(18), TR_S(3), TR_S(46)},
                   UI_GRAY_BLACK, fb);
     if (TR_S(286) + TR_S(36) < TR_KBD_TOP)
-        tr_text_dim(fb, TR_MARGIN, TR_S(286), TR_S(24), "作品名或作者，打简体也行（服务器会转成繁体去搜）", EPD_DRAW_ALIGN_LEFT);
+        tr_text_dim(fb, TR_MARGIN, TR_S(286), TR_S(24), is_ext() ? "作品名或作者" :
+                    "作品名或作者，打简体也行（服务器会转成繁体去搜）", EPD_DRAW_ALIGN_LEFT);
     tr_kbd_draw(fb, &s_kbd);
 }
 
@@ -509,7 +600,9 @@ static void draw_detail(uint8_t* fb) {
     draw_refresh(fb, loading);
     const EpdRect cr = COVER_RECT;
     char cover[64];
-    tr_book_cover(fb, cr, cover_file(s_id, cover, sizeof(cover)) ? cover : NULL, s_title, s_author, "WEBTOON", false);
+    const bool ext = tomato_wt_is_ext(s_id);
+    const char* label = ext && s_src_label[0] ? s_src_label : "WEBTOON";
+    tr_book_cover(fb, cr, cover_file(s_id, cover, sizeof(cover)) ? cover : NULL, s_title, s_author, label, false);
     const int x = cr.x + cr.width + TR_S(28), w = TR_W - TR_MARGIN - x;
     int y = cr.y + TR_S(4);
     const int lines = tr_wrap(fb, x, y, w, TR_S(36), TR_S(48), s_title, 2);
@@ -518,7 +611,8 @@ static void draw_detail(uint8_t* fb) {
     snprintf(line, sizeof(line), "%s", s_author);
     tr_fit(line, TR_S(26), w);
     tr_text_dim(fb, x, y, TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
-    snprintf(line, sizeof(line), "%s · 免费 %d 话%s", s_genre[0] ? s_genre : "WEBTOON", s_ep_count, s_done ? " · 完结" : "");
+    snprintf(line, sizeof(line), ext ? "%s · %d 话%s" : "%s · 免费 %d 话%s", s_genre[0] ? s_genre : label, s_ep_count,
+             s_done ? " · 完结" : "");
     tr_fit(line, TR_S(26), w);
     tr_text_dim(fb, x, y + TR_S(42), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
     if (s_subscribed) {
@@ -560,6 +654,33 @@ static void draw_detail(uint8_t* fb) {
     }
 }
 
+static int src_rows(void) {
+    const int n = (PAGER_Y - TR_S(12) - SRC_ROW_Y) / SRC_ROW_H;
+    return n < 1 ? 1 : n;
+}
+
+static int src_pages(void) { return (s_src_count + src_rows() - 1) / src_rows(); }
+
+static void draw_sources(uint8_t* fb) {
+    draw_back(fb, "选择来源");
+    const int rows = src_rows();
+    char line[96];
+    for (int k = 0; k < rows; k++) {
+        const int i = s_src_page * rows + k;
+        if (i >= s_src_count) break;
+        const src_t* x = &s_srcs[i];
+        const int y = SRC_ROW_Y + k * SRC_ROW_H;
+        const bool on = !strcmp(x->key, s_src);
+        snprintf(line, sizeof(line), "%s", x->name);
+        tr_fit(line, TR_S(32), CW - TR_S(150));
+        tr_text(fb, TR_MARGIN, y + TR_S(14), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, on);
+        if (x->lang[0]) tr_text_dim(fb, TR_MARGIN, y + TR_S(54), TR_S(22), x->lang, EPD_DRAW_ALIGN_LEFT);
+        if (on) tr_text(fb, TR_W - TR_MARGIN, y + TR_S(20), TR_S(28), "当前", EPD_DRAW_ALIGN_RIGHT, true);
+        tr_hline(fb, y + SRC_ROW_H - 1, TR_MARGIN, CW, false);
+    }
+    if (src_pages() > 1) tr_pager(fb, PAGER_Y, s_src_page, src_pages());
+}
+
 static void render(app_ctx_t* ctx, uint8_t* fb) {
     (void)ctx;
     ui_clear_page(fb);
@@ -572,13 +693,14 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     switch (s_view) {
     case V_SEARCH: draw_search(fb); break;
     case V_DETAIL: draw_detail(fb); break;
+    case V_SOURCES: draw_sources(fb); break;
     default: draw_list(fb); break;
     }
 }
 
 /* ---- 动作 / Actions ---- */
 
-static app_redraw_t show_seg(seg_t seg) {
+static app_redraw_t show_seg(int seg) {
     s_seg = seg;
     s_searching = false;
     s_key[0] = 0;
@@ -668,7 +790,34 @@ static app_redraw_t open_search(void) {
     return APP_REDRAW_FULL;
 }
 
+static app_redraw_t open_sources(void) {
+    s_view = V_SOURCES;
+    s_src_page = 0;
+    for (int i = 0; i < s_src_count; i++)
+        if (!strcmp(s_srcs[i].key, s_src)) s_src_page = i / src_rows();
+    book_cover_drop_pending();
+    return APP_REDRAW_FULL;
+}
+
+static app_redraw_t pick_source(int i) {
+    s_view = V_LIST;
+    if (strcmp(s_srcs[i].key, s_src)) {
+        snprintf(s_src, sizeof(s_src), "%s", s_srcs[i].key);
+        tomato_wt_src_set(s_src);
+        show_seg(0);
+        return APP_REDRAW_FULL;
+    }
+    load_list();
+    return APP_REDRAW_FULL;
+}
+
 static app_redraw_t turn(int dir) {
+    if (s_view == V_SOURCES) {
+        const int next = s_src_page + dir;
+        if (next < 0 || next >= src_pages()) return APP_REDRAW_NONE;
+        s_src_page = next;
+        return APP_REDRAW_PAGE;
+    }
     if (s_view != V_LIST) return APP_REDRAW_NONE;
     const int next = s_page + dir;
     if (next < 0 || next >= list_pages()) return APP_REDRAW_NONE;
@@ -694,9 +843,10 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_NONE;
     }
     if (ui_rect_hit(REFRESH_RECT, x, y)) { s_msg[0] = 0; request_list(); return APP_REDRAW_PAGE; }
+    if (s_src_count > 1 && ui_rect_hit(SRC_RECT, x, y)) return open_sources();
     if (ui_rect_hit(SEARCH_BAR, x, y)) return open_search();
-    const int seg = tr_segment_hit(SEG_RECT, SEG_COUNT, x, y);
-    if (seg >= 0) return (seg != (int)s_seg || s_searching) ? show_seg((seg_t)seg) : APP_REDRAW_NONE;
+    const int seg = tr_segment_hit(SEG_RECT, seg_count(), x, y);
+    if (seg >= 0) return (seg != s_seg || s_searching) ? show_seg(seg) : APP_REDRAW_NONE;
     if (s_searching && ui_rect_hit((EpdRect){TR_MARGIN, CHIPS_Y, TR_S(200), CHIP_H}, x, y)) return show_seg(s_seg);
     if (!s_searching && s_key_count) {
         EpdRect rects[CHIP_SLOTS];
@@ -741,6 +891,16 @@ static app_redraw_t tap_search(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_FULL;
 }
 
+static app_redraw_t tap_sources(uint16_t x, uint16_t y) {
+    if (y < TR_S(160) && x < TR_S(320)) { s_view = V_LIST; load_list(); return APP_REDRAW_FULL; }
+    const int pager = src_pages() > 1 ? tr_pager_hit(PAGER_Y, x, y) : 0;
+    if (pager) return turn(pager);
+    if (y < SRC_ROW_Y) return APP_REDRAW_NONE;
+    const int k = (y - SRC_ROW_Y) / SRC_ROW_H;
+    const int i = s_src_page * src_rows() + k;
+    return k < src_rows() && i < s_src_count ? pick_source(i) : APP_REDRAW_NONE;
+}
+
 static app_redraw_t tap_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < TR_S(160) && x < TR_S(320)) return back_to_list();
     if (ui_rect_hit(REFRESH_RECT, x, y) && !job_running(TOMATO_WT_TITLE)) return open_detail(s_id);
@@ -764,7 +924,10 @@ static app_redraw_t tap_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
     if (!s_items) return ev->type == UI_GESTURE_TAP ? to_comic(ctx) : APP_REDRAW_NONE;
     if (s_view == V_SEARCH) return ev->type == UI_GESTURE_TAP ? tap_search(ctx, ev->x0, ev->y0) : APP_REDRAW_NONE;
-    if (ev->type == UI_GESTURE_TAP) return s_view == V_DETAIL ? tap_detail(ctx, ev->x0, ev->y0) : tap_list(ctx, ev->x0, ev->y0);
+    if (ev->type == UI_GESTURE_TAP) {
+        if (s_view == V_SOURCES) return tap_sources(ev->x0, ev->y0);
+        return s_view == V_DETAIL ? tap_detail(ctx, ev->x0, ev->y0) : tap_list(ctx, ev->x0, ev->y0);
+    }
     if (ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U) return turn(1);
     if (ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D) return turn(-1);
     return APP_REDRAW_NONE;
@@ -773,7 +936,7 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
 static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     if (key != UI_KEY_1) return APP_REDRAW_NONE;
     if (s_view == V_SEARCH) return tap_search(ctx, 0, 0);
-    if (s_view == V_DETAIL) return back_to_list();
+    if (s_view == V_DETAIL || s_view == V_SOURCES) return back_to_list();
     return to_comic(ctx);
 }
 
@@ -783,6 +946,7 @@ static app_redraw_t job_done(bool ok) {
     switch (s_job.job) {
     case TOMATO_WT_STORE:
     case TOMATO_WT_SEARCH:
+        if (s_job.job == TOMATO_WT_STORE) load_sources();     // 来源列表跟着刷新了 / The source list came with it
         if (s_view == V_LIST) { load_list(); return APP_REDRAW_PAGE; }
         return APP_REDRAW_NONE;
     case TOMATO_WT_TITLE:
@@ -819,6 +983,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (busy && !s_step_loaded && s_status.current >= 1 && s_status.phase != TOMATO_FAILED &&
         (s_job.job == TOMATO_WT_STORE || s_job.job == TOMATO_WT_SEARCH)) {
         s_step_loaded = true;
+        if (s_job.job == TOMATO_WT_STORE) load_sources();
         if (s_view == V_LIST) { load_list(); return APP_REDRAW_PAGE; }
         return APP_REDRAW_NONE;
     }
@@ -854,7 +1019,8 @@ static void on_enter(app_ctx_t* ctx) {
     if (!alloc_all()) return;
     s_msg[0] = 0;
     if (s_job_active && !ours_running()) s_job_active = false;
-    if (s_view == V_SEARCH) s_view = V_LIST;
+    load_sources();
+    if (s_view == V_SEARCH || s_view == V_SOURCES) s_view = V_LIST;
     if (s_view == V_DETAIL && s_id[0]) {
         load_detail();
         return;

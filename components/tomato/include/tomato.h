@@ -54,6 +54,12 @@ extern "C" {
 #define TOMATO_WT_DIR "/sdcard/webtoon"
 #define TOMATO_WT_STORE_FILE TOMATO_WT_DIR "/store.json"
 #define TOMATO_WT_SEARCH_FILE TOMATO_WT_DIR "/search.json"
+/// 服务器上可选的来源（GET /sources 原样存下；旧服务器没有这个接口时不存在）。/ The server's sources (GET /sources
+/// as is; absent with an older server that lacks it).
+#define TOMATO_WT_SOURCES_FILE TOMATO_WT_DIR "/sources.json"
+/// WEBTOON 自己的来源 key；其余来源是服务器上的 Mihon 插件来源，作品编号以 m 开头。/ WEBTOON's own source key; the
+/// others are Mihon extension sources on the server, whose title ids start with m.
+#define TOMATO_WT_SRC_WEBTOON "webtoon"
 #define TOMATO_WT_COMICS "/sdcard/comics"
 /// 订阅标记：comics/<作品名>/.webtoon。/ Subscription marker: comics/<title>/.webtoon.
 #define TOMATO_WT_MARK ".webtoon"
@@ -434,6 +440,12 @@ esp_err_t tomato_wt_simp_set(bool on);
 int tomato_wt_max(void);
 esp_err_t tomato_wt_max_set(int n);
 
+/// 发现页选中的来源（NVS），默认 TOMATO_WT_SRC_WEBTOON。/ The store's chosen source (NVS), TOMATO_WT_SRC_WEBTOON by
+/// default.
+void tomato_wt_src(char* out, size_t cap);
+esp_err_t tomato_wt_src_set(const char* key);
+/// 编号是插件来源的作品（m 开头）。/ Whether an id belongs to an extension source (starts with m).
+bool tomato_wt_is_ext(const char* id);
 /// 订阅标记的内容（comics/<作品名>/.webtoon，JSON）。/ The subscription marker (comics/<title>/.webtoon, JSON).
 typedef struct {
     char id[16];          ///< 作品编号，Canvas 作品前面带 c / Title id, Canvas ids start with c
@@ -475,7 +487,8 @@ typedef enum {
 
 typedef struct {
     tomato_wt_job_t job;
-    char seg[8];          ///< 书城：rank / genre / day / done
+    char seg[8];          ///< 书城：rank / genre / day / done；插件来源是 pop / latest / Store: rank / genre / day / done; pop / latest for extension sources
+    char src[24];         ///< 书城、搜索：来源 key，空为 WEBTOON / Store and search: source key, empty for WEBTOON
     char key[24];         ///< 书城：榜单、类型或星期，空为默认 / Store: ranking, genre or weekday; empty for the default
     char q[64];           ///< 搜索词 / Search query
     char id[16];          ///< 详情、更新：作品编号 / Detail and update: title id

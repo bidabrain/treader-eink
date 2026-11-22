@@ -27,6 +27,12 @@ void tomato_sync_get_status(tomato_status_t* out) {
     if (s_updating) { out->current = 4; out->total = 10; }
 }
 bool tomato_wt_updating(void) { return s_updating; }
+#ifndef HR_BASELINE   // 改动前的代码没有来源 / The pre-change code has no sources
+// 来源：画面里直接改 s_src，这里只给默认值。/ Sources: scenes set s_src directly; these only give the default.
+void tomato_wt_src(char* out, size_t cap) { snprintf(out, cap, "%s", TOMATO_WT_SRC_WEBTOON); }
+esp_err_t tomato_wt_src_set(const char* key) { (void)key; return ESP_OK; }
+bool tomato_wt_is_ext(const char* id) { return id && id[0] == 'm'; }
+#endif
 void tomato_json_use_psram(void) {}
 bool book_cover_tick(void) { return false; }
 void book_cover_drop_pending(void) {}

@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.0.6
+
+- 发现漫画支持 [webtoon 服务器 0.2.0](../webtoon/README.md) 的插件来源：服务器开了 Mihon 插件时，搜索栏右边多一个来源按钮，可以在 WEBTOON 和各个插件来源之间切换。插件来源按“人气 / 最新”逛，搜索只搜当前来源；订阅、检查更新和下载和 WEBTOON 一样，下好的话放进我的漫画。服务器没开插件或是旧版本时，界面和以前一样。
+  The comic store supports the extension sources of [webtoon server 0.2.0](../webtoon/README.md): when the server runs Mihon extensions, a source button right of the search bar switches between WEBTOON and each extension source. Extension sources browse by Popular / Latest and search covers the current source only; subscribing, update checks and downloads work as for WEBTOON, with episodes landing on the comic shelf. Without extensions on the server, or with an older server, the page looks as before.
+
 ## 2026-11-22 · webtoon 服务器 0.2.0
 
 - 可选的插件来源：在 `.env` 里写 `COMPOSE_PROFILES=mihon`，会多起一个 Suwayomi-Server 运行 Mihon / Tachiyomi 插件。在面板的“插件”页添加你自己的仓库、安装插件，再选哪些来源出现在设备上。设备接口多了 `/sources` 和 `src` 参数，插件作品的编号以 `m` 开头；订阅、检查更新和下载照旧，没升级的设备和 App 不受影响。本项目不提供任何插件仓库，只添加你有权访问的来源。详见 [webtoon/README](../webtoon/README.md)。
