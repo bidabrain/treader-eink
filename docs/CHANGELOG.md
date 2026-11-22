@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.0.8
+
+- 阅读页脚改小：上面一条胶囊形进度条，下面一行小字（章名、页码 · 百分比），每页能多放一两行字。打开工具条时的进度条也改成胶囊形，章节分界是条上的白色细缝。
+  Slimmer reading footer: a capsule progress bar above one small line (chapter, page · percent), so each page holds one or two more lines. The toolbar's progress bar is a capsule too, with chapter boundaries as thin white gaps.
+- 修正番茄下载的书只显示“Part 1、Part 2…”：章名超过十几个字时以前认不出章节，现在章名在 40 个字以内都能认出（目录里只显示前十几个字）；行首有空格或全角空格的章名也能认出。已经在书库里的书重新打开后生效。
+  Fixed Tomato books showing only "Part 1, Part 2…": chapter titles longer than about a dozen characters were not recognized; titles up to 40 characters now are (the table of contents shows the first dozen or so), as are titles indented with spaces or ideographic spaces. Takes effect when a book is reopened.
+- 修正换了 TF 卡字体后“A−”、自动翻页的“−”等按钮显示成方框：字体缺这些符号时换成长得像的字。
+  Fixed boxes on buttons such as "A−" and the auto-turn "−" with some card fonts: missing symbols fall back to look-alikes.
+
 ## 2026-11-22 · webtoon 服务器 0.2.3
 
 - 新增可选的 FlareSolverr：插件站点要过 Cloudflare 验证时（报错“Cloudflare bypass currently disabled”），在 `.env` 里写 `COMPOSE_PROFILES=mihon,flaresolverr`，多起一个 FlareSolverr 替插件过验证。没开时这类错误后面会提示怎么打开。需要换新的 `docker-compose.yml`。
