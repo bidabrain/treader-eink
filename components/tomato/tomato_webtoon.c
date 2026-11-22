@@ -42,6 +42,7 @@
 // 一话转换最多等这么久（服务器下载原图、切页）。/ The longest wait for one episode's conversion on the server.
 #define CONVERT_MAX_MS (6 * 60 * 1000)
 #define POLL_GAP_MS 2500
+#define RETRY_WAIT_MS 10000
 #define TITLES_MAX 200
 #define PATH_LEN 320
 
@@ -398,6 +399,16 @@ static bool collect_one(const char* folder, const tomato_wt_mark_t* m, void* arg
     return true;
 }
 
+// 只和这一话有关的失败（服务器说不行、转换出错或太久、文件太大）：跳过这一话接着下。其余的（连不上、下载中断、
+// 写不进卡、内存不足）后面的话也会一样失败：停下，下次检查更新接着下。
+// Failures that only concern this episode (the server refused, conversion failed or took too long, the file is too
+// big): skip it and go on. Anything else (unreachable, dropped mid-download, card write, out of memory) would fail
+// the later episodes too: stop, and the next check resumes.
+static bool episode_only(esp_err_t err) {
+    return err == ESP_ERR_NOT_FOUND || err == ESP_ERR_INVALID_RESPONSE || err == ESP_ERR_INVALID_SIZE ||
+           err == ESP_ERR_TIMEOUT;
+}
+
 typedef struct {
     int target;            // list 里的下标 / Index into the target list
     int no;
@@ -421,7 +432,7 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
         if (!strcmp(state, "error")) tomato_json_str(st, "error", msg, cap);
         cJSON_Delete(st);
         if (!strcmp(state, "ready")) break;
-        if (!strcmp(state, "error")) return ESP_FAIL;
+        if (!strcmp(state, "error")) return ESP_ERR_INVALID_RESPONSE;
         if ((int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS - start > CONVERT_MAX_MS) {
             snprintf(msg, cap, "服务器转换太久了");
             return ESP_ERR_TIMEOUT;
@@ -534,15 +545,27 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
     }
     int done = 0, failed = 0;
     char why[96] = "";
+    bool stopped = false;
     if (err == ESP_OK && c.n) {
         progress(0, planned);
         for (int k = 0; k < planned && !*cancel; k++) {
             char m[96] = "";
-            if (fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m)) == ESP_OK) done++;
-            else if (!*cancel) { failed++; if (!why[0]) snprintf(why, sizeof(why), "%s", m); }
+            esp_err_t e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m));
+            // 网络抖一下不算断：等 10 秒再试一次。/ A brief blip is not an outage: wait 10 s and try once more.
+            if (e != ESP_OK && !*cancel && !episode_only(e)) {
+                for (int w = 0; w < RETRY_WAIT_MS && !*cancel; w += 100) vTaskDelay(pdMS_TO_TICKS(100));
+                if (!*cancel) { m[0] = 0; e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m)); }
+            }
+            if (e == ESP_OK) done++;
+            else if (!*cancel) {
+                failed++;
+                if (!why[0]) snprintf(why, sizeof(why), "%s", m);
+                if (!episode_only(e)) { snprintf(why, sizeof(why), "%s", m); stopped = true; break; }
+            }
             progress(k + 1, planned);
         }
         if (*cancel) { snprintf(msg, cap, "已取消，下载了 %d 话", done); err = ESP_ERR_INVALID_STATE; }
+        else if (stopped) snprintf(msg, cap, "下载了 %d 话后停下：%.60s；下次检查更新接着下", done, why);
         else if (!planned) snprintf(msg, cap, r->fill ? "没有缺的话" : "没有新的话");
         else if (failed) snprintf(msg, cap, "下载了 %d 话，%d 话失败：%.50s", done, failed, why);
         else snprintf(msg, cap, "下载了 %d 话", done);

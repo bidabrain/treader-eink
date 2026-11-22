@@ -55,12 +55,18 @@ class Updater(private val api: Api, private val shelf: Shelf) {
         }
         var ok = 0
         val failed = ArrayList<String>()
-        plan.forEachIndexed { i, p ->
-            val s = byId[p.id] ?: return@forEachIndexed
+        var offline = ""
+        for ((i, p) in plan.withIndex()) {
+            val s = byId[p.id] ?: continue
             val label = "${s.name} 第 ${p.no} 话"
             try {
-                fetch(s, p) { line -> report(UpdateStatus(true, "$label：$line", i, plan.size)) }
+                fetchRetry(s, p) { line -> report(UpdateStatus(true, "$label：$line", i, plan.size)) }
                 ok++
+            } catch (e: Api.NetworkError) {
+                // 连不上服务器：后面的话也一样下不了，停下，下次检查更新从这里接着下。
+                // The server is unreachable, so later episodes would fail too: stop; the next check resumes here.
+                offline = "$label：${e.message}"
+                break
             } catch (e: Api.ApiError) {
                 failed += "$label：${e.message}"
             }
@@ -81,9 +87,23 @@ class Updater(private val api: Api, private val shelf: Shelf) {
         val left = waiting - ok - failed.size
         return buildString {
             append(if (plan.isEmpty() && errors.isEmpty()) "没有新话" else "下载了 $ok 话")
-            if (left > 0) append("；还有 $left 话，再点一次检查更新")
+            if (offline.isNotEmpty()) append("；网络断了，先停下。还有 $left 话，网络好了再点一次检查更新\n$offline")
+            else if (left > 0) append("；还有 $left 话，再点一次检查更新")
             if (failed.isNotEmpty()) append("\n${failed.size} 话失败：\n" + failed.joinToString("\n"))
             if (errors.isNotEmpty()) append("\n检查出错：\n" + errors.joinToString("\n"))
+        }
+    }
+
+    // 连不上时等一会儿再试一次（网络偶尔抖一下不算断）；还不行就交给调用方停下。
+    // On a network error wait a little and try once more (a brief blip is not an outage); if it still fails, let the
+    // caller stop.
+    private suspend fun fetchRetry(s: Series, p: Planned, line: (String) -> Unit) {
+        try {
+            fetch(s, p, line)
+        } catch (e: Api.NetworkError) {
+            line("连不上服务器，${RETRY_WAIT_MS / 1000} 秒后再试")
+            delay(RETRY_WAIT_MS)
+            fetch(s, p, line)
         }
     }
 
@@ -109,5 +129,9 @@ class Updater(private val api: Api, private val shelf: Shelf) {
         line("下载中")
         val dest = File(s.dir, Names.episodeFile(p.no, p.title))
         api.download(p.id, p.no, lang, dest)
+    }
+
+    companion object {
+        const val RETRY_WAIT_MS = 10_000L
     }
 }

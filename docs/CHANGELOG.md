@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.0.5 · WEBTOON 安卓 App 1.0.1
+
+- 修正：检查更新时连不上 webtoon 服务器（断网、域名查不到、手机锁屏后后台没网），不再把剩下每一话都试一遍、报一长串失败；先等 10 秒再试一次，还不行就停下并说明，下次检查更新从断的那一话接着下。只和某一话有关的失败（服务器说不能看、转换出错）仍然跳过它接着下。
+  Fix: when an update check cannot reach the webtoon server (offline, name lookup failed, no background network after the phone locks), it no longer tries every remaining episode and lists a long run of failures; it waits 10 s and tries once more, then stops and says so, and the next check resumes from that episode. Failures that concern only one episode (the server refuses it, conversion fails) are still skipped.
+
 ## 2026-11-22 · Treader 1.0.4
 
 - 漫画新增 WEBTOON 发现和追更：连自建的 [webtoon 服务器](../webtoon/README.md)，在我的漫画右上角“发现”里逛排行、类型、星期更新表、已完结，或搜索（打简体也能搜到繁体中文版）；点开作品看简介和免费话数，选“从第 1 话 / 只追新的 / 最近 5 话”订阅。服务器把每一话的竖长条转成灰度、在分镜之间的空白处按屏幕切页，设备下载成 CBZ 放进我的漫画，阅读和本地漫画一样快。

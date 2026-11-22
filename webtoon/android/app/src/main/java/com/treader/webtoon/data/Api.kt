@@ -21,7 +21,12 @@ import java.util.concurrent.TimeUnit
  * a header.
  */
 class Api(private val prefs: Prefs) {
-    class ApiError(message: String) : IOException(message)
+    open class ApiError(message: String) : IOException(message)
+
+    /** 连不上服务器（断网、域名查不到、超时）：和服务器说“不行”的错误分开，检查更新遇到它就停下。
+     *  Cannot reach the server (offline, name lookup failed, timeout): kept apart from errors the server returns, so
+     *  an update check stops on it. */
+    class NetworkError(message: String) : ApiError(message)
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -39,7 +44,7 @@ class Api(private val prefs: Prefs) {
         return try {
             client.newCall(req).execute()
         } catch (e: IOException) {
-            throw ApiError("连不上 webtoon 服务器（${e.message ?: e.javaClass.simpleName}）")
+            throw NetworkError("连不上 webtoon 服务器（${e.message ?: e.javaClass.simpleName}）")
         }
     }
 
@@ -91,7 +96,14 @@ class Api(private val prefs: Prefs) {
                 if (!resp.isSuccessful) fail(resp.code, resp.body?.string().orEmpty())
                 val body = resp.body ?: throw ApiError("服务器没有返回文件")
                 dest.parentFile?.mkdirs()
-                part.outputStream().use { out -> body.byteStream().copyTo(out) }
+                try {
+                    part.outputStream().use { out -> body.byteStream().copyTo(out) }
+                } catch (e: ApiError) {
+                    throw e
+                } catch (e: IOException) {
+                    // 下载到一半断网。/ The connection dropped mid-download.
+                    throw NetworkError("下载中断（${e.message ?: e.javaClass.simpleName}）")
+                }
                 val want = body.contentLength()
                 if (want >= 0 && part.length() != want) throw ApiError("下载不完整")
             }
