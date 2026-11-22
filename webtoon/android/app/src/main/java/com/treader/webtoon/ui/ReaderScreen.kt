@@ -132,7 +132,21 @@ private fun Toolbar(vm: AppVm, r: Reading, onClose: () -> Unit) {
         Column(Modifier.fillMaxWidth().background(Paper).padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             T("${r.page + 1} / ${r.cbz.count}", 15.sp, bold = true)
-            ProgressBar(if (r.cbz.count <= 1) 100 else r.page * 100 / (r.cbz.count - 1))
+            // 点进度条跳到那一页（照固件），点按区比细线高，好点中；工具条留着，可以接着点。
+            // Tap the bar to jump to that page (as on the firmware); the tap area is taller than the thin line so it is
+            // easy to hit, and the toolbar stays open for another tap.
+            Box(Modifier.fillMaxWidth().height(36.dp).pointerInput(r, r.cbz.count) {
+                detectTapGestures { o ->
+                    val n = r.cbz.count
+                    if (n > 1 && size.width > 0) {
+                        r.page = Math.round(o.x / size.width * (n - 1)).coerceIn(0, n - 1)
+                        r.atEnd = false
+                        vm.saveProgress()
+                    }
+                }
+            }, contentAlignment = Alignment.Center) {
+                ProgressBar(if (r.cbz.count <= 1) 100 else r.page * 100 / (r.cbz.count - 1))
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val prev = r.series.episodes.getOrNull(r.index - 1)
                 Pill("上一话", false, Modifier.weight(1f)) { if (prev != null) { vm.saveProgress(); vm.read(r.series, r.index - 1) } }

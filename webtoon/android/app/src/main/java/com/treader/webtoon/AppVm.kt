@@ -82,6 +82,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     var series by mutableStateOf<List<Series>>(emptyList())
     var shelfSeg by mutableStateOf(0)          // 0 全部 / 1 已订阅 / 0 all, 1 subscribed
     var shelfPage by mutableStateOf(0)
+    /** 我的漫画：列表或封面网格，记在本机。/ The shelf as a list or a cover grid, remembered on this phone. */
+    var shelfGrid by mutableStateOf(prefs.shelfGrid)
+        private set
+
+    fun toggleShelfGrid() { shelfGrid = !shelfGrid; prefs.shelfGrid = shelfGrid; shelfPage = 0 }
     var openSeries by mutableStateOf<File?>(null)
     var seriesPage by mutableStateOf(0)
     var update by mutableStateOf(UpdateStatus())

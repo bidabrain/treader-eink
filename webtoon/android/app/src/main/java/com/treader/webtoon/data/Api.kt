@@ -159,6 +159,11 @@ class Prefs(context: Context) {
         get() = sp.getString("src", Source.WEBTOON).orEmpty().ifEmpty { Source.WEBTOON }
         set(v) = sp.edit().putString("src", v).apply()
 
+    /** 我的漫画用封面网格显示（默认列表）。/ The shelf shows a cover grid (a list by default). */
+    var shelfGrid: Boolean
+        get() = sp.getBoolean("shelf_grid", false)
+        set(v) = sp.edit().putBoolean("shelf_grid", v).apply()
+
     /** 每次检查最多下载几话，0 表示不限。/ Episodes downloaded per check at most; 0 = no limit. */
     var perCheck: Int
         get() = sp.getInt("per_check", 10).let { if (it in PER_CHECK) it else 10 }

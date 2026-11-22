@@ -86,9 +86,10 @@ class Shelf(val root: File) {
 }
 
 /**
- * 每话读到第几页，存成一个 JSON：{"文件夹/文件名": {"page": 3, "pages": 20}}。没有记录就是没看过（我的漫画里的“N 话新”）。
- * Each episode's page, kept in one JSON: {"folder/file": {"page": 3, "pages": 20}}. No entry means unread (the
- * shelf's "N new").
+ * 每话读到第几页，存成一个 JSON：{"文件夹/文件名": {"page": 3, "pages": 20, "at": 1795322146000}}，at 是最后看的时间（毫秒，
+ * 旧文件没有就是 0）。没有记录就是没看过（我的漫画里的“N 话新”）。
+ * Each episode's page, kept in one JSON: {"folder/file": {"page": 3, "pages": 20, "at": 1795322146000}}; at is when it
+ * was last read (ms, 0 in older files). No entry means unread (the shelf's "N new").
  *
  * 改动先进内存，文件在后台线程写：连续翻页时等停下 [SAVE_DELAY_MS] 再写一次，[flush] 马上写（离开阅读、App 退到后台）。
  * 同一时间只有一个写文件的人（fileLock），写的是当时内存的完整快照，所以和检查更新、删除这些后台任务一起改也不会写乱。
@@ -98,7 +99,7 @@ class Shelf(val root: File) {
  * jobs such as update checks or deletes cannot interleave badly.
  */
 class Progress(private val file: File) {
-    data class P(val page: Int, val pages: Int) {
+    data class P(val page: Int, val pages: Int, val at: Long = 0) {
         val finished get() = pages > 0 && page >= pages - 1
     }
 
@@ -113,19 +114,41 @@ class Progress(private val file: File) {
         val o = JSONObject(file.readText())
         o.keys().asSequence().associateWith { k ->
             val v = o.getJSONObject(k)
-            P(v.optInt("page", 0), v.optInt("pages", 0))
+            P(v.optInt("page", 0), v.optInt("pages", 0), v.optLong("at", 0))
         }.toMutableMap()
     }.getOrElse { mutableMapOf() }
 
     @Synchronized
     fun get(key: String): P? = map[key]
 
+    /** 记一话的页码，同时记成最近看的一话。/ Record an episode's page and mark it as the latest read. */
     @Synchronized
-    fun set(key: String, page: Int, pages: Int) {
-        if (map[key] == P(page, pages)) return
-        map[key] = P(page, pages)
+    fun set(key: String, page: Int, pages: Int, at: Long = System.currentTimeMillis()) {
+        val old = map[key]
+        // 页码没变、时间也没往后走就不用写。/ Nothing to write when the page is the same and the time did not move on.
+        if (old != null && old.page == page && old.pages == pages && old.at >= at) return
+        map[key] = P(page, pages, at)
         version++
         schedule(SAVE_DELAY_MS)
+    }
+
+    /**
+     * 接着看哪一话，照固件：最近看过的那话；它看完了且后面还有就下一话；都没看过就第一话。旧记录没有时间，就当越往后的
+     * 越近。keys 是从旧到新排好的话。
+     * Which episode to continue, as on the firmware: the latest read one; the one after it if that is finished and
+     * there is one; the first if none was read. Older entries without a time count later episodes as more recent. keys
+     * are the episodes, oldest first.
+     */
+    @Synchronized
+    fun resume(keys: List<String>): Int {
+        var best = -1
+        var bestAt = Long.MIN_VALUE
+        keys.forEachIndexed { i, k ->
+            val p = map[k] ?: return@forEachIndexed
+            if (p.at >= bestAt) { best = i; bestAt = p.at }
+        }
+        if (best < 0) return 0
+        return if (map[keys[best]]!!.finished && best + 1 < keys.size) best + 1 else best
     }
 
     @Synchronized
@@ -155,7 +178,7 @@ class Progress(private val file: File) {
             val (v, text) = synchronized(this) {
                 if (version == written) return
                 val o = JSONObject()
-                map.forEach { (k, p) -> o.put(k, JSONObject().put("page", p.page).put("pages", p.pages)) }
+                map.forEach { (k, p) -> o.put(k, JSONObject().put("page", p.page).put("pages", p.pages).put("at", p.at)) }
                 version to o.toString()
             }
             val tmp = File(file.path + ".tmp")

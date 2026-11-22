@@ -253,6 +253,23 @@ fun ComicIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifi
     grid(color) { seg(30, 120, 130, 120); seg(130, 30, 130, 210) }
 }
 
+/** 列表显示：三行，每行一个小方块和一条线。/ List view: three rows, each a small square and a line. */
+@Composable
+fun ListIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifier.size(24.dp)) {
+    grid(color) {
+        for (y in listOf(8f, 18f, 28f)) { rect(5f, y, 6f, 5f, color); rect(15f, y + 1.5f, 20f, 2.5f, color) }
+    }
+}
+
+/** 网格显示：两行两列四个圆角方框，线宽和漫画图标一样。/ Grid view: four rounded squares in two rows and two columns,
+ *  stroked like the comic icon. */
+@Composable
+fun GridIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifier.size(24.dp)) {
+    val s = size.width / 40f
+    for (x in listOf(7f, 23f)) for (y in listOf(7f, 23f))
+        drawRoundRect(color, Offset(x * s, y * s), Size(10f * s, 10f * s), CornerRadius(2f * s), style = Stroke(3f * s))
+}
+
 /** 设置（TR_ICON_SETTINGS）：两根滑杆，各一个圆钮；bg 是圆钮镂空处的底色。/ Settings: two sliders with round knobs;
  *  bg fills the knob cut-outs. */
 @Composable

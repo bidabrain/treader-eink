@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,11 +25,12 @@ import com.treader.webtoon.Tab
 import com.treader.webtoon.data.Series
 
 /*
- * 我的漫画（主页），照固件我的漫画：全部 / 已订阅，一部一行（封面、名字、话数、“N 话新”）；右上角“检查更新”把全部订阅的
- * 新话下载下来，进度和结果显示在分段下面。点一部进它的话列表。
+ * 我的漫画（主页），照固件我的漫画：全部 / 已订阅，一部一行（封面、名字、话数、“N 话新”），或分段右边的按钮切成封面
+ * 网格（像固件书架）；右上角“检查更新”把全部订阅的新话下载下来，进度和结果显示在分段下面。点一部进它的话列表。
  * The shelf (home) after the firmware's comic shelf: All / Subscribed, one series per row (cover, name, episode count,
- * "N new"); "Check for updates" at the top right downloads every subscription's new episodes, with progress and the
- * result shown below the segments. Tap a series for its episode list.
+ * "N new"), or a cover grid (like the firmware shelf) via the button right of the segments; "Check for updates" at the
+ * top right downloads every subscription's new episodes, with progress and the result shown below the segments. Tap a
+ * series for its episode list.
  */
 
 @Composable
@@ -52,7 +54,14 @@ fun ShelfTab(vm: AppVm) {
             else if (!vm.configured) vm.tab = Tab.SETTINGS
             else vm.checkUpdates()
         }
-        Segment(listOf("全部", "已订阅"), vm.shelfSeg, { vm.shelfSeg = it; vm.shelfPage = 0 }, Modifier.padding(horizontal = 20.dp))
+        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Segment(listOf("全部", "已订阅"), vm.shelfSeg, { vm.shelfSeg = it; vm.shelfPage = 0 }, Modifier.weight(1f))
+            // 列表 / 网格切换：图标画的是点了以后变成的样子。/ List / grid switch: the icon shows the view a tap
+            // switches to.
+            Box(Modifier.padding(start = 12.dp).size(44.dp).noRippleClick { vm.toggleShelfGrid() }, contentAlignment = Alignment.Center) {
+                if (vm.shelfGrid) ListIcon() else GridIcon()
+            }
+        }
         UpdateCard(vm)
         val list = if (vm.shelfSeg == 1) vm.series.filter { it.subscribed } else vm.series
         if (list.isEmpty()) {
@@ -64,6 +73,19 @@ fun ShelfTab(vm: AppVm) {
                 },
                 14.sp, color = Mid, lineHeight = 20.sp, modifier = Modifier.padding(20.dp),
             )
+            return
+        }
+        if (vm.shelfGrid) {
+            Spacer(Modifier.height(4.dp))
+            PagedGrid(list, vm.shelfPage, { vm.shelfPage = it }) { s ->
+                val m = s.mark
+                val unread = vm.unread(s)
+                CoverCell(
+                    s.name,
+                    if (unread > 0) "$unread 话新" else "${if (m != null) "已订阅" else "本地"} · ${s.episodes.size} 话",
+                    m?.let { vm.api.coverUrl(it.id, it.lang) }, vm.images, subBold = unread > 0,
+                ) { vm.openSeries = s.dir; vm.seriesPage = 0 }
+            }
             return
         }
         HLine(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
@@ -125,12 +147,14 @@ private fun SeriesScreen(vm: AppVm) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             BackTitle(s.name) { vm.openSeries = null }
-            val resume = s.episodes.indexOfFirst { vm.progress.get(it.key)?.finished != true }.takeIf { it >= 0 }
             Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (s.episodes.isNotEmpty()) {
-                    val i = resume ?: 0
-                    Pill(if (resume == null) "从头再看" else "继续看 ${epLabel(s.episodes[i].no, s.episodes[i].name)}", true,
-                        Modifier.weight(1.6f)) { vm.read(s, i) }
+                    // 接着看最近看的那一话，照固件；最后一话也看完了就是重看它。/ Continue the latest read episode, as on
+                    // the firmware; when the last episode is finished too, it is a re-read.
+                    val i = vm.progress.resume(s.episodes.map { it.key })
+                    val e = s.episodes[i]
+                    val again = vm.progress.get(e.key)?.finished == true
+                    Pill("${if (again) "重看" else "继续看"} ${epLabel(e.no, e.name)}", true, Modifier.weight(1.6f)) { vm.read(s, i) }
                 }
                 val m = s.mark
                 if (m != null) Pill("详情", false, Modifier.weight(1f)) { vm.openDetail(m.id, s.name, m.lang) }

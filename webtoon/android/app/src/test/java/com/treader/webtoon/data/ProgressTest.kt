@@ -28,7 +28,7 @@ class ProgressTest {
         p.forget("s3/")
         p.writeNow()
         val again = Progress(f)
-        for (t in 0 until 3) assertEquals(Progress.P(199, 200), again.get("s$t/ep.cbz"))
+        for (t in 0 until 3) assertEquals(199 to 200, again.get("s$t/ep.cbz")?.let { it.page to it.pages })
         assertNull(again.get("s3/ep.cbz"))
     }
 
@@ -40,6 +40,31 @@ class ProgressTest {
         p.flush()
         val deadline = System.currentTimeMillis() + 3000
         while (System.currentTimeMillis() < deadline && Progress(f).get("a/1.cbz") == null) Thread.sleep(20)
-        assertEquals(Progress.P(5, 20), Progress(f).get("a/1.cbz"))
+        assertEquals(5 to 20, Progress(f).get("a/1.cbz")?.let { it.page to it.pages })
+    }
+
+    @Test
+    fun resumeLatestRead() {
+        val p = Progress(tmpFile())
+        val keys = (1..5).map { "s/$it.cbz" }
+        assertEquals(0, p.resume(keys))                         // 都没看过 / Nothing read
+        p.set("s/4.cbz", 3, 20, at = 100)                       // 先看了第 4 话 / Read episode 4 first
+        p.set("s/1.cbz", 0, 20, at = 200)                       // 又点开第 1 话看了一眼 / Then peeked at episode 1
+        assertEquals(0, p.resume(keys))
+        p.set("s/4.cbz", 5, 20, at = 300)                       // 回去接着看第 4 话 / Back to episode 4
+        assertEquals(3, p.resume(keys))
+        p.set("s/4.cbz", 19, 20, at = 400)                      // 看完第 4 话，接第 5 话 / Finished 4: continue with 5
+        assertEquals(4, p.resume(keys))
+        p.set("s/5.cbz", 19, 20, at = 500)                      // 最后一话也看完，停在它 / Last one finished: stay on it
+        assertEquals(4, p.resume(keys))
+    }
+
+    @Test
+    fun resumeOldEntriesWithoutTime() {
+        val f = tmpFile()
+        f.writeText("""{"s/1.cbz":{"page":19,"pages":20},"s/3.cbz":{"page":2,"pages":20}}""")
+        val p = Progress(f)
+        // 旧文件没有时间：越往后的算越近，第 3 话没看完就接着它。/ No times in an old file: later counts as more recent.
+        assertEquals(2, p.resume((1..4).map { "s/$it.cbz" }))
     }
 }

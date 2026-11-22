@@ -19,6 +19,15 @@ User-visible changes by date and author; Git retains implementation history. See
 - 修正换了 TF 卡字体后“A−”、自动翻页的“−”等按钮显示成方框：字体缺这些符号时换成长得像的字。
   Fixed boxes on buttons such as "A−" and the auto-turn "−" with some card fonts: missing symbols fall back to look-alikes.
 
+## 2026-11-22 · WEBTOON 安卓 App 1.3.0
+
+- 我的漫画可以在列表和三列封面网格之间切换（分段右边的按钮），选择记在本机。
+  The shelf switches between the list and a three-column cover grid (the button right of the segments); the choice is remembered on the phone.
+- 阅读工具条的进度条可以点：点在哪就跳到那一页，和固件一样。
+  The reader toolbar's progress bar can be tapped to jump to that page, as on the firmware.
+- 修正点进一部漫画总是“继续看第 1 话”：以前接着看的是第一个没看完的话，前面有没看过的话就总落在它上面。现在照固件，接着看最近看的那一话，看完了就下一话。进度里多记最后看的时间，旧进度照样能读。
+  Fixed opening a series always offering to continue episode 1: it used to pick the first unfinished episode, so any unread earlier episode won. It now follows the firmware and continues the most recently read episode, or the next one when that is finished. Progress now also records when each episode was last read; older progress still loads.
+
 ## 2026-11-22 · webtoon 服务器 0.2.3
 
 - 新增可选的 FlareSolverr：插件站点要过 Cloudflare 验证时（报错“Cloudflare bypass currently disabled”），在 `.env` 里写 `COMPOSE_PROFILES=mihon,flaresolverr`，多起一个 FlareSolverr 替插件过验证。没开时这类错误后面会提示怎么打开。需要换新的 `docker-compose.yml`。
