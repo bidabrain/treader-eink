@@ -76,6 +76,7 @@ def client() -> httpx.AsyncClient:
 
 
 CF_HINT = "（站点要过 Cloudflare 验证，服务器没开 FlareSolverr：在 .env 的 COMPOSE_PROFILES 加上 flaresolverr）"
+CF_FAIL_HINT = "（FlareSolverr 没过这个站的 Cloudflare 验证：服务器 IP 被拦，或验证 FlareSolverr 解不了）"
 
 
 def cf_hint(msg: str) -> str:
@@ -85,7 +86,16 @@ def cf_hint(msg: str) -> str:
     if ("cloudflare" in low or "flaresolverr" in low) and any(
             k in low for k in ("disabled", "connect", "unknownhost", "unresolved", "refused")):
         return msg + CF_HINT
+    if "cloudflarebypass" in low:
+        return msg + CF_FAIL_HINT
     return msg
+
+
+def is_cloudflare(msg: str) -> bool:
+    """错误是不是卡在 Cloudflare 验证上（没开 FlareSolverr 或它没过去）。/ Whether an error is a Cloudflare check
+    that failed (FlareSolverr off, or it did not get through)."""
+    low = (msg or "").lower()
+    return "cloudflare" in low or "flaresolverr" in low
 
 
 def _short(msg: str) -> str:

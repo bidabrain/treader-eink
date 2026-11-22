@@ -17,6 +17,12 @@ from pathlib import Path
 from . import config, convert, mihon, source
 
 _state: dict[tuple[str, str, int], dict] = {}
+# 插件来源名 → (时间, 错误)：一个来源卡在 Cloudflare 验证上后，这段时间里它排着的话直接失败，不再一话一话等
+# FlareSolverr 超时，别的来源不被拖住。/ Extension source name -> (time, error): once a source fails a Cloudflare
+# check, its queued episodes fail at once for a while instead of each waiting for FlareSolverr to time out, so other
+# sources are not held up.
+_cf_block: dict[str, tuple[float, str]] = {}
+CF_PAUSE = 600
 _queue: asyncio.Queue | None = None
 recent: list[dict] = []          # 面板显示最近做过的 / Recent jobs for the panel
 
@@ -123,15 +129,26 @@ async def worker() -> None:
         lang, tid, no = key
         t0 = time.time()
         meta = {"web": "" if is_mihon(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
+        src = ""
         try:
             try:
                 info = await _info(lang, tid)
                 meta["web"] = meta["web"] or info.get("web", "")
                 ep = next((e for e in info["episodes"] if e["no"] == no), None)
                 meta.update(series=info["title"], author=info["author"], title=ep["title"] if ep else "")
+                src = info.get("src", "") if is_mihon(tid) else ""
             except source.SourceError:
                 pass
-            await _convert(key, meta)
+            blocked = _cf_block.get(src) if src else None
+            if blocked and time.time() - blocked[0] < CF_PAUSE:
+                left = max(1, round((CF_PAUSE - (time.time() - blocked[0])) / 60))
+                raise source.SourceError(502, f"{blocked[1]}；约 {left} 分钟后再试")
+            try:
+                await _convert(key, meta)
+            except source.SourceError as e:
+                if src and mihon.is_cloudflare(str(e)):
+                    _cf_block[src] = (time.time(), str(e))
+                raise
             _state.pop(key, None)
             note = "完成"
         except source.SourceError as e:

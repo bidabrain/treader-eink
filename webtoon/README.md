@@ -116,7 +116,7 @@ COMPOSE_PROFILES=mihon
 COMPOSE_PROFILES=mihon,flaresolverr
 ```
 
-再执行 `docker compose up -d`（从 0.2.3 以前升级的先按[升级](#升级)换新的 compose 文件）。会多起一个 [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) 容器：它用无头 Chromium 打开站点、过验证，把拿到的 Cookie 交给 Suwayomi，再多占约 500 MB 内存。它不映射端口，只有 Suwayomi 在 compose 内网里用它，而且只在站点要求验证时才用。FlareSolverr 也不是每次都能过；还是失败时，过一会儿再检查更新。
+再执行 `docker compose up -d`（从 0.2.3 以前升级的先按[升级](#升级)换新的 compose 文件）。会多起一个 [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) 容器：它用无头 Chromium 打开站点、过验证，把拿到的 Cookie 交给 Suwayomi，再多占约 500 MB 内存。它不映射端口，只有 Suwayomi 在 compose 内网里用它，而且只在站点要求验证时才用。FlareSolverr 也不是每次都能过（服务器 IP 被拦，或站点用了它解不了的验证），这时错误是 `CloudflareBypassException`，hub 在后面注明是 FlareSolverr 没过去。一个来源这样失败后，它在队列里剩下的话 10 分钟内直接失败（错误里写还要等几分钟），不再每话等 FlareSolverr 超时，别的来源和 WEBTOON 的话照常下；过了 10 分钟再检查更新会重新试。
 
 失败的话不用手动补：设备（Treader 1.0.7 起）和 App 下次“检查更新”都会从第一话没下好的开始重下，卡上已有的跳过。
 

@@ -398,3 +398,38 @@ def test_cloudflare_hint():
     assert mihon.CF_HINT in mihon.cf_hint("java.net.UnknownHostException: flaresolverr")
     assert mihon.CF_HINT not in mihon.cf_hint("FlareSolverr failed to solve the challenge")
     assert mihon._short("plain error") == "plain error"
+
+
+def test_cloudflare_pauses_source(monkeypatch):
+    """一个插件来源卡在 Cloudflare 上后，它排着的话直接失败，不再挨个去试；别的来源照常。/ Once an extension source
+    fails a Cloudflare check its queued episodes fail at once; other sources still convert."""
+    from app import mihon
+    calls = []
+
+    async def info(lang, tid):
+        return {"title": tid, "author": "", "episodes": [], "src": "A" if tid in ("m1", "m2") else "B"}
+
+    async def convert_(key, meta):
+        calls.append(key[1])
+        if key[1] == "m1":
+            raise source.SourceError(502, mihon.cf_hint("java.io.IOException: CFClearance$CloudflareBypassException"))
+
+    monkeypatch.setattr(jobs, "_info", info)
+    monkeypatch.setattr(jobs, "_convert", convert_)
+    monkeypatch.setattr(jobs, "_cf_block", {})
+
+    async def run():
+        task = asyncio.create_task(jobs.worker())
+        await asyncio.sleep(0)
+        for tid in ("m1", "m2", "m3"):
+            jobs.status("", tid, 1)
+        while not jobs._queue.empty() or len(calls) + 1 < 3:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)
+        task.cancel()
+
+    asyncio.run(run())
+    assert calls == ["m1", "m3"]
+    st = jobs.status("", "m2", 1, start=False)
+    assert st["state"] == "error" and mihon.CF_FAIL_HINT in st["error"] and "分钟后再试" in st["error"]
+    assert jobs.status("", "m3", 1, start=False)["state"] == "none"

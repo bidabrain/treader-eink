@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · webtoon 服务器 0.2.4
+
+- 插件来源过不了 Cloudflare 验证时不再拖住整个队列：一个来源失败后，它排着的话 10 分钟内直接失败，不再每话等 FlareSolverr 超时，别的来源和 WEBTOON 照常下。错误里注明是 FlareSolverr 没过去（IP 被拦或验证解不了）和还要等几分钟。
+  An extension source that fails its Cloudflare check no longer holds up the whole queue: its queued episodes fail at once for 10 minutes instead of each waiting for FlareSolverr to time out, while other sources and WEBTOON keep downloading. The error says FlareSolverr did not get through (blocked IP or an unsolvable check) and how many minutes are left.
+
 ## 2026-11-22 · Treader 1.0.9 · 番茄安卓 App 1.3.2
 
 - 书库可以在列表和封面网格之间切换：右上角搜索左边的图标，选择会记住。网格一行三本，封面下面是书名和进度，番茄新章节标在封面右上角；管理书库也能用网格，选中的描粗框。固件上网格一页 6 本（特大显示且有“继续阅读”卡片时 3 本），App 上滚动显示。
