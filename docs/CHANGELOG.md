@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · WEBTOON 安卓 App 1.1.1
+
+- 修正平板和大字号上发现页只排一行、下面空一大块，封面下的小字被截掉一半：两行字的高度改用设备上真实的字体量，排得下就多排一行（封面缩小一点），换过系统字体、调大字号也能排满。
+  Fixed the store showing a single row with a large gap below and the line under each cover cut in half on tablets and with large text: the two text lines are now measured with the device's real font, and another row is added when it fits by shrinking the covers a little, so the grid fills the screen with replaced system fonts and larger text too.
+
 ## 2026-11-22 · webtoon 服务器 0.2.1
 
 - 服务器不再按内容分级替用户过滤插件来源：装好的来源（包括标成成人的）都发给设备和 App，用哪个由用户自己选；面板去掉“显示成人来源”开关，只在“设备上的来源”里标“成人”。面板里手动勾掉的来源照旧不发。
