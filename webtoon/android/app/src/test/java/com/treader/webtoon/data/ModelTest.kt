@@ -115,5 +115,25 @@ class ModelTest {
         ))
         assertTrue(t.done)
         assertEquals(listOf(1, 2), t.episodes.map { it.no })
+        assertEquals("", t.src)
+    }
+
+    @Test
+    fun parseSources() {
+        // 插件来源：WEBTOON 在前，没有 key 或名字的跳过。/ Extension sources: WEBTOON first, entries without a key or
+        // name skipped.
+        val s = Parse.sources(JSONObject(
+            """{"mihon":true,"items":[{"key":"webtoon","name":"WEBTOON","lang":"","latest":false},
+               {"key":"77","name":"Komga","lang":"all","latest":true},{"key":"","name":"x"}]}"""
+        ))
+        assertEquals(listOf("webtoon", "77"), s.map { it.key })
+        assertTrue(s[1].ext && s[1].latest)
+        // 没开插件或只剩 WEBTOON：没有可选的。/ No plugins, or WEBTOON only: nothing to pick.
+        assertEquals(emptyList<Source>(), Parse.sources(JSONObject("""{"mihon":false,"items":[]}""")))
+        assertEquals(emptyList<Source>(), Parse.sources(JSONObject(
+            """{"mihon":true,"items":[{"key":"webtoon","name":"WEBTOON"}]}""")))
+        assertTrue(Source.extId("m12") && !Source.extId("c12") && !Source.extId("8420"))
+        val t = Parse.title(JSONObject("""{"id":"m12","title":"T","src":"Komga","episodes":[{"no":1,"title":"a"}]}"""))
+        assertEquals("Komga", t.src)
     }
 }

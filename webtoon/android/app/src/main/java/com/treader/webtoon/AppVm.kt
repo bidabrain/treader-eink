@@ -18,6 +18,7 @@ import com.treader.webtoon.data.Prefs
 import com.treader.webtoon.data.Progress
 import com.treader.webtoon.data.Series
 import com.treader.webtoon.data.Shelf
+import com.treader.webtoon.data.Source
 import com.treader.webtoon.data.Start
 import com.treader.webtoon.data.StoreList
 import com.treader.webtoon.data.Title
@@ -35,6 +36,9 @@ enum class Tab { SHELF, STORE, SETTINGS }
 
 /** 发现页的四个分段，和服务器的 seg 一一对应。/ The store's four segments, one per server seg. */
 val STORE_SEGS = listOf("rank" to "排行", "genre" to "类型", "day" to "星期", "done" to "完结")
+
+/** 插件来源的分段（来源不支持最新时只有人气）。/ Extension source segments (Popular only without Latest). */
+val EXT_SEGS = listOf("pop" to "人气", "latest" to "最新")
 
 /** 打开的作品详情。/ An open title detail. */
 data class Detail(val id: String, val lang: String, val name: String, val title: Title? = null, val error: String = "")
@@ -130,6 +134,17 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     /* ---- 发现页 / Store ---- */
 
+    /** 服务器的来源；空表表示没有可选的（只有 WEBTOON）。/ The server's sources; empty means nothing to pick. */
+    var sources by mutableStateOf<List<Source>>(emptyList())
+    var src by mutableStateOf(prefs.src)
+    private var sourcesLoaded = false
+
+    val currentSource: Source? get() = sources.firstOrNull { it.key == src }
+
+    /** 当前来源的分段。/ The current source's segments. */
+    val storeSegs: List<Pair<String, String>>
+        get() = if (src == Source.WEBTOON) STORE_SEGS else EXT_SEGS.take(if (currentSource?.latest == true) 2 else 1)
+
     var storeSeg by mutableStateOf(0)
     var storeKey by mutableStateOf("")
     var storeList by mutableStateOf<StoreList?>(null)
@@ -167,18 +182,46 @@ class AppVm(app: Application) : AndroidViewModel(app) {
      *  changes (cached for this run). */
     fun loadStore(seg: Int = storeSeg, key: String = storeKey, force: Boolean = false) {
         if (!configured) return
-        storeSeg = seg
+        val segs = storeSegs
+        val s = if (seg in segs.indices) seg else 0
+        storeSeg = s
         storeKey = key
         storePage = 0
-        val cacheKey = "${prefs.lang}|${prefs.simplified}|${STORE_SEGS[seg].first}|$key"
-        if (!force) storeCache[cacheKey]?.let { storeList = it; return }
+        val from = src
+        val segKey = segs[s].first
+        val cacheKey = "$from|${prefs.lang}|${prefs.simplified}|$segKey|$key"
+        if (!force && sourcesLoaded) storeCache[cacheKey]?.let { storeList = it; return }
         storeLaunch {
-            val r = api.store(STORE_SEGS[seg].first, key)
+            // 来源列表跟着发现页列表一起取（第一次和刷新时）。/ The source list comes with a store list (first time and
+            // on refresh).
+            if (force || !sourcesLoaded) loadSources()
+            if (from != src) { loadStore(); return@storeLaunch }      // 来源没了，回到 WEBTOON / Source gone, back to WEBTOON
+            val r = api.store(segKey, key, src = from)
             storeCache[cacheKey] = r
             // 服务器把空 key 换成了默认的那个，也记一份。/ The server replaced an empty key with the default; cache it too.
-            storeCache["${prefs.lang}|${prefs.simplified}|${STORE_SEGS[seg].first}|${r.key}"] = r
-            if (storeSeg == seg) { storeList = r; storeKey = r.key }
+            storeCache["$from|${prefs.lang}|${prefs.simplified}|$segKey|${r.key}"] = r
+            if (storeSeg == s && src == from) { storeList = r; storeKey = r.key }
         }
+    }
+
+    private suspend fun loadSources() {
+        sources = api.sources()
+        sourcesLoaded = true
+        // 选中的来源在服务器上没了（关了插件或隐藏了）就回到 WEBTOON。/ Fall back to WEBTOON when the chosen source is
+        // gone from the server (plugins off or hidden).
+        if (src != Source.WEBTOON && currentSource == null) pickSource(Source.WEBTOON, load = false)
+    }
+
+    /** 换来源：回到第一个分段，清掉搜索。/ Switch source: back to the first segment, search cleared. */
+    fun pickSource(key: String, load: Boolean = true) {
+        prefs.src = key
+        src = key
+        storeSeg = 0
+        storeKey = ""
+        storeList = null
+        searchResults = null
+        query = ""
+        if (load) loadStore()
     }
 
     fun storeEnter() { if (storeList == null && !storeBusy) loadStore() }
@@ -189,7 +232,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         query = t
         storePage = 0
         searchResults = emptyList()
-        storeLaunch { searchResults = api.search(t) }
+        val from = src
+        storeLaunch { searchResults = api.search(t, src = from) }
     }
 
     fun closeSearch() { searchResults = null; query = ""; storePage = 0; storeMsg = "" }
@@ -197,6 +241,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     /** 语言或简繁变了：清掉发现页缓存。/ Language or script changed: drop the store cache. */
     fun storeReset() {
         storeCache.clear()
+        sourcesLoaded = false
         storeList = null
         storeKey = ""
         searchResults = null
@@ -221,7 +266,11 @@ class AppVm(app: Application) : AndroidViewModel(app) {
 
     fun subscribe(d: Detail, start: Start) {
         val t = d.title ?: return
-        val mark = Mark(t.id.ifEmpty { d.id }, d.lang, t.title.ifEmpty { d.name }, t.author, Plan.startLast(t.episodes, start),
+        val id = t.id.ifEmpty { d.id }
+        // 插件作品的语言写 mihon，和固件一样（服务器对插件作品不看语言）。/ Extension titles get the mihon language,
+        // as on the firmware (the server ignores the language for them).
+        val lang = if (Source.extId(id)) "mihon" else d.lang
+        val mark = Mark(id, lang, t.title.ifEmpty { d.name }, t.author, Plan.startLast(t.episodes, start),
             System.currentTimeMillis() / 1000)
         viewModelScope.launch {
             withContext(Dispatchers.IO) { shelfStore.subscribe(mark) }

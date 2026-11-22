@@ -88,6 +88,18 @@ data class Card(
 /** 二级分段的一项（榜单、类型、星期）。/ One second-level key (rank, genre, weekday). */
 data class Key(val key: String, val name: String)
 
+/** 服务器上的一个来源：WEBTOON 或 Mihon 插件来源。/ One server source: WEBTOON or a Mihon extension source. */
+data class Source(val key: String, val name: String, val lang: String, val latest: Boolean) {
+    val ext get() = key != WEBTOON
+
+    companion object {
+        const val WEBTOON = "webtoon"
+
+        /** 插件来源的作品编号以 m 开头。/ Extension source title ids start with m. */
+        fun extId(id: String) = id.startsWith("m")
+    }
+}
+
 /** 发现页一页。/ One store list. */
 data class StoreList(val seg: String, val key: String, val keys: List<Key>, val items: List<Card>)
 
@@ -98,6 +110,8 @@ data class Ep(val no: Int, val title: String, val date: Long = 0)
 data class Title(
     val id: String, val title: String, val author: String, val genre: String, val summary: String,
     val done: Boolean, val latest: Int, val episodes: List<Ep>,
+    /** 插件作品的来源名；WEBTOON 为空。/ An extension title's source name; empty for WEBTOON. */
+    val src: String = "",
 )
 
 /** 检查更新里一部作品的结果。/ One title's result in a check. */
@@ -145,8 +159,23 @@ object Parse {
 
     fun title(o: JSONObject): Title = Title(
         o.optString("id"), o.optString("title"), o.optString("author"), o.optString("genre"), o.optString("summary"),
-        o.optBoolean("done", false), o.optInt("latest", 0), eps(o.optJSONArray("episodes")),
+        o.optBoolean("done", false), o.optInt("latest", 0), eps(o.optJSONArray("episodes")), o.optString("src"),
     )
+
+    /** GET /sources：服务器没开插件（mihon 为 false）或只有 WEBTOON 时返回空表，界面不显示来源选择。
+     *  GET /sources: an empty list when the server has no plugins (mihon false) or only WEBTOON, so no source picker
+     *  shows. */
+    fun sources(o: JSONObject): List<Source> {
+        if (!o.optBoolean("mihon", false)) return emptyList()
+        val a = o.optJSONArray("items") ?: return emptyList()
+        val out = (0 until a.length()).mapNotNull { i ->
+            val x = a.optJSONObject(i) ?: return@mapNotNull null
+            val key = x.optString("key")
+            val name = x.optString("name")
+            if (key.isEmpty() || name.isEmpty()) null else Source(key, name, x.optString("lang"), x.optBoolean("latest", false))
+        }
+        return if (out.size > 1) out else emptyList()
+    }
 
     /** 检查更新的回复：{titles:[{id,latest,new:[{no,title}],error?}]}。/ The check reply. */
     fun check(o: JSONObject): List<CheckResult> {

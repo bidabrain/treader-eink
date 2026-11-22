@@ -31,17 +31,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.treader.webtoon.AppVm
 import com.treader.webtoon.Detail
-import com.treader.webtoon.STORE_SEGS
 import com.treader.webtoon.Tab
 import com.treader.webtoon.data.Card
+import com.treader.webtoon.data.Source
 import com.treader.webtoon.data.Start
 
 /*
  * 发现页，照固件发现漫画：搜索栏（服务器把简体关键词转成繁体再搜）、排行 / 类型 / 星期 / 完结四个分段，二级分段用服务器
- * 返回的 keys，下面三列封面网格分页。只在进发现页、换分段、搜索时联网。
+ * 返回的 keys，下面三列封面网格分页。只在进发现页、换分段、搜索时联网。服务器开了插件来源时多一行“来源”，插件来源按
+ * 人气 / 最新逛，搜索只搜当前来源。
  * The store after the firmware's comic store: a search bar (the server turns simplified keywords into traditional),
  * the Rank / Genre / Day / Done segments with second-level keys from the server, and a paged three-column cover grid.
- * Network use only on entering, switching segments and searching.
+ * Network use only on entering, switching segments and searching. When the server has extension sources a "来源" row
+ * appears; extension sources browse by Popular / Latest and search covers the current source only.
  */
 
 @Composable
@@ -49,13 +51,16 @@ fun StoreTab(vm: AppVm) {
     LaunchedEffect(vm.configured) { vm.storeEnter() }
     val focus = LocalFocusManager.current
     var text by remember { mutableStateOf(vm.query) }
+    var picking by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         TitleRow("发现", if (vm.storeBusy) "加载中…" else "刷新") {
             if (vm.searchResults != null) vm.search(vm.query) else vm.loadStore(force = true)
         }
         SearchBar(Modifier.padding(horizontal = 20.dp)) {
             Box(Modifier.weight(1f)) {
-                if (text.isEmpty()) T("搜作品名、作者", 15.sp, color = Mid)
+                if (text.isEmpty()) T(if (vm.currentSource?.ext == true) "在“${vm.currentSource?.name}”里搜" else "搜作品名、作者",
+                    15.sp, color = Mid, maxLines = 1)
                 BasicTextField(
                     text, { text = it }, singleLine = true, textStyle = TextStyle(fontSize = 15.sp, color = Ink),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -70,7 +75,13 @@ fun StoreTab(vm: AppVm) {
         if (!vm.configured) {
             T("先到“设置”填 webtoon 服务器地址和设备令牌。", 14.sp, color = Mid, modifier = Modifier.padding(20.dp))
             Pill("去设置", true, Modifier.padding(horizontal = 20.dp).fillMaxWidth()) { vm.tab = Tab.SETTINGS }
-            return
+            return@Column
+        }
+        if (vm.sources.isNotEmpty()) {
+            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                T("来源", 14.sp, color = Mid, modifier = Modifier.padding(end = 10.dp))
+                Chip((vm.currentSource?.name ?: "WEBTOON") + " ›", true) { picking = true }
+            }
         }
         val results = vm.searchResults
         val items: List<Card>
@@ -79,7 +90,7 @@ fun StoreTab(vm: AppVm) {
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
             items = results
         } else {
-            Segment(STORE_SEGS.map { it.second }, vm.storeSeg, { vm.loadStore(it, "") },
+            Segment(vm.storeSegs.map { it.second }, vm.storeSeg, { vm.loadStore(it, "") },
                 Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp))
             val keys = vm.storeList?.keys.orEmpty()
             if (keys.isNotEmpty()) Row(
@@ -93,7 +104,7 @@ fun StoreTab(vm: AppVm) {
         if (vm.storeMsg.isNotEmpty()) T(vm.storeMsg, 13.sp, color = Mid, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         if (items.isEmpty()) {
             T(if (vm.storeBusy) "正在加载…" else if (results != null) "没有找到" else "", 14.sp, color = Mid, modifier = Modifier.padding(20.dp))
-            return
+            return@Column
         }
         PagedGrid(items, vm.storePage, { vm.storePage = it }) { c ->
             val owned = vm.subscribed(c.id) != null
@@ -101,6 +112,16 @@ fun StoreTab(vm: AppVm) {
                 vm.openDetail(c.id, c.title)
             }
         }
+    }
+    if (picking) ChoiceDialog(
+        "选择来源", "",
+        vm.sources.map { s ->
+            Choice(s.name + if (s.lang.isNotEmpty()) " · ${s.lang}" else "", s.key == vm.src) {
+                picking = false
+                if (s.key != vm.src) { text = ""; vm.pickSource(s.key) }
+            }
+        } + Choice("取消") { picking = false },
+    ) { picking = false }
     }
 }
 
@@ -126,7 +147,9 @@ fun DetailScreen(vm: AppVm, d: Detail) {
                         if (t != null) {
                             if (t.author.isNotEmpty()) T(t.author, 14.sp, color = Mid, maxLines = 2)
                             if (t.genre.isNotEmpty()) T(t.genre, 14.sp, color = Mid, maxLines = 1)
-                            T("免费 ${t.episodes.size} 话 · " + if (t.done) "已完结" else "连载中", 14.sp, maxLines = 1)
+                            val ext = Source.extId(d.id)
+                            if (ext && t.src.isNotEmpty()) T(t.src, 14.sp, color = Mid, maxLines = 1)
+                            T((if (ext) "" else "免费 ") + "${t.episodes.size} 话 · " + if (t.done) "已完结" else "连载中", 14.sp, maxLines = 1)
                             if (sub != null) T("已订阅 · 下载到第 ${sub.mark?.last ?: 0} 话", 14.sp, bold = true, maxLines = 1)
                         }
                     }
@@ -146,7 +169,8 @@ fun DetailScreen(vm: AppVm, d: Detail) {
                     }
                     Pill("取消订阅", false, Modifier.weight(1f)) { ask = "unsub" }
                 } else if (t != null) {
-                    Pill(if (t.episodes.isEmpty()) "订阅（还没有免费话）" else "订阅", true, Modifier.weight(1f)) { ask = "sub" }
+                    val none = if (Source.extId(d.id)) "订阅（还没有章节）" else "订阅（还没有免费话）"
+                    Pill(if (t.episodes.isEmpty()) none else "订阅", true, Modifier.weight(1f)) { ask = "sub" }
                 } else if (d.error.isNotEmpty()) {
                     Pill("重试", false, Modifier.weight(1f)) { vm.openDetail(d.id, d.name, d.lang) }
                 }

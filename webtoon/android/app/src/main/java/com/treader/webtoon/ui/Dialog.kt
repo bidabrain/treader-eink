@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,7 +32,7 @@ fun ChoiceDialog(title: String, text: String, choices: List<Choice>, onDismiss: 
     Box(Modifier.fillMaxSize().background(Paper.copy(alpha = 0.7f)).noRippleClick(onDismiss), contentAlignment = Alignment.Center) {
         Column(
             Modifier.padding(horizontal = 28.dp).fillMaxWidth().clip(shape).background(Paper)
-                .border(OutlineWidth, Outline, shape).noRippleClick {}.padding(18.dp),
+                .border(OutlineWidth, Outline, shape).noRippleClick {}.verticalScroll(rememberScrollState()).padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             T(title, 18.sp, bold = true)

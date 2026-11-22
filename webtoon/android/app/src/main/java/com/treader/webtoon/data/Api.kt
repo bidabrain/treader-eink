@@ -69,11 +69,25 @@ class Api(private val prefs: Prefs) {
 
     private suspend fun get(path: String) = json(request(path).build())
 
-    suspend fun store(seg: String, key: String, lang: String = prefs.lang): StoreList =
-        Parse.store(get("/api/device/v1/store?seg=${enc(seg)}&key=${enc(key)}&limit=120&lang=${enc(lang)}&zh=$zh"))
+    // WEBTOON 不带 src（旧服务器也认）；插件来源带 &src=。/ No src for WEBTOON (old servers accept that too); &src=
+    // for an extension source.
+    private fun srcQuery(src: String) = if (src.isEmpty() || src == Source.WEBTOON) "" else "&src=${enc(src)}"
 
-    suspend fun search(q: String, lang: String = prefs.lang): List<Card> =
-        Parse.cards(get("/api/device/v1/search?q=${enc(q)}&lang=${enc(lang)}&zh=$zh").optJSONArray("items"))
+    suspend fun store(seg: String, key: String, lang: String = prefs.lang, src: String = Source.WEBTOON): StoreList =
+        Parse.store(get("/api/device/v1/store?seg=${enc(seg)}&key=${enc(key)}&limit=120&lang=${enc(lang)}&zh=$zh${srcQuery(src)}"))
+
+    suspend fun search(q: String, lang: String = prefs.lang, src: String = Source.WEBTOON): List<Card> =
+        Parse.cards(get("/api/device/v1/search?q=${enc(q)}&lang=${enc(lang)}&zh=$zh${srcQuery(src)}").optJSONArray("items"))
+
+    /** 服务器的来源；旧服务器没有这个接口时当作只有 WEBTOON。/ The server's sources; an older server without the
+     *  endpoint counts as WEBTOON only. */
+    suspend fun sources(): List<Source> = try {
+        Parse.sources(get("/api/device/v1/sources"))
+    } catch (e: NetworkError) {
+        throw e
+    } catch (e: ApiError) {
+        emptyList()
+    }
 
     suspend fun title(id: String, lang: String = prefs.lang): Title =
         Parse.title(get("/api/device/v1/title/${enc(id)}?lang=${enc(lang)}&zh=$zh"))
@@ -139,6 +153,11 @@ class Prefs(context: Context) {
     var simplified: Boolean
         get() = sp.getBoolean("simplified", true)
         set(v) = sp.edit().putBoolean("simplified", v).apply()
+
+    /** 发现页选中的来源 key，默认 WEBTOON。/ The store's chosen source key, WEBTOON by default. */
+    var src: String
+        get() = sp.getString("src", Source.WEBTOON).orEmpty().ifEmpty { Source.WEBTOON }
+        set(v) = sp.edit().putString("src", v).apply()
 
     /** 每次检查最多下载几话，0 表示不限。/ Episodes downloaded per check at most; 0 = no limit. */
     var perCheck: Int
