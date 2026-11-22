@@ -164,6 +164,11 @@ void hr_scenes(void) {
     s_src = 2;
     snprintf(s_message, sizeof(s_message), "下载了 3 话，1 话失败：服务器转换太久了");
     shot("shelf_wt_updating", true);
+#ifndef HR_BASELINE
+    s_wt_confirm_cancel = true;   // 点了一下“更新中”，等第二下 / One tap on the pill, waiting for the second
+    shot("shelf_wt_cancel", true);
+    s_wt_confirm_cancel = false;
+#endif
     s_hr_updating = false;
     s_src = 0;
     s_message[0] = 0;

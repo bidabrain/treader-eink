@@ -70,8 +70,12 @@
 #define IMPORT_X 592
 // WEBTOON 的两个胶囊（只在设置了漫画服务器时画）：来源筛选、检查更新。/ The two WEBTOON pills (drawn only with a
 // comic server set): source filter and update check.
-#define SRC_PILL (EpdRect){TR_MARGIN + TR_S(166), TR_S(212), TR_S(170), TR_S(54)}
-#define UPDATE_PILL (EpdRect){TR_W - TR_MARGIN - TR_S(196), TR_S(212), TR_S(196), TR_S(54)}
+// 放大后三个胶囊排不下时，后两个按比例收窄（100% 时不变）。/ When the three pills no longer fit at larger sizes,
+// the last two narrow in proportion (unchanged at 100%).
+#define WT_PILL_FREE (TR_W - 2 * TR_MARGIN - TR_S(150) - 2 * TR_S(16))
+#define WT_PILL_W(w) (TR_S(w) < WT_PILL_FREE * (w) / 366 ? TR_S(w) : WT_PILL_FREE * (w) / 366)
+#define SRC_PILL (EpdRect){TR_MARGIN + TR_S(166), TR_S(212), WT_PILL_W(170), TR_S(54)}
+#define UPDATE_PILL (EpdRect){TR_W - TR_MARGIN - WT_PILL_W(196), TR_S(212), WT_PILL_W(196), TR_S(54)}
 #define GRID_TOP (TR_S(284) + TR_S(136) + TR_S(34))
 #define GRID_PITCH (COVER_H + TR_S(94))
 #define CELL_TEXT_H (TR_S(74) + (BIG ? TR_S(28) : 0))   // 放大后状态行可折成两行 / The status may fold to 2 lines
@@ -142,6 +146,10 @@ static int s_src;
 static bool s_wt_ours;
 static uint32_t s_wt_seq;
 static bool s_wt_was;
+// 更新中点了一次“更新中”胶囊（等第二下确认取消）；已经请求取消、等后台停下。/ The "updating" pill was tapped once
+// (a second tap confirms the cancel); a cancel was requested and the worker is stopping.
+static bool s_wt_confirm_cancel;
+static bool s_wt_cancelling;
 static int s_wt_progress;
 static int64_t s_wt_poll_ms;
 static comic_entry_t* s_shelf;
@@ -479,6 +487,13 @@ static void draw_series_stack(uint8_t* fb, int x, int y) {
 
 // WEBTOON 的胶囊画不画：设置了服务器，或者书架上已经有订阅。/ Whether the WEBTOON pills show: a server is set, or
 // the shelf already has subscriptions.
+// 胶囊字号：放不下就缩小，最小 20 像素。/ Pill text size: shrinks until it fits, down to 20 px.
+static int pill_px(EpdRect r, const char* label) {
+    int px = TR_S(26);
+    while (px > 20 && ttf_text_width_px(px, label) > r.width - TR_S(24)) px -= 2;
+    return px;
+}
+
 static bool wt_shown(void) { return s_wt_cfg || s_wt_series > 0; }
 
 static int store_text_x(void) { return IMPORT_X - TR_S(18); }
@@ -494,10 +509,15 @@ static void draw_shelf(uint8_t* fb) {
     tr_pill(fb, SORT_PILL, s_sort_name ? "按名字" : "按最近", false, TR_S(28));
     if (wt_shown()) {
         static const char* const SRC[3] = {"全部", "本地", "WEBTOON"};
-        tr_pill(fb, SRC_PILL, SRC[s_src % 3], s_src != 0, TR_S(26));
+        tr_pill(fb, SRC_PILL, SRC[s_src % 3], s_src != 0, pill_px(SRC_PILL, SRC[s_src % 3]));
         if (s_wt_cfg && s_wt_series) {
             char up[32];
-            if (tomato_wt_updating()) {
+            const bool updating = tomato_wt_updating();
+            if (updating && s_wt_cancelling) {
+                snprintf(up, sizeof(up), "正在取消…");
+            } else if (updating && s_wt_confirm_cancel) {
+                snprintf(up, sizeof(up), "再点取消");
+            } else if (updating) {
                 tomato_status_t st;
                 tomato_sync_get_status(&st);
                 if (st.total > 0) snprintf(up, sizeof(up), "更新中 %d/%d", st.current, st.total);
@@ -505,7 +525,7 @@ static void draw_shelf(uint8_t* fb) {
             } else {
                 snprintf(up, sizeof(up), "检查更新");
             }
-            tr_pill(fb, UPDATE_PILL, up, !tomato_wt_updating(), TR_S(26));
+            tr_pill(fb, UPDATE_PILL, up, !updating || s_wt_confirm_cancel, pill_px(UPDATE_PILL, up));
         }
         // 胶囊占了右边，提示放到上面那一行右边。/ The pills take the right side; the message goes right of the line above.
         if (s_message[0]) {
@@ -1166,6 +1186,8 @@ static void start_wt_update(const char* id, bool fill) {
         s_wt_ours = true;
         s_wt_seq = tomato_sync_seq();
         s_wt_progress = -1;
+        s_wt_confirm_cancel = false;
+        s_wt_cancelling = false;
         s_message[0] = 0;
     } else {
         snprintf(s_message, sizeof(s_message), "无法开始检查更新");
@@ -1250,6 +1272,9 @@ static app_redraw_t open_entry(int i) {
 
 static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_COMIC)) return APP_REDRAW_NONE;
+    // 点别处就不再等第二下。/ A tap elsewhere drops the pending cancel confirmation.
+    const bool confirm = s_wt_confirm_cancel;
+    s_wt_confirm_cancel = false;
     if (s_wt_cfg && y >= TR_S(86) && y < TR_S(150) && x >= store_text_x() - ttf_text_width_px(TR_S(30), "发现") - 20 &&
         x < IMPORT_X - 10) {
         ctx->request_app = &app_tr_wt;
@@ -1262,7 +1287,15 @@ static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     if (s_wt_cfg && s_wt_series && ui_rect_hit(UPDATE_PILL, x, y)) {
-        if (tomato_wt_updating()) return APP_REDRAW_NONE;
+        if (tomato_wt_updating()) {
+            // 更新中：点一下变“再点取消”，再点才取消；没下好的话下次检查更新接着下。/ While updating: one tap shows
+            // the confirmation, a second cancels; unfinished episodes resume on the next check.
+            if (s_wt_cancelling) return APP_REDRAW_NONE;
+            if (!confirm) { s_wt_confirm_cancel = true; return APP_REDRAW_PAGE; }
+            s_wt_cancelling = true;
+            tomato_sync_cancel();
+            return APP_REDRAW_PAGE;
+        }
         start_wt_update(NULL, false);
         return APP_REDRAW_PAGE;
     }
@@ -1533,6 +1566,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         } else if (s_wt_was) {
             s_wt_was = false;
             s_wt_progress = -1;
+            s_wt_confirm_cancel = false;
+            s_wt_cancelling = false;
             if (s_wt_ours && tomato_sync_seq() == s_wt_seq) {
                 tomato_status_t st;
                 tomato_sync_get_status(&st);

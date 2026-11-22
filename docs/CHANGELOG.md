@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.1.0
+
+- 漫画“检查更新”可以取消：更新中点“更新中”胶囊，变成“再点取消”，再点一下就停；没下好的话下次检查更新接着下。显示放大时“我的漫画”上面三个胶囊不再叠在一起。
+  Comic updates can be cancelled: tap the "Updating" pill, which turns into "Cancel?", and tap again to stop; unfinished episodes resume on the next check. At larger display sizes the three pills above My comics no longer overlap.
+
 ## 2026-11-22 · webtoon 服务器 0.2.4
 
 - 插件来源过不了 Cloudflare 验证时不再拖住整个队列：一个来源失败后，它排着的话 10 分钟内直接失败，不再每话等 FlareSolverr 超时，别的来源和 WEBTOON 照常下。错误里注明是 FlareSolverr 没过去（IP 被拦或验证解不了）和还要等几分钟。
