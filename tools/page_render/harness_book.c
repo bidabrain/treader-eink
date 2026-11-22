@@ -7,6 +7,11 @@
  */
 #include "app_book.c"   // 按 -I 找：当前源码或 SRC_ROOT / Found via -I: current sources or SRC_ROOT
 #include "page_render.h"
+#include "nvs.h"
+
+// 书库的列表 / 网格设置要写 NVS；这里没有存储，打开失败就只改内存里的值。/ The list / grid setting writes NVS; there is
+// no storage here, so a failed open keeps the value in memory only.
+esp_err_t nvs_open(const char* ns, nvs_open_mode_t m, nvs_handle_t* h) { (void)ns; (void)m; (void)h; return ESP_FAIL; }
 
 const char* hr_page = "book";
 
@@ -116,6 +121,31 @@ void hr_scenes(void) {
     render(&ctx, hr_fb);
     hr_allow_fit();
     hr_shot("shelf_save_failed");
+
+    // 网格：有卡片、搜索中（没有卡片）、按下一格、管理里选中。/ Grid: with the card, while searching (no card), a
+    // pressed cell, and selections in manage mode.
+    hr_reset();
+    app_settings_set_shelf_grid(true);
+    snprintf(s_continue, sizeof(s_continue), "%s", s_hr_books[1].path);
+    ctx.leaf = 0;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("grid_card");
+    hr_reset();
+    snprintf(s_query, sizeof(s_query), "santi");
+    s_pressed_control = 1;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("grid_search");
+    hr_reset();
+    s_view = BULK;
+    s_shelf[0].selected = s_shelf[2].selected = true;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_no_bar_check();
+    hr_shot("grid_bulk");
+    s_shelf[0].selected = s_shelf[2].selected = false;
+    app_settings_set_shelf_grid(false);
 
     // 空书架。/ Empty shelf.
     hr_reset();

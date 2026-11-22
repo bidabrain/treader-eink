@@ -67,6 +67,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         private set
     var serif by mutableStateOf(ui.getBoolean("serif", true))
         private set
+    /** 书库用封面网格（否则列表），照固件。/ Library shows a cover grid (otherwise a list), like the firmware. */
+    var shelfGrid by mutableStateOf(ui.getBoolean("shelf_grid", false))
+        private set
     /** 翻页区域，照固件：0 左右、1 中下翻页、2 点哪都翻。/ Tap zones after the firmware: 0 sides, 1 lower, 2 anywhere. */
     var turnZone by mutableStateOf(ui.getInt("turn_zone", 0).coerceIn(0, TURN_ZONES.size - 1))
         private set
@@ -273,6 +276,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     }
 
     fun changeSerif(on: Boolean) { serif = on; ui.edit().putBoolean("serif", on).apply() }
+    fun changeShelfGrid(on: Boolean) { shelfGrid = on; ui.edit().putBoolean("shelf_grid", on).apply() }
 
     fun changeTurnZone(z: Int) { turnZone = z % TURN_ZONES.size; ui.edit().putInt("turn_zone", turnZone).apply() }
 

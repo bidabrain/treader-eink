@@ -285,6 +285,17 @@ fun TocIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifier
     grid(color) { for (i in 0 until 3) { dot(8f, 10f + i * 10, 2f); line(15f, 10f + i * 10, 34f, 10f + i * 10) } }
 }
 
+/** 网格（TR_ICON_MENU）：田字四个小方框。/ Grid: four small squares. */
+@Composable
+fun GridIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifier.size(24.dp)) {
+    grid(color) {
+        for (i in 0 until 4) {
+            val x = 7f + (i % 2) * 15f; val y = 7f + (i / 2) * 15f
+            line(x, y, x + 11f, y); line(x + 11f, y, x + 11f, y + 11f); line(x + 11f, y + 11f, x, y + 11f); line(x, y + 11f, x, y)
+        }
+    }
+}
+
 /** 字体（TR_ICON_FONT）：“Aa”的笔画。/ Font: the strokes of "Aa". */
 @Composable
 fun FontIcon(color: Color = Ink, modifier: Modifier = Modifier) = Canvas(modifier.size(24.dp)) {

@@ -349,10 +349,33 @@ static bool card_layout(void) { return !s_query[0] && continue_index() >= 0; }
 static bool card_shown(void) {
     return s_view == SHELF && card_layout();
 }
-// 书架一页几行：翻页条上面放得下几行（最多 4 行）；书架、管理、详情弹窗用同一个数，页码不乱。
-// Shelf rows per page: what fits above the pager (at most 4); shelf, manage mode and the detail dialog share the
-// number so page numbers stay put.
+// 书架一页几本：列表是翻页条上面放得下几行（最多 4 行），网格是行数乘列数；书架、管理、详情弹窗用同一个数，页码不乱。
+// Books per shelf page: rows above the pager in the list (at most 4), rows times columns in the grid; shelf, manage
+// mode and the detail dialog share the number so page numbers stay put.
+// 网格（只在书架和管理里）：三列封面，下面书名和进度；行数按剩下的高度算，封面不小于整列宽时的七成才多排一行。
+// / Grid (shelf and manage only): three columns of covers with the title and progress below; rows follow the height
+// left, and one more row is taken only while covers stay at least 70% of their full-column size.
+#define GRID_COLS 3
+#define GRID_GAP TR_S(20)
+#define GRID_TEXT_H TR_S(70)
+static bool shelf_grid(void) { return (s_view == SHELF || s_view == BULK) && app_settings_shelf_grid(); }
+typedef struct { int rows, cell_w, cell_h, cover_w, cover_h; } grid_t;
+static grid_t grid_layout(void) {
+    grid_t g;
+    const int top = card_layout() ? CARD_ROWS_TOP : SHELF_ROW_TOP, avail = SHELF_PAGER_Y - TR_S(24) - top;
+    g.cell_w = (ui_content_width() - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
+    const int full = g.cell_w * 4 / 3, min = full * 7 / 10;
+    g.rows = (avail + GRID_GAP) / (min + GRID_TEXT_H + GRID_GAP);
+    if (g.rows < 1) g.rows = 1;
+    if (g.rows > 3) g.rows = 3;
+    g.cell_h = (avail - GRID_GAP * (g.rows - 1)) / g.rows;
+    g.cover_h = g.cell_h - GRID_TEXT_H;
+    if (g.cover_h > full) g.cover_h = full;
+    g.cover_w = g.cover_h * 3 / 4;
+    return g;
+}
 static int shelf_rows(void) {
+    if (shelf_grid()) return grid_layout().rows * GRID_COLS;
     const int top = card_layout() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
     const int n = (SHELF_PAGER_Y - TR_S(20) - top + TR_S(8)) / SHELF_ROW_H;
     return n < 1 ? 1 : n > 4 ? 4 : n;
@@ -372,6 +395,13 @@ static bool tomato_hint_shown(void);
 static EpdRect row_rect(int row, bool toc) {
     if (toc) return (EpdRect){UI_MARGIN, TR_S(210) + row * TR_S(88), ui_content_width(), TR_S(84)};
     const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
+    if (shelf_grid()) {
+        // 网格：第 row 本所在的格子（封面加两行字）。/ Grid: the cell of the row-th book (cover plus two lines).
+        const grid_t g = grid_layout();
+        const int col = row % GRID_COLS, line = row / GRID_COLS;
+        return (EpdRect){UI_MARGIN + col * (g.cell_w + GRID_GAP), top + line * (g.cell_h + GRID_GAP), g.cell_w,
+                         g.cell_h};
+    }
     return (EpdRect){UI_MARGIN, top + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - TR_S(12)};
 }
 // 工具条：0 目录、1 字号−、2 字号+、3 菜单、4 排版、5 书架、6 顶部返回、7 自动翻页−、8 自动翻页+、9 上一章、10 下一章。
@@ -404,6 +434,12 @@ static EpdRect import_icon_rect(void) {
 }
 static EpdRect search_icon_rect(void) {
     const EpdRect r = import_icon_rect();
+    return (EpdRect){r.x - r.width, r.y, r.width, r.height};
+}
+// 列表 / 网格切换，在搜索左边；画的是点了会换成的样子。/ List / grid switch left of search; it shows the view a tap
+// switches to.
+static EpdRect view_icon_rect(void) {
+    const EpdRect r = search_icon_rect();
     return (EpdRect){r.x - r.width, r.y, r.width, r.height};
 }
 static EpdRect save_retry_rect(void) { return (EpdRect){UI_MARGIN, TR_S(150), ui_content_width(), TR_S(44)}; }
@@ -979,11 +1015,46 @@ static bool tomato_hint_shown(void) {
     const char* note = s_message[0] ? s_message : s_shelf_warning;
     return s_view == SHELF && !s_save_failed && !note[0] && tomato_pending() > 0;
 }
+// 网格的一格：封面（新章节小胶囊压在右上角），下面书名，再下面进度条加百分比或“未读 / 读完”；管理时选中的描粗框。
+// / One grid cell: the cover (a new-chapter badge on its top right), the title below, then a progress bar and percent
+// or 未读 / 读完; in manage mode a selected book gets a thick outline.
+static void draw_grid_cell(uint8_t* fb, const shelf_entry_t* e, EpdRect r, int row) {
+    const grid_t g = grid_layout();
+    if (s_pressed_control == row || (s_view == BULK && e->selected))
+        ui_draw_selected_round_rect(fb, ui_inset_rect(r, -TR_S(6)), UI_BTN_RADIUS);
+    char title[128], mark[32] = "", meta[16];
+    shelf_display_title(e, title, sizeof(title));
+    const bool done = e->has_progress && e->pct >= 100;
+    const char* ext = strrchr(e->name, '.');
+    const EpdRect cover = {r.x + (r.width - g.cover_w) / 2, r.y, g.cover_w, g.cover_h};
+    tr_book_cover(fb, cover, e->path, title, e->tomato ? e->author : "",
+                  e->tomato ? "番茄" : ext && !strcasecmp(ext, ".epub") ? "EPUB" : "TXT", done);
+    if (s_view == BULK) copy_text(mark, sizeof(mark), e->selected ? "已选" : "");
+    else if (e->new_chapters) snprintf(mark, sizeof(mark), "+%u", e->new_chapters);
+    else if (e->fresh_chapters) snprintf(mark, sizeof(mark), "+%u", e->fresh_chapters);
+    if (e->removed) copy_text(mark, sizeof(mark), "已删");
+    if (mark[0])
+        tr_badge(fb, cover.x + cover.width - TR_S(6), cover.y + TR_S(6), mark,
+                 s_view == BULK || e->removed || e->new_chapters > 0, TR_S(22));
+    const int ty = r.y + g.cover_h + TR_S(8);
+    tr_fit(title, TR_S(24), r.width);
+    tr_text(fb, r.x, ty, TR_S(24), title, EPD_DRAW_ALIGN_LEFT, true);
+    if (e->has_progress && !done) {
+        snprintf(meta, sizeof(meta), "%u%%", e->pct);
+        const int pw = ttf_text_width_px(TR_S(22), meta) + TR_S(10);
+        tr_progress(fb, r.x, ty + TR_S(46), r.width - pw, e->pct);
+        tr_text_dim(fb, r.x + r.width, ty + TR_S(34), TR_S(22), meta, EPD_DRAW_ALIGN_RIGHT);
+    } else {
+        tr_text_dim(fb, r.x, ty + TR_S(34), TR_S(22), done ? "读完" : "未读", EPD_DRAW_ALIGN_LEFT);
+    }
+}
 static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     ui_clear_page(fb);
     tr_status_bar(fb);
     tr_title(fb, s_view == BULK ? "管理书库" : "书库");
-    EpdRect si = search_icon_rect(), ii = import_icon_rect();
+    EpdRect si = search_icon_rect(), ii = import_icon_rect(), vi = view_icon_rect();
+    tr_icon(fb, app_settings_shelf_grid() ? TR_ICON_TOC : TR_ICON_MENU, vi.x + vi.width / 2, vi.y + vi.height / 2,
+            false);
     tr_icon(fb, TR_ICON_SEARCH, si.x + si.width / 2, si.y + si.height / 2, false);
     tr_icon(fb, TR_ICON_IMPORT, ii.x + ii.width / 2, ii.y + ii.height / 2, false);
 
@@ -1047,6 +1118,7 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         if (i >= s_visible_count) break;
         const shelf_entry_t* e = &s_shelf[i];
         EpdRect r = row_rect(row, false);
+        if (shelf_grid()) { draw_grid_cell(fb, e, r, row); continue; }
         if (s_pressed_control == row) ui_draw_selected_round_rect(fb, r, UI_BTN_RADIUS);
         if (s_view == BULK && e->selected) ui_draw_selected_round_rect(fb, r, UI_BTN_RADIUS);
         char title[128], mark[32] = "", meta[160];
@@ -1975,6 +2047,14 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             return APP_REDRAW_PAGE;
         }
         if (ui_rect_hit(search_icon_rect(), x, y)) { search_begin(); return APP_REDRAW_PAGE; }
+        if (ui_rect_hit(view_icon_rect(), x, y)) {
+            // 换列表 / 网格，停在原来这页第一本所在的页。/ Switch list / grid and stay on the page holding the old
+            // page's first book.
+            const int first = ctx->leaf * BOOK_ROWS;
+            app_settings_set_shelf_grid(!app_settings_shelf_grid());
+            ctx->leaf = first / BOOK_ROWS;
+            return APP_REDRAW_PAGE;
+        }
         if (ui_rect_hit(import_icon_rect(), x, y)) {
             // 先到“设置 › 传书”选 Wi-Fi 还是 USB。/ Go to Settings > Transfer to pick Wi-Fi or USB.
             app_tr_settings_request_transfer();
@@ -2186,6 +2266,8 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         }
         *rect = search_icon_rect();
         if (ui_rect_hit(*rect, x, y)) return 114;
+        *rect = view_icon_rect();
+        if (ui_rect_hit(*rect, x, y)) return 118;
         *rect = import_icon_rect();
         if (ui_rect_hit(*rect, x, y)) return 115;
         *rect = save_retry_rect();
@@ -2210,7 +2292,12 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
     int count = s_view == TOC ? (int)book_chapter_count() : s_visible_count;
     for (int row = 0; row < rows && ctx->leaf * rows + row < count; ++row) {
         *rect = row_rect(row, s_view == TOC);
-        if (ui_rect_hit(*rect, x, y)) return row;
+        if (ui_rect_hit(*rect, x, y)) {
+            // 网格的按下描边画在格子外圈，刷新区域放大包住它。/ The grid's pressed outline sits outside the cell; widen
+            // the refresh area to cover it.
+            if (shelf_grid()) *rect = ui_inset_rect(*rect, -TR_S(8));
+            return row;
+        }
     }
     return -1;
 }

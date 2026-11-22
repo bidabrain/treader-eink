@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,6 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -28,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.treader.tomato.AppVm
@@ -37,10 +43,12 @@ import java.io.File
 
 /*
  * 书库，照固件 app_book.c 的书架：标题行（搜索、导入），“N 本 · 排序”和番茄更新提示，全部 / 番茄 / 其他书筛选、
- * 按最近 / 按书名排序、管理；顶部“继续阅读”卡片；每本一行：封面、书名、来源、进度条。长按一本看详情、清进度、删除。
+ * 按最近 / 按书名排序、管理；顶部“继续阅读”卡片；列表每本一行：封面、书名、来源、进度条，或者三列封面网格（右上角切换，
+ * 记住选择）。长按一本看详情、清进度、删除。
  * The library after the firmware's app_book.c shelf: title row (search, import), "N books · sort" and the Tomato
  * update hint, All / Tomato / Other filters, recent / title sort and manage; a "continue reading" card on top; one row
- * per book with cover, title, source and a progress bar. Long press a book for details, clearing progress or deleting.
+ * per book with cover, title, source and a progress bar, or a three-column cover grid (switched at the top right and
+ * remembered). Long press a book for details, clearing progress or deleting.
  */
 
 private val FILTERS = listOf("全部", "番茄", "其他书")
@@ -70,6 +78,10 @@ fun LibraryTab(vm: AppVm) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                 PageTitle("书库", Modifier.weight(1f))
+                // 列表 / 网格切换，画的是点了会换成的样子。/ List / grid switch showing the view a tap switches to.
+                Box(Modifier.noRippleClick { vm.changeShelfGrid(!vm.shelfGrid) }.padding(8.dp)) {
+                    if (vm.shelfGrid) TocIcon(modifier = Modifier.size(24.dp)) else GridIcon(modifier = Modifier.size(24.dp))
+                }
                 Box(Modifier.noRippleClick { searching = !searching; if (!searching) query = "" }.padding(8.dp)) { SearchIcon(modifier = Modifier.size(24.dp)) }
                 Row(
                     Modifier.noRippleClick { pick.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream")) }.padding(8.dp),
@@ -119,15 +131,26 @@ fun LibraryTab(vm: AppVm) {
                     modifier = Modifier.padding(20.dp))
                 return@Column
             }
-            LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                if (cont != null && !manage && query.isBlank() && filter == 0) item("continue") { ContinueCard(vm, cont) }
+            val tap = { b: LibBook ->
+                if (manage) picked = if (b.name in picked) picked - b.name else picked + b.name
+                else vm.open(b.file)
+            }
+            val showCont = cont != null && !manage && query.isBlank() && filter == 0
+            if (vm.shelfGrid) LazyVerticalGrid(
+                GridCells.Fixed(3), Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                if (showCont) item("continue", span = { GridItemSpan(maxLineSpan) }) { ContinueCard(vm, cont!!) }
+                gridItems(shown, key = { it.name }) { b ->
+                    BookCell(vm, b, manage, b.name in picked, onClick = { tap(b) }, onLong = { detail = b })
+                }
+                if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                    T("当前筛选没有图书", 14.sp, color = Mid, modifier = Modifier.padding(vertical = 16.dp))
+                }
+            } else LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+                if (showCont) item("continue") { ContinueCard(vm, cont!!) }
                 items(shown, key = { it.name }) { b ->
-                    BookRow(vm, b, manage, b.name in picked,
-                        onClick = {
-                            if (manage) picked = if (b.name in picked) picked - b.name else picked + b.name
-                            else vm.open(b.file)
-                        },
-                        onLong = { detail = b })
+                    BookRow(vm, b, manage, b.name in picked, onClick = { tap(b) }, onLong = { detail = b })
                 }
                 if (shown.isEmpty()) item { T("当前筛选没有图书", 14.sp, color = Mid, modifier = Modifier.padding(vertical = 16.dp)) }
             }
@@ -163,11 +186,11 @@ private fun source(b: LibBook): String = when {
 }
 
 @Composable
-private fun BookCover(vm: AppVm, b: LibBook, modifier: Modifier) {
+private fun BookCover(vm: AppVm, b: LibBook, modifier: Modifier, size: TextUnit = 10.sp) {
     val img = File(vm.dirs.covers, "${b.name}.img")
     // 读完的书用黑底文字封面（tr_book_mini_cover 的 done）。/ Finished books get the dark text cover (done in
     // tr_book_mini_cover).
-    Cover(b.title, if (img.exists()) img else null, modifier, 10.sp, dark = b.pct >= 100)
+    Cover(b.title, if (img.exists()) img else null, modifier, size, dark = b.pct >= 100)
 }
 
 @Composable
@@ -225,6 +248,43 @@ private fun BookRow(vm: AppVm, b: LibBook, manage: Boolean, picked: Boolean, onC
             }
         }
         HLine()
+    }
+}
+
+/** 网格的一格，照固件：封面（新章节标记压在右上角），书名，进度条加百分比或“未读 / 读完”；管理里选中的描粗框。
+ *  One grid cell like the firmware: the cover (new-chapter badge on its top right), the title, then a progress bar and
+ *  percent or 未读 / 读完; selected books in manage mode get a thick outline. */
+@Composable
+private fun BookCell(vm: AppVm, b: LibBook, manage: Boolean, picked: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
+    // 管理时每格留 8dp 内边距，选中的在这圈画粗框。/ In manage mode each cell keeps an 8 dp inset where the selected
+    // outline goes.
+    val outline = if (manage && picked) Modifier.border(3.dp, Ink, RoundedCornerShape(8.dp)) else Modifier
+    Column(Modifier.fillMaxWidth().then(outline).longPress(onClick, onLong).padding(if (manage) 8.dp else 0.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.75f)) {
+            BookCover(vm, b, Modifier.fillMaxSize(), 13.sp)
+            val badge = when {
+                manage -> if (picked) "已选" to true else null
+                else -> b.tomato?.let { t ->
+                    when {
+                        t.pendingCount > 0 -> "+${t.pendingCount}" to true
+                        t.freshCount > 0 -> "+${t.freshCount}" to false
+                        else -> null
+                    }
+                }
+            }
+            badge?.let { (label, filled) -> Badge(label, filled, Modifier.align(Alignment.TopEnd).padding(4.dp)) }
+        }
+        T(b.title, 14.sp, bold = true, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.padding(top = 4.dp).height(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            when {
+                b.pct < 0 -> T("未读", 12.sp, color = Mid)
+                b.pct >= 100 -> T("读完", 12.sp, color = Mid)
+                else -> {
+                    ProgressBar(b.pct, Modifier.weight(1f))
+                    T("${b.pct}%", 11.sp, color = Mid, modifier = Modifier.padding(start = 4.dp))
+                }
+            }
+        }
     }
 }
 

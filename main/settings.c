@@ -26,6 +26,7 @@
 #define NVS_KEY_WAKE "lwake"
 #define NVS_KEY_BOOT "lboot"
 #define NVS_KEY_PICKUP "pickup"
+#define NVS_KEY_SHELF_GRID "shelfgrid"
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_BOOK_STYLE "bk_style"
@@ -53,6 +54,7 @@ static char s_font[FONT_PATH_MAX];
 static uint8_t s_last_wake;
 static uint8_t s_last_boot;
 static bool s_pickup_wake;
+static bool s_shelf_grid;
 static uint8_t s_book_px = 48;
 static bool s_book_shake;
 // 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
@@ -141,6 +143,8 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_BOOT, &boot) == ESP_OK) s_last_boot = boot;
     uint8_t pickup = 0;
     if (nvs_get_u8(h, NVS_KEY_PICKUP, &pickup) == ESP_OK) s_pickup_wake = pickup != 0;
+    uint8_t grid = 0;
+    if (nvs_get_u8(h, NVS_KEY_SHELF_GRID, &grid) == ESP_OK) s_shelf_grid = grid != 0;
     uint8_t book_px = 48, book_shake = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_PX, &book_px) == ESP_OK) s_book_px = valid_book_px(book_px);
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
@@ -262,6 +266,16 @@ void app_settings_set_pickup_wake(bool on) {
     if (s_pickup_wake == on) return;
     s_pickup_wake = on;
     nvs_put_u8(NVS_KEY_PICKUP, on ? 1 : 0);
+}
+
+bool app_settings_shelf_grid(void) {
+    return s_shelf_grid;
+}
+
+void app_settings_set_shelf_grid(bool on) {
+    if (s_shelf_grid == on) return;
+    s_shelf_grid = on;
+    nvs_put_u8(NVS_KEY_SHELF_GRID, on ? 1 : 0);
 }
 
 void app_settings_set_font_path(const char* path) {

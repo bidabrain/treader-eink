@@ -8,6 +8,11 @@
  */
 #include "app_book.c"   // 按 -I 找 / Found via -I
 #include "page_render.h"
+#include "nvs.h"
+
+// 书库的列表 / 网格设置要写 NVS；这里没有存储，打开失败就只改内存里的值。/ The list / grid setting writes NVS; there is
+// no storage here, so a failed open keeps the value in memory only.
+esp_err_t nvs_open(const char* ns, nvs_open_mode_t m, nvs_handle_t* h) { (void)ns; (void)m; (void)h; return ESP_FAIL; }
 
 const char* hr_page = "demo_book";
 
@@ -129,6 +134,9 @@ void hr_scenes(void) {
 
     // 书架：继续阅读卡片、番茄更新、图片和文字封面。/ Shelf: continue card, Tomato updates, image and text covers.
     hr_shelf(&ctx, "shelf");
+    app_settings_set_shelf_grid(true);
+    hr_shelf(&ctx, "shelf_grid");
+    app_settings_set_shelf_grid(false);
 
     // 阅读页：真实排版的正文，显示本章第 2 页。/ Reader: real layout body on page 2 of the chapter.
     hr_reader(&ctx);

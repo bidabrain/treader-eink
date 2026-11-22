@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-22 · Treader 1.0.9 · 番茄安卓 App 1.3.2
+
+- 书库可以在列表和封面网格之间切换：右上角搜索左边的图标，选择会记住。网格一行三本，封面下面是书名和进度，番茄新章节标在封面右上角；管理书库也能用网格，选中的描粗框。固件上网格一页 6 本（特大显示且有“继续阅读”卡片时 3 本），App 上滚动显示。
+  The library can switch between a list and a cover grid with the icon left of search, and remembers the choice. The grid shows three books per row with the title and progress under each cover and Tomato's new-chapter badge on the cover's top right; manage mode works in the grid too, with a thick outline on selected books. On the firmware the grid holds 6 books per page (3 at the largest display size with the continue card); the app scrolls.
+
 ## 2026-11-22 · 番茄安卓 App 1.3.1
 
 - 修正番茄下载的书只显示“Part 1、Part 2…”，章节识别和固件 1.0.8 一样：章名在 40 个字以内都能认出，行首有空格或全角空格的章名也能认出。已经打开过的书重新打开后生效。
