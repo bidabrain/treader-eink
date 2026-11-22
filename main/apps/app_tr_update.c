@@ -331,7 +331,9 @@ static void drop_stale_parts(void) {
     struct dirent* e;
     while ((e = readdir(d))) {
         const size_t len = strlen(e->d_name);
-        if (len < 18 || strncmp(e->d_name, "treader-", 8) || strcmp(e->d_name + len - 17, "-upgrade.bin.part") ||
+        static const char part[] = TOMATO_OTA_SUFFIX ".part";
+        const size_t plen = sizeof(part) - 1;
+        if (len <= 8 + plen || strncmp(e->d_name, "treader-", 8) || strcmp(e->d_name + len - plen, part) ||
             !strcmp(e->d_name, keep)) continue;
         char path[sizeof(TOMATO_OTA_DIR) + 280];
         snprintf(path, sizeof(path), "%s/%s", TOMATO_OTA_DIR, e->d_name);

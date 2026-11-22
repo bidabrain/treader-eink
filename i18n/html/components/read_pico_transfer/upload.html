@@ -1,0 +1,268 @@
+<!-- en of components/read_pico_transfer/upload.html sha256:be96e1ccaf7b8070f8156187900624dd1093c3220f54204dc3ac6bd433e8e295 -->
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2026 mindreset
+SPDX-License-Identifier: Apache-2.0
+双模式传书与热点配网表单；服务器决定容量和凭据是否有效。
+Dual-mode upload and AP provisioning form; the server validates capacity and credentials.
+冻结：逐个发送原始文件，不使用 multipart；仅热点显示配网且不自动断网。
+Frozen: send raw files sequentially without multipart; AP-only provisioning never disconnects automatically.
+冻结：漫画例外，CBZ 一律先在浏览器里转成灰度 JPEG（不超过 648×1000、太长的页切成几屏），再打成不压缩的 ZIP 逐个上传；
+设备只解 JPEG（2026-11-18 加漫画标签）。
+Frozen: comics are the exception: every CBZ is converted in the browser to grayscale JPEG (at most 648x1000, very tall
+pages split into screens) and re-packed as a stored ZIP before a sequential upload; the device decodes JPEG only.
+-->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Read Pico · Transfer</title>
+<style>
+body{font:17px/1.6 system-ui,sans-serif;max-width:680px;margin:40px auto;padding:0 24px;color:#222;background:#faf9f5}h1{font-size:28px}button,input{font:inherit;max-width:100%}button{padding:8px 16px;margin:8px 8px 0 0}li{overflow-wrap:anywhere;margin:16px 0}.hint{color:#555}progress{width:100%}small{display:block}button:disabled{opacity:.5}
+</style>
+<h1>Read Pico · Wi-Fi Transfer</h1>
+<p class="hint">Keep your phone and the device on the same network. Books can be TXT / EPUB and comics CBZ; when a file with the same name already exists, you choose whether to replace or skip it.</p>
+<p id="info" role="status">Checking storage…</p>
+<input id="files" aria-label="Choose books" type="file" accept=".txt,.epub" multiple>
+<br><button id="send" disabled>Start upload</button><button id="cancel" disabled>Cancel current and queued</button>
+<section><h2>Upload fonts</h2>
+<p id="fontInfo" class="hint">Checking font upload requirements…</p>
+<input id="fontFiles" aria-label="Choose TTF fonts" type="file" accept=".ttf" multiple disabled>
+<br><button id="sendFonts" disabled>Upload fonts</button>
+<p class="hint">Choose a complete Chinese TrueType (TTF) font that you have the right to use. After it uploads, stop Transfer and select it on the device’s Font page. Replacing a font asks for confirmation; the device uses its built-in font during Transfer.</p></section>
+<section><h2>Upload comics</h2>
+<p id="comicInfo" class="hint">Checking comic upload requirements…</p>
+<label>Choose CBZ files<br><input id="comicFiles" type="file" accept=".cbz,.zip" multiple disabled></label><br>
+<label>Or choose a folder (several episodes of one comic)<br><input id="comicDir" type="file" webkitdirectory multiple disabled></label><br>
+<label>Series (leave blank for a single comic; defaults to the folder name when you choose a folder)<br><input id="series" maxlength="60" disabled></label>
+<p class="hint">Before uploading, this phone converts every page to a grayscale JPEG sized to the device screen and cuts very long strips into screens; files shrink to about 1/5 and pages turn faster on the device. Keep this page open and the screen on while converting.</p>
+<button id="sendComics" disabled>Convert and upload</button></section>
+<p class="hint">Stopping on the device or leaving the Transfer page interrupts the current upload; a file that is unfinished or fails verification never replaces the original.</p>
+<p id="progressText" role="status"></p><progress id="progress" value="0" max="1"></progress>
+<ul id="results" aria-live="polite"></ul>
+<section><hr><h2>Books in current storage</h2><p id="scope"></p>
+<form id="searchForm"><input id="search" aria-label="Search titles" placeholder="Title / pinyin / initials" maxlength="64"><button id="searchButton">Search</button></form>
+<p class="hint">Full pinyin and initials both work, and English ignores case; type v for ü.</p>
+<p id="listState" role="status"></p><ul id="books"></ul>
+<button id="previous" disabled>Previous</button><button id="next" disabled>Next</button>
+</section>
+<section id="network" hidden>
+<hr><h2>Set up Existing Wi-Fi</h2>
+<p class="hint">Use 2.4 GHz Wi-Fi. The hotspot keeps working after you save; choose “Existing Wi-Fi” on the device, then connect your phone to the same network.</p>
+<p id="saved"></p>
+<form id="wifiForm">
+<label for="ssid">Network name (SSID)</label><br><input id="ssid" name="ssid" maxlength="32" autocomplete="off" required><br>
+<label for="password">Wi-Fi password (blank for an open network)</label><br><input id="password" name="password" type="password" maxlength="64" autocomplete="new-password"><br>
+<button id="saveWifi" type="submit">Save network</button>
+<button id="forgetWifi" type="button">Forget network</button>
+</form><p id="wifiResult" role="status"></p>
+</section>
+<script>
+const $=id=>document.getElementById(id);let policy,busy=false,cancelled=false,activeXHR=null,page=0,pages=0;
+const size=n=>n>=1048576?(n/1048576).toFixed(2)+' MB':Math.ceil(n/1024)+' KB';
+async function info(){
+  const r=await fetch('/info',{cache:'no-store'});if(!r.ok)throw Error('Cannot check storage');policy=await r.json();
+  $('info').textContent=(policy.mode==='sta'?'Existing Wi-Fi':'Device hotspot')+' · Books go to '+(policy.is_flash?'internal storage':'the SD card')+' · '+size(policy.free_bytes)+' available'+(policy.reserve_bytes?' ('+size(policy.reserve_bytes)+' reserved for the system)':'')+' · Book file size '+(policy.file_limit?'limit '+size(policy.file_limit):'unlimited');
+  $('comicInfo').textContent=policy.comics_enabled?'Comics are saved to the comics folder on the SD card; put the episodes of one comic in the same series folder.':'Comics need an SD card; insert one and reopen Transfer.';
+  $('fontInfo').textContent=policy.fonts_enabled?'Fonts are saved to '+policy.font_root+' on the SD card · Max file size '+size(policy.font_limit):'Fonts need an SD card; insert one and reopen Transfer.';
+  $('fontFiles').disabled=$('sendFonts').disabled=busy||!policy.fonts_enabled;
+  $('network').hidden=policy.mode!=='ap';$('saved').textContent=policy.wifi_configured?'Saved: '+policy.wifi_ssid:'No network saved yet';
+}
+function lock(value){busy=value;$('send').disabled=$('files').disabled=$('searchButton').disabled=$('previous').disabled=$('next').disabled=value;$('fontFiles').disabled=$('sendFonts').disabled=value||!policy?.fonts_enabled;$('comicFiles').disabled=$('comicDir').disabled=$('series').disabled=$('sendComics').disabled=value||!policy?.comics_enabled;$('cancel').disabled=!value;document.querySelectorAll('[data-mutate]').forEach(b=>b.disabled=value);if(!value){$('previous').disabled=page<=0;$('next').disabled=page+1>=pages;}}
+function button(parent,label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.mutate='1';b.disabled=busy;b.onclick=action;parent.append(b);return b;}
+async function request(url,options){const response=await fetch(url,options);let body;try{body=await response.json();}catch(e){throw Error('Cannot read the device response; check the connection and try again');}return {status:response.status,body};}
+function cleanupButton(row,name){button(row,'Retry clearing reading progress',async()=>{if(busy)return;lock(true);try{const r=await request('/books?name='+encodeURIComponent(name)+'&action=retry_progress',{method:'POST'});if(r.status!==200)throw Error(r.body.error||'Cleanup failed');row.textContent=name+': reading progress cleared';}catch(e){const note=document.createElement('small');note.textContent=e.message;row.append(note);}finally{lock(false);}});}
+async function loadBooks(){if(new TextEncoder().encode($('search').value).length>64)throw Error('Search text can be at most 64 bytes; shorten it and try again');const r=await request('/books?page='+page+'&q='+encodeURIComponent($('search').value));if(r.status!==200)throw Error(r.body.error||'Cannot load the book list');const data=r.body;pages=data.pages;if(page&&page>=pages){page=0;return loadBooks();}$('scope').textContent='Managing only the current upload target: '+data.root_label+' ('+data.root+'). Books on the other storage are not in this list.';$('listState').textContent=data.total+(data.total===1?' book':' books')+' · page '+(pages?page+1:0)+' of '+pages;$('books').replaceChildren();for(const item of data.items){const row=document.createElement('li'),title=document.createElement('span'),detail=document.createElement('small');title.textContent=item.name;detail.textContent=size(item.size)+' · '+item.size+' bytes · '+data.root_label;row.append(title,detail);button(row,'Delete',()=>removeBook(item,row));$('books').append(row);}$('previous').disabled=busy||page<=0;$('next').disabled=busy||page+1>=pages;}
+async function removeBook(item,row){if(busy||!confirm('Permanently delete this book from the current storage?\n\n'+item.name+'\n'+size(item.size)+'\n\nThis cannot be undone.'))return;lock(true);try{const r=await request('/books?name='+encodeURIComponent(item.name),{method:'DELETE'});if(r.body.progress_cleanup_failed){const notice=document.createElement('li');notice.textContent=item.name+': '+r.body.error;$('results').append(notice);cleanupButton(notice,r.body.name||item.name);}else if(r.status!==200)throw Error(r.body.error||'Delete failed');page=0;await info();await loadBooks();}catch(e){const note=document.createElement('small');note.textContent=e.message;row.append(note);}finally{lock(false);}}
+function upload(file,overwrite,kind='book'){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();activeXHR=xhr;let last=0;xhr.open('PUT',(kind==='font'?'/fonts':'/upload')+'?name='+encodeURIComponent(file.name)+(overwrite?'&overwrite=1':''));xhr.upload.onprogress=e=>{const now=Date.now();if(now-last<250&&e.loaded!==e.total)return;last=now;$('progress').max=e.total||file.size;$('progress').value=e.loaded;$('progressText').textContent=file.name+' · '+size(e.loaded)+' / '+size(e.total||file.size)+(e.loaded===e.total?' · waiting for the device to save…':'');};xhr.onload=()=>{activeXHR=null;try{resolve({status:xhr.status,body:JSON.parse(xhr.responseText)});}catch(e){reject(Error('Cannot read the device response; check whether the file was saved'));}};xhr.onerror=()=>{activeXHR=null;reject(Error('Network interrupted; check the connection and try again'));};xhr.onabort=()=>{activeXHR=null;reject(Error('Canceled; if the device had already finished, check whether the file was saved'));};xhr.send(file);});}
+async function run(items){
+  if(busy)return;cancelled=false;lock(true);
+  for(let i=0;i<items.length;i++){
+    const {file,row,kind='book'}=items[i],font=kind==='font';
+    const retry=()=>run([{file,row,kind}]);
+    if(cancelled){row.textContent=file.name+': not uploaded (queue canceled)';button(row,'Retry this file',retry);continue;}
+    row.textContent=file.name+': checking file…';
+    try{
+      await info();if(cancelled)throw Error('Canceled');
+      if(font&&!policy.fonts_enabled)throw Error('Fonts need an SD card; insert one and reopen Transfer');
+      if(!(font?/\.ttf$/i:/\.(txt|epub)$/i).test(file.name))throw Error(font?'Fonts must be TTF':'Books must be TXT / EPUB');
+      if(!file.size)throw Error('The file is empty');
+      const limit=font?policy.font_limit:policy.file_limit;
+      if(limit&&file.size>limit)throw Error('Larger than the per-file limit');
+      if(file.size>policy.free_bytes)throw Error('Not enough space (the SD card keeps '+size(policy.reserve_bytes||0)+' reserved for the system; a replacement also needs room for the whole new file)');
+      const existing=await request((font?'/fonts':'/books')+'?name='+encodeURIComponent(file.name));
+      let overwrite=false;
+      if(existing.status===200){
+        overwrite=confirm('A '+(font?'font':'book')+' with this name already exists:\n\n'+file.name+'\n\nOK: '+(font?'replace the font':'replace it and clear the old reading progress')+'\nCancel: skip this file');
+        if(!overwrite){row.textContent=file.name+': skipped';continue;}
+      }else if(existing.status!==404)throw Error(existing.body.error||'Cannot check the file');
+      if(cancelled)throw Error('Canceled');
+      row.textContent=file.name+': uploading ('+(i+1)+' / '+items.length+')';
+      let r=await upload(file,overwrite,kind);
+      if(r.status===409&&!cancelled){
+        if(confirm('The file just changed: '+file.name+'\nOK replaces it; Cancel skips it.'))r=await upload(file,true,kind);
+        else{row.textContent=file.name+': skipped';continue;}
+      }
+      if(r.body.progress_cleanup_failed){row.textContent=file.name+': '+r.body.error+(r.body.warning?' · '+r.body.warning:'');cleanupButton(row,r.body.name||file.name);}
+      else if(r.status!==200)throw Error(r.body.error||'Upload failed');
+      else row.textContent=file.name+': saved'+(font?'; after stopping Transfer, select it on the device’s Font page':'')+(r.body.warning?' · '+r.body.warning:'');
+    }catch(e){row.textContent=file.name+': '+e.message;button(row,'Retry this file',retry);}
+  }
+  $('progressText').textContent=cancelled?'Queue canceled; check the finished items.':'Upload queue finished; see the result for each file.';
+  try{page=0;await info();await loadBooks();}catch(e){$('listState').textContent=e.message;}lock(false);
+}
+function queueFiles(id,kind){const files=[...$(id).files];if(!files.length)return;const items=files.map(file=>{const row=document.createElement('li');row.textContent=file.name+': queued';$('results').append(row);return {file,row,kind};});run(items);}
+$('send').onclick=()=>queueFiles('files','book');
+$('sendFonts').onclick=()=>queueFiles('fontFiles','font');
+$('cancel').onclick=()=>{cancelled=true;if(activeXHR)activeXHR.abort();};
+$('searchForm').onsubmit=e=>{e.preventDefault();if(busy)return;page=0;loadBooks().catch(e=>$('listState').textContent=e.message);};
+$('previous').onclick=()=>{if(busy||page<=0)return;--page;loadBooks().catch(e=>$('listState').textContent=e.message);};
+$('next').onclick=()=>{if(busy||page+1>=pages)return;++page;loadBooks().catch(e=>$('listState').textContent=e.message);};
+info().then(()=>{lock(false);return loadBooks();}).catch(e=>$('info').textContent=e.message+'; refresh the page to try again.');
+async function configure(method,body){$('saveWifi').disabled=$('forgetWifi').disabled=true;$('wifiResult').textContent='Saving…';try{const r=await fetch('/wifi',{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const result=await r.json();if(!r.ok)throw Error(result.error||'Setup failed');$('password').value='';$('wifiResult').textContent=method==='DELETE'?'Network forgotten.':'Saved. Choose “Existing Wi-Fi” on the device; the hotspot stays connected for now.';await info();}catch(e){$('wifiResult').textContent=e.message;}finally{$('saveWifi').disabled=$('forgetWifi').disabled=false;}}
+$('wifiForm').onsubmit=e=>{e.preventDefault();const ssid=$('ssid').value,password=$('password').value;if(new TextEncoder().encode(ssid).length>32){$('wifiResult').textContent='The SSID is over 32 bytes; use a shorter name.';return;}configure('POST',{ssid,password});};
+$('forgetWifi').onclick=()=>configure('DELETE');
+// ---- 漫画：浏览器里解 CBZ、转灰度 JPEG、打成不压缩的 ZIP 再上传 / Comics: unpack, convert, re-pack and upload ----
+const IMG_RE=/\.(jpe?g|png|webp|gif|bmp|avif)$/i;
+const natural=(a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'});
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRC[(c^u8[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+// 只按需读文件片段，不把整个 CBZ 读进内存。/ Read slices on demand instead of loading the whole CBZ.
+async function readZip(file){
+  const tailLen=Math.min(file.size,65558),tail=await file.slice(file.size-tailLen).arrayBuffer();
+  const tv=new DataView(tail);let e=-1;
+  for(let i=tail.byteLength-22;i>=0;i--)if(tv.getUint32(i,true)===0x06054b50){e=i;break;}
+  if(e<0)throw Error('Not a valid CBZ / ZIP');
+  const count=tv.getUint16(e+10,true),size=tv.getUint32(e+12,true),start=tv.getUint32(e+16,true);
+  if(start===0xFFFFFFFF||count===0xFFFF)throw Error('Very large ZIP64 files are not supported');
+  if(start+size>file.size)throw Error('Corrupt ZIP directory');
+  const cd=await file.slice(start,start+size).arrayBuffer(),v=new DataView(cd),u=new Uint8Array(cd);
+  const utf=new TextDecoder('utf-8',{fatal:true});let gbk;try{gbk=new TextDecoder('gbk');}catch(_){gbk=new TextDecoder('utf-8');}
+  const out=[];let p=0;
+  for(let k=0;k<count;k++){
+    if(p+46>u.length||v.getUint32(p,true)!==0x02014b50)throw Error('Corrupt ZIP directory');
+    const method=v.getUint16(p+10,true),csize=v.getUint32(p+20,true),nlen=v.getUint16(p+28,true),xlen=v.getUint16(p+30,true),clen=v.getUint16(p+32,true),off=v.getUint32(p+42,true);
+    const raw=u.subarray(p+46,p+46+nlen);let name;try{name=utf.decode(raw);}catch(_){name=gbk.decode(raw);}
+    out.push({name,method,csize,off});p+=46+nlen+xlen+clen;
+  }
+  return out;
+}
+async function entryData(file,ent){
+  const h=new DataView(await file.slice(ent.off,ent.off+30).arrayBuffer());
+  if(h.byteLength<30||h.getUint32(0,true)!==0x04034b50)throw Error('Corrupt ZIP data');
+  const start=ent.off+30+h.getUint16(26,true)+h.getUint16(28,true),blob=file.slice(start,start+ent.csize);
+  if(ent.method===0)return new Uint8Array(await blob.arrayBuffer());
+  if(ent.method!==8)throw Error('Unsupported compression method');
+  return new Uint8Array(await new Response(blob.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+}
+// 一张图转成一张或几张（太长就按屏切）灰度 JPEG，每张不超过 648×1000。/ One image to one or more grayscale JPEGs.
+async function toJpegs(data){
+  let bmp;try{bmp=await createImageBitmap(new Blob([data]));}catch(_){return null;}
+  const W=bmp.width,H=bmp.height,R=1160/684,slices=[];
+  if(H/W>R*1.5){const sh=Math.round(W*R);for(let y=0;y<H;y+=sh)slices.push([y,Math.min(sh,H-y)]);
+    // 最后一小截并进上一屏，免得多出一页几乎空白。/ Merge a tiny last strip into the previous screen.
+    if(slices.length>1&&slices[slices.length-1][1]<sh*0.2)slices[slices.length-2][1]+=slices.pop()[1];}else slices.push([0,H]);
+  const out=[];
+  for(const [sy,sh] of slices){
+    const s=Math.min(1,648/W,1000/sh),w=Math.max(1,Math.round(W*s)),h=Math.max(1,Math.round(sh*s));
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,w,h);g.imageSmoothingQuality='high';
+    g.drawImage(bmp,0,sy,W,sh,0,0,w,h);
+    const img=g.getImageData(0,0,w,h),d=img.data;
+    for(let i=0;i<d.length;i+=4){const y=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;d[i]=d[i+1]=d[i+2]=y;}
+    g.putImageData(img,0,0);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));if(blob)out.push(blob);
+  }
+  if(bmp.close)bmp.close();
+  return out.length?out:null;
+}
+function buildZip(items){
+  const enc=new TextEncoder(),parts=[],central=[];let off=0;
+  for(const it of items){
+    const n=enc.encode(it.name),crc=crc32(it.data),len=it.data.length;
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x800,true);
+    h.setUint32(14,crc,true);h.setUint32(18,len,true);h.setUint32(22,len,true);h.setUint16(26,n.length,true);parts.push(h.buffer,n,it.data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x800,true);
+    c.setUint32(16,crc,true);c.setUint32(20,len,true);c.setUint32(24,len,true);c.setUint16(28,n.length,true);c.setUint32(42,off,true);central.push(c.buffer,n);
+    off+=30+n.length+len;
+  }
+  let csize=0;for(const p of central)csize+=p.byteLength;
+  const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,items.length,true);e.setUint16(10,items.length,true);e.setUint32(12,csize,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...central,e.buffer],{type:'application/zip'});
+}
+async function convertCbz(file,onPage,stopped){
+  const entries=(await readZip(file)).filter(e=>!e.name.endsWith('/')&&!/(^|\/)(__MACOSX|\.)/.test(e.name));
+  const imgs=entries.filter(e=>IMG_RE.test(e.name)).sort((a,b)=>natural(a.name,b.name));
+  if(!imgs.length)throw Error('No images in the archive');
+  if(imgs.length>4000)throw Error('Too many images (over 4000); split it into smaller archives');
+  const info=entries.find(e=>/(^|\/)comicinfo\.xml$/i.test(e.name)),items=[];let skipped=0,n=0;
+  for(let i=0;i<imgs.length;i++){
+    if(stopped())throw Error('Canceled');
+    onPage(i+1,imgs.length);
+    let jpgs=null;try{jpgs=await toJpegs(await entryData(file,imgs[i]));}catch(_){}
+    if(!jpgs){skipped++;continue;}
+    for(const b of jpgs)items.push({name:String(++n).padStart(4,'0')+'.jpg',data:new Uint8Array(await b.arrayBuffer())});
+    if(items.length>60000)throw Error('Too many pages after cutting; split it into smaller archives');
+  }
+  if(!items.length)throw Error('None of the images could be decoded');
+  if(info)try{items.push({name:'ComicInfo.xml',data:await entryData(file,info)});}catch(_){}
+  return {blob:buildZip(items),pages:n,skipped};
+}
+// 设备只收合法文件名：去掉 / \ : * ? " < > | 和控制字符，按 UTF-8 字节截短。/ Make a name the device accepts.
+function cleanName(text,maxBytes){
+  const tidy=t=>t.replace(/[\/\:*?"<>|\u0000-\u001f\u007f]/g,'_').replace(/\.{2,}/g,'.').trim().replace(/^[. ]+|[. ]+$/g,'');
+  // 按整字截短，截完再整理一次，结尾不会留下点或空格。/ Cut whole characters, then tidy again so no dot or space ends it.
+  const chars=Array.from(tidy(text)),enc=new TextEncoder();
+  while(chars.length&&enc.encode(chars.join('')).length>maxBytes)chars.pop();
+  return tidy(chars.join(''));
+}
+const safeName=name=>(cleanName(name.replace(/\.(cbz|zip)$/i,''),110)||'Comic')+'.cbz';
+function sendComic(blob,name,series,overwrite){return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();activeXHR=xhr;let last=0;
+  xhr.open('PUT','/comics?name='+encodeURIComponent(name)+(series?'&series='+encodeURIComponent(series):'')+(overwrite?'&overwrite=1':''));
+  xhr.upload.onprogress=e=>{const now=Date.now();if(now-last<250&&e.loaded!==e.total)return;last=now;$('progress').max=e.total||blob.size;$('progress').value=e.loaded;};
+  xhr.onload=()=>{activeXHR=null;try{resolve({status:xhr.status,body:JSON.parse(xhr.responseText)});}catch(e){reject(Error('Cannot read the device response; check whether the file was saved'));}};
+  xhr.onerror=()=>{activeXHR=null;reject(Error('Network interrupted; check the connection and try again'));};
+  xhr.onabort=()=>{activeXHR=null;reject(Error('Canceled'));};
+  xhr.send(blob);});}
+$('comicDir').onchange=()=>{const f=$('comicDir').files[0];if(f&&!$('series').value.trim()){const top=(f.webkitRelativePath||'').split('/')[0];$('series').value=cleanName(top,60);}};
+async function runComics(){
+  if(busy)return;
+  const files=[...$('comicFiles').files,...[...$('comicDir').files].filter(f=>/\.(cbz|zip)$/i.test(f.name))];
+  if(!files.length){$('progressText').textContent='Choose CBZ files or a folder first';return;}
+  if(typeof DecompressionStream==='undefined'||typeof createImageBitmap==='undefined'){$('progressText').textContent='This browser is too old to convert comics; use a recent Chrome, Edge or Safari';return;}
+  files.sort((a,b)=>natural(a.webkitRelativePath||a.name,b.webkitRelativePath||b.name));
+  const series=cleanName($('series').value,60);
+  cancelled=false;lock(true);
+  const rows=files.map(f=>{const li=document.createElement('li');li.textContent=f.name+': waiting';$('results').append(li);return li;});
+  const label=series?'Upload comics · '+series:'Upload comics';let done=0;
+  $('progressText').textContent=label+' · Overall 0 / '+files.length;
+  // 一边转下一话一边传上一话，同时只转一话。/ Convert the next episode while uploading the previous; one conversion at a time.
+  const convert=i=>convertCbz(files[i],(p,t)=>{rows[i].textContent=files[i].name+': converting page '+p+' / '+t;},()=>cancelled).then(r=>({ok:true,...r}),e=>({ok:false,error:e.message}));
+  let next=convert(0);
+  for(let i=0;i<files.length;i++){
+    const conv=await next;next=i+1<files.length&&!cancelled?convert(i+1):null;
+    const f=files[i],row=rows[i],name=safeName(f.name);
+    if(cancelled){row.textContent=f.name+': not uploaded (canceled)';continue;}
+    if(!conv.ok){row.textContent=f.name+': '+conv.error;continue;}
+    try{
+      await info();
+      if(conv.blob.size>policy.free_bytes)throw Error('Not enough space (the SD card keeps '+size(policy.reserve_bytes||0)+' reserved for the system)');
+      row.textContent=name+': uploading';
+      let r=await sendComic(conv.blob,name,series,false);
+      if(r.status===409&&!cancelled){
+        if(confirm('A comic with this name already exists: '+(series?series+' / ':'')+name+'\n\nOK: replace\nCancel: skip'))r=await sendComic(conv.blob,name,series,true);
+        else{row.textContent=name+': skipped';continue;}
+      }
+      if(r.status!==200)throw Error(r.body.error||'Upload failed');
+      done++;row.textContent='✓ '+name+' · '+conv.pages+(conv.pages===1?' page':' pages')+' · '+size(conv.blob.size)+' (was '+size(f.size)+')'+(conv.skipped?' · skipped '+conv.skipped+(conv.skipped===1?' image that could not be decoded':' images that could not be decoded'):'');
+    }catch(e){row.textContent=f.name+': '+e.message;}
+    $('progressText').textContent=label+' · Overall '+(i+1)+' / '+files.length;
+  }
+  if(next)await next;
+  $('progressText').textContent=cancelled?'Canceled; after leaving Transfer, find the uploaded comics on the device’s Comics page.':'Comic upload finished: '+done+' / '+files.length+' succeeded. After leaving Transfer, find them on the device’s Comics page.';
+  $('comicFiles').value='';$('comicDir').value='';
+  try{await info();}catch(_){}lock(false);
+}
+$('sendComics').onclick=runComics;
+</script>
+</html>

@@ -504,6 +504,11 @@ bool tomato_wt_updating(void);
 
 /// 下载的升级包放在这里。/ Downloaded upgrade packages go here.
 #define TOMATO_OTA_DIR "/sdcard/update"
+/// 在线升级包文件名的结尾。中文版是 "-upgrade.bin"；英文版由 tools/i18n/en.py 换成 "-upgrade-en.bin"，两种语言各升
+/// 各的（旧固件只认 "-upgrade.bin" 结尾，不会误下英文版）。/ The online package name's ending: "-upgrade.bin" for the
+/// Chinese firmware; tools/i18n/en.py makes it "-upgrade-en.bin" for the English one, so each language updates to
+/// itself (older firmware only accepts the "-upgrade.bin" ending and never picks the English package).
+#define TOMATO_OTA_SUFFIX "-upgrade.bin"
 
 /// GitHub 上 treader-latest 发布里的升级包。/ The upgrade package in the treader-latest GitHub release.
 typedef struct {

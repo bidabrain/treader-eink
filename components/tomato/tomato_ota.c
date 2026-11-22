@@ -11,10 +11,12 @@
  * retries per run, and across runs), renaming it into place only when size and SHA-256 match. Writing the app slot,
  * switching boot and restarting stay with the system upgrade page and its TF card flow.
  *
- * 冻结：只从这个仓库的 treader-latest 取；文件名只收 treader-<版本>-upgrade.bin；校验不对的文件删掉，绝不改名到位；
+ * 冻结：只从这个仓库的 treader-latest 取；文件名只收 treader-<版本><TOMATO_OTA_SUFFIX>（中文版 -upgrade.bin、
+ * 英文版 -upgrade-en.bin：有了英文版固件以后，两种语言各升各的，不能互相升过去）；校验不对的文件删掉，绝不改名到位；
  * 不在这里写 flash。
- * Frozen: fetch only this repo's treader-latest; accept only treader-<version>-upgrade.bin names; delete a file that
- * fails verification and never rename it into place; never write flash here.
+ * Frozen: fetch only this repo's treader-latest; accept only treader-<version><TOMATO_OTA_SUFFIX> names (-upgrade.bin
+ * for Chinese, -upgrade-en.bin for English: with an English firmware each language must update to itself, never to
+ * the other); delete a file that fails verification and never rename it into place; never write flash here.
  */
 
 #include <ctype.h>
@@ -37,7 +39,7 @@
 #define RELEASE_URL "https://api.github.com/repos/bidabrain/treader-eink/releases/tags/treader-latest"
 #define RELEASE_MAX (256 * 1024)
 #define NAME_PREFIX "treader-"
-#define NAME_SUFFIX "-upgrade.bin"
+#define NAME_SUFFIX TOMATO_OTA_SUFFIX
 #define IO_CHUNK 4096
 #define TX_BUF 2048
 #define TIMEOUT_MS 20000

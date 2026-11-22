@@ -225,7 +225,10 @@ static void draw_list(uint8_t* fb) {
     tr_title(fb, "番茄小说");
     bool busy = tomato_sync_busy();
     if (!busy) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(150), TR_S(116), false);
+        // 图标离右边至少原来那么远，标签更长（英文版）时再往左让。/ The icon keeps at least its old offset and moves left
+        // further when the label is longer (English build).
+        const int off = ttf_text_width_px(TR_S(30), "检查更新") + TR_S(30);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - (off > TR_S(150) ? off : TR_S(150)), TR_S(116), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     static const char* const SEG[2] = {"书架", "书城"};

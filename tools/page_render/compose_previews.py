@@ -12,7 +12,9 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-SRC = "build/page-render-demo"
+# 英文版：PREVIEW_SRC 指向英文源码的演示渲染，PREVIEW_SPEC 用 previews.en.json（英文说明）。
+# English: PREVIEW_SRC points at the English tree's demo renders and PREVIEW_SPEC at previews.en.json (English captions).
+SRC = os.environ.get("PREVIEW_SRC", "build/page-render-demo")
 FONT = "sdcard/fonts/ChillDuanSansVF.ttf"
 BG = (234, 232, 227)
 FRAME = (248, 247, 244)
@@ -93,7 +95,8 @@ def hero(items, out):
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "docs/images"
     os.makedirs(out_dir, exist_ok=True)
-    spec = json.load(open(os.path.join(os.path.dirname(__file__), "previews.json"), encoding="utf-8"))
+    spec_name = os.environ.get("PREVIEW_SPEC", "previews.json")
+    spec = json.load(open(os.path.join(os.path.dirname(__file__), spec_name), encoding="utf-8"))
     for name, items in spec.items():
         out = os.path.join(out_dir, name + ".png")
         (hero if name == "site-hero" else strip)(items, out)

@@ -1,0 +1,67 @@
+{
+  "screens-reading": [
+    ["demo_book/shelf_100.png", "Library"],
+    ["demo_book/reader_100.png", "Reading"],
+    ["demo_book/toolbar_100.png", "Reading toolbar"],
+    ["demo_lock/card_100.png", "Lock screen · book card"]
+  ],
+  "screens-comics": [
+    ["demo_comic/shelf_100.png", "Comics"],
+    ["demo_comic/reader_100.png", "Comic reader"],
+    ["demo_transfer/home_100.png", "Wi-Fi transfer"],
+    ["demo_usb/running_100.png", "USB transfer"]
+  ],
+  "screens-webtoon": [
+    ["demo_comic/shelf_wt_100.png", "My comics · WEBTOON"],
+    ["demo_wt/rank_100.png", "Discover comics"],
+    ["demo_wt/detail_100.png", "Title and subscribe"],
+    ["demo_comic/reader_100.png", "One page per screen"]
+  ],
+  "screens-tomato": [
+    ["demo_tomato/shelf_100.png", "Tomato · shelf"],
+    ["demo_store/home_100.png", "Store"],
+    ["demo_store/rank_100.png", "Rankings"],
+    ["demo_store/detail_100.png", "Book details"]
+  ],
+  "screens-xhs": [
+    ["demo_xhs/follow_100.png", "RedNote · following"],
+    ["demo_xhs/recommend_100.png", "RedNote · for you"],
+    ["demo_xhs/image_100.png", "Note · images"],
+    ["demo_xhs/note_100.png", "Note · text / comments"]
+  ],
+  "screens-weibo": [
+    ["demo_weibo/follow_100.png", "Weibo · following"],
+    ["demo_weibo/hot_100.png", "Weibo · hot"],
+    ["demo_weibo/post_100.png", "Weibo · post"],
+    ["demo_weibo/comments_100.png", "Weibo · comments"]
+  ],
+  "screens-hupu": [
+    ["demo_hupu/feed_100.png", "Hupu · feed"],
+    ["demo_hupu/post_100.png", "Post"],
+    ["demo_hupu/scores_100.png", "Hupu · scores"],
+    ["demo_hupu/rate_100.png", "Player ratings"]
+  ],
+  "screens-settings": [
+    ["demo_settings/home_100.png", "Settings"],
+    ["demo_settings/tabs_100.png", "Settings · bottom bar"],
+    ["demo_all/all_100.png", "All"],
+    ["demo_book/shelf_large_130.png", "Display size · extra large"]
+  ],
+  "screens-lock": [
+    ["demo_settings/power_100.png", "Settings · power & device"],
+    ["demo_pin/set_100.png", "Set a lock PIN"],
+    ["demo_pin/gate_100.png", "Unlock with PIN"],
+    ["demo_pin/locked_100.png", "Too many tries"]
+  ],
+  "screens-auth": [
+    ["demo_auth/list_100.png", "Authenticator"],
+    ["demo_auth/detail_100.png", "One account"],
+    ["demo_auth/unlock_100.png", "Unlock with passphrase"],
+    ["demo_auth/settings_100.png", "Authenticator settings"]
+  ],
+  "site-hero": [
+    ["demo_book/shelf_100.png", "Library"],
+    ["demo_book/reader_100.png", "Reading"],
+    ["demo_weibo/follow_100.png", "Weibo"]
+  ]
+}

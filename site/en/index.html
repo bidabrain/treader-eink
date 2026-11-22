@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treader · Reading firmware for Read Pico</title>
+<meta name="description" content="Treader is open-source e-ink reading firmware for Read Pico: TXT/EPUB reading, CBZ comics, Tomato (Fanqie novels), RedNote, Weibo and Hupu. Flash it right in your browser; the firmware is read locally and never uploaded.">
+<link rel="alternate" hreflang="zh-CN" href="../">
+<link rel="alternate" hreflang="en" href="./">
+<style>
+  :root {
+    --bg: #f5f4ef; --paper: #fbfaf6; --card: #ffffff; --ink: #141414; --mid: #67665f; --soft: #8d8b83;
+    --line: #dddad1; --chip: #ecebe4; --accent: #141414; --on-accent: #fbfaf6;
+    --ok: #1d7a3a; --warn: #a3470e; --bad: #b3261e; --stage: #e9e7df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --paper: #1a1a19; --card: #1f1f1e; --ink: #ecebe6; --mid: #a7a59e; --soft: #85837c;
+      --line: #34332f; --chip: #2a2a28; --accent: #ecebe6; --on-accent: #141413;
+      --ok: #6ccf8b; --warn: #f0a46c; --bad: #f28b82; --stage: #23231f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .serif { font-family: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif; }
+
+  /* 导航 / Nav */
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: .3px; text-decoration: none; }
+  .logo i { width: 26px; height: 32px; border: 2.5px solid var(--ink); border-radius: 6px; position: relative; }
+  .logo i::after { content: ""; position: absolute; left: 4px; right: 4px; top: 6px; height: 2px; background: var(--ink); box-shadow: 0 6px 0 var(--ink), 0 12px 0 var(--ink); }
+  nav .links { display: flex; gap: 22px; flex: 1; }
+  nav .links a { text-decoration: none; color: var(--mid); font-size: 15px; }
+  nav .links a:hover { color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-weight: 700; font-size: 15px; border-radius: 999px; padding: 10px 22px; text-decoration: none; cursor: pointer; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); }
+  .btn.solid { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn.small { padding: 6px 16px; font-size: 14px; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* 首屏 / Hero */
+  .hero { text-align: center; padding: 76px 0 0; }
+  .eyebrow { display: inline-block; font-size: 14px; color: var(--mid); border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; background: var(--paper); }
+  .hero h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1.15; margin: 22px 0 18px; letter-spacing: 1px; font-weight: 800; }
+  .hero p.sub { font-size: clamp(16px, 2vw, 19px); color: var(--mid); max-width: 640px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .stage { margin: 56px auto 0; background: var(--stage); border-radius: 28px 28px 0 0; padding: 40px 24px 0; max-width: 1080px; overflow: hidden; }
+  .stage img { width: 100%; max-width: 1000px; margin: 0 auto -6px; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--paper); }
+  .facts div { padding: 22px 18px; text-align: center; border-right: 1px solid var(--line); }
+  .facts div:last-child { border-right: 0; }
+  .facts b { display: block; font-size: 22px; }
+  .facts span { color: var(--mid); font-size: 14px; }
+
+  /* 区块 / Sections */
+  section { padding: 96px 0 0; }
+  .head { max-width: 680px; margin-bottom: 40px; }
+  .head small { color: var(--soft); font-size: 13px; letter-spacing: 2px; }
+  .head h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin: 8px 0 12px; }
+  .head p { color: var(--mid); margin: 0; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .feat { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+  .feat .ic { width: 46px; height: 46px; border: 2px solid var(--ink); border-radius: 13px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .feat .ic svg { width: 26px; height: 26px; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .feat h3 { margin: 0 0 6px; font-size: 18px; }
+  .feat p { margin: 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .feat.wide { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; }
+  .feat.wide ul { margin: 0; padding-left: 18px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .feat.wide .row { margin-top: 14px; }
+  .feat .tag { display: inline-block; margin-top: 12px; font-size: 12px; color: var(--mid); background: var(--chip); border-radius: 6px; padding: 1px 8px; }
+
+  /* 截图 / Screens */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .tabs button { font: inherit; font-size: 15px; border: 1.5px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 7px 18px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+  .shot { background: #ecebe6; border: 1px solid var(--line); border-radius: 22px; overflow-x: auto; }
+  .shot img { min-width: 900px; width: 100%; }
+  .shot-note { color: var(--mid); font-size: 14px; margin-top: 12px; }
+
+  /* 生态 / Ecosystem */
+  .eco { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .eco .feat { padding: 26px; }
+  .secret { margin-top: 16px; border: 1.5px dashed var(--line); border-radius: 18px; background: var(--paper); }
+  .secret summary { list-style: none; cursor: pointer; padding: 18px 22px; display: flex; align-items: center; gap: 14px; }
+  .secret summary::-webkit-details-marker { display: none; }
+  .secret summary .ic { width: 46px; height: 46px; border: 2px dashed var(--ink); border-radius: 13px; display: flex; align-items: center; justify-content: center; flex: none; font-weight: 800; font-size: 20px; }
+  .secret summary b { display: block; font-size: 18px; }
+  .secret summary span { color: var(--mid); font-size: 14.5px; }
+  .secret summary .more { margin-left: auto; color: var(--mid); font-size: 14px; white-space: nowrap; }
+  .secret[open] summary .more { visibility: hidden; }
+  .secret[open] summary .ic { border-style: solid; }
+  .secret .inner { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 22px 22px; }
+  .secret .inner ul { margin: 10px 0 16px; padding-left: 18px; color: var(--mid); font-size: 14.5px; }
+  .secret .note { grid-column: 1 / -1; color: var(--soft); font-size: 13px; margin: 0; }
+  .eco ul { margin: 10px 0 16px; padding-left: 18px; color: var(--mid); font-size: 14.5px; }
+  .eco .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* 刷机 / Flasher */
+  .flash { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin-bottom: 16px; }
+  .card h3 { font-size: 18px; margin: 0 0 14px; display: flex; align-items: center; }
+  .step { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 800; align-items: center; justify-content: center; margin-right: 10px; flex: none; }
+  .drop { display: block; border: 2px dashed var(--line); border-radius: 14px; padding: 30px 16px; text-align: center; cursor: pointer; color: var(--mid); background: var(--paper); transition: border-color .15s; }
+  .drop.over, .drop:hover { border-color: var(--ink); color: var(--ink); }
+  .drop b { color: var(--ink); }
+  input[type=file] { display: none; }
+  .info { margin-top: 14px; display: none; }
+  .info table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  .info td { padding: 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .info td:first-child { color: var(--mid); width: 6.5em; }
+  .modes { display: grid; gap: 10px; }
+  .mode { display: flex; gap: 12px; align-items: flex-start; border: 1.5px solid var(--line); border-radius: 14px; padding: 13px 15px; cursor: pointer; }
+  .mode:has(input:checked) { border-color: var(--ink); }
+  .mode input { margin-top: 6px; accent-color: var(--ink); }
+  .mode small { display: block; color: var(--mid); font-size: 14px; line-height: 1.6; }
+  .mode.disabled { opacity: .45; cursor: not-allowed; }
+  .erase { margin-top: 12px; display: flex; gap: 10px; align-items: flex-start; color: var(--bad); font-size: 14.5px; }
+  .erase input { margin-top: 6px; accent-color: var(--bad); }
+  #go { font: inherit; font-weight: 800; border: 0; border-radius: 999px; padding: 13px 28px; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  #go:disabled { opacity: .3; cursor: not-allowed; }
+  .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .bar { height: 8px; border-radius: 4px; background: var(--chip); overflow: hidden; margin: 18px 0 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .status { font-size: 14.5px; min-height: 1.6em; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--warn); }
+  pre { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; height: 170px; overflow: auto; font-size: 12.5px; line-height: 1.5; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+  .notes ul { padding-left: 18px; margin: 0; }
+  .notes li { margin: 8px 0; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .notes li b { color: var(--ink); }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .9em; background: var(--chip); border-radius: 5px; padding: 1px 5px; }
+  .dl { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 22px; margin-bottom: 20px; }
+  .dl h3 { margin-bottom: 8px; }
+  .dl p { margin: 0 0 14px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .dl-ic { width: 22px; height: 22px; margin-right: 8px; color: var(--ink); }
+  .dl-ver { font-weight: 500; color: var(--mid); font-size: 14px; margin-left: 8px; }
+  .dl-more { color: var(--mid); font-size: 14px; }
+  .tip { border: 2px solid var(--ink); border-radius: 18px; background: var(--card); padding: 20px 22px; margin-bottom: 20px; }
+  .tip h3 { margin: 0 0 8px; font-size: 18px; }
+  .tip p { margin: 0 0 10px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
+  .tip p:last-child { margin-bottom: 0; }
+  .tip .url { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .tip .url code { font-size: 14px; background: var(--chip); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; color: var(--ink); }
+  .dl-note { border-left: 3px solid var(--ink); padding-left: 16px; }
+  .dl-note b { display: block; margin-bottom: 4px; }
+  .dl-note p { margin: 0; }
+  a.tag { text-decoration: none; }
+  .unsupported { display: none; border-color: var(--bad); color: var(--bad); }
+  .safe { display: flex; gap: 12px; align-items: flex-start; background: var(--paper); }
+  .safe svg { width: 24px; height: 24px; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
+
+  footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 34px 0 48px; color: var(--mid); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .secret .inner { grid-template-columns: 1fr; }
+    .flash, .eco, .dl, .feat.wide { grid-template-columns: 1fr; }
+    .facts { grid-template-columns: repeat(2, 1fr); }
+    .facts div:nth-child(2) { border-right: 0; }
+    .facts div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  }
+  @media (max-width: 620px) {
+    nav .links { display: none; }
+    nav .wrap { justify-content: space-between; }
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding-top: 48px; }
+    .stage { border-radius: 20px 20px 0 0; padding: 24px 8px 0; }
+    section { padding-top: 72px; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></symbol>
+    <symbol id="i-comic" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M4 11h16M13 11l-2 10"/></symbol>
+    <symbol id="i-tomato" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7"/><path d="M8.5 6.5L12 8.5l3.5-2M12 8.5V4"/></symbol>
+    <symbol id="i-xhs" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M12 16.5l-3.3-3.3a2.1 2.1 0 0 1 3.3-2.5 2.1 2.1 0 0 1 3.3 2.5z"/></symbol>
+    <symbol id="i-weibo" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="4"/><path d="M7 17l-1 4 5-4M10.5 7l-1 7M14.5 7l-1 7M8 9.5h8M7.5 12.5h8"/></symbol>
+    <symbol id="i-bird" viewBox="0 0 24 24"><circle cx="10" cy="14" r="5.5"/><circle cx="15.5" cy="8" r="3"/><path d="M18.4 7.2l3 .6-3 1.6M7.5 12.5L3 7.5l6.5 2.6M5.5 17.5L2.5 20l4.5-.5"/></symbol>
+    <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4v16M7 6.5c3 3 3 8 0 11M17 6.5c-3 3-3 8 0 11"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.5a4 4 0 0 1 6 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M19 8a7.5 7.5 0 0 0-13.4-1.6M5 16a7.5 7.5 0 0 0 13.4 1.6"/><path d="M19 3v5h-5M5 21v-5h5"/></symbol>
+    <symbol id="i-gh" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 0 0-3 18.5c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6 0-.6 0-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1 2.8.8.1-.6.3-1 .6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.6-.1-.2-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.8 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.3.1 2.5.6.7 1 1.6 1 2.6 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.7v2.6c0 .3.2.6.7.5A9.5 9.5 0 0 0 12 2.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8L20 3M16.5 6.5l2.5 2.5M14 9l2 2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  </defs>
+</svg>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#top"><i></i>Treader</a>
+    <div class="links">
+      <a href="#features">Features</a><a href="#screens">Screens</a><a href="#eco">Servers &amp; apps</a><a href="#flash">Web flasher</a>
+      <a href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md">Docs</a>
+    </div>
+    <a href="../" lang="zh-CN" hreflang="zh-CN" style="margin-left:auto;text-decoration:none;color:var(--mid);font-size:15px">中文</a>
+    <a class="btn small" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>GitHub</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="eyebrow">Read Pico · open-source reading firmware · Android apps</span>
+    <h1>A reading system<br>redesigned for e-ink</h1>
+    <p class="sub">Local TXT / EPUB, CBZ comics and Tomato (Fanqie novels), plus RedNote, Weibo and Hupu, all laid out anew for a 4.7-inch 16-level grayscale screen and the ESP32-S3. Flash it right in your browser; the firmware file never leaves your computer.</p>
+    <p class="sub">It is more than firmware for the Pico: Tomato, RedNote and Weibo each have an Android app with grayscale pages, page-by-page turning and the same layout as the device, so your phone reads like an e-ink screen too. Tomato reading progress and bookshelf also sync with the Pico over WebDAV. There are offline two-step codes as well: the Authenticator on the device, plus an Android app that can send accounts to the Pico.</p>
+    <div class="cta">
+      <a class="btn solid" href="#flash">Flash in browser</a>
+      <a class="btn" href="#download"><svg><use href="#i-down"/></svg>Download firmware</a>
+      <a class="btn" href="#eco">Android apps</a>
+      <a class="btn" href="https://github.com/bidabrain/treader-eink"><svg><use href="#i-gh"/></svg>View source</a>
+    </div>
+  </div>
+  <div class="stage"><img src="../img/en/site-hero.png" width="1200" height="700" alt="Treader's Library, reading and Weibo screens"></div>
+</header>
+<div class="facts">
+  <div><b>3 sizes</b><span>Display size scales text and icons together</span></div>
+  <div><b>16-level gray</b><span>Fast partial page turns, timed full refresh clears ghosting</span></div>
+  <div><b>Offline pinyin</b><span>Full pinyin and T9, dictionary on the SD card</span></div>
+  <div><b>Dual app slots</b><span>Online or SD card upgrades, automatic rollback if it fails to boot</span></div>
+</div>
+
+<main class="wrap">
+  <section id="features">
+    <div class="head">
+      <small>FEATURES</small>
+      <h2>One reader with everything it should have</h2>
+      <p>Every list turns by the page, no scrolling. Online content is cached to the SD card first, so whatever you've downloaded still works offline. The bottom bar holds the features you use most and the rest live under "All"; if text feels small, set the display size to Large or Extra large.</p>
+    </div>
+    <div class="grid">
+      <div class="feat"><div class="ic"><svg><use href="#i-book"/></svg></div><h3>Library &amp; reading</h3><p>TXT and EPUB shelf with covers and pinyin-initial search; adjustable line spacing, paragraph spacing and margins, per-book progress, and timed auto page turning.</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-comic"/></svg></div><h3>Comics</h3><p>CBZ organized by series, one page per screen, and the next chapter starts when you finish one; web uploads are converted to grayscale first so pages turn faster.</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-tomato"/></svg></div><h3>Tomato (Fanqie novels)</h3><p>Search, download and check for updates, and browse the Store by ranking and category; downloaded books read in the Library like any other book. An Android app does the same on your phone.</p><a class="tag" href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md#self-hosted-tomato-download-server">Needs a self-hosted download server ›</a> <a class="tag" href="#store-tip">Store won't load ›</a></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-xhs"/></svg></div><h3>RedNote</h3><p>Followed creators and the home feed as two-column cover cards; images one per screen, then the text and comments. Large images can be saved as the lock screen wallpaper.</p><span class="tag">Via a self-hosted rednote server</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-weibo"/></svg></div><h3>Weibo</h3><p>People you follow and trending posts, with card layout, gray boxes for reposts and image grids; long posts get their full text and comments load on demand. No Weibo sign-in needed.</p><span class="tag">Via a self-hosted weibo server</span></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>Hupu</h3><p>Recommended, followed boards, scores and player ratings, threads and top-voted replies; no sign-in and no server needed.</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>Transfer</h3><p>Upload books, fonts and comics from a web page over Wi-Fi, or connect a USB cable and copy straight to the SD card as a USB drive.</p></div>
+      <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>Sync &amp; updates</h3><p>WebDAV syncs reading progress and the Tomato bookshelf. Tap "Check for updates" on the device to upgrade online (downloaded to the SD card first, resumes after interruptions, written only after it verifies), or put the firmware on the SD card to upgrade; if it fails to boot, it rolls back to the previous version automatically.</p></div>
+    </div>
+    <div class="feat wide" id="webtoon">
+      <div>
+        <div class="ic"><svg><use href="#i-comic"/></svg></div>
+        <h3>Discover comics · follow WEBTOON</h3>
+        <p>Open "Discover" at the top right of My comics to browse WEBTOON rankings, genres, the weekday schedule and completed series, or search by title (Simplified Chinese input also finds the Traditional Chinese edition). After subscribing, tap "Check for updates" and new episodes download as CBZ into My comics, to read alongside your local comics. An Android app does the same on your phone.</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/webtoon/README.en.md">Setup guide</a>
+          <a class="btn small solid" data-release="webtoon-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+      <ul>
+        <li>The server turns each episode's long vertical strip into grayscale and cuts it into screens in the blank gaps between panels, never splitting a panel or speech bubble in half; pages turn as fast as local comics</li>
+        <li>Subscriptions live only on the device's SD card (a marker file in the title's folder); the server keeps none, so changing servers or reinstalling loses nothing</li>
+        <li>Filter My comics by All / Local / WEBTOON; subscribed covers are tagged "WT", and newly downloaded unread episodes show "N new"</li>
+        <li>When the server has Mihon extension sources enabled, the Discover page can switch source, browse by Popular / Latest and search within the current source; subscriptions and downloads work the same</li>
+        <li>Only fetches episodes that are free and public on the website, with no sign-in and nothing paid; deploy it yourself and use it only for yourself</li>
+      </ul>
+    </div>
+    <div class="feat wide" id="auth">
+      <div>
+        <div class="ic"><svg><use href="#i-key"/></svg></div>
+        <h3>Authenticator · two-step codes</h3>
+        <p>Shows TOTP two-step verification codes offline, the same ones Google Authenticator computes, without connecting to any server. It is under "All" since 1.0.0; an Android app does the same on your phone and can send accounts straight to Read Pico.</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/docs/TREADER.md#验证器">User guide</a>
+          <a class="btn small solid" data-release="auth-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+      <ul>
+        <li>Accounts are encrypted on the SD card with the Authenticator passphrase and can only be decrypted with that passphrase on this device; the passphrase is separate from the lock screen passcode</li>
+        <li>Import: the device starts a hotspot, and on your phone's web page you scan a Google Authenticator export QR code, paste an otpauth link or type in a secret; nothing is written until you tap "Import" on the device</li>
+        <li>It locks on every lock screen and restart, and can also lock 5 minutes after you leave the Authenticator; repeated wrong passphrases make you wait, doubling each time</li>
+        <li>Always keep the authenticator on your phone as a backup: secrets cannot be exported and there is no cloud sync, so a forgotten passphrase means wiping and starting over</li>
+      </ul>
+    </div>
+    <details class="secret" id="hidden-tab">
+      <summary>
+        <div class="ic">?</div>
+        <div><b>There's one more feature, hidden by default</b><span>Even after flashing it doesn't appear under "All"; go to "Settings › Bottom tabs" and tap "Show".</span></div>
+        <span class="more">Take a look ›</span>
+      </summary>
+      <div class="inner">
+        <div class="feat">
+          <div class="ic"><svg><use href="#i-bird"/></svg></div>
+          <h3>X</h3>
+          <p>"For you" and "Following" on e-ink: card layout, gray boxes for quotes, images one per screen, replies on demand, ads removed. An Android app does the same on your phone; turn off "Following" in the panel and that cell greys out on the device and in the app.</p>
+          <span class="tag">Via a self-hosted x server</span>
+        </div>
+        <div class="feat">
+          <div class="ic"><svg><use href="#i-bird"/></svg></div>
+          <h3>x · X server</h3>
+          <ul><li>An ordinary Chrome on the server; you sign in to your account by hand over VNC from the panel</li><li>Fetches at random intervals with an optional sleep window; manual fetches are not limited</li><li>Stops at once on a verification challenge or rate limit, with no automatic retry</li></ul>
+          <div class="row">
+            <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/x/README.en.md">Setup guide</a>
+            <a class="btn small solid" data-release="x-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+          </div>
+        </div>
+        <p class="note">Automated browsing with your own account goes against X's Terms of Service, and the account may be asked to verify; read the risks in the guide before deploying. Unofficial and not affiliated with X Corp.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="screens">
+    <div class="head">
+      <small>SCREENS</small>
+      <h2>Screens designed at the device's real pixels</h2>
+      <p>Every screen is drawn at the actual 684×1216 coordinates. Images are shown as gray gradients here; on the device they are real pictures dithered to 16 levels of gray.</p>
+    </div>
+    <div class="tabs" id="shotTabs">
+      <button class="on" data-img="screens-reading">Library &amp; reading</button>
+      <button data-img="screens-comics">Comics &amp; transfer</button>
+      <button data-img="screens-webtoon">Discover comics</button>
+      <button data-img="screens-tomato">Tomato</button>
+      <button data-img="screens-xhs">RedNote</button>
+      <button data-img="screens-weibo">Weibo</button>
+      <button data-img="screens-hupu">Hupu</button>
+      <button data-img="screens-settings">Settings &amp; All</button>
+      <button data-img="screens-lock">Lock passcode</button>
+      <button data-img="screens-auth">Authenticator</button>
+    </div>
+    <div class="shot"><img id="shotImg" src="../img/en/screens-reading.png" width="1508" height="708" alt="Treader screenshots"></div>
+    <p class="shot-note">The screenshots are drawn by the firmware's real UI code, with demo content. For what each page does, see the <a href="https://github.com/bidabrain/treader-eink/blob/main/docs/design/ui.html">design mockups</a> (download and open in a browser).</p>
+  </section>
+
+  <section id="eco">
+    <div class="head">
+      <small>ECOSYSTEM</small>
+      <h2>Your own servers, your own data</h2>
+      <p>The device never talks to Tomato, RedNote or Weibo directly; it only connects to servers you deploy yourself with Docker, each with a web panel and a Cloudflare tunnel. The RedNote and Weibo servers also turn images into grayscale that the e-ink screen can show as is. Each of the three servers has an Android app whose features and layout follow the firmware: black, white and gray, turning by the page. It works on your phone without a Pico, and with a Pico you can use both.</p>
+    </div>
+    <div class="eco">
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-tomato"/></svg></div>
+        <h3>tomato · Tomato download server</h3>
+        <ul><li>The official Tomato-Novel-Downloader plus a panel, deployed with one compose file</li><li>The device password is managed in the panel, and only the device API is exposed to the internet</li><li>Android app: Library, search and download, Store and page-by-page reading; progress and bookshelf sync with the Pico over WebDAV</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/tomato/README.en.md">Setup guide</a>
+          <a class="btn small solid" data-release="tomato-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-xhs"/></svg></div>
+        <h3>rednote · RedNote server</h3>
+        <ul><li>Sign in to the RedNote website by scanning a QR code; it regularly fetches posts from creators you follow</li><li>The home feed is only read when you tap "Refresh" on the device</li><li>The follow list can be backed up and restored with WebDAV; the tunnel exposes only the device API</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/rednote/README.en.md">Setup guide</a>
+          <a class="btn small solid" data-release="rednote-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-weibo"/></svg></div>
+        <h3>weibo · Weibo server</h3>
+        <ul><li>No sign-in; fetches people you follow and trending posts on a schedule as a visitor</li><li>Skips posts with video, fills in the full text of long posts, and loads comments on demand</li><li>The follow list shares one WebDAV backup file with weiboX</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/weibo/README.en.md">Setup guide</a>
+          <a class="btn small solid" data-release="weibo-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+      <div class="feat">
+        <div class="ic"><svg><use href="#i-comic"/></svg></div>
+        <h3>webtoon · Discover comics server</h3>
+        <ul><li>Reads free public WEBTOON episodes, with no sign-in and no stored subscriptions</li><li>Converts an episode only when the device asks for it: grayscale, cut into screens in the blank gaps between panels, packed as CBZ</li><li>Optional extension sources: Suwayomi runs Mihon extensions, with repositories and extensions managed in the panel; this project ships no repository, so add only sources you have the right to access</li><li>Deploy: download <code>docker-compose.yml</code>, then <code>docker compose up -d</code>; for extension sources, put <code>COMPOSE_PROFILES=mihon</code> in a <code>.env</code> in the same folder and run <code>up -d</code> again, or use <code>mihon,flaresolverr</code> when sites need to pass a Cloudflare check. Upgrade: download the new compose file, run <code>docker compose pull</code>, then <code>up -d</code>; all data is kept</li><li>Android app: Discover page, subscriptions, update checks and one-page-per-screen reading</li></ul>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/webtoon/README.en.md">Setup guide</a>
+          <a class="btn small solid" data-release="webtoon-android-v" href="https://github.com/bidabrain/treader-eink/releases">Android app</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flash">
+    <div class="head">
+      <small>INSTALL</small>
+      <h2>Flash from your browser</h2>
+      <p>Use Chrome or Edge on a computer and connect Read Pico with a USB-C data cable; three steps and you're done. Read Pico has no BOOT button, so the page puts it into download mode automatically.</p>
+    </div>
+
+    <div class="card dl" id="download">
+      <div class="dl-main">
+        <h3><svg class="dl-ic"><use href="#i-down"/></svg>Download the latest firmware <span class="dl-ver" id="dlVer"></span></h3>
+        <p>GitHub Actions builds and publishes the firmware automatically after every change, with the same configuration as the real device, so it can be flashed straight onto Read Pico. These are the English builds; after downloading, drag the file into step 1 below.</p>
+        <div class="row">
+          <a class="btn solid small" id="dlFull" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">Full image (first flash)</a>
+          <a class="btn small" id="dlUp" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">Upgrade package</a>
+          <a class="btn small" id="dlSd" href="https://github.com/bidabrain/treader-eink/releases/tag/treader-latest">SD card files</a>
+          <a class="dl-more" href="https://github.com/bidabrain/treader-eink/releases">All versions ›</a>
+        </div>
+        <p><b>The first flash also needs an SD card:</b> download the "SD card files" (<code>treader-&lt;version&gt;-sdcard.zip</code>, with the fonts and the pinyin dictionary), unzip it and copy <b>everything inside</b> to the root of a FAT32 SD card (not the unzipped folder itself). Without it the UI is missing characters and you can't type Chinese. Later firmware upgrades don't need it copied again.</p>
+        <p><b>Language:</b> online updates on the English firmware install only English packages, and the Chinese firmware only Chinese ones. To switch language, flash the other build; an upgrade keeps your settings and reading progress.</p>
+      </div>
+      <div class="dl-note">
+        <b>Tomato needs a self-hosted server</b>
+        <p>The downloadable firmware has no Tomato download server built in. Reading, comics, Hupu, Store rankings and Transfer all work out of the box; to search and download Tomato novels, use this project's <a href="https://github.com/bidabrain/treader-eink/blob/main/tomato/README.en.md">one-step Tomato server</a> (the official <a href="https://github.com/zhongbai2333/Tomato-Novel-Downloader">Tomato-Novel-Downloader</a> plus a panel; <code>docker compose up -d</code> is all it takes), then enter the address and password shown in the panel under "Settings › Content sources › Tomato" on the device. RedNote, Weibo and WEBTOON Discover comics each need a self-hosted server too (see "Servers &amp; apps" above).</p>
+      </div>
+    </div>
+
+    <div class="tip" id="store-tip">
+      <h3>Store rankings won't load?</h3>
+      <p>By default the Store fetches rankings from GitHub Pages (<code>bidabrain.github.io</code>), which is often unreachable from mainland China. On the device, under "Settings › Content sources › Tomato › Store rankings" (in the Tomato Android app, "Settings › Store rankings"), change the address to this jsDelivr mirror:</p>
+      <div class="url"><code id="storeMirror">https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code><button class="btn small" type="button" id="copyMirror">Copy</button></div>
+      <p>The mirror can lag by up to half a day. You can also fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> to host your own rankings (turn on GitHub Pages, then enter your own site address); see <a href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md#store-rankings">Store rankings</a>.</p>
+    </div>
+
+    <div class="card unsupported" id="unsupported">
+      This browser doesn't support Web Serial. Please open this page in <b>Chrome</b> or <b>Edge</b> on a computer; phones, Safari and Firefox won't work.
+    </div>
+
+    <div class="flash">
+      <div>
+        <div class="card">
+          <h3><span class="step">1</span>Choose firmware</h3>
+          <label class="drop" id="drop" for="file">
+            Drag <b>treader-&lt;version&gt;-full-en.bin</b> here, or <b>click to choose</b><br>
+            <small>Building it yourself? Use <code>build/treader-full.bin</code>. An app-only <code>Read_Pico.bin</code> is also accepted (upgrade only)</small>
+          </label>
+          <input type="file" id="file" accept=".bin">
+          <div class="info" id="info"><table id="infoTable"></table></div>
+        </div>
+
+        <div class="card">
+          <h3><span class="step">2</span>Choose a mode</h3>
+          <div class="modes">
+            <label class="mode" id="modeUpgrade"><input type="radio" name="mode" value="upgrade" checked>
+              <span><b>Upgrade</b> (recommended)<small>Writes only the app; the fastest. Wi-Fi, reading progress, wallpaper and other settings are kept. If the device still has the old partition table (versions before 2026-11-17), choose "Full install".</small></span></label>
+            <label class="mode" id="modeFull"><input type="radio" name="mode" value="full">
+              <span><b>Full install</b><small>Writes the bootloader, partition table and app, skipping the settings area, so settings are kept. Use this the first time you flash Treader or when the partition table changes.</small></span></label>
+          </div>
+          <label class="erase"><input type="checkbox" id="erase">
+            <span><b>Erase device</b>: wipes the whole flash before a full write. Deletes all settings, including Wi-Fi and reading progress (the SD card is not affected). Only tick this when switching from other third-party firmware or when the system misbehaves.</span></label>
+        </div>
+
+        <div class="card">
+          <h3><span class="step">3</span>Connect and flash</h3>
+          <div class="row">
+            <button id="go" disabled>Connect device and start</button>
+            <span class="status" id="status">Choose a firmware file first</span>
+          </div>
+          <div class="bar"><i id="bar"></i></div>
+          <pre id="log"></pre>
+        </div>
+      </div>
+
+      <div>
+        <div class="card safe">
+          <svg><use href="#i-shield"/></svg>
+          <div><b>Firmware is never uploaded</b><br><span style="color:var(--mid);font-size:14.5px">The file is read only on your computer and written straight to the device over USB. The page checks the file header and only allows writing once it confirms this is Treader firmware for the ESP32-S3. By default it leaves the settings area alone, so Wi-Fi and reading progress are kept.</span></div>
+        </div>
+        <div class="card notes">
+          <h3>Flashing notes</h3>
+          <ul>
+            <li>Click "Connect device and start" and pick the device's serial port in the popup (usually called USB JTAG/serial debug unit).</li>
+            <li>Writing takes about 1 to 2 minutes; <b>don't unplug the cable until it finishes</b>. The device restarts by itself when done.</li>
+            <li>Read Pico <b>has no BOOT button</b>, so you don't need to press anything. The device must be powered on (USB doesn't work after choosing "Power off" on the lock screen).</li>
+            <li>Can't connect: try a cable that carries data (USB-A to C is officially recommended); close programs using the serial port (serial monitors, other flasher pages); unplug and replug USB; put the device to sleep and wake it once, or power it off and on again.</li>
+            <li>Use the <code>treader-&lt;version&gt;-full-en.bin</code> downloaded above, or <code>build/treader-full.bin</code> (<code>build/Read_Pico.bin</code>) if you build it yourself. When building yourself you can build in a Tomato server, see <a href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md#built-in-default-server-optional">the project README</a>; don't publish firmware built that way.</li>
+            <li><b>After the first flash</b>, unzip the "SD card files" downloaded above and copy everything inside to the root of the SD card: <code>fonts/</code> (fonts) and <code>ime/</code> (pinyin dictionary) are required; without them characters are missing and you can't type Chinese.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Treader · open-source reading firmware · based on the MindReset Read Pico example firmware · flashing done by Espressif's <a href="https://github.com/espressif/esptool-js">esptool-js</a></span>
+    <span>Unofficial firmware, not affiliated with MindReset, Tomato (Fanqie novels), RedNote or Weibo. Flashing carries risk; back up first.</span>
+  </div>
+</footer>
+
+<script>
+// 截图切换；安卓 App 按钮指向各自最新的发布（取不到就留在发布列表页）。
+// Screenshot tabs; Android buttons point at each app's latest release (falling back to the releases page).
+document.querySelectorAll("#shotTabs button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#shotTabs button").forEach((x) => x.classList.toggle("on", x === b));
+  document.getElementById("shotImg").src = "../img/en/" + b.dataset.img + ".png";
+}));
+fetch("https://api.github.com/repos/bidabrain/treader-eink/releases?per_page=30")
+  .then((r) => (r.ok ? r.json() : []))
+  .then((list) => document.querySelectorAll("[data-release]").forEach((a) => {
+    const rel = list.find((x) => x.tag_name.startsWith(a.dataset.release) && !x.draft);
+    if (!rel) return;
+    a.href = rel.html_url;
+    a.textContent = "Android app " + rel.tag_name.slice(a.dataset.release.length);
+  }))
+  .catch(() => {});
+// 复制书城镜像地址。/ Copy the bookstore mirror URL.
+document.getElementById("copyMirror").addEventListener("click", (e) => {
+  navigator.clipboard?.writeText(document.getElementById("storeMirror").textContent)
+    .then(() => { e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy"), 1500); })
+    .catch(() => {});
+});
+// 最新构建的三个文件直接给下载链接（英文版），并写上版本和日期。/ Link the latest build's three files directly (English build), with version and date.
+fetch("https://api.github.com/repos/bidabrain/treader-eink/releases/tags/treader-latest")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((rel) => {
+    if (!rel) return;
+    const full = rel.assets.find((a) => a.name.endsWith("-full-en.bin"));
+    const up = rel.assets.find((a) => a.name.endsWith("-upgrade-en.bin"));
+    const sd = rel.assets.find((a) => a.name.endsWith("-sdcard.zip"));
+    if (full) document.getElementById("dlFull").href = full.browser_download_url;
+    if (up) document.getElementById("dlUp").href = up.browser_download_url;
+    if (sd) document.getElementById("dlSd").href = sd.browser_download_url;
+    const ver = (full || up || {}).name?.match(/treader-(.+?)-(full|upgrade)-en\.bin/);
+    const day = (rel.published_at || "").slice(0, 10);
+    document.getElementById("dlVer").textContent = (ver ? ver[1] : "") + (day ? " · " + day : "");
+  })
+  .catch(() => {});
+</script>
+
+<script type="module">
+import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.7.0/bundle.js";
+
+// 和 Treader 的分区表一致。/ Matches Treader's partition table.
+const NVS_OFFSET = 0x9000;
+const APP_OFFSET = 0x10000;
+const PT_OFFSET = 0x8000;
+// 启动选择区：写完程序把它擦成全 FF，设备才会从刚写的第一个程序槽启动。
+// otadata: blank it after writing so the device boots the slot just written.
+const OTADATA_OFFSET = 0xe10000;
+const OTADATA_SIZE = 0x2000;
+
+const $ = (id) => document.getElementById(id);
+let image = null;   // { bytes, kind: "merged" | "app", app }
+
+if (!("serial" in navigator)) {
+  $("unsupported").style.display = "block";
+}
+
+function log(line) {
+  const el = $("log");
+  el.textContent += line + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(text, cls = "") {
+  const el = $("status");
+  el.textContent = text;
+  el.className = "status " + cls;
+}
+
+const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const cstr = (b, o, n) => {
+  let end = o;
+  while (end < o + n && b[end]) end++;
+  return new TextDecoder().decode(b.subarray(o, end));
+};
+
+// 读 ESP-IDF 应用描述（镜像头 24 字节 + 段头 8 字节之后）。/ Read the ESP-IDF app description after the image and segment headers.
+function readApp(b, base) {
+  if (b.length < base + 0x100 || b[base] !== 0xe9) return null;
+  const d = base + 0x20;
+  if (u32(b, d) !== 0xabcd5432) return null;
+  return {
+    chipId: b[base + 12] | (b[base + 13] << 8),
+    version: cstr(b, d + 16, 32),
+    project: cstr(b, d + 48, 32),
+    time: cstr(b, d + 80, 16),
+    date: cstr(b, d + 96, 16),
+  };
+}
+
+function readPartitions(b) {
+  const out = [];
+  for (let o = PT_OFFSET; o + 32 <= Math.min(b.length, PT_OFFSET + 0xc00); o += 32) {
+    if (b[o] !== 0xaa || b[o + 1] !== 0x50) break;
+    out.push({ type: b[o + 2], subtype: b[o + 3], offset: u32(b, o + 4), size: u32(b, o + 8), label: cstr(b, o + 12, 16) });
+  }
+  return out;
+}
+
+function analyse(bytes) {
+  // 单独的主程序。/ App-only image.
+  const appOnly = readApp(bytes, 0);
+  if (appOnly) return { kind: "app", app: appOnly };
+  if (bytes[0] !== 0xe9) throw new Error("This is not an ESP32 firmware image.");
+  if (bytes.length <= APP_OFFSET) throw new Error("This is only the bootloader. Choose the downloaded treader-<version>-full-en.bin (or build/treader-full.bin if you build it yourself).");
+  const parts = readPartitions(bytes);
+  if (!parts.length) throw new Error("No partition table found. Choose the merged treader-<version>-full-en.bin (or build/treader-full.bin if you build it yourself).");
+  const nvs = parts.find((p) => p.type === 1 && p.subtype === 2);
+  const app = parts.find((p) => p.type === 0);
+  if (!nvs || nvs.offset !== NVS_OFFSET || !app || app.offset !== APP_OFFSET)
+    throw new Error("The partition layout differs from Treader's, so it won't be flashed, to be safe.");
+  if (bytes.length - APP_OFFSET > app.size) throw new Error("The app is larger than its partition.");
+  const desc = readApp(bytes, APP_OFFSET);
+  if (!desc) throw new Error("There is no valid app at 0x10000.");
+  const ota = parts.find((p) => p.type === 1 && p.subtype === 0);
+  return { kind: "merged", app: desc, parts, otadata: ota ? { offset: ota.offset, size: ota.size } : null };
+}
+
+function showInfo(file, res) {
+  const rows = [
+    ["File", `${file.name} (${(file.size / 1048576).toFixed(2)} MB)`],
+    ["Type", res.kind === "merged" ? "Merged image (bootloader + partition table + app)" : "App only (upgrade only)"],
+    ["Version", res.app.version || "—"],
+    ["Project", res.app.project || "—"],
+    ["Build time", `${res.app.date} ${res.app.time}`],
+  ];
+  if (res.app.chipId !== 9) rows.push(["Chip", "⚠️ This image is not for the ESP32-S3"]);
+  if (res.app.project && res.app.project !== "Read_Pico") rows.push(["Note", "⚠️ The project name is not Read_Pico; this may not be Treader"]);
+  $("infoTable").innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v.replace(/</g, "&lt;")}</td></tr>`).join("");
+  $("info").style.display = "block";
+}
+
+function refreshModes() {
+  const merged = image && image.kind === "merged";
+  $("modeFull").classList.toggle("disabled", !merged);
+  $("modeFull").querySelector("input").disabled = !merged;
+  $("erase").disabled = !merged;
+  if (!merged) {
+    $("modeUpgrade").querySelector("input").checked = true;
+    $("erase").checked = false;
+  }
+  $("go").disabled = !image || !("serial" in navigator) || image.app.chipId !== 9;
+}
+
+async function loadFile(file) {
+  $("info").style.display = "none";
+  image = null;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const res = analyse(bytes);
+    image = { bytes, ...res };
+    showInfo(file, res);
+    setStatus(res.app.chipId === 9 ? "File looks good, ready to start" : "This image is not for the ESP32-S3 and can't be flashed", res.app.chipId === 9 ? "ok" : "bad");
+  } catch (e) {
+    setStatus(e.message, "bad");
+  }
+  refreshModes();
+}
+
+$("file").addEventListener("change", (e) => e.target.files[0] && loadFile(e.target.files[0]));
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+$("erase").addEventListener("change", (e) => {
+  if (e.target.checked) $("modeFull").querySelector("input").checked = true;
+});
+document.querySelectorAll('input[name=mode]').forEach((r) => r.addEventListener("change", () => {
+  if (r.value === "upgrade" && r.checked) $("erase").checked = false;
+}));
+
+// 按方式切出要写的段；默认绝不碰 0x9000～0x10000 的设置区。
+// Slice the regions to write; by default never touch the settings area at 0x9000-0x10000.
+function plan() {
+  const b = image.bytes;
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const erase = $("erase").checked;
+  if (image.kind === "app") return { erase: false, files: [{ data: b, address: APP_OFFSET }], label: "Upgrading the app" };
+  if (erase) return { erase: true, files: [{ data: b, address: 0 }], label: "Erasing, then writing everything" };
+  if (mode === "full") return {
+    erase: false,
+    files: [{ data: b.slice(0, NVS_OFFSET), address: 0 }, { data: b.slice(APP_OFFSET), address: APP_OFFSET }],
+    label: "Full install (keeping settings)",
+  };
+  return { erase: false, files: [{ data: b.slice(APP_OFFSET), address: APP_OFFSET }], label: "Upgrading the app" };
+}
+
+// 不擦整片时补一段全 FF 的启动选择区。旧分区表没有它，那片地址也没被使用，写 FF 无害。
+// Without a full erase, blank otadata too. Old layouts have none there and the area is unused, so FF is harmless.
+function withOtadata(p) {
+  if (p.erase) return p;
+  const ota = (image.kind === "merged" && image.otadata) || { offset: OTADATA_OFFSET, size: OTADATA_SIZE };
+  p.files.push({ data: new Uint8Array(ota.size).fill(0xff), address: ota.offset });
+  return p;
+}
+
+$("go").addEventListener("click", async () => {
+  const p = withOtadata(plan());
+  if (p.erase && !confirm("This erases all settings on the device (Wi-Fi, reading progress and more). Continue?")) return;
+  $("go").disabled = true;
+  $("log").textContent = "";
+  $("bar").style.width = "0";
+  let transport = null;
+  try {
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    const terminal = { clean() {}, writeLine: (s) => log(s), write: (s) => log(s) };
+    setStatus("Connecting…");
+    const loader = new ESPLoader({ transport, baudrate: 921600, terminal });
+    const chip = await loader.main();
+    log("Chip: " + chip);
+    if (!/ESP32-S3/i.test(chip)) throw new Error("The connected chip is not an ESP32-S3 (" + chip + "); stopped.");
+    const total = p.files.reduce((n, f) => n + f.data.length, 0);
+    let done = 0;
+    setStatus(p.label + ", don't unplug the cable…", "warn");
+    await loader.writeFlash({
+      fileArray: p.files,
+      flashSize: "keep",
+      flashMode: "keep",
+      flashFreq: "keep",
+      eraseAll: p.erase,
+      compress: true,
+      reportProgress: (i, written, size) => {
+        const before = p.files.slice(0, i).reduce((n, f) => n + f.data.length, 0);
+        done = before + written;
+        $("bar").style.width = Math.min(100, (done / total) * 100).toFixed(1) + "%";
+      },
+    });
+    $("bar").style.width = "100%";
+    log("Write complete, restarting the device…");
+    // esptool-js 0.7.0 的 hard_reset 只把 RTS 拉低、不先拉高；连接时 RTS 已经是低的，芯片收不到复位脉冲，
+    // 设备停在下载模式。这里自己给一个完整脉冲：DTR 低（不进下载模式），RTS 高 200 ms 再放开。
+    // esptool-js 0.7.0's hard_reset only drops RTS without raising it first; RTS is already low after connecting, so
+    // the chip gets no reset pulse and stays in download mode. Send a full pulse: DTR low (no download mode), RTS high
+    // for 200 ms, then released.
+    await loader.after("custom_reset", undefined, "D0|R1|W200|R0|W200");
+    setStatus("Done. The device is restarting; you can unplug the cable once the Treader screen appears.", "ok");
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    log("Error: " + msg);
+    if (/No port selected|requestPort/i.test(msg)) setStatus("No device selected", "warn");
+    else setStatus("Failed: " + msg + ". Try another data cable, close other programs using the serial port, or unplug and replug USB, then try again.", "bad");
+  } finally {
+    try { if (transport) await transport.disconnect(); } catch (_) {}
+    refreshModes();
+  }
+});
+</script>
+</body>
+</html>

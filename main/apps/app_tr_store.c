@@ -313,7 +313,10 @@ static void draw_home(uint8_t* fb) {
     // says why. It used to hide whenever the worker was busy and never came back, as this page does not redraw when
     // another page's job ends.
     if (!fetching) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(96), TR_S(274 + SEARCH_DY), false);
+        // 图标离右边至少原来那么远，标签更长（英文版）时再往左让。/ The icon keeps at least its old offset and moves left
+        // further when the label is longer (English build).
+        const int off = ttf_text_width_px(TR_S(30), "刷新") + TR_S(30);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - (off > TR_S(96) ? off : TR_S(96)), TR_S(274 + SEARCH_DY), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(254 + SEARCH_DY), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     tr_pill(fb, (EpdRect){TR_MARGIN, CHANNEL_Y, TR_S(120), CHIP_H}, "男频", s_male, TR_S(30));

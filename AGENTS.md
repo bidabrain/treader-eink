@@ -48,6 +48,7 @@ idf.py build
 | `components/e0470_epaper_waveform/` | 面板波形与裁剪。`waveforms/*.h` 是数据表。/ Panel waveforms. |
 | `components/pwm_audio/` | PWM 音频（蜂鸣器底层之一）。/ PWM audio helper. |
 | `docs/CHANGELOG.md` | 按版本简述对用户可见的功能变化与修复。/ Brief user-visible changes and fixes by version. |
+| `i18n/` `tools/i18n/en.py` | 英文版固件：`en.tsv` 是界面中文到英文的对照，`en-html.tsv` 是设备网页的；编译前 `en.py apply` 复制一份源码换掉中文再编，仓库源码不改。CI 同时出中文版和 `-en` 结尾的英文版，在线升级各升各的。/ English firmware: `en.tsv` maps the UI Chinese to English and `en-html.tsv` the device web pages; `en.py apply` copies the sources with the Chinese swapped before building, leaving the repository untouched. CI ships the Chinese and the `-en` English builds; each updates online only to itself. |
 | `rednote/` | 小红书内容服务器（Docker：Python 面板 hub + xiaohongshu-mcp），独立于固件，部署说明在其 README。/ Xiaohongshu content server (Docker: Python hub + xiaohongshu-mcp), separate from the firmware; see its README. |
 | `rednote/android/` | 小红书安卓客户端（Kotlin + Compose），功能和界面照固件小红书标签，独立版本号；tag `rednote-android-v*` 发布，签名用 Secret 里的 debug keystore。/ Xiaohongshu Android client (Kotlin + Compose) mirroring the firmware tab, with its own version; released on `rednote-android-v*` tags, signed with the debug keystore from a secret. |
 | `tomato/` | 番茄下载服务器一键部署（Docker：官方 Tomato-Novel-Downloader + Python 面板 hub），hub 核对设备密码后把设备接口原样转给下载器，带 cloudflared；固件和安卓 App 不用改，部署说明在其 README。/ One-step Tomato downloader deployment (Docker: the official Tomato-Novel-Downloader plus a Python panel hub); the hub checks the device password and forwards the device API unchanged, with cloudflared; no firmware or app change; see its README. |
@@ -176,6 +177,7 @@ A `冻结 / Frozen:` block is a decision, not a hint. Change the behavior only a
 - 不要改 `components/epdiy/**` 来“整理注释”。/ Do not touch `components/epdiy/**` for comment cleanup.
 - 不要手改 `main/font/fallback.h`、`main/font/stb_truetype.h`、`components/e0470_epaper_waveform/waveforms/*.h`。/ Do not hand-edit generated or vendored tables.
 - 不改 UI 字面量或日志字符串，除非任务明确要求。/ Do not change UI strings or log text unless asked.
+- 加了或改了界面上的中文字符串，运行 `python tools/i18n/en.py extract`，在 `i18n/en.tsv` 补上英文（简短，ASCII 加内置字体有的符号，格式符个数顺序不变），再跑 `check`；拿中文当解析键、写进文件名或发给服务器的字符串写 `=`。英文版排版用 `tools/page_render` 加 `SRC_ROOT` 指向 `en.py apply` 出来的源码检查。产品名英文是“Read Pico”。/ After adding or changing UI Chinese strings, run `python tools/i18n/en.py extract`, fill the English in `i18n/en.tsv` (short; ASCII plus the built-in font's symbols; same format specifiers in the same order), then `check`; strings used as parsing keys, file names or server text get `=`. Check the English layout with `tools/page_render` and `SRC_ROOT` pointing at the `en.py apply` output. The English product name is "Read Pico".
 - 界面长度（字号、行高、间距、图标、按钮）一律经 `TR_S()` / `UI_S()` 随显示大小放大，左右边距和细线除外；改页面后用 `tools/page_render`（`run.sh` 画三档并检查，`compare.sh` 确认 100% 逐像素不变）。/ UI lengths (font sizes, row heights, gaps, icons, buttons) go through `TR_S()` / `UI_S()` so they follow the display size, except side margins and hairlines; after changing a page, run `tools/page_render` (`run.sh` draws and checks three sizes, `compare.sh` proves 100% is pixel-identical).
 
 ## 注释规范 / Comment style

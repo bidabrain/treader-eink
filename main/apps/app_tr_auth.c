@@ -696,9 +696,14 @@ static void draw_main(uint8_t* fb) {
     const tr_auth_state_t st = tr_auth_state();
     if (st == TR_AUTH_OPEN) {
         draw_header(fb);
-        if (s_msg[0])
-            tr_message(fb, TR_W - TR_MARGIN - 3 * BTN_W, TR_S(104), TR_S(92), TR_W - 2 * TR_MARGIN - 3 * BTN_W - TR_S(200),
-                       TR_S(24), s_msg, EPD_DRAW_ALIGN_RIGHT, false);
+        if (s_msg[0]) {
+            // 宽度按标题实际宽度让开（英文版标题更长），至少留一小段。/ Leave room for the title's real width (longer in
+            // English), keeping at least a short span.
+            int mw = TR_W - 2 * TR_MARGIN - 3 * BTN_W - ttf_text_width_px(TR_S(52), "验证器") - TR_S(44);
+            if (mw < TR_S(80)) mw = TR_S(80);
+            tr_message(fb, TR_W - TR_MARGIN - 3 * BTN_W, TR_S(104), TR_S(92), mw, TR_S(24), s_msg, EPD_DRAW_ALIGN_RIGHT,
+                       false);
+        }
         if (!time_ok()) {
             tr_wrap(fb, TR_MARGIN, LIST_TOP + TR_S(20), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
                     s_syncing ? "正在连 Wi-Fi 校时…" : "设备时间还没校准，验证码会算错。点下面的按钮连 Wi-Fi 校时，或在“设置 › 电源与设备 › 时间与时区”里手动设置。",

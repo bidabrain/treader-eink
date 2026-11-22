@@ -1,3 +1,5 @@
+**中文** | [English](README.en.md)
+
 # tomato：番茄小说下载服务器（带面板）
 
 把作者官方的 [Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) 和我们的面板打包成一个 compose：一条命令部署，在网页面板里看状态、设设备密码、开外网访问。小纸 Pico 的番茄标签、本仓库的[番茄安卓 App](android/README.md) 和以前的 Tomato-Novel 安卓版都连它，接口和直接用官方下载器完全一样，**固件和 App 不用改**。

@@ -6,6 +6,9 @@
 # ready to flash on a Read Pico; no built-in Tomato server, FanqieRankTracker as the default bookstore. Every firmware
 # change on main publishes automatically: the rolling "latest build" (tag treader-latest) is replaced each time, and a
 # permanent treader-v<version> release is added the first time a PROJECT_VER appears.
+# 同一次还编一个英文版（tools/i18n/en.py 按 i18n/en.tsv 换掉界面中文），文件名带 -en，和中文版放在同一个发布里。
+# The same run also builds the English firmware (tools/i18n/en.py swaps the UI Chinese from i18n/en.tsv); its files
+# carry -en and go into the same releases as the Chinese ones.
 name: build
 
 on:
@@ -51,6 +54,31 @@ jobs:
           . $IDF_PATH/export.sh
           idf.py size
 
+      # 英文版：会让英文版出错的翻译问题（格式符、字体缺字）直接失败；只是没翻的照中文出，给个提醒。英文版编不过
+      # 不挡中文版发布。
+      # English build: translation problems that break it (format specifiers, missing glyphs) fail it; untranslated
+      # text stays Chinese with a warning. A failed English build does not block the Chinese release.
+      - name: build (English)
+        id: en
+        continue-on-error: true
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          pip install -q fonttools
+          set +e
+          python tools/i18n/en.py check > en-check.log
+          rc=$?
+          set -e
+          tail -n 1 en-check.log
+          if [ "$rc" -ge 2 ]; then cat en-check.log; echo "::error::English translation breaks the build (see en-check.log)"; exit 1; fi
+          if [ "$rc" -eq 1 ]; then echo "::warning::Some UI text has no English yet and shows in Chinese (python tools/i18n/en.py check)"; fi
+          python tools/i18n/en.py apply ../treader-en
+          cd ../treader-en
+          test ! -e local.properties
+          idf.py set-target esp32s3 2>&1 | tee configure.log
+          grep -q "Treader: no built-in Tomato server" configure.log
+          idf.py build
+
       # 合并成一个完整镜像，给网页刷机“完整安装”用；Read_Pico.bin 用来升级。
       # Merge one full image for the web flasher's full install; Read_Pico.bin is for upgrades.
       - name: package
@@ -66,6 +94,15 @@ jobs:
           mkdir -p ../out
           cp treader-full.bin "../out/treader-${ver}-full.bin"
           cp Read_Pico.bin "../out/treader-${ver}-upgrade.bin"
+          # 英文版：文件名以 -en.bin 结尾，旧固件的在线升级只认 -upgrade.bin，不会误下英文版。
+          # English: names end in -en.bin; older firmware's online update only accepts -upgrade.bin.
+          if [ -f ../../treader-en/build/Read_Pico.bin ]; then
+            (cd ../../treader-en/build && python -m esptool --chip esp32s3 merge-bin -o treader-full.bin --flash-mode dio \
+              --flash-freq 80m --flash-size 16MB 0x0 bootloader/bootloader.bin 0x8000 partition_table/partition-table.bin \
+              0x10000 Read_Pico.bin)
+            cp ../../treader-en/build/treader-full.bin "../out/treader-${ver}-full-en.bin"
+            cp ../../treader-en/build/Read_Pico.bin "../out/treader-${ver}-upgrade-en.bin"
+          fi
           # TF 卡文件包：仓库 sdcard/ 里的全部内容（字体、拼音词库、空文件夹），第一次刷机解压到 TF 卡根目录。
           # The TF card pack: everything in the repo's sdcard/ (font, pinyin lexicon, empty folders), unzipped to the
           # card root after the first flash.
@@ -134,6 +171,9 @@ jobs:
             - `treader-${{ steps.pkg.outputs.version }}-full.bin`：完整镜像。第一次刷 Treader、或者分区表有变化时，用网页刷机的“完整安装”。
             - `treader-${{ steps.pkg.outputs.version }}-upgrade.bin`：只有主程序。网页刷机选“升级”，或者放进 TF 卡 `update/` 在设备上升级。
             - `treader-${{ steps.pkg.outputs.version }}-sdcard.zip`：TF 卡文件（中文字体、拼音词库和文件夹）。**第一次刷机必须**：解压后把里面的全部内容复制到 FAT32 TF 卡根目录，否则会缺字、不能输入中文。
+            - `treader-${{ steps.pkg.outputs.version }}-full-en.bin` / `-upgrade-en.bin`：英文界面版，用法同上；在线升级只升到英文版。
+
+            English firmware: `treader-${{ steps.pkg.outputs.version }}-full-en.bin` (first flash) and `treader-${{ steps.pkg.outputs.version }}-upgrade-en.bin` (upgrade), plus the shared `-sdcard.zip` (unzip to the root of a FAT32 SD card on first flash). The English build's online update installs only English packages. Web flasher: https://bidabrain.github.io/treader-eink/en/ · Changes: docs/CHANGELOG.md.
 
             网页刷机：https://bidabrain.github.io/treader-eink/ 。改了什么见 docs/CHANGELOG.md。
           files: out/*
@@ -148,6 +188,7 @@ jobs:
           name: Treader ${{ steps.pkg.outputs.version }}
           body: |
             Treader ${{ steps.pkg.outputs.version }} 第一次构建。之后同一版本号上的修改只更新“最新构建”（treader-latest）。
-            不带内置番茄服务器；书城默认用 FanqieRankTracker 榜单。第一次刷机还要把 `-sdcard.zip` 解压到 TF 卡根目录。刷机见 https://bidabrain.github.io/treader-eink/ 。
+            不带内置番茄服务器；书城默认用 FanqieRankTracker 榜单。第一次刷机还要把 `-sdcard.zip` 解压到 TF 卡根目录。刷机见 https://bidabrain.github.io/treader-eink/ 。带 `-en` 的是英文界面版。
+            First build of Treader ${{ steps.pkg.outputs.version }}. Files with `-en` are the English firmware; unzip `-sdcard.zip` to the SD card root on first flash. Web flasher: https://bidabrain.github.io/treader-eink/en/
           files: out/*
           make_latest: false

@@ -1,3 +1,5 @@
+**中文** | [English](README.en.md)
+
 # webtoon：WEBTOON 发现与追更服务器
 
 给小纸 Pico 的“漫画”标签做的发现页和追更服务器：在设备上逛 [WEBTOON](https://www.webtoons.com) 的排行、类型、星期更新表、已完结和搜索，点“订阅”后按“检查更新”下载新话。服务器只在设备要某一话时，才去 webtoons.com 拉那一话的原图，缩到屏幕宽度、转灰度、在分镜之间的空白处按屏幕高度切页，打包成 CBZ 给设备。

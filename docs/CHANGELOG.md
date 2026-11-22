@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - 漫画“检查更新”可以取消：更新中点“更新中”胶囊，变成“再点取消”，再点一下就停；没下好的话下次检查更新接着下。显示放大时“我的漫画”上面三个胶囊不再叠在一起。
   Comic updates can be cancelled: tap the "Updating" pill, which turns into "Cancel?", and tap again to stop; unfinished episodes resume on the next check. At larger display sizes the three pills above My comics no longer overlap.
+- 新增英文界面版固件：发布里带 `-en` 的 `treader-<版本>-full-en.bin` / `-upgrade-en.bin`，功能和中文版一样，设备网页（传书、验证器导入、服务器设置）也是英文。中文版在线升级只升到中文版，英文版只升到英文版；想换语言就刷另一版的升级包，设置和进度保留。网站和 README 加了英文版。
+  New English firmware: `treader-<version>-full-en.bin` / `-upgrade-en.bin` in the releases, the same features as the Chinese build, with English device web pages (transfer, authenticator import, server setup). The Chinese build updates online only to Chinese and the English only to English; to switch, flash the other build's upgrade package, which keeps settings and progress. The website and README have English versions.
 
 ## 2026-11-22 · webtoon 服务器 0.2.4
 

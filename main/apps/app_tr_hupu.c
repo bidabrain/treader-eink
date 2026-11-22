@@ -886,7 +886,10 @@ static int list_pages_shown(void) {
 static void draw_header(uint8_t* fb) {
     tr_title(fb, "虎扑");
     if (!tomato_sync_busy()) {
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - TR_S(86), TR_S(116), false);
+        // 图标离右边至少原来那么远，标签更长（英文版）时再往左让。/ The icon keeps at least its old offset and moves left
+        // further when the label is longer (English build).
+        const int off = ttf_text_width_px(TR_S(30), "刷新") + TR_S(30);
+        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - (off > TR_S(86) ? off : TR_S(86)), TR_S(116), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
     }
     static const char* const SEG[3] = {"推荐", "关注", "比分"};
