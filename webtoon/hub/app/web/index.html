@@ -120,22 +120,15 @@
         <button id="ehSave">保存</button> <span id="ehMsg" class="muted"></span>
       </form>
       <form id="ehLoginForm" method="post" action="#" onsubmit="return false" class="card">
-        <h2>账号</h2>
+        <h2>账号（填 cookie 登录）</h2>
         <p id="ehSigned"></p>
-        <p class="muted">登录后图片额度更多，也能用 ExHentai。密码只发给 E-Hentai 换登录 cookie，服务器不保存密码。登录页要过 Cloudflare 验证，要先开 FlareSolverr：在 <code>docker-compose.yml</code> 旁边的 <code>.env</code> 里让 <code>COMPOSE_PROFILES</code> 带上 <code>flaresolverr</code>（比如 <code>COMPOSE_PROFILES=flaresolverr</code>，开了插件的写 <code>mihon,flaresolverr</code>），再 <code>docker compose up -d</code>。不登录也能用 E-Hentai。</p>
-        <p id="ehSolver"></p>
-        <input id="ehUser" autocomplete="username" placeholder="E-Hentai 用户名">
-        <input id="ehPass" type="password" autocomplete="current-password" placeholder="密码">
-        <button id="ehLogin">登录</button> <button id="ehLogout" class="ghost">退出登录</button>
+        <p class="muted">不登录也能用 E-Hentai；登录后图片额度更多，也能用 ExHentai。服务器没法替你输账号密码（登录页要过 Cloudflare 验证），所以在能打开 e-hentai.org 的浏览器里登录后，把 cookie 填到这里：开发者工具（F12）→ 应用 / 存储 → Cookie → e-hentai.org，或者网络里任意一个 e-hentai.org 请求的 Cookie 请求头。保存时服务器会拿它试一次能不能用。cookie 只存在服务器上，这里不回显。</p>
+        <label>整段粘贴（Cookie 请求头 <code>ipb_member_id=…; ipb_pass_hash=…</code>，或浏览器导出的 JSON 都行，会自动挑出要用的几项，别的忽略）<textarea id="ehCookieAll" rows="3" autocomplete="off"></textarea></label>
+        <label>ipb_member_id <input id="ehMember" autocomplete="off"></label>
+        <label>ipb_pass_hash <input id="ehHash" type="password" autocomplete="off"></label>
+        <label>igneous（ExHentai 用，可留空，服务器会自己去取） <input id="ehIgneous" type="password" autocomplete="off"></label>
+        <button id="ehCookieSave">保存并检查</button> <button id="ehLogout" class="ghost">退出登录</button>
         <span id="ehLoginMsg" class="muted"></span>
-        <details>
-          <summary class="muted">要验证码登录不了？手动填 cookie</summary>
-          <p class="muted">在浏览器登录 e-hentai.org 后，从开发者工具的 Cookie 里复制。留空的不改。</p>
-          <label>ipb_member_id <input id="ehMember" autocomplete="off"></label>
-          <label>ipb_pass_hash <input id="ehHash" type="password" autocomplete="off"></label>
-          <label>igneous（ExHentai 用，可留空） <input id="ehIgneous" type="password" autocomplete="off"></label>
-          <button id="ehCookieSave" class="ghost">保存 cookie</button>
-        </details>
       </form>
     </section>
 

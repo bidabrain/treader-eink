@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-23 · webtoon 服务器 0.3.2
+
+- E-Hentai 改成填 cookie 登录，去掉用户名密码登录：登录页整站要过 Cloudflare 验证，服务器和 FlareSolverr 都过不去，而且 FlareSolverr 会把提交的密码记进日志。在浏览器登录后，把 cookie 整段粘贴到面板（Cookie 请求头或浏览器导出的 JSON 都行），面板自动挑出要用的几项；保存时服务器当场试一次，告诉你能不能用，能用时顺便取好 ExHentai 的 igneous。
+  E-Hentai sign-in now takes cookies instead of a user name and password: the sign-in site sits behind a Cloudflare check that neither the server nor FlareSolverr passes, and FlareSolverr logs the submitted password. Sign in in a browser and paste the cookies into the panel whole (a Cookie header or a browser's JSON export); the panel picks out the ones it needs, and on save the server tries them at once, says whether they work and, if so, fetches ExHentai's igneous.
+
 ## 2026-11-23 · webtoon 服务器 0.3.1
 
 - 修正 E-Hentai 账号登录总说“用户名或密码不对”：登录页所在的论坛整站要过 Cloudflare 验证，服务器的请求被拦下了。现在被拦时改由 FlareSolverr 的浏览器提交登录（`.env` 的 `COMPOSE_PROFILES` 里要有 `flaresolverr`），没开时提示怎么打开或手动填 cookie；其他失败也照实说原因。

@@ -45,7 +45,7 @@ Open `http://server-IP:8095` and set the panel password on first visit (at least
 | --- | --- | --- |
 | `WEBTOON_PORT` | `8095` | Host port for the panel and the device API; change it if taken |
 | `WEBTOON_BIND` | `0.0.0.0` | Address to listen on; write `127.0.0.1` to allow access from this machine only (for example, behind a reverse proxy) |
-| `COMPOSE_PROFILES` | Not set | `mihon` also starts Suwayomi and turns on [plugin sources](#plugin-sources-optional); `mihon,flaresolverr` adds FlareSolverr to get plugins past [Cloudflare verification](#cloudflare-verification); `flaresolverr` alone when you only use the [E-Hentai channel](#e-hentai-channel-optional) and want to sign in (the sign-in page needs a Cloudflare check); unset means WEBTOON only |
+| `COMPOSE_PROFILES` | Not set | `mihon` also starts Suwayomi and turns on [plugin sources](#plugin-sources-optional); `mihon,flaresolverr` adds FlareSolverr to get plugins past [Cloudflare verification](#cloudflare-verification); unset means WEBTOON only |
 | `MIHON_HEAP` | `768m` | Maximum Java memory for Suwayomi; can be raised to `1g` with many plugins or large images |
 
 For example, to turn on plugins and switch to port 8096:
@@ -143,12 +143,10 @@ The hub reads e-hentai.org itself (and exhentai.org once signed in), without ext
 
 > Adult content. As above: personal use only, not opened or shared, follow the site's terms and do not shorten the request delays.
 
-**Deployment**: nothing to add without signing in. To sign in you need FlareSolverr: put `COMPOSE_PROFILES=flaresolverr` (or `mihon,flaresolverr` with extensions) in the [`.env`](#env-settings-optional) next to `docker-compose.yml` and run `docker compose up -d`. The panel's E-Hentai page shows whether FlareSolverr is running.
-
 **Turn it on**: panel → E-Hentai → tick "打开 E-Hentai 通道" → save. Tap refresh once on the device or app store page and E-Hentai appears among the sources (with Popular and Latest).
 
 - **Direct IP**: turn it on when the server cannot reach e-hentai.org (for example the connection is reset). Like JHenTai's domain fronting, it connects to the site's fixed IPs with no domain in the handshake and the real domain only in the request header; certificates are not verified for those IPs. Image servers and covers connect as usual.
-- **Account**: sign in with your E-Hentai user name and password under Account. The password only goes to E-Hentai in exchange for sign-in cookies; the server keeps only the cookies (`data/config.json`) and the panel never shows them. Signing in raises the image quota; if the account can enter ExHentai, `igneous` is fetched too and the site can be switched to ExHentai. The sign-in page lives on forums.e-hentai.org, which sits entirely behind a Cloudflare check and blocks the server's own request; FlareSolverr's browser then submits the same form, so add `flaresolverr` to `COMPOSE_PROFILES` in `.env` (just `flaresolverr` works without extensions). E-Hentai sometimes asks for a captcha the server cannot fill in, and FlareSolverr may still not get through; in either case sign in in a browser and paste `ipb_member_id`, `ipb_pass_hash` (and `igneous`) under the manual cookie fields.
+- **Account (cookies)**: the server cannot type your user name and password for you (the sign-in site, forums.e-hentai.org, sits entirely behind a Cloudflare check), so sign in in a browser that can open e-hentai.org and put the cookies in panel → E-Hentai → Account: developer tools (F12) → Storage / Application → Cookies → e-hentai.org, or the Cookie header of any e-hentai.org request. You can paste it whole (a Cookie header or a browser's JSON export); the panel picks out `ipb_member_id`, `ipb_pass_hash` (and `igneous`) and ignores the rest. On save the server opens e-hentai.org/home.php once with them and tells you whether they work; if they do it fetches `igneous` from ExHentai, and an account with ExHentai access can switch the site to ExHentai. Cookies stay in the server's `data/config.json` and the panel never shows them. It works without signing in; signing in raises the image quota.
 - **Default filter**: EH search syntax added to every search and to Latest, such as `language:chinese$` for Chinese only. Popular takes no search, so the server filters it by the `tag:value` words (words starting with `-` are ignored).
 - **Categories**: grayed-out categories are hidden (Doujinshi, Manga, Cosplay…).
 - **Title**: the Japanese / original title is preferred by default (translated galleries usually carry the Chinese title there); untick for the romanized title.

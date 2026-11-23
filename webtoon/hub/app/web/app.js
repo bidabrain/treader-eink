@@ -227,8 +227,6 @@ function showEh(r) {
   $('#ehFilter').value = r.eh_filter; $('#ehJpn').checked = r.eh_jpn_title; $('#ehChunk').value = r.eh_chunk;
   $('#ehSpread').value = r.eh_spread;
   $('#ehSigned').textContent = r.signed_in ? `已登录${r.igneous ? '（能用 ExHentai）' : ''}，现在用 ${r.name}` : `没登录，现在用 ${r.name}`;
-  $('#ehSolver').textContent = r.solver ? 'FlareSolverr：已开，可以登录' : 'FlareSolverr：没开，登录前先按上面说的打开（或用手动填 cookie）';
-  $('#ehSolver').className = r.solver ? 'muted' : 'err';
   ehCatsOff = r.eh_cats; ehCats = r.cats; drawEhCats();
 }
 loaders.eh = async () => showEh(await api('/api/panel/eh'));
@@ -237,7 +235,7 @@ async function ehPost(path, body, msgEl, note) {
   try {
     const r = await api(path, { method: 'POST', body });
     showEh(r);
-    $('#ehPass').value = $('#ehMember').value = $('#ehHash').value = $('#ehIgneous').value = '';
+    $('#ehCookieAll').value = $('#ehMember').value = $('#ehHash').value = $('#ehIgneous').value = '';
     $(msgEl).textContent = typeof note === 'function' ? note(r) : note; loadSources();
   } catch (e) { $(msgEl).textContent = e.message; }
 }
@@ -245,15 +243,24 @@ $('#ehSave').onclick = () => ehPost('/api/panel/eh', {
   eh_on: $('#ehOn').checked, eh_site: $('#ehSite').value, eh_direct: $('#ehDirect').checked, eh_filter: $('#ehFilter').value,
   eh_cats: ehCatsOff, eh_jpn_title: $('#ehJpn').checked, eh_chunk: Number($('#ehChunk').value), eh_spread: $('#ehSpread').value,
 }, '#ehMsg', '已保存');
-$('#ehLogin').onclick = () => ehPost('/api/panel/eh/login', { user: $('#ehUser').value, password: $('#ehPass').value },
-  '#ehLoginMsg', (r) => r.login.exhentai ? '已登录，ExHentai 也能用' : '已登录（这个账号还进不了 ExHentai）');
 $('#ehLogout').onclick = () => { if (confirm('退出 E-Hentai 登录？')) ehPost('/api/panel/eh', { eh_member_id: '', eh_pass_hash: '', eh_igneous: '' }, '#ehLoginMsg', '已退出'); };
 $('#ehCookieSave').onclick = () => {
   const body = {};
+  // 整段粘贴的 cookie 先拆开，单独填的优先。/ Split a pasted cookie string first; separately filled fields win.
+  const all = $('#ehCookieAll').value;
+  for (const [name, key] of [['ipb_member_id', 'eh_member_id'], ['ipb_pass_hash', 'eh_pass_hash'], ['igneous', 'eh_igneous']]) {
+    // 认 name=value（Cookie 请求头）和 "name": "value"（浏览器导出的 JSON）。/ Accepts name=value (a Cookie header)
+    // and "name": "value" (JSON exported by a browser).
+    const m = all.match(new RegExp('(?:^|[;\\s"{,])' + name + '"?\\s*[=:]\\s*"?([0-9A-Za-z]+)'));
+    if (m) body[key] = m[1];
+  }
   if ($('#ehMember').value.trim()) body.eh_member_id = $('#ehMember').value.trim();
   if ($('#ehHash').value.trim()) body.eh_pass_hash = $('#ehHash').value.trim();
   if ($('#ehIgneous').value.trim()) body.eh_igneous = $('#ehIgneous').value.trim();
-  ehPost('/api/panel/eh', body, '#ehLoginMsg', '已保存 cookie');
+  if (!body.eh_member_id && !body.eh_pass_hash && !body.eh_igneous) { $('#ehLoginMsg').textContent = '没认出 ipb_member_id / ipb_pass_hash'; return; }
+  ehPost('/api/panel/eh', body, '#ehLoginMsg', (r) => !r.check ? '已保存'
+    : r.check.ok ? (r.check.exhentai ? '能用，已登录；ExHentai 也能用' : '能用，已登录（这个账号还进不了 ExHentai）')
+    : '已保存，但检查没通过：' + r.check.error);
 };
 
 // ---- 设备与外网 / Device and tunnel ----

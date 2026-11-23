@@ -28,12 +28,10 @@ from __future__ import annotations
 import asyncio
 import html
 import math
-import os
 import random
 import re
 import time
 from typing import Any
-from urllib.parse import urlencode
 
 import httpx
 
@@ -200,102 +198,33 @@ def _keep_igneous(r: httpx.Response) -> None:
         config.save({"eh_igneous": v})
 
 
-# ---- 登录（面板）/ Sign-in (panel) ----
+# ---- 登录（面板填 cookie）/ Sign-in (cookies entered in the panel) ----
 
-LOGIN = "https://forums.e-hentai.org/index.php?act=Login&CODE=01"
-FLARESOLVERR = os.environ.get("FLARESOLVERR_URL", "http://flaresolverr:8191").rstrip("/")
-CF_LOGIN_HINT = ("登录页（forums.e-hentai.org）要过 Cloudflare 验证，服务器自己过不去：在 .env 的 COMPOSE_PROFILES 里"
-                 "加上 flaresolverr 后 docker compose up -d，再登录；或者用下面的“手动填 cookie”")
-
-
-def _cf_challenge(status: int, headers: httpx.Headers | dict, text: str) -> bool:
-    return status in (403, 503) and (bool(headers.get("cf-mitigated")) or "just a moment" in text[:3000].lower())
-
-
-def _login_error(status: int, text: str) -> SourceError:
-    """登录没换到 cookie 时说清楚为什么，别一律说密码不对。/ Say why a sign-in got no cookies instead of always
-    blaming the password."""
-    low = text.lower()
-    if "captcha" in low:
-        return SourceError(400, "E-Hentai 这次要验证码，服务器没法代填：请在浏览器登录后用下面的“手动填 cookie”")
-    if "incorrect" in low or "not found" in low or "no member" in low:
-        return SourceError(400, "用户名或密码不对")
-    plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", re.sub(r"(?s)<(script|style).*?</\1>", "", text))).strip()
-    return SourceError(502, f"登录没成功（HTTP {status}）：{plain[:120] or '空白页'}")
-
-
-_solver_seen: tuple[float, bool] = (float("-inf"), False)
-
-
-async def solver_ok() -> bool:
-    """FlareSolverr 在不在（结果记 60 秒），面板用来提示登录前要不要先开它。/ Whether FlareSolverr is running
-    (cached 60 s); the panel uses it to say whether to turn it on before signing in."""
-    global _solver_seen
-    if time.time() - _solver_seen[0] < 60:
-        return _solver_seen[1]
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as c:
-            ok = (await c.get(FLARESOLVERR + "/")).status_code == 200
-    except httpx.HTTPError:
-        ok = False
-    _solver_seen = (time.time(), ok)
-    return ok
-
-
-async def _solver_login(form: dict) -> tuple[dict[str, str], int, str]:
-    """用 FlareSolverr 的浏览器提交登录表单，返回它拿到的 cookie、状态和网页。/ Submit the sign-in form from
-    FlareSolverr's browser; returns its cookies, status and page."""
-    body = {"cmd": "request.post", "url": LOGIN, "postData": urlencode(form), "maxTimeout": 60000}
-    try:
-        async with httpx.AsyncClient(timeout=90.0) as c:
-            r = await c.post(FLARESOLVERR + "/v1", json=body)
-        d = r.json()
-    except (httpx.HTTPError, ValueError):
-        raise SourceError(400, CF_LOGIN_HINT) from None
-    if d.get("status") != "ok":
-        raise SourceError(502, f"FlareSolverr 没过登录页的验证：{str(d.get('message') or '')[:160]}")
-    sol = d.get("solution") or {}
-    cookies = {c.get("name", ""): str(c.get("value", "")) for c in sol.get("cookies") or []}
-    return cookies, int(sol.get("status") or 0), str(sol.get("response") or "")
-
-
-async def sign_in(user: str, password: str) -> dict:
-    """照 JHenTai 用论坛的登录表单换 ipb_member_id 和 ipb_pass_hash；密码只发这一次，不保存。论坛整站要过 Cloudflare
-    验证时改由 FlareSolverr 的浏览器提交同一个表单。要验证码时服务器填不了，让用户在浏览器登录后粘贴 cookie。登录后
-    去 ExHentai 取一次 igneous。
-    Following JHenTai, trade the forum sign-in form for ipb_member_id and ipb_pass_hash; the password is sent once
-    and never stored. When the whole forum sits behind a Cloudflare check, FlareSolverr's browser submits the same
-    form. A captcha cannot be filled in by the server, so the user signs in in a browser and pastes the cookies.
-    After signing in, ExHentai is visited once for igneous."""
-    if not user or not password:
-        raise SourceError(400, "要填用户名和密码")
-    form = {"referer": "https://forums.e-hentai.org/index.php?", "b": "", "bt": "", "UserName": user,
-            "PassWord": password, "CookieDate": "365"}
+async def verify() -> dict:
+    """用面板里填的 cookie 打开 e-hentai.org/home.php：登录了才给看（显示图片额度），没登录会被转走。顺便去 ExHentai
+    取一次 igneous。只用 cookie，不碰用户名密码：登录页整站要过 Cloudflare 验证，服务器自己过不去。
+    Open e-hentai.org/home.php with the cookies from the panel: only a signed-in visitor sees it (with the image
+    limits), others are redirected away. ExHentai is visited once for igneous. Cookies only, never a user name and
+    password: the sign-in site sits entirely behind a Cloudflare check the server cannot pass."""
+    cfg = config.load()
+    if not (cfg.get("eh_member_id") and cfg.get("eh_pass_hash")):
+        return {"ok": False, "exhentai": False, "error": "没填 ipb_member_id 和 ipb_pass_hash"}
     try:
         async with _sem:
-            r = await _send("POST", LOGIN, {"Referer": "https://forums.e-hentai.org/"}, data=form)
-        status, text = r.status_code, r.text
-        member, hash_ = _set_cookie(r, "ipb_member_id"), _set_cookie(r, "ipb_pass_hash")
-        challenged = _cf_challenge(status, r.headers, text)
-    except httpx.HTTPError:
-        challenged = True          # 连不上也试试 FlareSolverr（它用自己的网络）/ Unreachable: try FlareSolverr too
-        status, text, member, hash_ = 0, "", "", ""
-    if challenged:
-        cookies, status, text = await _solver_login(form)
-        member, hash_ = cookies.get("ipb_member_id", ""), cookies.get("ipb_pass_hash", "")
-        if not member and _cf_challenge(status, {}, text):
-            raise SourceError(502, "FlareSolverr 也没过登录页的 Cloudflare 验证：请用下面的“手动填 cookie”")
-    if not re.fullmatch(r"\d+", member) or not re.fullmatch(r"[0-9a-f]{32}", hash_):
-        raise _login_error(status, text)
-    config.save({"eh_member_id": member, "eh_pass_hash": hash_, "eh_igneous": ""})
-    forget()
-    ex_ok = False
-    try:
-        await _request("GET", "https://exhentai.org/")
-        ex_ok = bool(config.load().get("eh_igneous"))
-    except SourceError:
-        pass
-    return {"member_id": member, "exhentai": ex_ok}
+            r = await _send("GET", "https://e-hentai.org/home.php", {"Cookie": _cookies("e-hentai.org")})
+    except httpx.HTTPError as e:
+        hint = "；可以打开“直连 IP”试试" if not cfg.get("eh_direct") else ""
+        return {"ok": False, "exhentai": False, "error": f"连不上 e-hentai.org（{e.__class__.__name__}）{hint}"}
+    if r.status_code != 200 or "Image Limits" not in r.text:
+        return {"ok": False, "exhentai": False, "error": "cookie 不对或过期了：E-Hentai 没认出这个账号"}
+    ex_ok = bool(cfg.get("eh_igneous"))
+    if not ex_ok:
+        try:
+            await _request("GET", "https://exhentai.org/")
+            ex_ok = bool(config.load().get("eh_igneous"))
+        except SourceError:
+            pass
+    return {"ok": True, "exhentai": ex_ok, "error": ""}
 
 
 def _check_page(r: httpx.Response) -> str:

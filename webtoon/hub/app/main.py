@@ -430,8 +430,7 @@ async def panel_eh():
     return {k: cfg[k] for k in ("eh_on", "eh_site", "eh_direct", "eh_filter", "eh_cats", "eh_jpn_title", "eh_chunk",
                                 "eh_spread")} | {"signed_in": bool(cfg["eh_member_id"] and cfg["eh_pass_hash"]),
                                                  "igneous": bool(cfg["eh_igneous"]), "name": ehentai.name(),
-                                                 "cats": list(ehentai.CATS.items()),
-                                                 "solver": await ehentai.solver_ok()}
+                                                 "cats": list(ehentai.CATS.items())}
 
 
 class EhSettings(BaseModel):
@@ -465,22 +464,18 @@ async def panel_eh_set(body: EhSettings):
     for k in EH_COOKIES:
         if k in up:
             up[k] = "".join(ch for ch in up[k] if ch.isascii() and ch.isalnum())[:100]
+    # 换了账号又没给 igneous：旧的 igneous 属于旧账号，清掉让 ExHentai 重新发。/ A new account without igneous: the
+    # old igneous belongs to the old account, so clear it and let ExHentai hand out a new one.
+    if up.get("eh_member_id") and "eh_igneous" not in up and up["eh_member_id"] != config.load()["eh_member_id"]:
+        up["eh_igneous"] = ""
     config.save(up)
     ehentai.forget()          # 站点、过滤、标题语言变了，列表要重新取 / Site, filter or title language changed
-    return await panel_eh()
-
-
-class EhLogin(BaseModel):
-    user: str
-    password: str
-
-
-@app.post("/api/panel/eh/login")
-async def panel_eh_login(body: EhLogin):
-    """用 E-Hentai 账号密码登录，服务器只留下换回来的 cookie。/ Sign in with the E-Hentai account; the server keeps
-    only the cookies it gets back."""
-    r = await ehentai.sign_in(body.user.strip()[:100], body.password[:200])
-    return await panel_eh() | {"login": r}
+    out = await panel_eh()
+    if any(up.get(k) for k in EH_COOKIES):
+        # 填了 cookie 就当场试一次，告诉面板能不能用。/ Freshly entered cookies are tried at once.
+        out["check"] = await ehentai.verify()
+        out |= {"igneous": bool(config.load()["eh_igneous"])}
+    return out
 
 
 # ---- 设备接口 / Device API ----

@@ -45,7 +45,7 @@ docker compose up -d
 | --- | --- | --- |
 | `WEBTOON_PORT` | `8095` | 面板和设备接口在宿主机上的端口；被占用时改成别的 |
 | `WEBTOON_BIND` | `0.0.0.0` | 监听哪个地址；只想让本机访问（比如前面还有反向代理）就写 `127.0.0.1` |
-| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；写 `mihon,flaresolverr` 再加上 FlareSolverr，替插件过 [Cloudflare 验证](#cloudflare-验证)；只用 [E-Hentai 通道](#e-hentai-通道可选)并要登录账号时写 `flaresolverr`（登录页要过 Cloudflare 验证）；不写就只有 WEBTOON |
+| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；写 `mihon,flaresolverr` 再加上 FlareSolverr，替插件过 [Cloudflare 验证](#cloudflare-验证)；不写就只有 WEBTOON |
 | `MIHON_HEAP` | `768m` | Suwayomi 最多用的 Java 内存；插件多、图大时可以改成 `1g` |
 
 例如打开插件、换到 8096 端口：
@@ -143,12 +143,10 @@ hub 自己读 e-hentai.org（登录后也能读 exhentai.org），不经过插�
 
 > 成人内容。和上面一样只给自己用，不开放、不分享，遵守站点条款，别把请求间隔调小。
 
-**部署**：不登录的话什么都不用加。要登录账号，就得开 FlareSolverr：在 `docker-compose.yml` 旁边的 [`.env`](#env-设置可选) 里写 `COMPOSE_PROFILES=flaresolverr`（开了插件的写 `mihon,flaresolverr`），再 `docker compose up -d`。面板的 E-Hentai 页会显示 FlareSolverr 开没开。
-
 **打开**：面板 → E-Hentai → 勾“打开 E-Hentai 通道”→ 保存。设备或 App 在发现页点一次“刷新”，“来源”里就多一个 E-Hentai（有“人气”和“最新”）。
 
 - **直连 IP**：服务器连 e-hentai.org 报“连不上”（比如连接被重置）时打开。照 JHenTai 的“域名前置”，直接连站点的几个固定 IP，握手里不带域名，真域名只放在请求头里；这几个 IP 不验证证书。图片服务器和封面照常连。
-- **账号**：在“账号”里填 E-Hentai 用户名和密码登录。密码只发给 E-Hentai 换登录 cookie，服务器只保存 cookie（`data/config.json`），面板不回显。登录后图片额度更多；账号能进 ExHentai 时会顺便取好 `igneous`，站点就可以选 ExHentai。登录页所在的 forums.e-hentai.org 整站要过 Cloudflare 验证，服务器直接提交会被拦下，这时改由 [FlareSolverr](#cloudflare-验证) 的浏览器提交同一个表单，所以要在 `.env` 的 `COMPOSE_PROFILES` 里加上 `flaresolverr`（不开插件只写 `flaresolverr` 也行）。E-Hentai 有时要验证码，服务器没法代填，FlareSolverr 也过不去时也一样，这时在浏览器登录，把 `ipb_member_id`、`ipb_pass_hash`（和 `igneous`）粘贴到“手动填 cookie”里。
+- **账号（填 cookie）**：服务器没法替你输账号密码（登录页 forums.e-hentai.org 整站要过 Cloudflare 验证），所以在能打开 e-hentai.org 的浏览器里登录，再把 cookie 填进面板 → E-Hentai → 账号：开发者工具（F12）→ 存储 / 应用 → Cookie → e-hentai.org，或者网络里任意一个 e-hentai.org 请求的 Cookie 请求头。可以整段粘贴（Cookie 请求头或浏览器导出的 JSON 都行），面板自动挑出 `ipb_member_id`、`ipb_pass_hash`（和 `igneous`），别的忽略。保存时服务器拿它打开一次 e-hentai.org/home.php，告诉你能不能用；能用时顺便去 ExHentai 取 `igneous`，账号能进 ExHentai 的话站点就可以选 ExHentai。cookie 只存在服务器的 `data/config.json`，面板不回显。不登录也能用，登录后图片额度更多。
 - **默认过滤**：EH 搜索语法，加在每次搜索和“最新”后面，比如 `language:chinese$` 只看中文。“人气”不接受搜索，服务器按里面的 `标签:值` 筛（`-` 开头的排除词不管）。
 - **分类**：点灰的分类不显示（同人志、漫画、Cosplay……）。
 - **标题**：默认优先用日文 / 原文标题（汉化本的中文标题一般在这里），取消勾就用罗马字标题。

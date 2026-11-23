@@ -11,6 +11,7 @@ header nav a.on { background: var(--ink); color: var(--bg); }
 main { max-width: 980px; margin: 0 auto; padding: 16px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
 .narrow { max-width: 360px; margin: 15vh auto; }
+.card textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
 .gate input, .card input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
 .card input[type=number] { width: 90px; }
 .card h2 + p.muted { margin-top: -4px; }
