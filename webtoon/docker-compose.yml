@@ -16,6 +16,11 @@
 # 多起一个 FlareSolverr（无头 Chromium，再多占约 500 MB 内存）替插件过验证。
 # Some extension sites need a Cloudflare check (errors mention cloudflare / flaresolverr): use
 # COMPOSE_PROFILES=mihon,flaresolverr to add FlareSolverr (headless Chromium, about 500 MB more memory) to pass it.
+#
+# E-Hentai 通道（面板里打开，不用插件）要登录账号时也要 FlareSolverr（登录页要过 Cloudflare 验证）：不开插件就写
+# COMPOSE_PROFILES=flaresolverr。不登录不用加。
+# The E-Hentai channel (turned on in the panel, no extensions) also needs FlareSolverr to sign in (the sign-in page has
+# a Cloudflare check): without extensions use COMPOSE_PROFILES=flaresolverr. Not needed without signing in.
 services:
   hub:
     image: ghcr.io/bidabrain/treader-webtoon:latest
@@ -65,7 +70,8 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     container_name: webtoon-flaresolverr
     restart: unless-stopped
-    # 不映射端口：只有 suwayomi 在 compose 内网里访问它。/ No published port: only suwayomi reaches it inside compose.
+    # 不映射端口：只有 suwayomi 和 hub（E-Hentai 登录）在 compose 内网里访问它。/ No published port: only suwayomi
+    # and the hub (E-Hentai sign-in) reach it inside compose.
     environment:
       LOG_LEVEL: info
 

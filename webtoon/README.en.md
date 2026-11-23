@@ -26,7 +26,7 @@ You can also read on your phone: [webtoon/android](android/README.md) is a stand
 | --- | --- |
 | Machine | x86-64 Linux, a NAS, or a computer with Docker Desktop |
 | Network | Must be able to open webtoons.com (not reachable from mainland China) |
-| Memory | About 200 MB; a bit more while converting; about 1 GB more with plugin sources on |
+| Memory | About 200 MB; a bit more while converting; about 1 GB more with plugin sources on; about 500 MB more with FlareSolverr |
 | Disk | About 3–6 MB per episode; by default the cache is kept for 14 days with a 3 GB limit (adjustable in the panel) |
 
 ```bash
@@ -45,7 +45,7 @@ Open `http://server-IP:8095` and set the panel password on first visit (at least
 | --- | --- | --- |
 | `WEBTOON_PORT` | `8095` | Host port for the panel and the device API; change it if taken |
 | `WEBTOON_BIND` | `0.0.0.0` | Address to listen on; write `127.0.0.1` to allow access from this machine only (for example, behind a reverse proxy) |
-| `COMPOSE_PROFILES` | Not set | `mihon` also starts Suwayomi and turns on [plugin sources](#plugin-sources-optional); `mihon,flaresolverr` adds FlareSolverr to get plugins past [Cloudflare verification](#cloudflare-verification); unset means WEBTOON only |
+| `COMPOSE_PROFILES` | Not set | `mihon` also starts Suwayomi and turns on [plugin sources](#plugin-sources-optional); `mihon,flaresolverr` adds FlareSolverr to get plugins past [Cloudflare verification](#cloudflare-verification); `flaresolverr` alone when you only use the [E-Hentai channel](#e-hentai-channel-optional) and want to sign in (the sign-in page needs a Cloudflare check); unset means WEBTOON only |
 | `MIHON_HEAP` | `768m` | Maximum Java memory for Suwayomi; can be raised to `1g` with many plugins or large images |
 
 For example, to turn on plugins and switch to port 8096:
@@ -142,6 +142,8 @@ Failed episodes do not need to be fixed by hand: on the next "Check for updates"
 The hub reads e-hentai.org itself (and exhentai.org once signed in), without extensions or Suwayomi. It follows [EhViewer](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) and [JHenTai](https://github.com/jiangtian616/JHenTai): list pages only give gallery links; title, category, tags, page count and cover come from the official API; images come from each page's viewer, and a failed image server is retried once on another.
 
 > Adult content. As above: personal use only, not opened or shared, follow the site's terms and do not shorten the request delays.
+
+**Deployment**: nothing to add without signing in. To sign in you need FlareSolverr: put `COMPOSE_PROFILES=flaresolverr` (or `mihon,flaresolverr` with extensions) in the [`.env`](#env-settings-optional) next to `docker-compose.yml` and run `docker compose up -d`. The panel's E-Hentai page shows whether FlareSolverr is running.
 
 **Turn it on**: panel → E-Hentai → tick "打开 E-Hentai 通道" → save. Tap refresh once on the device or app store page and E-Hentai appears among the sources (with Popular and Latest).
 

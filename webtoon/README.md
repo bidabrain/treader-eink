@@ -26,7 +26,7 @@
 | --- | --- |
 | 机器 | x86-64 的 Linux、NAS 或装了 Docker Desktop 的电脑 |
 | 网络 | 能打开 webtoons.com（中国大陆打不开） |
-| 内存 | 约 200 MB；转换时多一点；开插件来源再加约 1 GB |
+| 内存 | 约 200 MB；转换时多一点；开插件来源再加约 1 GB；开 FlareSolverr 再加约 500 MB |
 | 磁盘 | 每话约 3～6 MB，缓存默认保留 14 天、上限 3 GB（面板里可调） |
 
 ```bash
@@ -45,7 +45,7 @@ docker compose up -d
 | --- | --- | --- |
 | `WEBTOON_PORT` | `8095` | 面板和设备接口在宿主机上的端口；被占用时改成别的 |
 | `WEBTOON_BIND` | `0.0.0.0` | 监听哪个地址；只想让本机访问（比如前面还有反向代理）就写 `127.0.0.1` |
-| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；写 `mihon,flaresolverr` 再加上 FlareSolverr，替插件过 [Cloudflare 验证](#cloudflare-验证)；不写就只有 WEBTOON |
+| `COMPOSE_PROFILES` | 不写 | 写 `mihon` 就同时启动 Suwayomi、打开[插件来源](#插件来源可选)；写 `mihon,flaresolverr` 再加上 FlareSolverr，替插件过 [Cloudflare 验证](#cloudflare-验证)；只用 [E-Hentai 通道](#e-hentai-通道可选)并要登录账号时写 `flaresolverr`（登录页要过 Cloudflare 验证）；不写就只有 WEBTOON |
 | `MIHON_HEAP` | `768m` | Suwayomi 最多用的 Java 内存；插件多、图大时可以改成 `1g` |
 
 例如打开插件、换到 8096 端口：
@@ -142,6 +142,8 @@ COMPOSE_PROFILES=mihon,flaresolverr
 hub 自己读 e-hentai.org（登录后也能读 exhentai.org），不经过插件，也不用开 Suwayomi。做法参考 [EhViewer](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) 和 [JHenTai](https://github.com/jiangtian616/JHenTai)：列表页只取画廊链接，标题、分类、标签、页数和封面用官方接口取；图片从每张的查看页取，图片服务器失败时换一台再试一次。
 
 > 成人内容。和上面一样只给自己用，不开放、不分享，遵守站点条款，别把请求间隔调小。
+
+**部署**：不登录的话什么都不用加。要登录账号，就得开 FlareSolverr：在 `docker-compose.yml` 旁边的 [`.env`](#env-设置可选) 里写 `COMPOSE_PROFILES=flaresolverr`（开了插件的写 `mihon,flaresolverr`），再 `docker compose up -d`。面板的 E-Hentai 页会显示 FlareSolverr 开没开。
 
 **打开**：面板 → E-Hentai → 勾“打开 E-Hentai 通道”→ 保存。设备或 App 在发现页点一次“刷新”，“来源”里就多一个 E-Hentai（有“人气”和“最新”）。
 

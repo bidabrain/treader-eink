@@ -122,7 +122,8 @@
       <form id="ehLoginForm" method="post" action="#" onsubmit="return false" class="card">
         <h2>账号</h2>
         <p id="ehSigned"></p>
-        <p class="muted">登录后图片额度更多，也能用 ExHentai。密码只发给 E-Hentai 换登录 cookie，服务器不保存密码。</p>
+        <p class="muted">登录后图片额度更多，也能用 ExHentai。密码只发给 E-Hentai 换登录 cookie，服务器不保存密码。登录页要过 Cloudflare 验证，要先开 FlareSolverr：在 <code>docker-compose.yml</code> 旁边的 <code>.env</code> 里让 <code>COMPOSE_PROFILES</code> 带上 <code>flaresolverr</code>（比如 <code>COMPOSE_PROFILES=flaresolverr</code>，开了插件的写 <code>mihon,flaresolverr</code>），再 <code>docker compose up -d</code>。不登录也能用 E-Hentai。</p>
+        <p id="ehSolver"></p>
         <input id="ehUser" autocomplete="username" placeholder="E-Hentai 用户名">
         <input id="ehPass" type="password" autocomplete="current-password" placeholder="密码">
         <button id="ehLogin">登录</button> <button id="ehLogout" class="ghost">退出登录</button>

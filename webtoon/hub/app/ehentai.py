@@ -224,6 +224,24 @@ def _login_error(status: int, text: str) -> SourceError:
     return SourceError(502, f"登录没成功（HTTP {status}）：{plain[:120] or '空白页'}")
 
 
+_solver_seen: tuple[float, bool] = (float("-inf"), False)
+
+
+async def solver_ok() -> bool:
+    """FlareSolverr 在不在（结果记 60 秒），面板用来提示登录前要不要先开它。/ Whether FlareSolverr is running
+    (cached 60 s); the panel uses it to say whether to turn it on before signing in."""
+    global _solver_seen
+    if time.time() - _solver_seen[0] < 60:
+        return _solver_seen[1]
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            ok = (await c.get(FLARESOLVERR + "/")).status_code == 200
+    except httpx.HTTPError:
+        ok = False
+    _solver_seen = (time.time(), ok)
+    return ok
+
+
 async def _solver_login(form: dict) -> tuple[dict[str, str], int, str]:
     """用 FlareSolverr 的浏览器提交登录表单，返回它拿到的 cookie、状态和网页。/ Submit the sign-in form from
     FlareSolverr's browser; returns its cookies, status and page."""

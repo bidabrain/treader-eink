@@ -430,7 +430,8 @@ async def panel_eh():
     return {k: cfg[k] for k in ("eh_on", "eh_site", "eh_direct", "eh_filter", "eh_cats", "eh_jpn_title", "eh_chunk",
                                 "eh_spread")} | {"signed_in": bool(cfg["eh_member_id"] and cfg["eh_pass_hash"]),
                                                  "igneous": bool(cfg["eh_igneous"]), "name": ehentai.name(),
-                                                 "cats": list(ehentai.CATS.items())}
+                                                 "cats": list(ehentai.CATS.items()),
+                                                 "solver": await ehentai.solver_ok()}
 
 
 class EhSettings(BaseModel):

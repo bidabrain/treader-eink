@@ -227,6 +227,8 @@ function showEh(r) {
   $('#ehFilter').value = r.eh_filter; $('#ehJpn').checked = r.eh_jpn_title; $('#ehChunk').value = r.eh_chunk;
   $('#ehSpread').value = r.eh_spread;
   $('#ehSigned').textContent = r.signed_in ? `已登录${r.igneous ? '（能用 ExHentai）' : ''}，现在用 ${r.name}` : `没登录，现在用 ${r.name}`;
+  $('#ehSolver').textContent = r.solver ? 'FlareSolverr：已开，可以登录' : 'FlareSolverr：没开，登录前先按上面说的打开（或用手动填 cookie）';
+  $('#ehSolver').className = r.solver ? 'muted' : 'err';
   ehCatsOff = r.eh_cats; ehCats = r.cats; drawEhCats();
 }
 loaders.eh = async () => showEh(await api('/api/panel/eh'));
