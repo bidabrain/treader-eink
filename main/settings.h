@@ -42,6 +42,10 @@ void app_settings_set_pickup_wake(bool on);
 /// 书库用封面网格（否则列表）。/ Library shows a cover grid (otherwise a list).
 bool app_settings_shelf_grid(void);
 void app_settings_set_shelf_grid(bool on);
+/// 快速翻页刷新：正文和页脚一次刷完、用 8 灰阶表；默认关（正常档）。
+/// / Fast page-turn refresh: body and footer in one pass with the 8-gray table; off by default (normal).
+bool app_settings_fast_turn(void);
+void app_settings_set_fast_turn(bool on);
 /// 阅读默认字号，36..72、步长 4，默认 48。/ Default reading size, 36..72 in steps of 4, initially 48.
 uint8_t app_settings_book_px(void);
 /// 无效字号恢复 48。/ Invalid sizes fall back to 48.

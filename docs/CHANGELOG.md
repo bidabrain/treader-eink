@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-23 · Treader 1.1.1
+
+- 设置 → 显示与阅读新增“翻页刷新”：正常（原来的效果）或快速。快速档正文和页脚一次刷完，并改用 8 级灰阶，翻一页快约四分之一，字边缘的灰阶少一些。
+  New Settings › Display & reading › Page refresh: Normal (as before) or Fast. Fast refreshes the text and footer in one pass with 8 gray levels, turning pages about a quarter faster with fewer gray steps on letter edges.
+
 ## 2026-11-23 · webtoon 服务器 0.3.2
 
 - E-Hentai 改成填 cookie 登录，去掉用户名密码登录：登录页整站要过 Cloudflare 验证，服务器和 FlareSolverr 都过不去，而且 FlareSolverr 会把提交的密码记进日志。在浏览器登录后，把 cookie 整段粘贴到面板（Cookie 请求头或浏览器导出的 JSON 都行），面板自动挑出要用的几项；保存时服务器当场试一次，告诉你能不能用，能用时顺便取好 ExHentai 的 igneous。

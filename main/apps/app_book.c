@@ -233,6 +233,9 @@ static sc7a20h_sensor_config_t s_sensor_config;
 static book_shake_gate_t s_shake;
 static EpdRect s_area;
 static enum EpdDrawMode s_mode = MODE_GL16;
+// 本次局刷用的波形表；快速翻页换成 8 灰阶表，刷完复原。/ Waveform for this area push; fast turns use the 8-gray
+// table and it resets after the push.
+static const EpdWaveform* s_wave = &E0470_WAVEFORM;
 static bool s_full;
 static bool s_reader_split;
 static int s_pressed_control = -1;
@@ -1230,7 +1233,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
     enum EpdDrawError err;
     if (redraw == APP_REDRAW_FULL || s_full) err = update_display_full(ctx->hl);
     else if (redraw == APP_REDRAW_AREA) {
-        err = update_display_area_with(ctx->hl, &E0470_WAVEFORM, s_mode, s_area);
+        err = update_display_area_with(ctx->hl, s_wave, s_mode, s_area);
         if (s_reader_split) {
             // 页码即时更新；百分比不变时轨道像素不变，DU不会擦掉整条轨道。
             // Page numbers stay current; unchanged percentages leave the track unchanged, so DU never wipes the whole track.
@@ -1253,6 +1256,7 @@ static bool present(app_ctx_t* ctx, app_redraw_t redraw) {
     s_full = false;
     s_reader_split = false;
     s_mode = MODE_GL16;
+    s_wave = &E0470_WAVEFORM;
     return true;
 }
 static app_redraw_t paint_reading(app_ctx_t* ctx, enum EpdDrawMode mode) {
@@ -1264,9 +1268,16 @@ static app_redraw_t paint_reading(app_ctx_t* ctx, enum EpdDrawMode mode) {
     else draw_reader(ctx->fb, s_page);
     unlock_draw();
     ESP_LOGI(TAG, "paint cached=%d ms=%lld", cached, (esp_timer_get_time() - started) / 1000);
-    s_area = reader_area();
-    s_reader_split = true;
     s_mode = mode;
+    if (mode == MODE_GL16 && app_settings_fast_turn() && !s_toolbar && !s_clear_confirm) {
+        // 快速档：正文和页脚一次刷完，用 8 灰阶 GL16。/ Fast: body and footer in one pass with the 8-gray GL16.
+        s_area = (EpdRect){0, 0, UI_LOCK_WIDTH, UI_LOCK_HEIGHT};
+        s_reader_split = false;
+        s_wave = &E0470_GRAY8_WAVEFORM;
+    } else {
+        s_area = reader_area();
+        s_reader_split = true;
+    }
     return APP_REDRAW_AREA;
 }
 static void loading_detail(app_ctx_t* ctx, const char* text, const char* detail) {

@@ -124,7 +124,7 @@ typedef struct {
 } row_t;
 
 enum {
-    R_SIZE, R_FONT, R_WALL, R_TURN,
+    R_SIZE, R_FONT, R_WALL, R_TURN, R_FTURN,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
@@ -137,6 +137,7 @@ static const row_t DISPLAY_ROWS[] = {
     {R_FONT, NULL, "字体", 262},
     {R_WALL, NULL, "锁屏壁纸", 334},
     {R_TURN, NULL, "翻页区域", 406},
+    {R_FTURN, NULL, "翻页刷新", 478},
 };
 // 看书时的翻页区域：名称和一句说明，顺序同 app_turn_zone_t。/ Reader tap zones: name and one-line note, in
 // app_turn_zone_t order.
@@ -342,6 +343,7 @@ static void row_value(int id, char* out, size_t cap) {
     case R_FONT: font_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_WALL: wall_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_TURN: snprintf(out, cap, "%s ›", TURN_NAMES[app_settings_turn_zone() % APP_TURN_ZONES]); break;
+    case R_FTURN: snprintf(out, cap, "%s ›", app_settings_fast_turn() ? "快速" : "正常"); break;
     case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
         char url[160];
@@ -1620,6 +1622,7 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     case R_FONT: ctx->request_app = &app_font_pick; return APP_REDRAW_NONE;
     case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
     case R_TURN: return open_page(P_TURN);
+    case R_FTURN: app_settings_set_fast_turn(!app_settings_fast_turn()); return APP_REDRAW_PAGE;
     case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
     case R_SIZE:
         // 换档后整页排版都变了，整屏重画。/ The whole layout changes with the size; redraw the full screen.

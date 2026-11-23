@@ -164,12 +164,23 @@ const EpdWaveform E0470_FULL_WAVEFORM = {
 };
 
 /* ---- 8 灰阶表 / 8-gray tables ---- */
-// GC16 / GL16 各 30 相，拿灰阶档数换速度。
-// / GC16 / GL16 30 phases each; trade gray steps for speed.
+// GC16 / GL16 各 30 相，拿灰阶档数换速度。GL16 同默认表一样用 RAM 副本补白底那 1 帧。
+// / GC16 / GL16 30 phases each; trade gray steps for speed. GL16 uses a RAM copy with the white-bg tick, like the
+// default table.
+static uint8_t e0470_gray8_gl16_live[E0470_GRAY8_GL16_FRAMES][16][4];
+static const EpdWaveformPhases e0470_gray8_gl16_live_phases = {
+    .phases = E0470_GRAY8_GL16_FRAMES,
+    .phase_times = NULL,
+    .luts = (const uint8_t*)&e0470_gray8_gl16_live[0],
+};
+static const EpdWaveformPhases* e0470_gray8_gl16_live_ranges[] = { &e0470_gray8_gl16_live_phases };
+static const EpdWaveformMode e0470_gray8_gl16_live_mode = {
+    .type = 5, .temp_ranges = 1, .range_data = &e0470_gray8_gl16_live_ranges[0],
+};
 static const EpdWaveformMode* e0470_gray8_modes[] = {
     &e0470_complete_du_mode,
     &e0470_gray8_gc16_mode,
-    &e0470_gray8_gl16_mode,
+    &e0470_gray8_gl16_live_mode,
 };
 
 const EpdWaveform E0470_GRAY8_WAVEFORM = {
@@ -250,4 +261,6 @@ void e0470_waveform_init(void) {
     memcpy(e0470_full_gl16_live, e0470_full_gl16_data, sizeof(e0470_full_gl16_live));
     e0470_gl16_white_tick(e0470_full_gl16_live, E0470_FULL_GL16_FRAMES);
     e0470_gl16_white_tick(e0470_gl16_data, E0470_GL16_FRAMES);
+    memcpy(e0470_gray8_gl16_live, e0470_gray8_gl16_data, sizeof(e0470_gray8_gl16_live));
+    e0470_gl16_white_tick(e0470_gray8_gl16_live, E0470_GRAY8_GL16_FRAMES);
 }
