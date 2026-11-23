@@ -146,7 +146,7 @@ hub 自己读 e-hentai.org（登录后也能读 exhentai.org），不经过插�
 **打开**：面板 → E-Hentai → 勾“打开 E-Hentai 通道”→ 保存。设备或 App 在发现页点一次“刷新”，“来源”里就多一个 E-Hentai（有“人气”和“最新”）。
 
 - **直连 IP**：服务器连 e-hentai.org 报“连不上”（比如连接被重置）时打开。照 JHenTai 的“域名前置”，直接连站点的几个固定 IP，握手里不带域名，真域名只放在请求头里；这几个 IP 不验证证书。图片服务器和封面照常连。
-- **账号**：在“账号”里填 E-Hentai 用户名和密码登录。密码只发给 E-Hentai 换登录 cookie，服务器只保存 cookie（`data/config.json`），面板不回显。登录后图片额度更多；账号能进 ExHentai 时会顺便取好 `igneous`，站点就可以选 ExHentai。E-Hentai 有时要验证码，服务器没法代填，这时在浏览器登录，把 `ipb_member_id`、`ipb_pass_hash`（和 `igneous`）粘贴到“手动填 cookie”里。
+- **账号**：在“账号”里填 E-Hentai 用户名和密码登录。密码只发给 E-Hentai 换登录 cookie，服务器只保存 cookie（`data/config.json`），面板不回显。登录后图片额度更多；账号能进 ExHentai 时会顺便取好 `igneous`，站点就可以选 ExHentai。登录页所在的 forums.e-hentai.org 整站要过 Cloudflare 验证，服务器直接提交会被拦下，这时改由 [FlareSolverr](#cloudflare-验证) 的浏览器提交同一个表单，所以要在 `.env` 的 `COMPOSE_PROFILES` 里加上 `flaresolverr`（不开插件只写 `flaresolverr` 也行）。E-Hentai 有时要验证码，服务器没法代填，FlareSolverr 也过不去时也一样，这时在浏览器登录，把 `ipb_member_id`、`ipb_pass_hash`（和 `igneous`）粘贴到“手动填 cookie”里。
 - **默认过滤**：EH 搜索语法，加在每次搜索和“最新”后面，比如 `language:chinese$` 只看中文。“人气”不接受搜索，服务器按里面的 `标签:值` 筛（`-` 开头的排除词不管）。
 - **分类**：点灰的分类不显示（同人志、漫画、Cosplay……）。
 - **标题**：默认优先用日文 / 原文标题（汉化本的中文标题一般在这里），取消勾就用罗马字标题。

@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-23 · webtoon 服务器 0.3.1
+
+- 修正 E-Hentai 账号登录总说“用户名或密码不对”：登录页所在的论坛整站要过 Cloudflare 验证，服务器的请求被拦下了。现在被拦时改由 FlareSolverr 的浏览器提交登录（`.env` 的 `COMPOSE_PROFILES` 里要有 `flaresolverr`），没开时提示怎么打开或手动填 cookie；其他失败也照实说原因。
+  Fixed E-Hentai sign-in always saying the user name or password was wrong: the forum hosting the sign-in page sits behind a Cloudflare check that blocked the server's request. A blocked sign-in now goes through FlareSolverr's browser (`flaresolverr` must be in `COMPOSE_PROFILES` in `.env`), and without it the error says how to turn it on or paste cookies by hand; other failures report their real cause.
+
 ## 2026-11-23 · webtoon 服务器 0.3.0
 
 - 新增 E-Hentai 通道：服务器自己读 e-hentai.org（登录后也能读 exhentai.org），不用插件。在面板的 E-Hentai 页打开后，设备和 App 的来源里多一个 E-Hentai，有人气、最新和搜索，可以设默认过滤（比如只看中文）和不显示的分类。一部画廊按张数切成几话（默认 80 张一话）。账号在面板里用用户名和密码登录，服务器只保存登录 cookie。服务器连不上 e-hentai.org 时可以打开“直连 IP”。图片额度用完或 IP 被暂时封了时，排着的话 10 分钟内直接失败。固件和 App 不用升级。

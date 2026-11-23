@@ -615,6 +615,47 @@ def test_eh_sign_in(monkeypatch):
         config.save({"eh_member_id": "", "eh_pass_hash": "", "eh_igneous": "", "eh_site": "e"})
 
 
+def test_eh_sign_in_through_flaresolverr(monkeypatch):
+    """论坛整站要过 Cloudflare 验证：改由 FlareSolverr 提交表单；它也不在时说清楚怎么办，不说密码不对。/ The forum
+    sits behind a Cloudflare check: FlareSolverr submits the form; without it the error says what to do instead of
+    blaming the password."""
+    async def send(method, url, headers, **kw):
+        return httpx.Response(403, text="<title>Just a moment...</title>", headers=[("cf-mitigated", "challenge")])
+
+    posted = []
+
+    async def solver(form):
+        posted.append(form["PassWord"])
+        if form["PassWord"] == "right":
+            return {"ipb_member_id": "7", "ipb_pass_hash": "b" * 32, "cf_clearance": "x"}, 200, "<p>Thanks</p>"
+        return {}, 200, "<div class='errorwrap'>Username or password incorrect</div>"
+
+    async def request(method, url, **kw):
+        return httpx.Response(200, text="x")
+
+    monkeypatch.setattr(ehentai, "_send", send)
+    monkeypatch.setattr(ehentai, "_request", request)
+    monkeypatch.setattr(ehentai, "FLARESOLVERR", "http://127.0.0.1:9")      # 没开 / Not running
+    try:
+        try:
+            asyncio.run(ehentai.sign_in("u", "right"))
+            raise AssertionError("expected SourceError")
+        except source.SourceError as e:
+            assert "flaresolverr" in str(e) and "手动填 cookie" in str(e)
+        monkeypatch.setattr(ehentai, "_solver_login", solver)
+        try:
+            asyncio.run(ehentai.sign_in("u", "wrong"))
+            raise AssertionError("expected SourceError")
+        except source.SourceError as e:
+            assert "用户名或密码不对" in str(e)
+        assert asyncio.run(ehentai.sign_in("u", "right"))["member_id"] == "7" and posted == ["wrong", "right"]
+        assert config.load()["eh_pass_hash"] == "b" * 32
+        err = ehentai._login_error(200, "<html><body>Something else happened</body></html>")
+        assert "HTTP 200" in str(err) and "Something else" in str(err)
+    finally:
+        config.save({"eh_member_id": "", "eh_pass_hash": "", "eh_igneous": ""})
+
+
 def test_device_api_ehentai(monkeypatch):
     _fake_eh(monkeypatch, filecount=30)
     monkeypatch.setattr(mihon, "_alive", (time.time(), False))
