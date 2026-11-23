@@ -21,7 +21,7 @@
   <header>
     <b>webtoon 面板</b><span id="ver" class="muted"></span>
     <nav>
-      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="device">设备与外网</a>
+      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="eh">E-Hentai</a><a data-tab="device">设备与外网</a>
       <a data-tab="settings">设置</a>
     </nav>
     <button id="logout" class="ghost">退出</button>
@@ -91,6 +91,51 @@
           </select></label>
         <button id="mSave">保存</button> <span id="mMsg" class="muted"></span>
       </div>
+    </section>
+
+    <section data-panel="eh" hidden>
+      <form id="ehForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>E-Hentai 通道</h2>
+        <p class="muted">服务器自己读 e-hentai.org（或 exhentai.org），不用插件。打开后设备和 App 的“来源”里多一个 E-Hentai。一部画廊按下面的张数切成几话，订阅后用“检查更新”下载。成人内容，只给自己用，请遵守站点条款。</p>
+        <label><input type="checkbox" id="ehOn"> 打开 E-Hentai 通道</label>
+        <label>站点
+          <select id="ehSite">
+            <option value="e">E-Hentai（不用登录）</option>
+            <option value="ex">ExHentai（要先登录）</option>
+          </select></label>
+        <label><input type="checkbox" id="ehDirect"> 直连 IP（服务器连不上 e-hentai.org、报“连不上”时打开）</label>
+        <h2>内容</h2>
+        <label>默认过滤（EH 搜索语法，加在每次搜索和“最新”后面，比如 <code>language:chinese$</code>）<input id="ehFilter" placeholder="language:chinese$"></label>
+        <p class="muted">显示的分类（点一下切换，灰的不显示）：</p>
+        <div id="ehCats" class="chips"></div>
+        <label><input type="checkbox" id="ehJpn"> 优先用日文 / 原文标题（汉化本的中文标题一般在这里）</label>
+        <label>一话几张 <input id="ehChunk" type="number" min="20" max="500">（太大的话设备等不及、文件太大）</label>
+        <label>跨页（横向的整张图）
+          <select id="ehSpread">
+            <option value="split_rtl">拆成两页，右页在前（日漫）</option>
+            <option value="split_ltr">拆成两页，左页在前</option>
+            <option value="rotate">旋转 90° 整页显示</option>
+            <option value="fit">整张缩小显示</option>
+          </select></label>
+        <button id="ehSave">保存</button> <span id="ehMsg" class="muted"></span>
+      </form>
+      <form id="ehLoginForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>账号</h2>
+        <p id="ehSigned"></p>
+        <p class="muted">登录后图片额度更多，也能用 ExHentai。密码只发给 E-Hentai 换登录 cookie，服务器不保存密码。</p>
+        <input id="ehUser" autocomplete="username" placeholder="E-Hentai 用户名">
+        <input id="ehPass" type="password" autocomplete="current-password" placeholder="密码">
+        <button id="ehLogin">登录</button> <button id="ehLogout" class="ghost">退出登录</button>
+        <span id="ehLoginMsg" class="muted"></span>
+        <details>
+          <summary class="muted">要验证码登录不了？手动填 cookie</summary>
+          <p class="muted">在浏览器登录 e-hentai.org 后，从开发者工具的 Cookie 里复制。留空的不改。</p>
+          <label>ipb_member_id <input id="ehMember" autocomplete="off"></label>
+          <label>ipb_pass_hash <input id="ehHash" type="password" autocomplete="off"></label>
+          <label>igneous（ExHentai 用，可留空） <input id="ehIgneous" type="password" autocomplete="off"></label>
+          <button id="ehCookieSave" class="ghost">保存 cookie</button>
+        </details>
+      </form>
     </section>
 
     <section data-panel="device" hidden>

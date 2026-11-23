@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-23 · webtoon 服务器 0.3.0
+
+- 新增 E-Hentai 通道：服务器自己读 e-hentai.org（登录后也能读 exhentai.org），不用插件。在面板的 E-Hentai 页打开后，设备和 App 的来源里多一个 E-Hentai，有人气、最新和搜索，可以设默认过滤（比如只看中文）和不显示的分类。一部画廊按张数切成几话（默认 80 张一话）。账号在面板里用用户名和密码登录，服务器只保存登录 cookie。服务器连不上 e-hentai.org 时可以打开“直连 IP”。图片额度用完或 IP 被暂时封了时，排着的话 10 分钟内直接失败。固件和 App 不用升级。
+  New E-Hentai channel: the server reads e-hentai.org itself (and exhentai.org once signed in), with no extension. Turned on in the panel's E-Hentai page, it adds E-Hentai to the device and app sources with Popular, Latest and search, a default filter (such as Chinese only) and hidden categories. Galleries are split into episodes by image count (80 per episode by default). Sign in with the user name and password in the panel; the server keeps only the sign-in cookies. Turn on Direct IP when the server cannot reach e-hentai.org. When the image quota runs out or the IP is temporarily banned, queued episodes fail at once for 10 minutes. No firmware or app update needed.
+
 ## 2026-11-22 · Treader 1.1.0
 
 - 漫画“检查更新”可以取消：更新中点“更新中”胶囊，变成“再点取消”，再点一下就停；没下好的话下次检查更新接着下。显示放大时“我的漫画”上面三个胶囊不再叠在一起。

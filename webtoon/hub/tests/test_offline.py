@@ -7,9 +7,14 @@ packing and the device API.
 """
 import asyncio
 import io
+import json
 import os
+import re
 import tempfile
+import time
 import zipfile
+
+import httpx
 
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
 
@@ -433,3 +438,252 @@ def test_cloudflare_pauses_source(monkeypatch):
     st = jobs.status("", "m2", 1, start=False)
     assert st["state"] == "error" and mihon.CF_FAIL_HINT in st["error"] and "分钟后再试" in st["error"]
     assert jobs.status("", "m3", 1, start=False)["state"] == "none"
+
+
+# ---- E-Hentai ----
+
+from app import ehentai  # noqa: E402
+
+EH_LIST = ('<table class="itg gltc"><tr><td><a href="https://e-hentai.org/g/4350546/5fc5383ad3/">A</a></td>'
+           '<td><a href="https://e-hentai.org/g/4350546/5fc5383ad3/">A again</a></td>'
+           '<td><a href="https://e-hentai.org/g/123/0439fa3666/">B</a></td></tr></table>'
+           '<a id="dnext" href="https://e-hentai.org/?f_search=x&amp;next=4350259">Next</a>')
+
+
+def _eh_gallery(gid, start, end):
+    return "".join(f'<a href="https://e-hentai.org/s/{i:010x}/{gid}-{i}"><div title="Page {i}: x.jpg"></div></a>'
+                   for i in range(start, end + 1))
+
+
+def test_eh_ids_and_parsing():
+    tid = ehentai.make_id(4350546, "5fc5383ad3")
+    assert len(tid) == 15 and ehentai.ID_RE.match(tid) and ehentai.split_id(tid) == (4350546, "5fc5383ad3")
+    assert jobs.is_eh(tid) and not jobs.is_mihon(tid) and jobs.is_mihon("m12") and jobs.is_ext(tid)
+    pairs, nxt = ehentai.parse_list(EH_LIST)
+    assert pairs == [(4350546, "5fc5383ad3"), (123, "0439fa3666")] and nxt == "4350259"
+    pages = ehentai.parse_pages(_eh_gallery(5, 1, 3) + _eh_gallery(5, 2, 2))
+    assert sorted(pages) == [1, 2, 3] and pages[2].endswith("/5-2")
+    img, nl = ehentai.parse_viewer('<img id="img" src="https://a.hath.network/h/x/_001.webp?a=1&amp;b=2" style="">'
+                                   '<a href="#" id="loadfail" onclick="return nl(\'41575-498733\')">Reload</a>')
+    assert img == "https://a.hath.network/h/x/_001.webp?a=1&b=2" and nl == "41575-498733"
+    assert ehentai.is_quota("https://ehgt.org/g/509.gif") and not ehentai.is_quota("https://x/509/a.webp")
+    assert ehentai.filter_tags('language:chinese$ female:"big breasts"$ -male:yaoi') == [
+        "language:chinese", "female:big breasts"]
+    assert ehentai.gallery_error('<div class="d">\n<p>Key missing, or incorrect key provided.</p>') == \
+        "Key missing, or incorrect key provided."
+
+
+def _fake_eh(monkeypatch, filecount=170):
+    """假的 E-Hentai：列表、gdata、每页 20 张的详情页、查看页、图片。/ A fake E-Hentai: lists, gdata, gallery pages
+    of 20, viewer pages and images."""
+    seen = []
+
+    class R:
+        def __init__(self, status=200, text="", content=b"", ctype="text/html", cookies=()):
+            self.status_code, self.text, self.content = status, text, content
+            self.headers = httpx.Headers([("content-type", ctype)] + [("set-cookie", c) for c in cookies])
+
+        def json(self):
+            return json.loads(self.text)
+
+    async def request(method, url, **kw):
+        seen.append(url)
+        if url == ehentai.API:
+            out = [{"gid": g, "token": t, "title": "[Group] Title &amp; more", "title_jpn": "标题", "category": "Manga",
+                    "thumb": "https://ehgt.org/t.webp", "uploader": "up", "posted": "1700000000",
+                    "filecount": str(filecount), "expunged": False,
+                    "tags": ["language:chinese", "artist:someone", "female:x"]} for g, t in kw["json"]["gidlist"]]
+            return R(text=json.dumps({"gmetadata": out}))
+        if "/popular" in url or ".org/?" in url or url.endswith(".org/"):
+            return R(text=EH_LIST.replace("next=4350259", "next=") if "next=" in url else EH_LIST)
+        m = re.search(r"/g/(\d+)/[0-9a-f]+/\?p=(\d+)", url)
+        if m:
+            p = int(m.group(2))
+            return R(text=_eh_gallery(int(m.group(1)), p * 20 + 1, min(filecount, p * 20 + 20)))
+        if "/s/" in url:
+            return R(text=f'<img id="img" src="https://img.hath.network/{url.rsplit("-", 1)[1]}.jpg" style="">')
+        if "hath.network" in url or "ehgt.org" in url:
+            return R(content=_img(800, 1200), ctype="image/jpeg")
+        raise AssertionError(url)
+
+    monkeypatch.setattr(ehentai, "_request", request)
+    ehentai.forget()
+    return seen
+
+
+def test_eh_title_chunks_and_images(monkeypatch):
+    seen = _fake_eh(monkeypatch, filecount=170)
+    config.save({"eh_chunk": 80})
+    tid = ehentai.make_id(4350546, "5fc5383ad3")
+    t = asyncio.run(ehentai.title(tid))
+    assert t["title"] == "标题" and t["author"] == "someone" and t["genre"] == "漫画" and t["done"]
+    assert [(e["no"], e["title"]) for e in t["episodes"]] == [(1, "第 1–80 张"), (2, "第 81–160 张"),
+                                                               (3, "第 161–170 张")]
+    seen.clear()
+    urls = asyncio.run(ehentai.images(tid, 2))
+    assert len(urls) == 80 and urls[0].endswith("-81") and urls[-1].endswith("-160")
+    # 只翻需要的详情页：第 0 页（量每页几张）和 4～7 页。/ Only the needed gallery pages: page 0 (to learn the page
+    # size) and pages 4-7.
+    assert sorted(int(u.rsplit("=", 1)[1]) for u in seen if "?p=" in u) == [0, 4, 5, 6, 7]
+    config.save({"eh_jpn_title": False})
+    ehentai.forget()
+    assert asyncio.run(ehentai.title(tid))["title"] == "[Group] Title & more"
+    config.save({"eh_jpn_title": True})
+
+
+def test_eh_get_image_retries_and_quota(monkeypatch):
+    calls = []
+
+    async def page(url):
+        calls.append(url)
+        return ('<img id="img" src="https://bad.hath.network/x.jpg" style="">'
+                "<a onclick=\"return nl('9-9')\">r</a>") if "nl=" not in url else \
+            '<img id="img" src="https://ehgt.org/g/509.gif" style="">'
+
+    async def download(url):
+        if "bad" in url:
+            raise source.SourceError(502, "取图失败（HTTP 500）")
+        return await real(url)
+
+    real = ehentai._download
+    monkeypatch.setattr(ehentai, "_page", page)
+    monkeypatch.setattr(ehentai, "_download", download)
+    try:
+        asyncio.run(ehentai.get_image("https://e-hentai.org/s/0000000001/5-1", pace=False))
+        raise AssertionError("expected SourceError")
+    except source.SourceError as e:
+        assert e.status == 509 and ehentai.is_blocking(str(e))
+    assert calls == ["https://e-hentai.org/s/0000000001/5-1", "https://e-hentai.org/s/0000000001/5-1?nl=9-9"]
+
+
+def test_eh_direct_ip(monkeypatch):
+    """直连 IP：连的是表里的 IP、Host 头是真域名，坏的 IP 换下一个。/ Direct IPs: the connection goes to a table IP
+    with the real domain in Host, and a failing IP moves on to the next."""
+    tried = []
+
+    class Fake:
+        async def request(self, method, url, headers=None, **kw):
+            tried.append((str(url.host), headers.get("Host")))
+            if len(tried) == 1:
+                raise httpx.ConnectError("reset")
+            return httpx.Response(200, text="ok")
+
+    monkeypatch.setattr(ehentai, "client", lambda direct=False: Fake())
+    monkeypatch.setattr(ehentai, "_bad_ip", {})
+    monkeypatch.setattr(ehentai, "_next_ip", {})
+    config.save({"eh_direct": True})
+    try:
+        r = asyncio.run(ehentai._send("GET", "https://e-hentai.org/popular", {}))
+    finally:
+        config.save({"eh_direct": False})
+    assert r.status_code == 200
+    assert tried == [("172.66.132.196", "e-hentai.org"), ("172.66.140.62", "e-hentai.org")]
+    assert "172.66.132.196" in ehentai._bad_ip and ehentai._ips("e-hentai.org")[-1] == "172.66.132.196"
+
+
+def test_eh_sign_in(monkeypatch):
+    async def send(method, url, headers, **kw):
+        if kw["data"]["PassWord"] == "right":
+            return httpx.Response(200, text="ok", headers=[
+                ("set-cookie", "ipb_member_id=42; path=/; domain=.e-hentai.org"),
+                ("set-cookie", "ipb_pass_hash=" + "a" * 32 + "; path=/"), ("set-cookie", "ipb_session_id=x")])
+        if kw["data"]["PassWord"] == "captcha":
+            return httpx.Response(200, text="The captcha was not entered correctly")
+        return httpx.Response(200, text="Username or password incorrect")
+
+    async def request(method, url, **kw):
+        ehentai._keep_igneous(httpx.Response(200, text="x", headers=[("set-cookie", "igneous=abc123; path=/")]))
+        return httpx.Response(200, text="x")
+
+    monkeypatch.setattr(ehentai, "_send", send)
+    monkeypatch.setattr(ehentai, "_request", request)
+    try:
+        for pw, want in (("wrong", "用户名或密码不对"), ("captcha", "验证码")):
+            try:
+                asyncio.run(ehentai.sign_in("u", pw))
+                raise AssertionError("expected SourceError")
+            except source.SourceError as e:
+                assert want in str(e)
+        r = asyncio.run(ehentai.sign_in("u", "right"))
+        cfg = config.load()
+        assert r == {"member_id": "42", "exhentai": True}
+        assert cfg["eh_member_id"] == "42" and cfg["eh_pass_hash"] == "a" * 32 and cfg["eh_igneous"] == "abc123"
+        config.save({"eh_site": "ex"})
+        assert ehentai.ex() and ehentai.base() == "https://exhentai.org" and "igneous=abc123" in ehentai._cookies(
+            "exhentai.org") and ehentai._cookies("img.hath.network") == ""
+    finally:
+        config.save({"eh_member_id": "", "eh_pass_hash": "", "eh_igneous": "", "eh_site": "e"})
+
+
+def test_device_api_ehentai(monkeypatch):
+    _fake_eh(monkeypatch, filecount=30)
+    monkeypatch.setattr(mihon, "_alive", (time.time(), False))
+    with TestClient(main.app) as c:
+        h = {"x-webtoon-token": config.load()["device_token"]}
+        assert c.get("/api/device/v1/store?src=ehentai", headers=h).status_code == 404     # 没打开 / Off
+        c.post("/api/panel/setup", json={"password": "password123"})
+        c.post("/api/panel/login", json={"password": "password123"})
+        try:
+            config.save({"delay_min": 0, "delay_max": 0})
+            r = c.post("/api/panel/eh", json={"eh_on": True, "eh_chunk": 20, "eh_cats": 4}).json()
+            assert r["eh_on"] and not r["signed_in"] and "eh_pass_hash" not in r
+            assert c.post("/api/panel/eh", json={"eh_site": "x"}).status_code == 400
+            r = c.get("/api/device/v1/sources", headers=h).json()
+            assert [s["key"] for s in r["items"]] == ["webtoon", "ehentai"] and r["items"][1]["latest"]
+            # 人气榜在服务器上按分类筛：排除了漫画，就一部都不剩。/ The popular list is filtered on the server:
+            # with Manga excluded nothing is left.
+            assert c.get("/api/device/v1/store?src=ehentai&seg=pop", headers=h).json()["items"] == []
+            c.post("/api/panel/eh", json={"eh_cats": 0})
+            r = c.get("/api/device/v1/store?src=ehentai&seg=latest", headers=h).json()
+            tid = r["items"][0]["id"]
+            assert len(r["items"]) == 2 and r["items"][0]["src"] == "E-Hentai" and jobs.is_eh(tid)
+            assert c.get(f"/api/device/v1/search?src=ehentai&q=abc", headers=h).json()["items"][0]["id"] == tid
+            t = c.get(f"/api/device/v1/title/{tid}?lang=mihon", headers=h).json()
+            assert [e["no"] for e in t["episodes"]] == [1, 2] and t["latest"] == 2
+            r = c.post("/api/device/v1/check", headers=h, json={"titles": [{"id": tid, "last": 1}]}).json()
+            assert [e["no"] for e in r["titles"][0]["new"]] == [2]
+            assert c.get(f"/api/device/v1/cover/{tid}.jpg", headers=h).status_code == 200
+            for _ in range(100):
+                st = c.get(f"/api/device/v1/episode/{tid}/2?lang=mihon", headers=h).json()
+                if st["state"] != "pending":
+                    break
+                asyncio.run(asyncio.sleep(0.05))
+            assert st["state"] == "ready", st
+            z = zipfile.ZipFile(io.BytesIO(c.get(f"/api/device/v1/episode/{tid}/2.cbz", headers=h).content))
+            assert len([n for n in z.namelist() if n.endswith(".jpg")]) == 10
+            assert jobs.cbz_path(ehentai.LANG, tid, 2).exists()
+            assert c.get("/api/device/v1/episode/mezzzzzzzzzzzzz/1", headers=h).status_code in (400, 200)
+        finally:
+            config.save({"eh_on": False, "eh_chunk": 80, "eh_cats": 0, "delay_min": 0.4, "delay_max": 1.2})
+
+
+def test_eh_quota_pauses_source(monkeypatch):
+    calls = []
+    a, b = ehentai.make_id(1, "0000000001"), ehentai.make_id(2, "0000000002")
+
+    async def info(lang, tid):
+        return {"title": tid, "author": "", "episodes": [], "src": "E-Hentai" if jobs.is_eh(tid) else "B"}
+
+    async def convert_(key, meta):
+        calls.append(key[1])
+        if key[1] == a:
+            raise source.SourceError(509, ehentai.QUOTA_HINT)
+
+    monkeypatch.setattr(jobs, "_info", info)
+    monkeypatch.setattr(jobs, "_convert", convert_)
+    monkeypatch.setattr(jobs, "_cf_block", {})
+
+    async def run():
+        task = asyncio.create_task(jobs.worker())
+        await asyncio.sleep(0)
+        for tid in (a, b, "m3"):
+            jobs.status("", tid, 1)
+        while not jobs._queue.empty() or len(calls) + 1 < 3:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)
+        task.cancel()
+
+    asyncio.run(run())
+    assert calls == [a, "m3"]
+    st = jobs.status("", b, 1, start=False)
+    assert st["state"] == "error" and "额度" in st["error"] and "分钟后再试" in st["error"]

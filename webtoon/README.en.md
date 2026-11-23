@@ -137,6 +137,26 @@ Failed episodes do not need to be fixed by hand: on the next "Check for updates"
 
 **Limitation**: if Suwayomi's data (the Docker volume) is wiped, title IDs are reassigned. The hub then refuses to download old IDs (returns 409, to avoid downloading a different title), and subscribed plugin titles must be subscribed again on the device.
 
+## E-Hentai channel (optional)
+
+The hub reads e-hentai.org itself (and exhentai.org once signed in), without extensions or Suwayomi. It follows [EhViewer](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) and [JHenTai](https://github.com/jiangtian616/JHenTai): list pages only give gallery links; title, category, tags, page count and cover come from the official API; images come from each page's viewer, and a failed image server is retried once on another.
+
+> Adult content. As above: personal use only, not opened or shared, follow the site's terms and do not shorten the request delays.
+
+**Turn it on**: panel → E-Hentai → tick "打开 E-Hentai 通道" → save. Tap refresh once on the device or app store page and E-Hentai appears among the sources (with Popular and Latest).
+
+- **Direct IP**: turn it on when the server cannot reach e-hentai.org (for example the connection is reset). Like JHenTai's domain fronting, it connects to the site's fixed IPs with no domain in the handshake and the real domain only in the request header; certificates are not verified for those IPs. Image servers and covers connect as usual.
+- **Account**: sign in with your E-Hentai user name and password under Account. The password only goes to E-Hentai in exchange for sign-in cookies; the server keeps only the cookies (`data/config.json`) and the panel never shows them. Signing in raises the image quota; if the account can enter ExHentai, `igneous` is fetched too and the site can be switched to ExHentai. E-Hentai sometimes asks for a captcha the server cannot fill in: sign in in a browser and paste `ipb_member_id`, `ipb_pass_hash` (and `igneous`) under the manual cookie fields.
+- **Default filter**: EH search syntax added to every search and to Latest, such as `language:chinese$` for Chinese only. Popular takes no search, so the server filters it by the `tag:value` words (words starting with `-` are ignored).
+- **Categories**: grayed-out categories are hidden (Doujinshi, Manga, Cosplay…).
+- **Title**: the Japanese / original title is preferred by default (translated galleries usually carry the Chinese title there); untick for the romanized title.
+- **Images per episode**: a gallery is split into episodes of this many images (default 80, named "第 1–80 张"); a short one is a single "全本". A device waits at most 6 minutes per episode and takes CBZs up to 60 MB, so do not set it too high.
+- **Spreads**: as with extension sources, the first few images decide between a tall strip and one image per page, and wide spreads follow this setting.
+
+**Title ids**: 15 alphanumerics starting with `me` (`me` plus the gallery gid and token in base 36). They start with `m`, so the firmware and app treat them as extension titles with no update; the token rides in the id, so the server keeps no lookup table.
+
+**Errors**: when the image quota runs out (509), the server's IP is temporarily banned or ExHentai is not signed in, the channel's queued episodes fail at once for 10 minutes instead of each being tried. The quota recovers over time and is larger when signed in.
+
 ## Device API
 
 Every request needs the header `X-Webtoon-Token: <令牌>` (the device token). `lang` is the language edition (`zh-hant` Traditional Chinese, `en`, `es`, `fr`, `de`, `th`, `id`), default `zh-hant`; `zh=s` (default) converts Traditional text to Simplified, `zh=t` leaves it as is. Title IDs: official titles are numbers (`8420`), amateur Canvas titles are prefixed with `c` (`c1060813`).
@@ -152,7 +172,7 @@ Every request needs the header `X-Webtoon-Token: <令牌>` (the device token). `
 | `GET /api/device/v1/episode/{id}/{no}` | `{state:"ready",size}` / `{state:"pending",done,total}` (original image progress) / `{state:"error",error}`; starts converting if not converted yet. The device asks again every few seconds |
 | `GET /api/device/v1/episode/{id}/{no}.cbz` | The converted CBZ: grayscale pages numbered in order from `0001.jpg` (uncompressed ZIP) plus `ComicInfo.xml` |
 
-Plugin sources: add `src=<来源 key>` (the source key) to `store` and `search` (defaults to `webtoon` when omitted). In that case `seg` can only be `pop` (Popular) or `latest` (Latest), and `keys` is empty; each item has an extra `src` field (the source name), and `likes` is 0. Plugin title IDs are `m` followed by a number (such as `m12`). `title`, `cover`, `check` and `episode` all dispatch automatically by ID prefix and ignore `lang` and `zh`, so a single `check` can include both WEBTOON and plugin titles. A plugin title's `title` has two extra fields: `src` (the source name) and `error` (the reason when a plugin refresh failed but older data exists).
+Plugin sources: add `src=<来源 key>` (the source key) to `store` and `search` (defaults to `webtoon` when omitted). In that case `seg` can only be `pop` (Popular) or `latest` (Latest), and `keys` is empty; each item has an extra `src` field (the source name), and `likes` is 0. Plugin title IDs are `m` followed by a number (such as `m12`). `title`, `cover`, `check` and `episode` all dispatch automatically by ID prefix and ignore `lang` and `zh`, so a single `check` can include both WEBTOON and plugin titles. With the E-Hentai channel on, `sources` has an `ehentai` item after `webtoon` (`latest` and `nsfw` true); `src=ehentai` works like an extension source, and its title IDs start with `me`. A plugin title's `title` has two extra fields: `src` (the source name) and `error` (the reason when a plugin refresh failed but older data exists).
 
 Errors return `{"detail": "原因"}` (the reason); 401 means the token is wrong.
 
@@ -183,7 +203,7 @@ docker build -t treader-webtoon:dev webtoon/hub
 docker run --rm -v "$PWD/webtoon/hub:/srv" -w /srv treader-webtoon:dev sh -c "pip -q install pytest && python -m pytest -q tests"
 ```
 
-Offline tests, no network: parsing (synthetic web page fragments), page cutting (synthetic long strips, where cut points must land in blank space; regular comics one image per page, spread splitting and rotation, telling vertical scroll from single pages), packing, the device API (a stand-in data source, including plugin sources and checking for updates with both kinds of titles mixed), the plugin episode number table (first numbering, appending new chapters, back-filled chapters, duplicate versions, reversed source order) and cache cleanup.
+Offline tests, no network: parsing (synthetic web page fragments), page cutting (synthetic long strips, where cut points must land in blank space; regular comics one image per page, spread splitting and rotation, telling vertical scroll from single pages), packing, the device API (a stand-in data source, including plugin sources and checking for updates with both kinds of titles mixed), the plugin episode number table (first numbering, appending new chapters, back-filled chapters, duplicate versions, reversed source order), the E-Hentai channel (ids, list / gallery / viewer page parsing, splitting by image count while fetching only the needed gallery pages, switching image servers, pausing after 509, direct-IP failover, sign-in) and cache cleanup.
 
 ## Layout
 
@@ -192,6 +212,7 @@ Offline tests, no network: parsing (synthetic web page fragments), page cutting 
 | `hub/app/source.py` | Reads webtoons.com: Discover lists, search, details, free episodes, original image URLs for each episode; a website redesign only needs changes here |
 | `hub/app/convert.py` | Original images → e-ink pages: scaling, grayscale, cutting in blank space (vertical scroll) or one image per page (regular comics), CBZ packing, covers |
 | `hub/app/mihon.py` | Plugin sources: Suwayomi GraphQL calls, the episode number table, plugin and repository management |
+| `hub/app/ehentai.py` | E-Hentai channel: lists, the official API, splitting galleries into episodes, image fetching, direct IP, sign-in |
 | `hub/app/jobs.py` | Conversion queue (one episode at a time) and cache cleanup |
 | `hub/app/main.py` | Panel and device API |
 | `hub/app/tunnel.py`, `auth.py` | Cloudflare tunnel, panel password and device token (same as rednote) |

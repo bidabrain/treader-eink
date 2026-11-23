@@ -16,7 +16,7 @@ CACHE_DIR = DATA / "cache"
 CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8095"))
-VERSION = "0.2.4"
+VERSION = "0.3.0"
 BASE = os.environ.get("WEBTOON_BASE", "https://www.webtoons.com").rstrip("/")
 MOBILE = os.environ.get("WEBTOON_MOBILE", "https://m.webtoons.com").rstrip("/")
 
@@ -49,6 +49,21 @@ DEFAULTS: dict[str, Any] = {
     "mihon_order": [],
     "mihon_dedupe": True,
     "mihon_spread": "split_rtl",
+    # E-Hentai 通道（ehentai.py）：开关、站点（e / ex）、直连 IP、登录 cookie、默认搜索过滤（EH 搜索语法）、排除的分类
+    # （f_cats 位）、优先日文标题、一话几张、跨页怎么放。
+    # E-Hentai channel (ehentai.py): switch, site (e / ex), direct IP, sign-in cookies, default search filter (EH search
+    # syntax), excluded categories (f_cats bits), prefer the Japanese title, images per episode, and spread layout.
+    "eh_on": False,
+    "eh_site": "e",
+    "eh_direct": False,
+    "eh_member_id": "",
+    "eh_pass_hash": "",
+    "eh_igneous": "",
+    "eh_filter": "",
+    "eh_cats": 0,
+    "eh_jpn_title": True,
+    "eh_chunk": 80,
+    "eh_spread": "split_rtl",
 }
 
 _lock = threading.Lock()

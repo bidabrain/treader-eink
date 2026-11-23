@@ -7,9 +7,10 @@ card and the device asks whether there are new episodes.
 The panel is LAN only: requests arriving through Cloudflare (CF-Connecting-IP) may only reach /api/device/.
 
 只拉网页上公开免费的话；自己部署、只给自己用，不提供公共服务。开了插件功能时，编号以 m 开头的作品走 mihon.py
-（Suwayomi 运行的 Mihon 插件）。
+（Suwayomi 运行的 Mihon 插件）；以 me 开头的走 ehentai.py（面板里打开的 E-Hentai 通道）。
 Only free public episodes are fetched; self-hosted for personal use, never a public service. With the plugin feature
-on, titles whose id starts with m go through mihon.py (Mihon extensions run by Suwayomi).
+on, titles whose id starts with m go through mihon.py (Mihon extensions run by Suwayomi); ids starting with me go
+through ehentai.py (the E-Hentai channel switched on in the panel).
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, convert, jobs, mihon, source, tunnel
+from . import auth, config, convert, ehentai, jobs, mihon, source, tunnel
 
 WEB = Path(__file__).parent / "web"
 LIST_MAX = 120
@@ -72,6 +73,9 @@ WEBTOON = "webtoon"     # 来源里 WEBTOON 自己的 key / WEBTOON's own key am
 def _check(lang: str, tid: str) -> str:
     """检查编号和语言，返回实际用的语言（插件作品一律是 mihon，设备发来的 lang 不管）。/ Validate the id and language
     and return the language actually used (always mihon for extension titles, whatever the device sent)."""
+    if jobs.is_eh(tid):
+        ehentai.split_id(tid)
+        return ehentai.LANG
     if jobs.is_mihon(tid):
         mihon._mid(tid)
         return mihon.LANG
@@ -104,7 +108,16 @@ def _cards(lang: str, items: list[dict], zh: str, limit: int) -> list[dict]:
     return out
 
 
+def _eh_on() -> None:
+    if not ehentai.on():
+        raise HTTPException(404, "E-Hentai 通道没打开（面板 → E-Hentai）")
+
+
 async def _store(lang: str, seg: str, key: str, zh: str, limit: int, src: str = WEBTOON) -> dict:
+    if src == ehentai.KEY:
+        _eh_on()
+        r = await ehentai.store(seg)
+        return {"seg": r["seg"], "key": "", "keys": [], "src": src, "items": _mcards(r["items"], limit)}
     if src != WEBTOON:
         r = await mihon.store(src, seg)
         return {"seg": r["seg"], "key": "", "keys": [], "src": src, "items": _mcards(r["items"], limit)}
@@ -120,6 +133,10 @@ def _mcards(items: list[dict], limit: int) -> list[dict]:
 
 
 async def _search(lang: str, q: str, zh: str, src: str = WEBTOON) -> dict:
+    if src == ehentai.KEY:
+        _eh_on()
+        r = await ehentai.search(q)
+        return {"q": r["q"], "src": src, "items": _mcards(r["items"], LIST_MAX)}
     if src != WEBTOON:
         r = await mihon.search(src, q)
         return {"q": r["q"], "src": src, "items": _mcards(r["items"], LIST_MAX)}
@@ -128,9 +145,9 @@ async def _search(lang: str, q: str, zh: str, src: str = WEBTOON) -> dict:
 
 
 async def _title(lang: str, tid: str, zh: str) -> dict:
-    if jobs.is_mihon(tid):
+    if jobs.is_ext(tid):
         _check(lang, tid)
-        t = await mihon.title(tid)
+        t = await (ehentai.title(tid) if jobs.is_eh(tid) else mihon.title(tid))
         return {k: t[k] for k in ("id", "title", "author", "genre", "summary", "done", "latest", "src", "error")} | {
             "episodes": [{"no": e["no"], "title": e["title"], "date": e["date"]} for e in t["episodes"]]}
     t = await source.title(lang, tid)
@@ -142,13 +159,19 @@ async def _title(lang: str, tid: str, zh: str) -> dict:
 
 
 async def _cover(lang: str, tid: str) -> FileResponse:
-    if jobs.is_mihon(tid):
+    if jobs.is_eh(tid):
+        lang = _check(lang, tid)
+        try:
+            url = "" if jobs.cover_path(lang, tid).exists() else await ehentai.cover_url(tid)
+        except source.SourceError:
+            url = ""
+    elif jobs.is_mihon(tid):
         lang, url = _check(lang, tid), mihon.cover_url(tid)
     elif not source.ID_RE.match(tid) or not source.LANG_RE.match(lang):
         raise HTTPException(400, "路径不对")
     else:
         url = _covers.get((lang, tid), "")
-    if not url and not jobs.cover_path(lang, tid).exists():
+    if not url and not jobs.is_ext(tid) and not jobs.cover_path(lang, tid).exists():
         try:
             url = (await source.title(lang, tid))["cover"]
         except source.SourceError:
@@ -321,6 +344,8 @@ async def tunnel_set(body: TunnelBody):
 
 async def _sources(for_device: bool) -> dict:
     items = [{"key": WEBTOON, "name": "WEBTOON", "lang": "", "latest": False, "nsfw": False}]
+    if ehentai.on():
+        items.append({"key": ehentai.KEY, "name": ehentai.name(), "lang": "", "latest": True, "nsfw": True})
     on = await mihon.available()
     if on:
         items += await mihon.sources(for_device)
@@ -392,6 +417,71 @@ async def panel_mihon_renumber(tid: str):
     return {"forgot": n, "title": t}
 
 
+# ---- 面板：E-Hentai / Panel: E-Hentai ----
+
+EH_COOKIES = ("eh_member_id", "eh_pass_hash", "eh_igneous")
+
+
+@app.get("/api/panel/eh")
+async def panel_eh():
+    """E-Hentai 设置；cookie 只告诉有没有填，不回显。/ E-Hentai settings; cookies only report whether they are set,
+    never their values."""
+    cfg = config.load()
+    return {k: cfg[k] for k in ("eh_on", "eh_site", "eh_direct", "eh_filter", "eh_cats", "eh_jpn_title", "eh_chunk",
+                                "eh_spread")} | {"signed_in": bool(cfg["eh_member_id"] and cfg["eh_pass_hash"]),
+                                                 "igneous": bool(cfg["eh_igneous"]), "name": ehentai.name(),
+                                                 "cats": list(ehentai.CATS.items())}
+
+
+class EhSettings(BaseModel):
+    eh_on: bool | None = None
+    eh_site: str | None = None
+    eh_direct: bool | None = None
+    eh_member_id: str | None = None
+    eh_pass_hash: str | None = None
+    eh_igneous: str | None = None
+    eh_filter: str | None = None
+    eh_cats: int | None = None
+    eh_jpn_title: bool | None = None
+    eh_chunk: int | None = None
+    eh_spread: str | None = None
+
+
+@app.post("/api/panel/eh")
+async def panel_eh_set(body: EhSettings):
+    """没给的不动；cookie 给空字符串就是清掉。/ Missing fields stay; an empty string clears a cookie."""
+    up = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "eh_site" in up and up["eh_site"] not in ("e", "ex"):
+        raise HTTPException(400, "站点不对")
+    if "eh_spread" in up and up["eh_spread"] not in convert.SPREADS:
+        raise HTTPException(400, "跨页方式不对")
+    if "eh_chunk" in up and not 20 <= up["eh_chunk"] <= 500:
+        raise HTTPException(400, "一话张数要在 20～500 之间")
+    if "eh_cats" in up and not 0 <= up["eh_cats"] <= 1023:
+        raise HTTPException(400, "分类不对")
+    if "eh_filter" in up:
+        up["eh_filter"] = up["eh_filter"].strip()[:200]
+    for k in EH_COOKIES:
+        if k in up:
+            up[k] = "".join(ch for ch in up[k] if ch.isascii() and ch.isalnum())[:100]
+    config.save(up)
+    ehentai.forget()          # 站点、过滤、标题语言变了，列表要重新取 / Site, filter or title language changed
+    return await panel_eh()
+
+
+class EhLogin(BaseModel):
+    user: str
+    password: str
+
+
+@app.post("/api/panel/eh/login")
+async def panel_eh_login(body: EhLogin):
+    """用 E-Hentai 账号密码登录，服务器只留下换回来的 cookie。/ Sign in with the E-Hentai account; the server keeps
+    only the cookies it gets back."""
+    r = await ehentai.sign_in(body.user.strip()[:100], body.password[:200])
+    return await panel_eh() | {"login": r}
+
+
 # ---- 设备接口 / Device API ----
 
 def _device(request: Request) -> None:
@@ -459,7 +549,9 @@ async def device_check(request: Request, body: CheckBody):
     out = []
     for t in body.titles[:CHECK_MAX]:
         try:
-            if mihon.ID_RE.match(t.id):
+            if jobs.is_eh(t.id):
+                eps, cv = await ehentai.episodes(t.id), (lambda s: s)
+            elif mihon.ID_RE.match(t.id):
                 mihon.forget(t.id)       # 检查更新要最新的章节表 / An update check needs the current chapter list
                 eps, cv = await mihon.episodes(t.id), (lambda s: s)
             else:

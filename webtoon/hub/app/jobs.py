@@ -14,33 +14,53 @@ import os
 import time
 from pathlib import Path
 
-from . import config, convert, mihon, source
+from . import config, convert, ehentai, mihon, source
 
 _state: dict[tuple[str, str, int], dict] = {}
-# 插件来源名 → (时间, 错误)：一个来源卡在 Cloudflare 验证上后，这段时间里它排着的话直接失败，不再一话一话等
-# FlareSolverr 超时，别的来源不被拖住。/ Extension source name -> (time, error): once a source fails a Cloudflare
-# check, its queued episodes fail at once for a while instead of each waiting for FlareSolverr to time out, so other
-# sources are not held up.
+# 来源名 → (时间, 错误)：一个插件来源卡在 Cloudflare 验证上、或 E-Hentai 额度用完 / 封 IP / 没登录后，这段时间里它
+# 排着的话直接失败，不再一话一话等超时，别的来源不被拖住。/ Source name -> (time, error): once an extension source
+# fails a Cloudflare check, or E-Hentai runs out of quota / bans the IP / is not signed in, its queued episodes fail at
+# once for a while instead of each waiting to time out, so other sources are not held up.
 _cf_block: dict[str, tuple[float, str]] = {}
 CF_PAUSE = 600
 _queue: asyncio.Queue | None = None
 recent: list[dict] = []          # 面板显示最近做过的 / Recent jobs for the panel
 
 
+def is_eh(tid: str) -> bool:
+    return bool(ehentai.ID_RE.match(tid))
+
+
 def is_mihon(tid: str) -> bool:
+    return tid.startswith("m") and not is_eh(tid)
+
+
+def is_ext(tid: str) -> bool:
+    """不是 WEBTOON 的作品（插件或 E-Hentai）：编号以 m 开头。/ Not a WEBTOON title (extension or E-Hentai): the id
+    starts with m."""
     return tid.startswith("m")
 
 
 async def _info(lang: str, tid: str) -> dict:
+    if is_eh(tid):
+        return await ehentai.title(tid)
     return await (mihon.title(tid) if is_mihon(tid) else source.title(lang, tid))
 
 
 async def _images(lang: str, tid: str, no: int) -> list[str]:
+    if is_eh(tid):
+        return await ehentai.images(tid, no)
     return await (mihon.images(tid, no) if is_mihon(tid) else source.images(lang, tid, no))
 
 
 async def _fetch(tid: str, url: str, pace: bool = True) -> bytes:
+    if is_eh(tid):
+        return await ehentai.get_image(url, pace)
     return await (mihon.get_image(url, pace) if is_mihon(tid) else source.get_image(url, pace))
+
+
+def _blocking(tid: str, msg: str) -> bool:
+    return ehentai.is_blocking(msg) if is_eh(tid) else mihon.is_cloudflare(msg)
 
 
 def cbz_path(lang: str, tid: str, no: int) -> Path:
@@ -93,10 +113,11 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
     # JPEGs; only the strip being cut stays in memory.
     writer = convert.CbzWriter(tmp, cfg["quality"])
     try:
-        # WEBTOON 一定是竖长条；插件来源先看前几张图再决定。/ WEBTOON is always a tall strip; extension sources
-        # look at the first few images before deciding.
-        if is_mihon(tid):
-            pager = convert.AutoPager(cfg["page_w"], cfg["page_h"], sink=writer.add, spread=cfg["mihon_spread"])
+        # WEBTOON 一定是竖长条；插件和 E-Hentai 先看前几张图再决定。/ WEBTOON is always a tall strip; extension and
+        # E-Hentai sources look at the first few images before deciding.
+        spread = cfg["eh_spread"] if is_eh(tid) else cfg["mihon_spread"]
+        if is_ext(tid):
+            pager = convert.AutoPager(cfg["page_w"], cfg["page_h"], sink=writer.add, spread=spread)
         else:
             pager = convert.Pager(cfg["page_w"], cfg["page_h"], sink=writer.add)
         for i, url in enumerate(urls):
@@ -110,8 +131,8 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
         for page in rest:
             await asyncio.to_thread(writer.add, page)
         strip = not isinstance(pager, convert.AutoPager) or pager.strip
-        rtl = not strip and cfg["mihon_spread"] == "split_rtl"
-        await asyncio.to_thread(writer.close, {**meta, "no": no, "lang": "" if is_mihon(tid) else lang,
+        rtl = not strip and spread == "split_rtl"
+        await asyncio.to_thread(writer.close, {**meta, "no": no, "lang": "" if is_ext(tid) else lang,
                                                "format": "Webtoon" if strip else "",
                                                "manga": "YesAndRightToLeft" if rtl else "No"})
         os.replace(tmp, path)
@@ -128,7 +149,7 @@ async def worker() -> None:
         key = await _queue.get()
         lang, tid, no = key
         t0 = time.time()
-        meta = {"web": "" if is_mihon(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
+        meta = {"web": "" if is_ext(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
         src = ""
         try:
             try:
@@ -136,7 +157,7 @@ async def worker() -> None:
                 meta["web"] = meta["web"] or info.get("web", "")
                 ep = next((e for e in info["episodes"] if e["no"] == no), None)
                 meta.update(series=info["title"], author=info["author"], title=ep["title"] if ep else "")
-                src = info.get("src", "") if is_mihon(tid) else ""
+                src = info.get("src", "") if is_ext(tid) else ""
             except source.SourceError:
                 pass
             blocked = _cf_block.get(src) if src else None
@@ -146,7 +167,7 @@ async def worker() -> None:
             try:
                 await _convert(key, meta)
             except source.SourceError as e:
-                if src and mihon.is_cloudflare(str(e)):
+                if src and _blocking(tid, str(e)):
                     _cf_block[src] = (time.time(), str(e))
                 raise
             _state.pop(key, None)

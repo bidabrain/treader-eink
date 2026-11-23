@@ -70,7 +70,7 @@ async function loadSources() {
   const r = await api('/api/panel/mihon');
   srcs = r.items.filter((s) => !s.hidden);
   $('#mihonTab').hidden = !r.mihon;
-  $('#src').hidden = !r.mihon;
+  $('#src').hidden = srcs.length < 2;
   const cur = src();
   $('#src').innerHTML = srcs.map((s) => `<option value="${esc(s.key)}">${esc(s.name)}${s.lang ? ' · ' + esc(s.lang) : ''}</option>`).join('');
   if (srcs.some((s) => s.key === cur)) $('#src').value = cur;
@@ -125,7 +125,7 @@ async function openTitle(id) {
       `<li><span>#${e.no} ${esc(e.title)}</span><span><span class="muted" id="ep${e.no}"></span> <button class="ghost" data-no="${e.no}">试转</button></span></li>`).join('');
     $$('#dEps button').forEach((b) => { b.onclick = () => tryEpisode(id, b.dataset.no); });
     // 插件作品可以重新编号。/ Extension titles can be renumbered.
-    $('#dRenum').hidden = !id.startsWith('m');
+    $('#dRenum').hidden = !/^m\d/.test(id);
     $('#renumBtn').onclick = () => renumber(id);
     $('#detail').scrollIntoView({ behavior: 'smooth' });
   } catch (e) { $('#dTitle').textContent = e.message; }
@@ -192,7 +192,7 @@ $('#extLoad').onclick = () => {
 let srcAll = [];
 loaders.mihonSources = async () => {
   const r = await api('/api/panel/mihon');
-  srcAll = r.items.filter((s) => s.key !== 'webtoon');
+  srcAll = r.items.filter((s) => s.key !== 'webtoon' && s.key !== 'ehentai');
   $('#mDedupe').checked = r.mihon_dedupe; $('#mSpread').value = r.mihon_spread;
   drawSrcs();
 };
@@ -215,6 +215,44 @@ $('#mSave').onclick = async () => {
   } catch (e) { $('#mMsg').textContent = e.message; }
 };
 loaders.mihon = async () => { await loaders.mihonSources(); $('#extLoad').onclick(); };
+
+// ---- E-Hentai ----
+let ehCatsOff = 0, ehCats = [];
+function drawEhCats() {
+  $('#ehCats').innerHTML = ehCats.map(([n, bit]) => `<a class="chip${ehCatsOff & bit ? '' : ' on'}" data-bit="${bit}">${esc(n)}</a>`).join('');
+  $$('#ehCats a').forEach((a) => { a.onclick = () => { ehCatsOff ^= +a.dataset.bit; drawEhCats(); }; });
+}
+function showEh(r) {
+  $('#ehOn').checked = r.eh_on; $('#ehSite').value = r.eh_site; $('#ehDirect').checked = r.eh_direct;
+  $('#ehFilter').value = r.eh_filter; $('#ehJpn').checked = r.eh_jpn_title; $('#ehChunk').value = r.eh_chunk;
+  $('#ehSpread').value = r.eh_spread;
+  $('#ehSigned').textContent = r.signed_in ? `已登录${r.igneous ? '（能用 ExHentai）' : ''}，现在用 ${r.name}` : `没登录，现在用 ${r.name}`;
+  ehCatsOff = r.eh_cats; ehCats = r.cats; drawEhCats();
+}
+loaders.eh = async () => showEh(await api('/api/panel/eh'));
+async function ehPost(path, body, msgEl, note) {
+  $(msgEl).textContent = '处理中…';
+  try {
+    const r = await api(path, { method: 'POST', body });
+    showEh(r);
+    $('#ehPass').value = $('#ehMember').value = $('#ehHash').value = $('#ehIgneous').value = '';
+    $(msgEl).textContent = typeof note === 'function' ? note(r) : note; loadSources();
+  } catch (e) { $(msgEl).textContent = e.message; }
+}
+$('#ehSave').onclick = () => ehPost('/api/panel/eh', {
+  eh_on: $('#ehOn').checked, eh_site: $('#ehSite').value, eh_direct: $('#ehDirect').checked, eh_filter: $('#ehFilter').value,
+  eh_cats: ehCatsOff, eh_jpn_title: $('#ehJpn').checked, eh_chunk: Number($('#ehChunk').value), eh_spread: $('#ehSpread').value,
+}, '#ehMsg', '已保存');
+$('#ehLogin').onclick = () => ehPost('/api/panel/eh/login', { user: $('#ehUser').value, password: $('#ehPass').value },
+  '#ehLoginMsg', (r) => r.login.exhentai ? '已登录，ExHentai 也能用' : '已登录（这个账号还进不了 ExHentai）');
+$('#ehLogout').onclick = () => { if (confirm('退出 E-Hentai 登录？')) ehPost('/api/panel/eh', { eh_member_id: '', eh_pass_hash: '', eh_igneous: '' }, '#ehLoginMsg', '已退出'); };
+$('#ehCookieSave').onclick = () => {
+  const body = {};
+  if ($('#ehMember').value.trim()) body.eh_member_id = $('#ehMember').value.trim();
+  if ($('#ehHash').value.trim()) body.eh_pass_hash = $('#ehHash').value.trim();
+  if ($('#ehIgneous').value.trim()) body.eh_igneous = $('#ehIgneous').value.trim();
+  ehPost('/api/panel/eh', body, '#ehLoginMsg', '已保存 cookie');
+};
 
 // ---- 设备与外网 / Device and tunnel ----
 loaders.device = async () => {

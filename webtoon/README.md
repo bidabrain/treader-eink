@@ -137,6 +137,26 @@ COMPOSE_PROFILES=mihon,flaresolverr
 
 **限制**：Suwayomi 的数据（Docker 卷）如果被清空，作品编号会重新分配。这时 hub 会拒绝下载旧编号（返回 409，避免下到别的作品），已订阅的插件作品需要在设备上重新订阅。
 
+## E-Hentai 通道（可选）
+
+hub 自己读 e-hentai.org（登录后也能读 exhentai.org），不经过插件，也不用开 Suwayomi。做法参考 [EhViewer](https://github.com/xiaojieonly/Ehviewer_CN_SXJ) 和 [JHenTai](https://github.com/jiangtian616/JHenTai)：列表页只取画廊链接，标题、分类、标签、页数和封面用官方接口取；图片从每张的查看页取，图片服务器失败时换一台再试一次。
+
+> 成人内容。和上面一样只给自己用，不开放、不分享，遵守站点条款，别把请求间隔调小。
+
+**打开**：面板 → E-Hentai → 勾“打开 E-Hentai 通道”→ 保存。设备或 App 在发现页点一次“刷新”，“来源”里就多一个 E-Hentai（有“人气”和“最新”）。
+
+- **直连 IP**：服务器连 e-hentai.org 报“连不上”（比如连接被重置）时打开。照 JHenTai 的“域名前置”，直接连站点的几个固定 IP，握手里不带域名，真域名只放在请求头里；这几个 IP 不验证证书。图片服务器和封面照常连。
+- **账号**：在“账号”里填 E-Hentai 用户名和密码登录。密码只发给 E-Hentai 换登录 cookie，服务器只保存 cookie（`data/config.json`），面板不回显。登录后图片额度更多；账号能进 ExHentai 时会顺便取好 `igneous`，站点就可以选 ExHentai。E-Hentai 有时要验证码，服务器没法代填，这时在浏览器登录，把 `ipb_member_id`、`ipb_pass_hash`（和 `igneous`）粘贴到“手动填 cookie”里。
+- **默认过滤**：EH 搜索语法，加在每次搜索和“最新”后面，比如 `language:chinese$` 只看中文。“人气”不接受搜索，服务器按里面的 `标签:值` 筛（`-` 开头的排除词不管）。
+- **分类**：点灰的分类不显示（同人志、漫画、Cosplay……）。
+- **标题**：默认优先用日文 / 原文标题（汉化本的中文标题一般在这里），取消勾就用罗马字标题。
+- **一话几张**：一部画廊按这个张数切成几话（默认 80，话名是“第 1–80 张”），短的就一话“全本”。设备一话最多等 6 分钟、CBZ 最大 60 MB，所以别设太大。
+- **跨页**：和插件来源一样，看前几张图决定是长条还是一张一页，横向的跨页按这里的方式放。
+
+**作品编号**：`me` 开头的 15 个字母数字（`me` 加 36 进制的画廊 gid 和 token）。以 `m` 开头，所以固件和 App 当它是插件作品，不用升级；编号里带着 token，服务器不用记任何对照表。
+
+**出错**：图片额度用完（509）、服务器 IP 被暂时封了、ExHentai 没登录上时，这个通道排着的话 10 分钟内直接失败，不再一话一话去试。额度会慢慢恢复，登录后额度更多。
+
 ## 设备接口
 
 都要请求头 `X-Webtoon-Token: <令牌>`。`lang` 是语言版本（`zh-hant` 繁体中文、`en`、`es`、`fr`、`de`、`th`、`id`），默认 `zh-hant`；`zh=s`（默认）把繁体文字转成简体，`zh=t` 原样。作品编号：官方作品是数字（`8420`），业余 Canvas 作品前面加 `c`（`c1060813`）。
@@ -152,7 +172,7 @@ COMPOSE_PROFILES=mihon,flaresolverr
 | `GET /api/device/v1/episode/{id}/{no}` | `{state:"ready",size}` / `{state:"pending",done,total}`（原图进度）/ `{state:"error",error}`；没转过就开始转。设备隔几秒再问 |
 | `GET /api/device/v1/episode/{id}/{no}.cbz` | 转好的 CBZ：`0001.jpg` 起顺序编号的灰度页面（不压缩的 ZIP）加 `ComicInfo.xml` |
 
-插件来源：`store` 和 `search` 加上 `src=<来源 key>`（不带时默认是 `webtoon`）。这时 `seg` 只能是 `pop`（人气）或 `latest`（最新），`keys` 为空；每项多一个 `src` 字段（来源名），`likes` 是 0。插件作品的编号是 `m` 加数字（如 `m12`）。`title`、`cover`、`check`、`episode` 都按编号前缀自动分开处理，不看 `lang` 和 `zh`，所以一次 `check` 可以同时带 WEBTOON 和插件作品。插件作品的 `title` 多两个字段：`src`（来源名）和 `error`（插件刷新失败但有旧数据时的原因）。
+插件来源：`store` 和 `search` 加上 `src=<来源 key>`（不带时默认是 `webtoon`）。这时 `seg` 只能是 `pop`（人气）或 `latest`（最新），`keys` 为空；每项多一个 `src` 字段（来源名），`likes` 是 0。插件作品的编号是 `m` 加数字（如 `m12`）。`title`、`cover`、`check`、`episode` 都按编号前缀自动分开处理，不看 `lang` 和 `zh`，所以一次 `check` 可以同时带 WEBTOON 和插件作品。E-Hentai 通道打开时 `sources` 里 `webtoon` 后面多一项 `ehentai`（`latest` 为真、`nsfw` 为真），`src=ehentai` 的用法和插件来源一样，作品编号以 `me` 开头。插件作品的 `title` 多两个字段：`src`（来源名）和 `error`（插件刷新失败但有旧数据时的原因）。
 
 出错时返回 `{"detail": "原因"}`，401 是令牌不对。
 
@@ -181,7 +201,7 @@ docker build -t treader-webtoon:dev webtoon/hub
 docker run --rm -v "$PWD/webtoon/hub:/srv" -w /srv treader-webtoon:dev sh -c "pip -q install pytest && python -m pytest -q tests"
 ```
 
-离线测试，不联网：解析（合成的网页片段）、切页（合成的长条，切点要落在空白里；普通漫画一张一页、跨页拆分与旋转、长条与单页的判断）、打包、设备接口（替身数据源，包括插件来源和两种作品混在一起的检查更新）、插件话号表（首次编号、新章节追加、补档、重复版本、来源顺序反过来）、缓存清理。
+离线测试，不联网：解析（合成的网页片段）、切页（合成的长条，切点要落在空白里；普通漫画一张一页、跨页拆分与旋转、长条与单页的判断）、打包、设备接口（替身数据源，包括插件来源和两种作品混在一起的检查更新）、插件话号表（首次编号、新章节追加、补档、重复版本、来源顺序反过来）、E-Hentai 通道（编号、列表 / 详情页 / 查看页解析、按张数分话只翻需要的详情页、换图片服务器、509 后暂停、直连 IP 换 IP、登录）、缓存清理。
 
 ## 目录
 
@@ -190,6 +210,7 @@ docker run --rm -v "$PWD/webtoon/hub:/srv" -w /srv treader-webtoon:dev sh -c "pi
 | `hub/app/source.py` | 读 webtoons.com：发现页列表、搜索、详情、免费话、每话原图地址；网页改版只改这里 |
 | `hub/app/convert.py` | 原图 → 墨水屏页面：缩放、灰度、在空白处切页（长条）或一张一页（普通漫画）、打包 CBZ、封面 |
 | `hub/app/mihon.py` | 插件来源：调 Suwayomi 的 GraphQL、话号表、插件与仓库管理 |
+| `hub/app/ehentai.py` | E-Hentai 通道：列表、官方接口、画廊分话、取图、直连 IP、登录 |
 | `hub/app/jobs.py` | 转换队列（一次一话）和缓存清理 |
 | `hub/app/main.py` | 面板和设备接口 |
 | `hub/app/tunnel.py`、`auth.py` | Cloudflare 隧道、面板密码和设备令牌（和 rednote 一样） |
