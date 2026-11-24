@@ -232,6 +232,9 @@ typedef struct {
 /// 只检查不下载：向服务器取最新章节数，写进书架的 remote 字段。
 /// Check only: fetch the latest chapter counts into each shelf book's remote field; downloads nothing.
 esp_err_t tomato_sync_start_check(void);
+/// 只检查书架上的这一本，有新章节就直接下载（正在读就只记下）。/ Check just this shelf book and download new chapters
+/// at once (only noted when it is open in the reader).
+esp_err_t tomato_sync_start_check_one(const char* book_id);
 /// 下载书架上 remote 大于 chapters 的书；用上次检查的结果，不重新检查。
 /// Download shelf books whose remote exceeds chapters, using the last check; does not re-check.
 esp_err_t tomato_sync_start_update(void);
@@ -566,6 +569,12 @@ int32_t tomato_last_time_fix_ms(void);
 /// Go online just to sync the time once (regardless of the auto-time switch); see tomato_sync_get_status. Used by the
 /// authenticator's "sync time".
 esp_err_t tomato_sync_start_time(void);
+/// 用保存的 Wi-Fi 试连一次，连上就断开；会阻塞到连上或超时。后台在跑任务或传书占着 Wi-Fi 时直接失败。
+/// msg 写结果（连上了，或者连不上的原因）。设置里 Wi-Fi 页保存新网络后用。
+/// Try the saved Wi-Fi once and disconnect; blocks until connected or timed out. Fails at once while a background job
+/// runs or transfer holds Wi-Fi. msg gets the outcome (connected, or why not). Used by the Settings Wi-Fi page after
+/// saving a network.
+esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap);
 /// 判断一个路径是不是阅读器正开着的书；是的话更新会跳过它（阅读器还持有旧文件）。
 /// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
 typedef bool (*tomato_open_check_t)(const char* path);

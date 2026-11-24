@@ -15,14 +15,12 @@
 
 /// 功能对应的页面；TR_TAB_ALL 是“全部”页。/ Page for a feature; TR_TAB_ALL is the All page.
 const app_desc_t* tr_nav_tab_app(int tab);
-/// 页面属于哪个功能（番茄书城算番茄），不是功能页返回 -1。/ Which feature a page belongs to (the bookstore counts as
-/// Tomato), or -1 for other pages.
+/// 页面属于哪个功能（番茄书城和搜索算书库），不是功能页返回 -1。/ Which feature a page belongs to (the Tomato
+/// bookstore and search count as the library), or -1 for other pages.
 int tr_nav_app_tab(const app_desc_t* app);
 /// 由“全部”页实现：记下从哪个页面打开，用来标选中和 KEY3 返回。/ Implemented by the All page: remember the page it
 /// is opened from, for the selection mark and the KEY3 return.
 void tr_all_open_from(const app_desc_t* from);
-/// 记住番茄标签上次停在书架还是书城。/ Remember whether the Tomato tab was last on the shelf or the store.
-void tr_nav_set_tomato_page(const app_desc_t* page);
 /// 处理标签栏点击；点中别的标签就请求切页。返回是否点在标签栏上。
 /// Handle a tab-bar tap; request a switch for another tab. Returns whether the tap hit the bar.
 bool tr_nav_touch(app_ctx_t* ctx, uint16_t x, uint16_t y, tr_tab_t self);

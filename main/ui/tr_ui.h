@@ -41,7 +41,15 @@ extern "C" {
 #define TR_GRAY_SURFACE 0xE0     ///< #EEE 卡片、标签栏、圆按钮底 / Cards, tab bar, round buttons
 #define TR_GRAY_SELECTED 0xC0    ///< #CCC 选中的标签底、分段选中 / Selected tab indicator and segment
 #define TR_GRAY_OUTLINE 0x50     ///< #555 描边（DU 下按黑处理）/ Outlines (black under DU)
-#define TR_GRAY_SECONDARY 0x50   ///< #555 次要文字 / Secondary text
+/// 次要文字的灰度，随“文字深浅”变（标准 #555、深 #333、更深 #111）。/ Secondary text gray, following Text
+/// darkness (#555 standard, #333 dark, #111 darker).
+extern uint8_t tr_gray_secondary;
+#define TR_GRAY_SECONDARY tr_gray_secondary
+/// 文字深浅档数。/ Number of text-darkness levels.
+#define TR_TEXT_DEPTHS 3
+/// 套用文字深浅：正文字重（含阅读正文）、粗体字重和次要文字灰度。/ Apply a text-darkness level: body weight (reading
+/// text included), bold weight and the secondary-text gray.
+void tr_text_depth_apply(uint8_t level);
 
 /// 功能的身份（不是位置），也是“隐藏功能”位掩码里的位号。/ Feature identity, not position, and the bit number in the
 /// hidden-feature mask.
@@ -56,6 +64,16 @@ typedef enum {
 /// 书库和设置不能隐藏；书库还固定在底部第一格。/ The library and settings cannot be hidden; the library also stays in
 /// the first bar cell.
 #define TR_TABS_FIXED ((1u << TR_TAB_LIBRARY) | (1u << TR_TAB_SETTINGS))
+/// 已经并进别的功能、不再单独出现的功能（番茄并进了书库）。编号留着，存在 NVS 里的底部和隐藏设置不乱。
+/// Features merged into another one that no longer appear on their own (Tomato went into the library). The ids stay
+/// so the bar and hidden settings saved in NVS keep their meaning.
+#define TR_TABS_RETIRED (1u << TR_TAB_TOMATO)
+
+/// 功能在列表里的显示顺序（“全部”页、底部标签设置页）：书库第一，设置永远最后。功能号存在 NVS 里不能改，
+/// 后加的功能排在设置前面靠这张表。
+/// Display order of features in lists (the All page, the tab-bar settings page): the library first and settings always
+/// last. Feature ids are stored in NVS and cannot change, so features added later sit before settings through this table.
+extern const tr_tab_t TR_TAB_ORDER[TR_TAB_MAX];
 
 typedef enum {
     TR_ICON_HOME, TR_ICON_BOOKS, TR_ICON_TOMATO, TR_ICON_SETTINGS,

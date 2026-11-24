@@ -1,9 +1,10 @@
 /*
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
- * 中文：书库页的演示图（README / 网站预览用）：书架、阅读页（真实排版）、阅读工具条、特大显示的书架。
- * English: Demo shots of the library page (README / site): shelf, reader (real layout), reader toolbar, and the shelf
- * at the largest display size.
+ * 中文：书库页的演示图（README / 网站预览、设计文档用）：书架（带书城入口和番茄更新）、阅读页（真实排版）、阅读工具条、
+ * 特大显示的书架。
+ * English: Demo shots of the library page (README / site and the design doc): shelf (with the store entry and Tomato
+ * updates), reader (real layout), reader toolbar, and the shelf at the largest display size.
  * 冻结：只在电脑上跑。/ Frozen: host-only.
  */
 #include "app_book.c"   // 按 -I 找 / Found via -I
@@ -15,6 +16,11 @@
 esp_err_t nvs_open(const char* ns, nvs_open_mode_t m, nvs_handle_t* h) { (void)ns; (void)m; (void)h; return ESP_FAIL; }
 
 const char* hr_page = "demo_book";
+
+// 番茄后台任务的替身：没有任务在跑。/ Tomato worker stand-ins: no job running.
+bool tomato_sync_busy(void) { return false; }
+uint32_t tomato_sync_seq(void) { return 0; }
+void tomato_sync_get_status(tomato_status_t* out) { memset(out, 0, sizeof(*out)); }
 
 /* ---- 书的替身：一本一千多章的长篇 / Book stand-ins: a long novel of over a thousand chapters ---- */
 
@@ -102,6 +108,9 @@ static void hr_reset(void) {
     s_recent_sort = false;
     s_pressed_control = -1;
     s_text = NULL;
+    // 设了番茄服务器：右上角有“书城”，状态行右边是番茄更新。/ A Tomato server is set: "书城" at the top right and
+    // Tomato updates on the right of the status line.
+    s_tom_cfg = true;
     hr_fill_shelf();
     snprintf(s_continue, sizeof(s_continue), "%s", s_hr_books[0].path);
 }
@@ -134,6 +143,8 @@ void hr_scenes(void) {
 
     // 书架：继续阅读卡片、番茄更新、图片和文字封面。/ Shelf: continue card, Tomato updates, image and text covers.
     hr_shelf(&ctx, "shelf");
+    // 设计文档 ⑱ 书库里的番茄：书城入口和更新。/ Design doc ⑱ Tomato in the library: the store entry and updates.
+    hr_shelf(&ctx, "ui22");
     app_settings_set_shelf_grid(true);
     hr_shelf(&ctx, "shelf_grid");
     app_settings_set_shelf_grid(false);

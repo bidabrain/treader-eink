@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "esp_attr.h"
 #include "app.h"
 #include "cJSON.h"
 #include "esp_heap_caps.h"
@@ -194,7 +195,7 @@ static view_t s_zone_back;           // 专区帖子返回到哪 / Where zone po
 // 专区与关注 / Zones and follows
 static zone_t* s_zones;
 static int s_zone_count;
-static cat_t s_cats[CATS_MAX];
+EXT_RAM_BSS_ATTR static cat_t s_cats[CATS_MAX];
 static int s_cat_count, s_cat, s_zone_page;
 static zone_t* s_follows;
 static int s_follow_count;
@@ -394,6 +395,11 @@ static void drop_job(tomato_hupu_job_t job) {
 
 static bool job_running(tomato_hupu_job_t job) {
     return (s_has_pending && s_pending.job == job) || (s_job.job == job && ours_running());
+}
+
+// 当前分段“刷新”对应的任务。/ The job behind the current segment's refresh.
+static tomato_hupu_job_t seg_job(void) {
+    return s_seg == SEG_FEED ? TOMATO_HUPU_HOME : s_seg == SEG_FOLLOW ? TOMATO_HUPU_FOLLOW : TOMATO_HUPU_SCHEDULE;
 }
 
 static const char* loading_text(const char* what) {
@@ -885,7 +891,12 @@ static int list_pages_shown(void) {
 
 static void draw_header(uint8_t* fb) {
     tr_title(fb, "虎扑");
-    if (!tomato_sync_busy()) {
+    if (job_running(seg_job())) {
+        // 加载中点一下就取消，下好的留着。/ Tap while loading to cancel; what arrived stays.
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "加载中 · 取消", EPD_DRAW_ALIGN_RIGHT, false);
+    } else if (!tomato_sync_busy() || tomato_sync_preemptible()) {
+        // 别的页在浏览类拉取也能点：start_job 会先请它让路。/ Also tappable while another page's browsing job
+        // runs: start_job asks it to make way first.
         // 图标离右边至少原来那么远，标签更长（英文版）时再往左让。/ The icon keeps at least its old offset and moves left
         // further when the label is longer (English build).
         const int off = ttf_text_width_px(TR_S(30), "刷新") + TR_S(30);
@@ -1523,7 +1534,10 @@ static app_redraw_t turn(int dir) {
 
 static app_redraw_t tap_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (tr_nav_touch(ctx, x, y, TR_TAB_HUPU)) return APP_REDRAW_NONE;
-    if (ui_rect_hit(REFRESH_RECT, x, y) && !tomato_sync_busy()) return refresh();
+    if (ui_rect_hit(REFRESH_RECT, x, y)) {
+        if (job_running(seg_job())) { drop_job(seg_job()); return APP_REDRAW_PAGE; }
+        if (!tomato_sync_busy() || tomato_sync_preemptible()) return refresh();
+    }
     const int seg = tr_segment_hit(TR_SEGMENT_RECT, 3, x, y);
     if (seg >= 0) return seg == (int)s_seg ? APP_REDRAW_NONE : show_seg((seg_t)seg);
     const int pager = tr_pager_hit(PAGER_Y, x, y);

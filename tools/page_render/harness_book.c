@@ -15,6 +15,13 @@ esp_err_t nvs_open(const char* ns, nvs_open_mode_t m, nvs_handle_t* h) { (void)n
 
 const char* hr_page = "book";
 
+// 番茄后台任务的替身：书库的“检查更新”要读它的状态。/ Tomato worker stand-ins: the library's update check reads them.
+static bool s_hr_tom_busy;
+static tomato_status_t s_hr_tom_status;
+bool tomato_sync_busy(void) { return s_hr_tom_busy; }
+uint32_t tomato_sync_seq(void) { return 0; }
+void tomato_sync_get_status(tomato_status_t* out) { *out = s_hr_tom_status; }
+
 /* ---- 书和排版的替身 / Book and layout stand-ins ---- */
 
 static size_t s_hr_chapters = 1;
@@ -86,6 +93,13 @@ static void hr_reset(void) {
     s_recent_sort = false;
     s_pressed_control = -1;
     s_text = NULL;
+#ifndef HR_BASELINE
+    s_tom_cfg = false;
+    s_tom_op = TOM_NONE;
+    s_tom_note[0] = 0;
+    s_hr_tom_busy = false;
+    memset(&s_hr_tom_status, 0, sizeof(s_hr_tom_status));
+#endif
     hr_fill_shelf(9);
 }
 
@@ -103,6 +117,47 @@ void hr_scenes(void) {
     render(&ctx, hr_fb);
     hr_allow_fit();
     hr_shot("shelf_card_page2");
+
+#ifndef HR_BASELINE
+    // 番茄并进书库：右上角“书城”，状态行右边“下载 N 本更新”、检查中带“取消”、检查完的结果。/ Tomato in the library:
+    // "书城" at the top right, "下载 N 本更新" on the status line, checking with "取消", and a finished check's result.
+    hr_reset();
+    s_tom_cfg = true;
+    snprintf(s_continue, sizeof(s_continue), "%s", s_hr_books[1].path);
+    ctx.leaf = 0;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("shelf_tomato_pending");
+    hr_reset();
+    s_tom_cfg = true;
+    s_tom_op = TOM_CHECK;
+    s_hr_tom_busy = true;
+    s_hr_tom_status.current = 3;
+    s_hr_tom_status.total = 12;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("shelf_tomato_checking");
+    hr_reset();
+    s_tom_cfg = true;
+    s_shelf[1].new_chapters = 0;
+    snprintf(s_tom_note, sizeof(s_tom_note), "都是最新的");
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("shelf_tomato_done");
+    // 番茄书的详情：多一行“检查这本更新”。/ A Tomato book's detail: one more row, "检查这本更新".
+    hr_reset();
+    s_tom_cfg = true;
+    s_view = MANAGE;
+    s_managed = s_hr_books[1];
+    snprintf(s_managed.book_id, sizeof(s_managed.book_id), "7012345");
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("manage_tomato");
+    snprintf(s_manage_message, sizeof(s_manage_message), "进度清理失败，请重新尝试");
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("manage_tomato_message");
+#endif
 
     // 书架：搜索中（没有卡片），按最近。/ Shelf while searching (no card), sorted by recent.
     hr_reset();

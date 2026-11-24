@@ -22,6 +22,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "esp_attr.h"
 #include "app.h"
 #include "app_loop.h"
 #include "cJSON.h"
@@ -75,7 +76,7 @@ static view_t s_pass_back;       // 口令页返回到哪 / Where the passphrase
 static pass_mode_t s_pass;
 static job_t s_job;
 static dialog_t s_dialog;
-static tr_kbd_t s_kbd;
+EXT_RAM_BSS_ATTR static tr_kbd_t s_kbd;
 static char s_first[TR_AUTH_PASS_MAX + 1];   // 第一遍或旧口令 / First entry or the old passphrase
 static char s_second[TR_AUTH_PASS_MAX + 1];  // 新口令第一遍 / First entry of the new passphrase
 static char s_msg[120];

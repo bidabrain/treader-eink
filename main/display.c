@@ -18,6 +18,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "read_pico_board.h"
+#include "tomato.h"
 
 static const char* TAG = "read_pico";
 static bool s_bulk_io;
@@ -68,7 +69,11 @@ static void use_scan_for(const EpdWaveform* waveform, enum EpdDrawMode mode) {
     read_pico_epd_use_scan(fast ? READ_PICO_EPD_SCAN_FAST : READ_PICO_EPD_SCAN_FULL);
     // 高层刷新保持整屏扫描；两条63行可用队列在第127行入队前启动。
     // High-level updates scan the full panel; two 63-slot queues start before line 127 is enqueued.
-    epd_lcd_set_prefill_lines(s_bulk_io ? 127 : (fast ? 64 : 32));
+    // 后台联网时 TLS 和 Wi-Fi 缓冲都在 PSRAM，和喂行抢带宽，按大量 I/O 处理（书城边下封面边刷屏时实测欠载）。
+    // While the background is online, TLS and Wi-Fi buffers in PSRAM compete with line feeding, so treat it as bulk
+    // I/O (the bookstore underran while fetching covers during a refresh).
+    const bool busy = s_bulk_io || tomato_sync_busy();
+    epd_lcd_set_prefill_lines(busy ? 127 : (fast ? 64 : 32));
 }
 
 // 自上次 GC16 以来的差分刷（DU/GL16）次数。

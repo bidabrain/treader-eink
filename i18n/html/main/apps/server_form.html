@@ -1,4 +1,4 @@
-<!-- en of main/apps/server_form.html sha256:4ae28aec6c51893e846bb0b4a2c3ea6f3b73b1cc013d72ac070a3dd391dd5a79 -->
+<!-- en of main/apps/server_form.html sha256:5c2918b5ba1ee5a638e6c62b08a00fc3de488c7b17c400b06d277c27939823ca -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,12 +21,12 @@
 <body>
 <main>
   <h1>Read Pico · <span id="name">Server</span> settings</h1>
-  <p class="hint">Find the address and token in the <span id="panel">server</span> panel → Devices &amp; internet; copy them and paste them here.</p>
+  <p class="hint" id="hint">Find the address and token in the <span id="panel">server</span> panel → Devices &amp; internet; copy them and paste them here.</p>
   <form id="f">
     <h2>Server address</h2>
     <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:8091" required maxlength="150">
     <p class="hint">If you use a tunnel to reach it from outside, enter https://your-domain</p>
-    <h2>Device token</h2>
+    <h2 id="secret">Device token</h2>
     <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="Paste the device token">
     <p class="hint" id="tokenHint">Paste the device token shown in the panel.</p>
     <button id="go">Save</button>
@@ -35,14 +35,22 @@
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-let hasToken = false;
+let hasToken = false, optional = false, saved = '';
+// The device may replace texts (Tomato uses an optional device password).
+const esc = (t) => String(t).replace(/[<>&]/g, '');
 fetch('/form').then((r) => r.json()).then((d) => {
   if (d.name) { $('#name').textContent = d.name; document.title = 'Read Pico · ' + d.name + ' settings'; }
   if (d.panel) $('#panel').textContent = d.panel;
   if (d.example) $('#url').placeholder = d.example;
   if (d.url) $('#url').value = d.url;
+  if (d.hint) $('#hint').textContent = d.hint;
+  if (d.secret) $('#secret').textContent = d.secret;
+  if (d.secret_ph) $('#token').placeholder = d.secret_ph;
+  if (d.secret_hint) $('#tokenHint').textContent = d.secret_hint;
+  optional = !!d.optional;
+  saved = d.saved || '';
   hasToken = !!d.has_token;
-  if (hasToken) $('#tokenHint').textContent = 'A token is already saved and is not shown; leave this blank to keep it.';
+  if (hasToken) $('#tokenHint').textContent = d.secret_kept || 'A token is already saved and is not shown; leave this blank to keep it.';
 }).catch(() => {});
 $('#f').onsubmit = async (e) => {
   e.preventDefault();
@@ -51,7 +59,7 @@ $('#f').onsubmit = async (e) => {
   const out = $('#out');
   out.hidden = false;
   if (!/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">The address must start with http:// or https://</span>'; return; }
-  if (!token && !hasToken) { out.innerHTML = '<span class="err">Paste the device token</span>'; return; }
+  if (!token && !hasToken && !optional) { out.innerHTML = '<span class="err">Paste the device token</span>'; return; }
   $('#go').disabled = true;
   out.textContent = 'Saving…';
   try {
@@ -59,7 +67,7 @@ $('#f').onsubmit = async (e) => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
     $('#token').value = '';
-    out.innerHTML = '✓ Saved. The device will test the connection on its own and show the result on its screen.<br><span class="hint">You can close this page now.</span>';
+    out.innerHTML = '✓ ' + (saved ? esc(saved) : 'Saved. The device will test the connection on its own and show the result on its screen.') + '<br><span class="hint">You can close this page now.</span>';
   } catch (err) {
     out.innerHTML = '<span class="err">Save failed: ' + String(err.message).replace(/[<>&]/g, '') + '</span>';
     $('#go').disabled = false;

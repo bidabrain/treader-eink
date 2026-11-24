@@ -9,6 +9,7 @@
  * Changing panel waveforms voids the warranty.
  */
 
+#include "esp_attr.h"
 #include "e0470_epaper_waveform.h"
 
 #include <assert.h>
@@ -59,7 +60,10 @@ void e0470_follow_lut_build(int frames, uint8_t (*dst)[16][4]) {
 }
 
 /* ---- 跟随 DU：开机按公式生成 / Follow DU: built at boot ---- */
-static uint8_t e0470_follow_data[E0470_FOLLOW_FRAMES][16][4];
+// 波形表只在刷屏任务里每帧读 64 字节，不进中断、不走 DMA，放 PSRAM 给 Wi-Fi 和 TLS 腾内部 RAM。
+// / Waveform tables are read 64 bytes per frame in the draw task only (no ISR, no DMA); PSRAM keeps internal RAM
+// for Wi-Fi and TLS.
+EXT_RAM_BSS_ATTR static uint8_t e0470_follow_data[E0470_FOLLOW_FRAMES][16][4];
 static const EpdWaveformPhases e0470_follow_phases = {
     .phases = E0470_FOLLOW_FRAMES,
     .phase_times = NULL,
@@ -87,7 +91,7 @@ const EpdWaveform E0470_FOLLOW_WAVEFORM = {
 // the full path to black, light the full path to white. from is not sliced;
 // the source time series for the real start is reused, so leftover ink
 // from the last frame is also pushed to black or white.
-static uint8_t e0470_complete_du_data[E0470_FULL_DU_FRAMES][16][4];
+EXT_RAM_BSS_ATTR static uint8_t e0470_complete_du_data[E0470_FULL_DU_FRAMES][16][4];
 static const EpdWaveformPhases e0470_complete_du_phases = {
     .phases = E0470_FULL_DU_FRAMES,
     .phase_times = NULL,
@@ -138,7 +142,7 @@ static void e0470_gl16_white_tick(uint8_t (*data)[16][4], int frames) {
 /* ---- 完整表 / Full tables ---- */
 // DU 20 相，GC16 48 相；GL16 用 RAM 副本以便白底补 1 帧。
 // / DU 20, GC16 48; GL16 uses a RAM copy so the white-bg tick can be added.
-static uint8_t e0470_full_gl16_live[E0470_FULL_GL16_FRAMES][16][4];
+EXT_RAM_BSS_ATTR static uint8_t e0470_full_gl16_live[E0470_FULL_GL16_FRAMES][16][4];
 static const EpdWaveformPhases e0470_full_gl16_live_phases = {
     .phases = E0470_FULL_GL16_FRAMES,
     .phase_times = NULL,
@@ -167,7 +171,7 @@ const EpdWaveform E0470_FULL_WAVEFORM = {
 // GC16 / GL16 各 30 相，拿灰阶档数换速度。GL16 同默认表一样用 RAM 副本补白底那 1 帧。
 // / GC16 / GL16 30 phases each; trade gray steps for speed. GL16 uses a RAM copy with the white-bg tick, like the
 // default table.
-static uint8_t e0470_gray8_gl16_live[E0470_GRAY8_GL16_FRAMES][16][4];
+EXT_RAM_BSS_ATTR static uint8_t e0470_gray8_gl16_live[E0470_GRAY8_GL16_FRAMES][16][4];
 static const EpdWaveformPhases e0470_gray8_gl16_live_phases = {
     .phases = E0470_GRAY8_GL16_FRAMES,
     .phase_times = NULL,
@@ -193,8 +197,8 @@ const EpdWaveform E0470_GRAY8_WAVEFORM = {
 /* ---- 默认表 / Default tables ---- */
 // 完整灰阶表裁掉余量，开机算进 RAM。
 // / Trim slack from the full gray tables into RAM at boot.
-static uint8_t e0470_gc16_data[E0470_FULL_GC16_FRAMES][16][4];
-static uint8_t e0470_gl16_data[E0470_FULL_GL16_FRAMES][16][4];
+EXT_RAM_BSS_ATTR static uint8_t e0470_gc16_data[E0470_FULL_GC16_FRAMES][16][4];
+EXT_RAM_BSS_ATTR static uint8_t e0470_gl16_data[E0470_FULL_GL16_FRAMES][16][4];
 static const EpdWaveformPhases e0470_gc16_phases = {
     .phases = E0470_GC16_FRAMES,
     .phase_times = NULL,

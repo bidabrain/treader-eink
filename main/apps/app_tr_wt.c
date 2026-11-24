@@ -168,6 +168,8 @@ static uint32_t s_job_seq;
 static tomato_wt_req_t s_job;
 static tomato_status_t s_status;
 static bool s_step_loaded;
+// 已经提前生成过封面的列表页（-1 是还没有）。/ The list page whose covers were already built early (-1: none).
+static int s_covers_page = -1;
 static tomato_wt_req_t s_pending;
 static bool s_has_pending;
 
@@ -364,6 +366,7 @@ static bool start_req(const tomato_wt_req_t* r) {
     s_job_seq = tomato_sync_seq();
     s_job_active = true;
     s_step_loaded = false;
+    s_covers_page = -1;
     s_msg[0] = 0;
     tomato_sync_get_status(&s_status);
     return true;
@@ -389,6 +392,13 @@ static void start_job(const tomato_wt_req_t* req) {
 
 static bool job_running(tomato_wt_job_t job) {
     return (s_has_pending && s_pending.job == job) || (s_job.job == job && ours_running());
+}
+
+// 取消本页的一类任务：排队的丢掉，在跑的叫停。/ Cancel one of this page's jobs: drop it if queued, stop it if
+// running.
+static void drop_job(tomato_wt_job_t job) {
+    if (s_has_pending && s_pending.job == job) s_has_pending = false;
+    if (s_job.job == job && ours_running()) tomato_sync_cancel();
 }
 
 static const char* loading_text(const char* what) {
@@ -493,7 +503,8 @@ static void draw_back(uint8_t* fb, const char* title) {
 
 static void draw_refresh(uint8_t* fb, bool running) {
     if (running) {
-        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "加载中…", EPD_DRAW_ALIGN_RIGHT, false);
+        // 加载中点一下就取消。/ Tap while loading to cancel.
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "加载中 · 取消", EPD_DRAW_ALIGN_RIGHT, false);
     } else {
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - ttf_text_width_px(TR_S(30), "刷新") - TR_S(26), TR_S(116), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
@@ -508,7 +519,7 @@ static void draw_list(uint8_t* fb) {
         return;
     }
     const bool loading = job_running(TOMATO_WT_STORE) || job_running(TOMATO_WT_SEARCH);
-    draw_refresh(fb, loading && !s_step_loaded);
+    draw_refresh(fb, loading);
     // 搜索栏（Material 3 灰底胶囊）。/ Search bar (Material 3 gray capsule).
     const EpdRect bar = SEARCH_BAR;
     ui_fill_round_rect(fb, bar, bar.height / 2, TR_GRAY_SURFACE);
@@ -594,7 +605,7 @@ static void draw_detail(uint8_t* fb) {
     if (!s_detail_loaded) {
         tr_wrap(fb, TR_MARGIN, TR_S(200), CW, TR_S(30), TR_S(46),
                 loading ? loading_text("正在加载作品详情…") : s_msg[0] ? s_msg : "没取到详情，点右上角“刷新”再试。", 4);
-        if (!loading) draw_refresh(fb, false);
+        draw_refresh(fb, loading);
         return;
     }
     draw_refresh(fb, loading);
@@ -644,7 +655,9 @@ static void draw_detail(uint8_t* fb) {
     }
     tr_message(fb, TR_MARGIN, note_y, note_y - TR_S(14), CW, TR_S(24), line, EPD_DRAW_ALIGN_LEFT, false);
     if (s_subscribed) {
-        tr_pill(fb, detail_btn(0, 3), "检查更新", true, TR_S(28));
+        // 下载时这里就是停止键：下载不让路给别的功能，得能手动停。/ While downloading this is the stop button: a
+        // download never yields to other features, so it must be stoppable by hand.
+        tr_pill(fb, detail_btn(0, 3), updating ? "停止下载" : "检查更新", true, TR_S(28));
         tr_pill(fb, detail_btn(1, 3), "去我的漫画", false, TR_S(28));
         tr_pill(fb, detail_btn(2, 3), s_confirm_unsub ? "再点取消" : "取消订阅", s_confirm_unsub, TR_S(28));
     } else {
@@ -842,7 +855,16 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         return APP_REDRAW_NONE;
     }
-    if (ui_rect_hit(REFRESH_RECT, x, y)) { s_msg[0] = 0; request_list(); return APP_REDRAW_PAGE; }
+    if (ui_rect_hit(REFRESH_RECT, x, y)) {
+        if (job_running(TOMATO_WT_STORE) || job_running(TOMATO_WT_SEARCH)) {
+            drop_job(TOMATO_WT_STORE);
+            drop_job(TOMATO_WT_SEARCH);
+            return APP_REDRAW_PAGE;
+        }
+        s_msg[0] = 0;
+        request_list();
+        return APP_REDRAW_PAGE;
+    }
     if (s_src_count > 1 && ui_rect_hit(SRC_RECT, x, y)) return open_sources();
     if (ui_rect_hit(SEARCH_BAR, x, y)) return open_search();
     const int seg = tr_segment_hit(SEG_RECT, seg_count(), x, y);
@@ -903,13 +925,16 @@ static app_redraw_t tap_sources(uint16_t x, uint16_t y) {
 
 static app_redraw_t tap_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < TR_S(160) && x < TR_S(320)) return back_to_list();
-    if (ui_rect_hit(REFRESH_RECT, x, y) && !job_running(TOMATO_WT_TITLE)) return open_detail(s_id);
+    if (ui_rect_hit(REFRESH_RECT, x, y)) {
+        if (job_running(TOMATO_WT_TITLE)) { drop_job(TOMATO_WT_TITLE); return APP_REDRAW_PAGE; }
+        return open_detail(s_id);
+    }
     if (!s_detail_loaded) return APP_REDRAW_NONE;
     for (int i = 0; i < 3; i++) {
         if (!ui_rect_hit(detail_btn(i, 3), x, y)) continue;
         if (!s_subscribed) return subscribe(i);
         if (i == 0) {
-            if (tomato_wt_updating()) return APP_REDRAW_NONE;
+            if (tomato_wt_updating()) { tomato_sync_cancel(); return APP_REDRAW_PAGE; }
             s_confirm_unsub = false;
             start_update(s_id);
             return APP_REDRAW_PAGE;
@@ -990,6 +1015,20 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     // 下载进度变了：详情页更新那一行。/ Download progress moved: refresh the detail page's status line.
     if (busy && s_job.job == TOMATO_WT_UPDATE && s_view == V_DETAIL && prev.current != s_status.current)
         return APP_REDRAW_PAGE;
+    // 封面按列表顺序下：本页最后一本也轮过了，就先生成这一页的封面，不等后面的；生成完 book_cover_tick 刷一次。
+    // Covers download in list order: once this page's last title has had its turn, build this page's covers without
+    // waiting for the rest; book_cover_tick redraws once they are built.
+    if (busy && s_step_loaded && s_view == V_LIST && (s_job.job == TOMATO_WT_STORE || s_job.job == TOMATO_WT_SEARCH) &&
+        s_covers_page != s_page) {
+        const int per = grid_per();
+        const int end = (s_page + 1) * per < s_item_count ? (s_page + 1) * per : s_item_count;
+        if (s_status.current >= 1 + end) {
+            s_covers_page = s_page;
+            char cover[64];
+            for (int i = s_page * per; i < end; i++)
+                if (cover_file(s_items[i].id, cover, sizeof(cover))) book_cover_load(cover);
+        }
+    }
     if (busy) return APP_REDRAW_NONE;
     s_job_active = false;
     const bool ok = s_status.phase != TOMATO_FAILED;

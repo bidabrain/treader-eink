@@ -8,6 +8,7 @@
  * voids the warranty.
  */
 
+#include "esp_attr.h"
 #include "e0470_waveform_trim.h"
 
 #include <string.h>
@@ -83,7 +84,8 @@ int e0470_waveform_trim(
     }
 
     const uint8_t(*data)[16][4] = (const uint8_t(*)[16][4])src->luts;
-    static trimmed_seq_t seqs[16][16];
+    // 17 KB，只在开机生成波形时用，放 PSRAM。/ 17 KB used only while building waveforms at boot; kept in PSRAM.
+    EXT_RAM_BSS_ATTR static trimmed_seq_t seqs[16][16];
     int longest = 0;
 
     for (int to = 0; to < 16; to++) {

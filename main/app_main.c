@@ -96,6 +96,9 @@ void app_main(void) {
     ui_draw_full_image(framebuffer, loading_4bpp_bin_start);
     update_display_from_white(&hl);
 
+    // 字体加载前先定好文字深浅，加载时就用这一档的字重。/ Set text darkness before fonts load so they start at
+    // this level's weight.
+    tr_text_depth_apply(app_settings_text_depth());
     ttf_font_init();
 
     if (!hw.touch_ready) {

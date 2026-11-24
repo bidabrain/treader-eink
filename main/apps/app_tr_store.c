@@ -2,10 +2,11 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 书城：番茄标签页的第二个分页。频道和分类 → 分类榜单 → 书籍详情 → 下载到书库。
+ * 书城：书库右上角“书城”进来（番茄并进书库以后）。频道和分类 → 分类榜单 → 书籍详情 → 下载到书库。
  * 数据是 FanqieRankTracker 的榜单 JSON，联网交给 components/tomato 的后台任务，这里只读 TF 卡缓存。
  *
- * Bookstore: the Tomato tab's second segment. Channel and category -> rank list -> book detail -> download.
+ * Bookstore: opened from "书城" at the library's top right (Tomato merged into the library). Channel and category
+ * -> rank list -> book detail -> download.
  * Data is FanqieRankTracker rank JSON; the components/tomato task does the networking and this page reads
  * the TF card cache only.
  *
@@ -45,8 +46,10 @@
 #define CHIP_H TR_S(62)
 #define CHIP_GAP TR_S(12)
 #define CHIP_STEP TR_S(76)
-#define SEARCH_BAR (EpdRect){TR_MARGIN, TR_S(244), TR_W - 2 * TR_MARGIN, TR_S(80)}   // 搜索栏 / Search bar
-#define SEARCH_DY 104                                                  // 搜索栏让出来的高度 / Room the bar takes
+// 顶上是“‹ 书城”返回行，没有分段按钮了，搜索栏紧跟在下面。/ The top is the "‹ 书城" back row with no segment any
+// more; the search bar follows right below it.
+#define SEARCH_BAR (EpdRect){TR_MARGIN, TR_S(170), TR_W - 2 * TR_MARGIN, TR_S(80)}   // 搜索栏 / Search bar
+#define SEARCH_DY 30                                                   // 搜索栏让出来的高度 / Room the bar takes
 #define CHANNEL_Y TR_S(322 + SEARCH_DY)
 #define CATS_Y TR_S(430 + SEARCH_DY)
 #define RANK_TOP TR_S(176)
@@ -63,6 +66,7 @@
 #define DETAIL_BTN (EpdRect){TR_MARGIN, TR_H - 80 - TR_S(26 + 26 + 84), TR_W - 2 * TR_MARGIN, TR_S(84)}
 
 extern const app_desc_t app_tr_tomato;
+extern const app_desc_t app_book;
 // 番茄页下次进来直接打开搜索，返回时回书城（定义在 app_tr_tomato.c）。/ Make the Tomato page open its search on the
 // next entry and come back here on return (defined in app_tr_tomato.c).
 void tr_tomato_open_search(void);
@@ -278,9 +282,10 @@ static int layout_chips(EpdRect* rects, int* idx, int* page, int max, int* pages
 
 /* ---- 绘制 / Drawing ---- */
 
-static void draw_segment(uint8_t* fb) {
-    static const char* const LABELS[2] = {"书架", "书城"};
-    tr_segment(fb, TR_SEGMENT_RECT, LABELS, 2, 1);
+// 返回书库的标题行。/ Header row leading back to the library.
+static void draw_back_home(uint8_t* fb) {
+    tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
+    tr_text(fb, TR_S(96), TR_S(96), TR_S(40), "书城", EPD_DRAW_ALIGN_LEFT, true);
 }
 
 static const char* busy_text(void) {
@@ -289,8 +294,7 @@ static const char* busy_text(void) {
 }
 
 static void draw_home(uint8_t* fb) {
-    tr_title(fb, "番茄小说");
-    draw_segment(fb);
+    draw_back_home(fb);
     char line[96];
     const bool fetching = tomato_sync_busy() && s_op == OP_RANK;
     if (fetching) snprintf(line, sizeof(line), "%s", busy_text());
@@ -318,6 +322,9 @@ static void draw_home(uint8_t* fb) {
         const int off = ttf_text_width_px(TR_S(30), "刷新") + TR_S(30);
         tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - (off > TR_S(96) ? off : TR_S(96)), TR_S(274 + SEARCH_DY), false);
         tr_text(fb, TR_W - TR_MARGIN, TR_S(254 + SEARCH_DY), TR_S(30), "刷新", EPD_DRAW_ALIGN_RIGHT, false);
+    } else {
+        // 取榜单时同一位置换成“取消”。/ While fetching ranks the same spot reads "Cancel".
+        tr_text(fb, TR_W - TR_MARGIN, TR_S(254 + SEARCH_DY), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, true);
     }
     tr_pill(fb, (EpdRect){TR_MARGIN, CHANNEL_Y, TR_S(120), CHIP_H}, "男频", s_male, TR_S(30));
     tr_pill(fb, (EpdRect){TR_MARGIN + TR_S(134), CHANNEL_Y, TR_S(120), CHIP_H}, "女频", !s_male, TR_S(30));
@@ -473,7 +480,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     case V_RANK: draw_rank(fb); break;
     case V_DETAIL: draw_detail(fb); break;
     }
-    if (s_view != V_DETAIL) tr_tab_bar(fb, TR_TAB_TOMATO);
+    if (s_view != V_DETAIL) tr_tab_bar(fb, TR_TAB_LIBRARY);
 }
 
 /* ---- 操作 / Actions ---- */
@@ -574,11 +581,16 @@ static app_redraw_t turn_chips(int turn) {
 }
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 0) { ctx->request_app = &app_tr_tomato; return APP_REDRAW_NONE; }
+    if (y < TR_S(150) && x < TR_S(300)) { ctx->request_app = &app_book; return APP_REDRAW_NONE; }
     if (ui_rect_hit(SEARCH_BAR, x, y)) {
         tr_tomato_open_search();
         ctx->request_app = &app_tr_tomato;
         return APP_REDRAW_NONE;
+    }
+    if (y >= TR_S(240 + SEARCH_DY) && y < TR_S(310 + SEARCH_DY) && x > TR_W - TR_MARGIN - TR_S(160) &&
+        tomato_sync_busy() && s_op == OP_RANK) {
+        tomato_sync_cancel();
+        return APP_REDRAW_PAGE;
     }
     if (y >= TR_S(240 + SEARCH_DY) && y < TR_S(310 + SEARCH_DY) && x > TR_W - TR_MARGIN - TR_S(160) &&
         !(tomato_sync_busy() && s_op == OP_RANK)) {
@@ -654,9 +666,9 @@ static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t tap(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (s_view != V_DETAIL && tr_nav_touch(ctx, x, y, TR_TAB_TOMATO)) {
-        // 从书城点“番茄”标签回到书架。/ Tapping the Tomato tab from the store returns to the shelf.
-        if (!ctx->request_app) ctx->request_app = &app_tr_tomato;
+    if (s_view != V_DETAIL && tr_nav_touch(ctx, x, y, TR_TAB_LIBRARY)) {
+        // 从书城点“书库”标签回到书库。/ Tapping the library tab from the store returns to the library.
+        if (!ctx->request_app) ctx->request_app = &app_book;
         return APP_REDRAW_NONE;
     }
     switch (s_view) {
@@ -683,7 +695,7 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
     switch (s_view) {
     case V_DETAIL: drop_queued_download(); s_view = V_RANK; return APP_REDRAW_PAGE;
     case V_RANK: s_view = V_HOME; return APP_REDRAW_PAGE;
-    default: ctx->request_app = &app_tr_tomato; return APP_REDRAW_NONE;
+    default: ctx->request_app = &app_book; return APP_REDRAW_NONE;
     }
 }
 
@@ -761,7 +773,6 @@ static void on_enter(app_ctx_t* ctx) {
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(*s_shelf), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     static bool prefs_loaded;
     if (!prefs_loaded) { load_prefs(); prefs_loaded = true; }
-    tr_nav_set_tomato_page(&app_tr_store);
     book_cover_drop_pending();
     load_shelf();
     load_index();

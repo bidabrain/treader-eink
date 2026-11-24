@@ -237,7 +237,7 @@ static int draw_sample_lines(uint8_t* fb, int y, int spec_w, int n) {
         const ui_sample_line_t* line = &ui_sample_lines[i];
         char spec[16];
         snprintf(spec, sizeof(spec), "%d", line->px);
-        ttf_set_weight(400);
+        ttf_set_weight(ttf_base_weight());
         ui_text_vc(
             fb, UI_MARGIN, y + line->px / 2, UI_PX_CAPTION, spec,
             EPD_DRAW_ALIGN_LEFT, false
@@ -290,7 +290,7 @@ static void draw_page(uint8_t* fb, int leaf, bool time_samples) {
         return;
     }
 
-    ttf_set_weight(400);
+    ttf_set_weight(ttf_base_weight());
     const font_geom_t g = font_geom();
     const int leaves = leaf_count(g.per_page);
     leaf = clamp_leaf(leaf, leaves);
@@ -382,7 +382,7 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void font_on_exit(app_ctx_t* ctx) {
     (void)ctx;
-    ttf_set_weight(400);
+    ttf_set_weight(ttf_base_weight());
 }
 
 static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {

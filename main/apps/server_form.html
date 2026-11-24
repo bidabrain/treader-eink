@@ -20,12 +20,12 @@
 <body>
 <main>
   <h1>小纸 Pico · <span id="name">服务器</span>设置</h1>
-  <p class="hint">地址和令牌在 <span id="panel">服务器</span> 面板 → 设备与外网，复制后粘贴到这里。</p>
+  <p class="hint" id="hint">地址和令牌在 <span id="panel">服务器</span> 面板 → 设备与外网，复制后粘贴到这里。</p>
   <form id="f">
     <h2>服务器地址</h2>
     <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:8091" required maxlength="150">
     <p class="hint">在外面用隧道的话填 https://你的域名</p>
-    <h2>设备令牌</h2>
+    <h2 id="secret">设备令牌</h2>
     <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="粘贴设备令牌">
     <p class="hint" id="tokenHint">粘贴面板里显示的设备令牌。</p>
     <button id="go">保存</button>
@@ -34,14 +34,22 @@
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-let hasToken = false;
+let hasToken = false, optional = false, saved = '';
+// 设备可以换掉说明文字（番茄用设备密码，可以不填）。/ The device may replace texts (Tomato uses an optional device password).
+const esc = (t) => String(t).replace(/[<>&]/g, '');
 fetch('/form').then((r) => r.json()).then((d) => {
   if (d.name) { $('#name').textContent = d.name; document.title = '小纸 Pico · ' + d.name + '设置'; }
   if (d.panel) $('#panel').textContent = d.panel;
   if (d.example) $('#url').placeholder = d.example;
   if (d.url) $('#url').value = d.url;
+  if (d.hint) $('#hint').textContent = d.hint;
+  if (d.secret) $('#secret').textContent = d.secret;
+  if (d.secret_ph) $('#token').placeholder = d.secret_ph;
+  if (d.secret_hint) $('#tokenHint').textContent = d.secret_hint;
+  optional = !!d.optional;
+  saved = d.saved || '';
   hasToken = !!d.has_token;
-  if (hasToken) $('#tokenHint').textContent = '已经填过令牌，不显示原值；留空表示不改。';
+  if (hasToken) $('#tokenHint').textContent = d.secret_kept || '已经填过令牌，不显示原值；留空表示不改。';
 }).catch(() => {});
 $('#f').onsubmit = async (e) => {
   e.preventDefault();
@@ -50,7 +58,7 @@ $('#f').onsubmit = async (e) => {
   const out = $('#out');
   out.hidden = false;
   if (!/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">地址要以 http:// 或 https:// 开头</span>'; return; }
-  if (!token && !hasToken) { out.innerHTML = '<span class="err">请粘贴设备令牌</span>'; return; }
+  if (!token && !hasToken && !optional) { out.innerHTML = '<span class="err">请粘贴设备令牌</span>'; return; }
   $('#go').disabled = true;
   out.textContent = '正在保存…';
   try {
@@ -58,7 +66,7 @@ $('#f').onsubmit = async (e) => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
     $('#token').value = '';
-    out.innerHTML = '✓ 已保存。设备会自动测试连接，结果显示在设备屏幕上。<br><span class="hint">可以关掉这个网页了。</span>';
+    out.innerHTML = '✓ ' + (saved ? esc(saved) : '已保存。设备会自动测试连接，结果显示在设备屏幕上。') + '<br><span class="hint">可以关掉这个网页了。</span>';
   } catch (err) {
     out.innerHTML = '<span class="err">保存失败：' + String(err.message).replace(/[<>&]/g, '') + '</span>';
     $('#go').disabled = false;

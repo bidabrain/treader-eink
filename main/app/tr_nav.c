@@ -17,18 +17,13 @@ extern const app_desc_t app_tr_store;
 extern const app_desc_t app_tr_all;
 extern const app_desc_t app_tr_auth;
 
-// 番茄标签上次停留的页面（书架或书城）。/ Last page under the Tomato tab (shelf or store).
-static const app_desc_t* s_tomato_page = &app_tr_tomato;
-
-void tr_nav_set_tomato_page(const app_desc_t* page) {
-    if (page) s_tomato_page = page;
-}
-
 const app_desc_t* tr_nav_tab_app(int tab) {
     switch (tab) {
     case TR_TAB_LIBRARY: return &app_book;
     case TR_TAB_COMIC: return &app_comic;
-    case TR_TAB_TOMATO: return s_tomato_page;
+    // 番茄并进了书库；老设置或老入口指过来的都去书库。/ Tomato merged into the library; old settings or entries
+    // pointing here go to the library.
+    case TR_TAB_TOMATO: return &app_book;
     case TR_TAB_XHS: return &app_tr_xhs;
     case TR_TAB_HUPU: return &app_tr_hupu;
     case TR_TAB_WEIBO: return &app_tr_weibo;
@@ -42,9 +37,10 @@ const app_desc_t* tr_nav_tab_app(int tab) {
 
 int tr_nav_app_tab(const app_desc_t* app) {
     if (!app) return -1;
-    if (app == &app_tr_store) return TR_TAB_TOMATO;
+    // 书城和番茄搜索是书库的子页。/ The bookstore and Tomato search are library sub-pages.
+    if (app == &app_tr_store || app == &app_tr_tomato) return TR_TAB_LIBRARY;
     for (int t = 0; t < TR_TAB_MAX; t++)
-        if (tr_nav_tab_app(t) == app || (t == TR_TAB_TOMATO && app == &app_tr_tomato)) return t;
+        if (tr_nav_tab_app(t) == app) return t;
     return -1;
 }
 

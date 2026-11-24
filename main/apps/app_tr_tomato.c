@@ -2,11 +2,13 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 番茄标签页：番茄书架（检查更新、下载全部更新）、搜索键盘、搜索结果、书籍详情。顶部“书架 / 书城”切到书城页。
+ * 番茄搜索：书城最上面的搜索栏进来，搜索键盘、搜索结果、书籍详情；返回回书城。番茄书架（检查更新、下载更新）
+ * 并进了书库（app_book.c），这里不再有书架。
  * 联网操作全部交给 components/tomato 的后台任务，这里只发起、轮询和显示。
  *
- * Tomato tab: Tomato shelf (check, download all), search keyboard, results and book detail. The top
- * "shelf / store" segment switches to the bookstore page.
+ * Tomato search: opened from the bookstore's top search bar, with the search keyboard, results and book detail;
+ * backing out returns to the store. The Tomato shelf (check and download updates) moved into the library
+ * (app_book.c), so this page has no shelf any more.
  * All networking runs on the components/tomato task; this page starts, polls and displays.
  *
  * 冻结：检查和下载都只在点击时运行，不自动检查。
@@ -41,8 +43,6 @@
 // 长度都随显示大小放大；靠下的位置跟着标签栏走，每页几行按剩下的高度算。
 // Lengths scale with the display size; positions near the bottom follow the tab bar and rows per page follow the
 // height that is left.
-#define ROW_H TR_S(92)
-#define LIST_BOTTOM (TR_TABS_Y - TR_S(64))
 #define RESULT_ROW_H TR_S(140)
 #define RESULT_TOP TR_S(254)
 #define PAGER_Y (TR_TABS_Y - TR_S(54))
@@ -52,8 +52,6 @@
 #define FIELD_RECT (EpdRect){FIELD_X, TR_S(84), TR_W - FIELD_X - TR_MARGIN, TR_S(80)}
 #define RESULT_TEXT_X (TR_MARGIN + TR_S(96))   // 结果行封面右边的文字 / Result text right of the mini cover
 #define RECENT_QUERIES 3
-// 分段按钮下面的内容整体下移。/ Everything below the segment moves down by this much.
-#define SEG_SHIFT 78
 
 // 100% 时 5 行。/ Five rows at 100%.
 static int results_per_page(void) { return (PAGER_Y - RESULT_TOP + TR_S(20)) / RESULT_ROW_H; }
@@ -61,20 +59,15 @@ static int results_per_page(void) { return (PAGER_Y - RESULT_TOP + TR_S(20)) / R
 extern const app_desc_t app_tr_store;
 extern const app_desc_t app_tr_tomato;
 
-typedef enum { V_LIST = 0, V_SEARCH, V_RESULTS, V_DETAIL } view_t;
-// 书城请求下次进页打开搜索；这次搜索是从书城进来的。/ The store asked to open search on entry; this search came from the store.
-static bool s_search_request, s_from_store;
+typedef enum { V_SEARCH = 0, V_RESULTS, V_DETAIL } view_t;
+// 书城请求下次进页打开搜索。/ The store asked to open search on entry.
+static bool s_search_request;
 static void open_search(const char* initial);
-typedef enum { OP_NONE = 0, OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD } op_t;
+typedef enum { OP_NONE = 0, OP_SEARCH, OP_DOWNLOAD } op_t;
 
 static view_t s_view;
 static tomato_book_t* s_shelf;          // PSRAM
 static int s_count;
-static int8_t s_pct[TOMATO_SHELF_MAX];   // -1 未读 / -1 unread
-static uint8_t s_order[TOMATO_SHELF_MAX];
-static int s_pending;
-static bool s_has_config;
-static int s_page;
 
 // 约 6 KB，放 PSRAM。/ About 6 KB, kept in PSRAM.
 EXT_RAM_BSS_ATTR static tomato_hit_t s_hits[TOMATO_SEARCH_MAX];
@@ -90,9 +83,6 @@ static op_t s_last;       // 刚结束的操作，用于显示结果或失败 / 
 static tomato_status_t s_status;
 static uint32_t s_seen_revision;
 static int64_t s_poll_ms, s_busy_draw_ms;
-// 点了做不了时给的一句提示（后台忙），下次成功开始或进页时清掉。
-// One-line feedback when a tap cannot run (worker busy); cleared on the next successful start or page entry.
-static char s_note[64];
 // 详情页点“下载到书库”没能开始时的原因（另一本在下、后台在忙）。/ Why "下载到书库" on a detail page could not start
 // (another book downloading, the worker busy).
 static char s_detail_note[64];
@@ -108,32 +98,10 @@ static void book_path(const tomato_book_t* b, char* out, size_t cap) {
     snprintf(out, cap, TOMATO_BOOKS_DIR "/%s", b->file);
 }
 
+// 只用来判断搜到的书在不在书库里。/ Only used to tell whether a hit is already in the library.
 static void load_shelf(void) {
-    tomato_config_t cfg;
-    s_has_config = tomato_config_load(&cfg) == ESP_OK;
-    memset(&cfg, 0, sizeof(cfg));
     s_count = 0;
     if (s_shelf) tomato_shelf_load(s_shelf, TOMATO_SHELF_MAX, &s_count);
-    s_pending = 0;
-    int n = 0;
-    // 有新章节的排前面（待下载的和下载了还没看的）；s_pending 只数待下载的。
-    // Books with new chapters first (pending or downloaded but unopened); s_pending counts pending only.
-    for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < s_count; i++) {
-            const bool pending = tomato_book_pending(&s_shelf[i]) > 0;
-            const bool marked = pending || tomato_book_fresh(&s_shelf[i]) > 0;
-            if (marked != (pass == 0)) continue;
-            s_order[n++] = (uint8_t)i;
-            s_pending += pending;
-        }
-    }
-    for (int i = 0; i < s_count; i++) {
-        char path[BOOK_STORE_PATH_MAX];
-        book_path(&s_shelf[i], path, sizeof(path));
-        struct stat st;
-        book_progress_t p;
-        s_pct[i] = stat(path, &st) == 0 && book_progress_load(path, (uint32_t)st.st_size, &p) ? (int8_t)p.pct : -1;
-    }
 }
 
 static int shelf_index_of(const char* book_id) {
@@ -161,7 +129,6 @@ static bool start_op(op_t op, esp_err_t err) {
     s_op_seq = tomato_sync_seq();
     s_last = OP_NONE;
     s_seen_revision = 0;
-    s_note[0] = 0;
     return true;
 }
 
@@ -203,107 +170,6 @@ static void remember_query(const char* q) {
     memmove(s_recent[1], s_recent[0], sizeof(s_recent[0]) * (size_t)at);
     memcpy(s_recent[0], cut, sizeof(cut));
     save_recent();
-}
-
-/* ---- 列表 / List ---- */
-
-// 搜索栏搬到书城以后，书架上的东西整体上移这么多。/ How far the shelf content moved up once search went to the store.
-#define NO_FIELD_DY 104
-static int list_top(void) {
-    if (tomato_sync_busy() && (s_op == OP_CHECK || s_op == OP_UPDATE)) return TR_S(460 + SEG_SHIFT - NO_FIELD_DY);
-    return TR_S((s_pending ? 420 : 320) + SEG_SHIFT - NO_FIELD_DY);
-}
-
-static int rows_per_page(void) { return (LIST_BOTTOM - list_top()) / ROW_H; }
-
-static int list_pages(void) {
-    int per = rows_per_page();
-    return s_count ? (s_count + per - 1) / per : 1;
-}
-
-static void draw_list(uint8_t* fb) {
-    tr_title(fb, "番茄小说");
-    bool busy = tomato_sync_busy();
-    if (!busy) {
-        // 图标离右边至少原来那么远，标签更长（英文版）时再往左让。/ The icon keeps at least its old offset and moves left
-        // further when the label is longer (English build).
-        const int off = ttf_text_width_px(TR_S(30), "检查更新") + TR_S(30);
-        tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - (off > TR_S(150) ? off : TR_S(150)), TR_S(116), false);
-        tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "检查更新", EPD_DRAW_ALIGN_RIGHT, false);
-    }
-    static const char* const SEG[2] = {"书架", "书城"};
-    tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, 0);
-    char line[160];
-    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) snprintf(line, sizeof(line), "正在%s，可以先去看书", s_op == OP_CHECK ? "检查" : "更新");
-    else if (s_note[0]) snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_note);
-    else if (last_is(s_last) && (s_status.phase == TOMATO_DONE || s_status.phase == TOMATO_FAILED))
-        snprintf(line, sizeof(line), "%d 本 · %s", s_count, s_status.message);
-    else snprintf(line, sizeof(line), "%d 本 · %d 本有新章节", s_count, s_pending);
-    // 放不下（多半是带原因的失败提示）就两行：分段按钮下面到搜索框上面正好放得下。
-    // Too long (usually a failure with its cause): two lines fit between the segment and the search field.
-    tr_message(fb, TR_MARGIN, TR_S(156 + SEG_SHIFT + 6), TR_S(150 + SEG_SHIFT), TR_W - 2 * TR_MARGIN, TR_S(28), line,
-               EPD_DRAW_ALIGN_LEFT, false);
-
-    // 搜索入口在书城页最上面（用户要求），书架这里不再放搜索栏。/ The search entry lives at the top of the bookstore
-    // page (user request); the shelf no longer has a search bar.
-
-    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) {
-        if (s_status.total) snprintf(line, sizeof(line), "%d / %d　%s", s_status.current, s_status.total, s_status.message);
-        else snprintf(line, sizeof(line), "%s", s_status.message);
-        tr_fit(line, TR_S(40), TR_W - 2 * TR_MARGIN);
-        const int b = SEG_SHIFT - NO_FIELD_DY;
-        tr_text(fb, TR_MARGIN, TR_S(316 + b), TR_S(40), line, EPD_DRAW_ALIGN_LEFT, true);
-        if (s_status.phase == TOMATO_DOWNLOADING) {
-            snprintf(line, sizeof(line), "正在下载 · %.1f MB", s_status.bytes / 1048576.0);
-            tr_text(fb, TR_MARGIN, TR_S(370 + b), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
-        } else if (s_status.phase == TOMATO_QUEUED) {
-            tr_text(fb, TR_MARGIN, TR_S(370 + b), TR_S(28), "服务器正在生成 TXT", EPD_DRAW_ALIGN_LEFT, false);
-        }
-        int pct = s_status.total ? (s_status.current - 1) * 100 / s_status.total : 0;
-        tr_progress(fb, TR_MARGIN, TR_S(412 + b), TR_W - 2 * TR_MARGIN - TR_S(110), pct);
-        tr_text(fb, TR_W - TR_MARGIN, TR_S(396 + b), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, true);
-        tr_hline(fb, TR_S(446 + b), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    } else if (s_pending) {
-        snprintf(line, sizeof(line), "下载全部更新（%d 本）", s_pending);
-        tr_pill(fb, (EpdRect){TR_MARGIN, TR_S(316 + SEG_SHIFT - NO_FIELD_DY), TR_W - 2 * TR_MARGIN, TR_S(80)}, line, true,
-                TR_S(30));
-    }
-
-    int top = list_top();
-    if (!s_count) {
-        tr_wrap(fb, TR_MARGIN, top + TR_S(20), TR_W - 2 * TR_MARGIN, TR_S(30), TR_S(46),
-                s_has_config ? "还没有番茄小说。到“书城”点最上面的搜索栏找书。"
-                             : "还没设置番茄服务器。在 TF 卡 tomato/config.json 里填写服务器地址和密码，格式见“设置”。", 4);
-        return;
-    }
-    int per = rows_per_page();
-    for (int row = 0; row < per; row++) {
-        int k = s_page * per + row;
-        if (k >= s_count) break;
-        const tomato_book_t* b = &s_shelf[s_order[k]];
-        int y = top + row * ROW_H;
-        const int pending = tomato_book_pending(b), fresh = tomato_book_fresh(b);
-        const bool marked = pending || fresh;
-        char mark[32];
-        if (pending) snprintf(mark, sizeof(mark), "+%d 章 待下载", pending);
-        else if (fresh) snprintf(mark, sizeof(mark), "+%d 章", fresh);
-        else if (s_pct[s_order[k]] < 0) snprintf(mark, sizeof(mark), "未读");
-        else if (s_pct[s_order[k]] >= 100) snprintf(mark, sizeof(mark), "读完");
-        else snprintf(mark, sizeof(mark), "已读 %d%%", s_pct[s_order[k]]);
-        // 新章节是小胶囊（待下载黑底、已下载没看描边），阅读进度是深灰字。/ New chapters are badges (black when
-        // pending, outlined when downloaded but unopened); reading progress is dark gray text.
-        int mark_w = marked ? ttf_text_width_px(TR_S(24), mark) + TR_S(24) : ttf_text_width_px(TR_S(28), mark);
-        snprintf(line, sizeof(line), "%s", b->title);
-        tr_fit(line, TR_S(34), TR_W - 2 * TR_MARGIN - mark_w - TR_S(24));
-        tr_text(fb, TR_MARGIN, y + TR_S(8), TR_S(34), line, EPD_DRAW_ALIGN_LEFT, marked);
-        snprintf(line, sizeof(line), "%s · %d 章", b->author, b->chapters);
-        tr_fit(line, TR_S(26), TR_W - 2 * TR_MARGIN - mark_w - TR_S(24));
-        tr_text_dim(fb, TR_MARGIN, y + TR_S(52), TR_S(26), line, EPD_DRAW_ALIGN_LEFT);
-        if (marked) tr_badge(fb, TR_W - TR_MARGIN, y + TR_S(22), mark, pending > 0, TR_S(24));
-        else tr_text_dim(fb, TR_W - TR_MARGIN, y + TR_S(24), TR_S(28), mark, EPD_DRAW_ALIGN_RIGHT);
-        tr_hline(fb, y + ROW_H - TR_S(4), TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
-    }
-    tr_pager(fb, PAGER_Y, s_page, list_pages());
 }
 
 /* ---- 搜索 / Search ---- */
@@ -397,6 +263,8 @@ static void draw_results(uint8_t* fb) {
     else if (!s_hit_count) snprintf(line, sizeof(line), "没有找到");
     else snprintf(line, sizeof(line), "%d 个结果", s_hit_count);
     tr_message(fb, TR_MARGIN, TR_S(204), TR_S(196), TR_W - 2 * TR_MARGIN, TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
+    // 搜索中点右边“取消”。/ Tap "Cancel" on the right while searching.
+    if (searching) tr_text(fb, TR_W - TR_MARGIN, TR_S(196), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, true);
     const int per = RESULTS_PER_PAGE, tx = RESULT_TEXT_X;
     for (int row = 0; row < per; row++) {
         int i = s_result_page * per + row;
@@ -511,12 +379,11 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     ui_clear_page(fb);
     tr_status_bar(fb);
     switch (s_view) {
-    case V_LIST: draw_list(fb); break;
     case V_SEARCH: draw_search(fb); break;
     case V_RESULTS: draw_results(fb); break;
     case V_DETAIL: draw_detail(fb); break;
     }
-    if (s_view != V_SEARCH) tr_tab_bar(fb, TR_TAB_TOMATO);
+    if (s_view != V_SEARCH) tr_tab_bar(fb, TR_TAB_LIBRARY);
 }
 
 // 局部 DU 刷新；累计太多次就整页刷一次清残影。/ Partial DU; after too many, one page refresh clears ghosts.
@@ -542,7 +409,6 @@ static void finish_op(void) {
     s_op = OP_NONE;
     if (s_last == OP_SEARCH) s_hit_count = tomato_sync_hits(s_hits, TOMATO_SEARCH_MAX);
     load_shelf();
-    if (s_page >= list_pages()) s_page = list_pages() - 1;
     s_du_count = 0;
     s_seen_revision = s_status.revision;
 }
@@ -552,11 +418,9 @@ static void on_enter(app_ctx_t* ctx) {
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(tomato_book_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     tomato_sync_set_file_hook(file_hook);
     tomato_sync_set_open_check(app_book_path_is_open);
-    tr_nav_set_tomato_page(&app_tr_tomato);
     static bool recent_loaded;
     if (!recent_loaded) { load_recent(); recent_loaded = true; }
     tomato_sync_get_status(&s_status);
-    s_note[0] = 0;
     s_detail_note[0] = 0;
     // 本页任务在别的页时已经结束：照 on_tick 收下结果。/ Our op ended while we were away: collect it as on_tick does.
     if (s_op != OP_NONE && !tomato_sync_busy() && tomato_sync_seq() == s_op_seq) finish_op();
@@ -565,20 +429,17 @@ static void on_enter(app_ctx_t* ctx) {
     // was overwritten, so stop showing it.
     if (s_last != OP_NONE && tomato_sync_seq() != s_op_seq) s_last = OP_NONE;
     s_seen_revision = s_status.revision;
-    // 后台还在跑的话保持原来的视图，否则回到书架。/ Keep the view if work is still running; otherwise show the shelf.
+    // 后台还在跑、或有结果、详情可看就保持原来的视图，否则打开搜索。/ Keep the results or detail view when there is
+    // work running or something to show; otherwise open search.
     const bool ours = tomato_sync_busy() && tomato_sync_seq() == s_op_seq;
     if (!ours) s_op = OP_NONE;
-    if (!ours && s_view != V_DETAIL && s_view != V_RESULTS) s_view = V_LIST;
     s_pending_query[0] = 0;
-    if (s_view == V_SEARCH) s_view = V_LIST;
-    s_page = 0;
     // 显示大小变了每页结果数也变：结果页码夹回范围。/ Results per page follow the display size: clamp the page.
     const int result_pages = (s_hit_count + RESULTS_PER_PAGE - 1) / RESULTS_PER_PAGE;
     if (s_result_page >= result_pages) s_result_page = result_pages > 0 ? result_pages - 1 : 0;
     s_du_count = 0;
-    if (s_search_request) {
+    if (s_search_request || s_view == V_SEARCH) {
         s_search_request = false;
-        s_from_store = true;
         open_search("");
     }
 }
@@ -586,14 +447,14 @@ static void on_enter(app_ctx_t* ctx) {
 static void page_on_exit(app_ctx_t* ctx) {
     (void)ctx;
     // 词库留在 PSRAM（约 1 MB），下次打开键盘不用再读 1 秒。/ Keep the ~1 MB lexicon in PSRAM so the next keyboard opens instantly.
-    if (s_view == V_SEARCH) s_view = V_LIST;
+    // 搜索页下次进来重新打开键盘。/ The search view reopens its keyboard on the next entry.
 }
 
 static void on_media_lost(app_ctx_t* ctx) {
     (void)ctx;
     tomato_sync_cancel();
     pinyin_ime_unload();
-    s_view = V_LIST;
+    s_view = V_SEARCH;
     s_count = 0;
 }
 
@@ -602,66 +463,14 @@ static void open_search(const char* initial) {
     s_view = V_SEARCH;
 }
 
-// 搜索从书城进来（书城最上面的搜索栏）：下次进页直接开搜索，返回搜索之外时回书城。
-// Search opened from the bookstore's top bar: open it on the next entry, and leave to the store when backing out.
+// 搜索从书城进来（书城最上面的搜索栏）：下次进页直接开搜索。/ Search opened from the bookstore's top bar: open it on
+// the next entry.
 void tr_tomato_open_search(void) { s_search_request = true; }
 
-// 从搜索或结果退出：从书城来的回书城，否则回书架。/ Back out of search or results: to the store if we came from
-// there, else to the shelf.
+// 从搜索或结果退出：回书城。/ Back out of search or results: return to the store.
 static app_redraw_t leave_search(app_ctx_t* ctx) {
-    s_view = V_LIST;
-    if (!s_from_store) return APP_REDRAW_PAGE;
-    s_from_store = false;
+    s_view = V_SEARCH;
     ctx->request_app = &app_tr_store;
-    return APP_REDRAW_NONE;
-}
-
-static app_redraw_t turn_list(int turn) {
-    int next = s_page + turn;
-    if (next < 0 || next >= list_pages()) return APP_REDRAW_NONE;
-    s_page = next;
-    return APP_REDRAW_PAGE;
-}
-
-static app_redraw_t touch_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    bool busy = tomato_sync_busy();
-    if (!busy && y >= TR_S(80) && y < TR_S(150) && x > TR_W - TR_MARGIN - TR_S(200)) {
-        start_op(OP_CHECK, tomato_sync_start_check());
-        tomato_sync_get_status(&s_status);
-        return APP_REDRAW_PAGE;
-    }
-    if (tr_segment_hit(TR_SEGMENT_RECT, 2, x, y) == 1) { ctx->request_app = &app_tr_store; return APP_REDRAW_NONE; }
-    const int b = SEG_SHIFT - NO_FIELD_DY;
-    if (busy && (s_op == OP_CHECK || s_op == OP_UPDATE) && y >= TR_S(380 + b) && y < TR_S(446 + b) &&
-        x > TR_W - TR_MARGIN - TR_S(140)) {
-        tomato_sync_cancel();
-        return APP_REDRAW_NONE;
-    }
-    if (s_pending && !(busy && (s_op == OP_CHECK || s_op == OP_UPDATE)) && y >= TR_S(316 + b) && y < TR_S(396 + b)) {
-        // 后台在跑浏览任务就先停它；还没停下或在下载、同步就说原因（同设置页）。/ Stop a browsing job first; if it is
-        // still stopping or a download / sync runs, say why (as Settings does).
-        const tomato_preempt_t room = busy ? tomato_sync_preempt() : TOMATO_PREEMPT_FREE;
-        if (room != TOMATO_PREEMPT_FREE) {
-            snprintf(s_note, sizeof(s_note), "%s", room == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次"
-                                                                                  : "后台正在下载或同步，完成后再试");
-            return APP_REDRAW_PAGE;
-        }
-        start_op(OP_UPDATE, tomato_sync_start_update());
-        tomato_sync_get_status(&s_status);
-        return APP_REDRAW_PAGE;
-    }
-    int pager = tr_pager_hit(PAGER_Y, x, y);
-    if (pager) return turn_list(pager);
-    int top = list_top();
-    // 只认画出来的行，行下面的空白不算。/ Only drawn rows count; the gap below them does not.
-    if (y >= top && (y - top) / ROW_H < rows_per_page()) {
-        int k = s_page * rows_per_page() + (y - top) / ROW_H;
-        struct stat st;
-        char path[BOOK_STORE_PATH_MAX];
-        if (k < s_count) book_path(&s_shelf[s_order[k]], path, sizeof(path));
-        // 还没下载到本机的书（WebDAV 合并来的）没有文件，不打开。/ Books merged from WebDAV but not downloaded have no file.
-        if (k < s_count && s_shelf[s_order[k]].file[0] && stat(path, &st) == 0) tr_nav_open_book(ctx, path);
-    }
     return APP_REDRAW_NONE;
 }
 
@@ -700,6 +509,11 @@ static app_redraw_t touch_results(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     // 输入框左边的“‹”是返回，和搜索页同一块区域。/ The "‹" left of the field goes back, same zone as the search view.
     if (y < TR_S(180) && x < FIELD_X) return leave_search(ctx);
     if (y >= TR_S(84) && y < TR_S(164)) { open_search(s_query); return APP_REDRAW_PAGE; }
+    if (tomato_sync_busy() && s_op == OP_SEARCH && y >= TR_S(180) && y < TR_S(250) &&
+        x > TR_W - TR_MARGIN - TR_S(140)) {
+        tomato_sync_cancel();
+        return APP_REDRAW_PAGE;
+    }
     int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn_results(pager);
     if (y >= RESULT_TOP && y < RESULT_TOP + RESULTS_PER_PAGE * RESULT_ROW_H) {
@@ -747,9 +561,8 @@ static app_redraw_t touch_detail(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 }
 
 static app_redraw_t tap(app_ctx_t* ctx, uint16_t x, uint16_t y) {
-    if (s_view != V_SEARCH && tr_nav_touch(ctx, x, y, TR_TAB_TOMATO)) return APP_REDRAW_NONE;
+    if (s_view != V_SEARCH && tr_nav_touch(ctx, x, y, TR_TAB_LIBRARY)) return APP_REDRAW_NONE;
     switch (s_view) {
-    case V_LIST: return touch_list(ctx, x, y);
     case V_SEARCH: return touch_search(ctx, x, y);
     case V_RESULTS: return touch_results(ctx, x, y);
     case V_DETAIL: return touch_detail(ctx, x, y);
@@ -757,15 +570,14 @@ static app_redraw_t tap(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     return APP_REDRAW_NONE;
 }
 
-// 键盘照旧按下即响应；其余页松手才算轻点。书架和搜索结果左滑 / 上滑下一页，右滑 / 下滑上一页，不滚动。
-// The keyboard still acts on press; other views act on a tap. Shelf and results turn a whole page per swipe.
+// 键盘照旧按下即响应；其余页松手才算轻点。搜索结果左滑 / 上滑下一页，右滑 / 下滑上一页，不滚动。
+// The keyboard still acts on press; other views act on a tap. Results turn a whole page per swipe.
 static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
     if (s_view == V_SEARCH) return ev->type == UI_GESTURE_PRESS ? tap(ctx, ev->x0, ev->y0) : APP_REDRAW_NONE;
     if (ev->type == UI_GESTURE_TAP) return tap(ctx, ev->x0, ev->y0);
     const int turn = ev->type == UI_GESTURE_SWIPE_L || ev->type == UI_GESTURE_SWIPE_U ? 1
                    : ev->type == UI_GESTURE_SWIPE_R || ev->type == UI_GESTURE_SWIPE_D ? -1 : 0;
     if (!turn) return APP_REDRAW_NONE;
-    if (s_view == V_LIST) return turn_list(turn);
     if (s_view == V_RESULTS) return turn_results(turn);
     return APP_REDRAW_NONE;
 }
@@ -813,8 +625,6 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_seen_revision = s_status.revision;
     s_busy_draw_ms = ctx->now_ms;
     // 只在当前视图显示这个任务的进度时刷。/ Refresh only when the current view shows this op's progress.
-    if (s_view == V_LIST && (s_op == OP_CHECK || s_op == OP_UPDATE))
-        return area_redraw(ctx, (EpdRect){0, TR_S(150), TR_W, LIST_BOTTOM - TR_S(150)});
     if (s_view == V_DETAIL && s_op == OP_DOWNLOAD && detail_is_dl())
         return area_redraw(ctx, (EpdRect){0, DETAIL_BTN.y - TR_S(60), TR_W, TR_S(160)});
     if (s_view == V_RESULTS && s_op == OP_SEARCH) return area_redraw(ctx, (EpdRect){0, TR_S(190), TR_W, TR_S(60)});
@@ -822,8 +632,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
 }
 
 const app_desc_t app_tr_tomato = {
-    .title = "番茄小说",
-    .detail = "搜索、下载、检查更新",
+    .title = "番茄搜索",
+    .detail = "搜索、下载到书库",
     .enter_full = true,
     .tab_nav = true,
     .blocks_idle_sleep = false,

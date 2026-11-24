@@ -10,6 +10,7 @@
  * font is a ChillDuanSans subset.
  */
 
+#include "esp_attr.h"
 #include "ttf_font.h"
 
 #include <dirent.h>
@@ -166,6 +167,7 @@ static bool sd_suspended; // 字体传输期间仅允许内置字体。/ Only bu
 static ttf_size_metrics_t size_metrics[2];
 static int raw_ascent_units;
 static int current_weight = TTF_WGHT_DEF;
+static int base_weight = 400;   // 文字深浅那一档的正文字重 / Body weight of the text-darkness level
 static int wght_min = TTF_WGHT_MIN;
 static int wght_def = TTF_WGHT_DEF;
 static int wght_max = TTF_WGHT_MAX;
@@ -550,7 +552,7 @@ static bool catalog_has_name(
     return false;
 }
 
-static ttf_font_item_t s_catalog[TTF_FONT_MAX];
+EXT_RAM_BSS_ATTR static ttf_font_item_t s_catalog[TTF_FONT_MAX];
 static int s_catalog_n;
 
 int ttf_font_scan(void) {
@@ -1387,7 +1389,7 @@ static bool load_variation(const uint8_t* header, size_t header_len) {
     }
     file_gvar_off = gvar_off;
     gvar_ready = true;
-    current_weight = 400;
+    current_weight = clamp_weight(base_weight);
     ESP_LOGI(
         TAG, "gvar wght %d..%d def %d, %d shared tuples",
         wght_min, wght_max, wght_def, shared_tuple_count
@@ -1810,6 +1812,15 @@ void ttf_set_weight(int wght) {
 
 int ttf_get_weight(void) {
     return current_weight;
+}
+
+void ttf_set_base_weight(int wght) {
+    base_weight = wght;
+    current_weight = clamp_weight(wght);
+}
+
+int ttf_base_weight(void) {
+    return base_weight;
 }
 
 int ttf_ascender(int size) {

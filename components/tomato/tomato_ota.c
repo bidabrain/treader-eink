@@ -268,7 +268,8 @@ esp_err_t tomato_ota_download(const tomato_ota_info_t* info, const volatile bool
     snprintf(part, sizeof(part), "%s.part", final);
     psa_crypto_init();
     dl_t d = {.hash = psa_hash_operation_init()};
-    d.buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // 下载期间 TLS 也在用内部 RAM，缓冲放 PSRAM。/ TLS also needs internal RAM while downloading; the buffer lives in PSRAM.
+    d.buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!d.buf) { snprintf(msg, cap, "内存不足"); return ESP_ERR_NO_MEM; }
     // 上次已经下好、校验过的正式文件还在（比如写入前电量不够），核对一遍就直接用。
     // A verified package from an earlier run (say, battery was low before writing) is reused after a re-check.

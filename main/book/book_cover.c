@@ -11,6 +11,7 @@
  * Frozen: main task only; decoding goes through book_image_decode and keeps its size limits.
  */
 
+#include "esp_attr.h"
 #include "book_cover.h"
 
 #include <ctype.h>
@@ -24,6 +25,7 @@
 #include "book_image.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "tomato.h"
 #include "zip_reader.h"
 
@@ -56,7 +58,7 @@ typedef struct {
 
 static slot_t s_slots[SLOT_MAX];
 static uint32_t s_clock;
-static char s_queue[QUEUE_MAX][PATH_MAX_LEN];
+EXT_RAM_BSS_ATTR static char s_queue[QUEUE_MAX][PATH_MAX_LEN];
 static int s_queue_count;
 static bool s_built_new;
 
@@ -408,6 +410,7 @@ static void write_cache(const char* book, const struct stat* st, const uint8_t* 
 
 // 生成一本书的封面；返回是否得到了图。/ Build one book's cover; returns whether an image resulted.
 static bool build(const char* book) {
+    const int64_t t0 = esp_timer_get_time();  // 临时诊断 / Temporary diagnostics
     char src[PATH_MAX_LEN];
     bool epub;
     struct stat st;
@@ -426,7 +429,7 @@ static bool build(const char* book) {
     slot_t* slot = new_slot(path_key(book));
     slot->state = px ? BOOK_COVER_READY : BOOK_COVER_NONE;
     slot->px = px;
-    ESP_LOGI(TAG, "%s: %s", book, px ? "cover" : "none");
+    ESP_LOGI(TAG, "%s: %s %lld ms", book, px ? "cover" : "none", (long long)((esp_timer_get_time() - t0) / 1000));
     return px != NULL;
 }
 

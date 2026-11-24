@@ -229,7 +229,9 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* c
         mkdir(dir, 0775);
         char sid[32];
         safe_id(id, sid, sizeof(sid));
-        snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg", sid);
+        // wait=0：服务器还在做的图不等，下次刷新再取；老服务器不认这个参数，照旧等。/ wait=0: skip images the
+        // server is still making until the next refresh; older servers ignore it and wait as before.
+        snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg?wait=0", sid);
         if (fetch_image(cfg, path, dest, cancel) == ESP_OK) got++;
         progress(1 + i, count + 1);
     }

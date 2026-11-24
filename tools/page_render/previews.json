@@ -18,7 +18,7 @@
     ["demo_comic/reader_100.png", "一屏一页阅读"]
   ],
   "screens-tomato": [
-    ["demo_tomato/shelf_100.png", "番茄 · 书架"],
+    ["demo_book/ui22_100.png", "书库 · 书城与番茄更新"],
     ["demo_store/home_100.png", "书城"],
     ["demo_store/rank_100.png", "分类榜单"],
     ["demo_store/detail_100.png", "书城详情"]

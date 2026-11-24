@@ -139,6 +139,8 @@ static uint32_t s_job_seq;           // 本页任务的序号，用来认出“�
 static tomato_red_req_t s_job;
 static tomato_status_t s_status;
 static bool s_step_loaded;
+// 已经提前显示过缩略图的列表页（-1 是还没有）。/ The list page whose thumbnails were already shown early (-1: none).
+static int s_thumbs_page = -1;
 static tomato_red_req_t s_pending;
 static bool s_has_pending;
 
@@ -299,6 +301,7 @@ static bool start_req(const tomato_red_req_t* r) {
     s_job_seq = tomato_sync_seq();
     s_job_active = true;
     s_step_loaded = false;
+    s_thumbs_page = -1;
     s_msg[0] = 0;
     tomato_sync_get_status(&s_status);
     return true;
@@ -566,8 +569,11 @@ static void draw_header(uint8_t* fb) {
     if (s_has_cfg) {
         const bool busy = job_running(s_seg == SEG_FOLLOW ? TOMATO_RED_FEED : TOMATO_RED_REC);
         if (busy) {
-            tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "拉取中…", EPD_DRAW_ALIGN_RIGHT, false);
-        } else if (!tomato_sync_busy()) {
+            // 拉取中点一下就取消，下好的留着。/ Tap while fetching to cancel; what arrived stays.
+            tr_text(fb, TR_W - TR_MARGIN, TR_S(98), TR_S(30), "拉取中 · 取消", EPD_DRAW_ALIGN_RIGHT, false);
+        } else if (!tomato_sync_busy() || tomato_sync_preemptible()) {
+            // 别的页在浏览类拉取也能点：start_job 会先请它让路。/ Also tappable while another page's browsing job
+            // runs: start_job asks it to make way first.
             const char* label = s_seg == SEG_FOLLOW ? "刷新" : "刷新推荐";
             tr_icon(fb, TR_ICON_SYNC, TR_W - TR_MARGIN - ttf_text_width_px(TR_S(30), label) - TR_S(26), TR_S(116),
                     false);
@@ -966,7 +972,11 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         const int seg = tr_segment_hit(TR_SEGMENT_RECT, 2, x, y);
         return seg >= 0 && seg != (int)s_seg ? show_seg((seg_t)seg) : APP_REDRAW_NONE;
     }
-    if (ui_rect_hit(REFRESH_RECT, x, y) && !tomato_sync_busy()) return refresh();
+    if (ui_rect_hit(REFRESH_RECT, x, y)) {
+        const tomato_red_job_t list = s_seg == SEG_FOLLOW ? TOMATO_RED_FEED : TOMATO_RED_REC;
+        if (job_running(list)) { drop_job(list); return APP_REDRAW_PAGE; }
+        if (!tomato_sync_busy() || tomato_sync_preemptible()) return refresh();
+    }
     const int seg = tr_segment_hit(TR_SEGMENT_RECT, 2, x, y);
     if (seg >= 0 && seg != (int)s_seg) return show_seg((seg_t)seg);
     if (seg >= 0) {
@@ -1179,6 +1189,17 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         char path[96];
         image_path(s_image, path, sizeof(path));
         if (exists(path)) return APP_REDRAW_PAGE;
+    }
+    // 列表缩略图按列表顺序下：本页最后一条也轮过了，就先解码显示，不等后面一两百张；解码完 hupu_img_tick 刷一次。
+    // List thumbnails download in list order: once this page's last item has had its turn, decode and show them
+    // without waiting for the hundreds after it; hupu_img_tick redraws once decoding is done.
+    if (busy && s_view == V_LIST && s_job.job != TOMATO_RED_NOTE &&
+        (s_job.job == TOMATO_RED_FEED) == (s_seg == SEG_FOLLOW) && s_thumbs_page != s_list_page) {
+        const int end = (s_list_page + 1) * PER_PAGE < s_item_count ? (s_list_page + 1) * PER_PAGE : s_item_count;
+        if (s_status.current >= 1 + end) {
+            s_thumbs_page = s_list_page;
+            queue_visible_images();
+        }
     }
     if (busy) return APP_REDRAW_NONE;
     s_job_active = false;

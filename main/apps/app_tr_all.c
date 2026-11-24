@@ -44,11 +44,11 @@ void tr_all_open_from(const app_desc_t* from) {
     if (from != &app_tr_all) s_origin = from;
 }
 
-// 没隐藏的功能，按功能号顺序。/ Features that are not hidden, in feature-id order.
+// 没隐藏的功能，按显示顺序（设置最后）。/ Features that are not hidden, in display order (settings last).
 static int listed(tr_tab_t out[TR_TAB_MAX]) {
     int n = 0;
-    for (int t = 0; t < TR_TAB_MAX; t++)
-        if (tr_tab_shown((tr_tab_t)t)) out[n++] = (tr_tab_t)t;
+    for (int k = 0; k < TR_TAB_MAX; k++)
+        if (tr_tab_shown(TR_TAB_ORDER[k])) out[n++] = TR_TAB_ORDER[k];
     return n;
 }
 

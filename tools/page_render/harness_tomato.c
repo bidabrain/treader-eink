@@ -1,7 +1,7 @@
 /*
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
- * 中文：番茄书架、搜索键盘、搜索结果、书籍详情和下载进度的渲染测试。
+书架、搜索键盘、搜索结果、书籍详情和下载进度的渲染测试。
  * English: Render bench for the Tomato shelf, search keyboard, results, book detail and download progress.
  * 冻结：只在电脑上跑。/ Frozen: host-only.
  */
@@ -36,15 +36,9 @@ static void hr_shelf(int n, bool pending) {
         if (pending && i == 1) b->remote = b->chapters + 1;
         if (i == 2) b->seen = b->chapters - 3;
         snprintf(b->file, sizeof(b->file), "%d.txt", 1000 + i);
-        s_order[i] = (uint8_t)i;
-        s_pct[i] = (int8_t)(i == 3 ? -1 : i == 4 ? 100 : i * 9);
     }
     s_shelf = s_hr_shelf;
     s_count = n;
-    s_pending = 0;
-    for (int i = 0; i < n; i++) s_pending += tomato_book_pending(&s_hr_shelf[i]) > 0;
-    s_has_config = true;
-    s_page = 0;
 }
 
 static void hr_hits(int n) {
@@ -69,7 +63,7 @@ static void hr_hits(int n) {
 }
 
 static void hr_reset(void) {
-    s_view = V_LIST;
+    s_view = V_SEARCH;
     s_op = s_last = OP_NONE;
     s_hr_busy = false;
 #ifndef HR_BASELINE
@@ -87,62 +81,6 @@ static void hr_render(const char* scene) {
 }
 
 void hr_scenes(void) {
-    hr_reset();
-    s_count = 0;
-    s_has_config = false;
-    hr_render("list_no_config");
-
-    hr_reset();
-    s_count = 0;
-    s_has_config = true;
-    hr_render("list_empty");
-
-    hr_reset();
-    hr_shelf(20, true);
-    hr_allow_fit();
-    hr_render("list_pending");
-
-    hr_reset();
-    hr_shelf(20, false);
-    hr_allow_fit();
-    hr_render("list_plain");
-
-    hr_reset();
-    hr_shelf(20, false);
-    s_page = 2;
-    hr_allow_fit();
-    hr_render("list_last_page");
-
-    hr_reset();
-    hr_shelf(20, true);
-    s_last = OP_CHECK;   // 只显示本页任务的结果 / Only our own op's result is shown
-    s_status.phase = TOMATO_FAILED;
-    snprintf(s_status.message, sizeof(s_status.message), "%s",
-             "检查失败：连接服务器超时，请确认服务器已启动且在同一网络里");
-    hr_allow_fit();
-    hr_render("list_failed");
-
-    hr_reset();
-    hr_shelf(20, true);
-    s_hr_busy = true;
-    s_op = OP_UPDATE;
-    s_status.phase = TOMATO_DOWNLOADING;
-    s_status.current = 2;
-    s_status.total = 5;
-    s_status.bytes = 3456789;
-    snprintf(s_status.message, sizeof(s_status.message), "%s", "诡秘之主：一个特别特别长的书名用来测试截断");
-    hr_allow_fit();
-    hr_render("list_updating");
-
-    hr_reset();
-    hr_shelf(20, false);
-    s_hr_busy = true;
-    s_op = OP_CHECK;
-    s_status.phase = TOMATO_QUEUED;
-    snprintf(s_status.message, sizeof(s_status.message), "%s", "正在检查");
-    hr_allow_fit();
-    hr_render("list_checking");
-
     // 搜索：键盘有自己的测试，这里看输入框和最近搜索。/ Search: the keyboard has its own bench; this checks the field
     // and recent searches.
     hr_reset();

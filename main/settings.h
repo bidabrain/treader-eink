@@ -46,6 +46,10 @@ void app_settings_set_shelf_grid(bool on);
 /// / Fast page-turn refresh: body and footer in one pass with the 8-gray table; off by default (normal).
 bool app_settings_fast_turn(void);
 void app_settings_set_fast_turn(bool on);
+/// 文字深浅：0 标准、1 深、2 更深，界面和阅读正文一起变。/ Text darkness: 0 standard, 1 dark, 2 darker, for the UI
+/// and reading text alike.
+uint8_t app_settings_text_depth(void);
+void app_settings_set_text_depth(uint8_t level);
 /// 阅读默认字号，36..72、步长 4，默认 48。/ Default reading size, 36..72 in steps of 4, initially 48.
 uint8_t app_settings_book_px(void);
 /// 无效字号恢复 48。/ Invalid sizes fall back to 48.

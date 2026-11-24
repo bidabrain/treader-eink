@@ -14,11 +14,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_tls_errors.h"
 #include "tomato_internal.h"
 
@@ -55,6 +57,132 @@ esp_err_t tomato_http_open(esp_http_client_handle_t c, int len) {
         s_tls_err = err == ESP_OK ? ESP_OK : esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
     }
     return err;
+}
+
+/* ---- 连接复用 / Connection reuse ---- */
+
+// 后台同步一次只跑一个任务，所以只留一个连接。一批封面原来每张都要握手，现在同一个服务器只握手一次。
+// The sync task runs one job at a time, so one kept connection is enough. A batch of covers used to pay a handshake
+// per image; now one server costs one handshake.
+#define HDR_MAX 4
+static esp_http_client_handle_t s_keep;
+static char s_keep_origin[160];
+static char s_hdr[HDR_MAX][24];  // 本连接上设过的头，复用前清掉 / Headers set on this client, cleared on reuse
+static int s_hdr_n;
+static bool s_reused;            // 当前请求走的是复用来的连接 / The current request runs on a reused connection
+// 临时诊断：每个请求的耗时和是否复用。/ Temporary diagnostics: per-request time and reuse.
+static int64_t s_t0;
+static bool s_was_reused;
+
+// 来源：协议://主机:端口，没写端口就补默认的（esp_http_client_get_url 总带端口，两边要一样）。
+// Origin: scheme://host:port, adding the default port when absent (esp_http_client_get_url always has one).
+static void origin_of(const char* url, char* out, size_t cap) {
+    const char* p = strstr(url, "://");
+    if (!p) { out[0] = 0; return; }
+    const char* host = p + 3;
+    size_t n = 0;
+    while (host[n] && host[n] != '/' && host[n] != '?' && host[n] != '#') n++;
+    const bool has_port = memchr(host, ':', n) != NULL;
+    const bool https = (size_t)(p - url) == 5 && !strncasecmp(url, "https", 5);
+    snprintf(out, cap, "%.*s://%.*s%s", (int)(p - url), url, (int)n, host, has_port ? "" : https ? ":443" : ":80");
+}
+
+static void forget_headers(esp_http_client_handle_t c) {
+    for (int i = 0; i < s_hdr_n; i++) esp_http_client_delete_header(c, s_hdr[i]);
+    s_hdr_n = 0;
+}
+
+void tomato_http_drop(void) {
+    if (!s_keep) return;
+    esp_http_client_close(s_keep);
+    esp_http_client_cleanup(s_keep);
+    s_keep = NULL;
+    s_keep_origin[0] = 0;
+}
+
+esp_http_client_handle_t tomato_http_take(const char* url, int timeout_ms, esp_http_client_method_t method,
+                                          int tx_size) {
+    char origin[sizeof(s_keep_origin)];
+    origin_of(url, origin, sizeof(origin));
+    s_reused = false;
+    s_t0 = esp_timer_get_time();
+    if (s_keep && !strcasecmp(origin, s_keep_origin) && esp_http_client_set_url(s_keep, url) == ESP_OK) {
+        esp_http_client_handle_t c = s_keep;
+        s_keep = NULL;
+        forget_headers(c);
+        esp_http_client_set_method(c, method);
+        esp_http_client_set_timeout_ms(c, timeout_ms);
+        s_reused = true;
+        s_was_reused = true;
+        return c;
+    }
+    tomato_http_drop();
+    s_hdr_n = 0;
+    s_was_reused = false;
+    esp_http_client_config_t hc = {
+        .url = url,
+        .timeout_ms = timeout_ms,
+        .buffer_size = IO_CHUNK,
+        .buffer_size_tx = tx_size,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .method = method,
+    };
+    return esp_http_client_init(&hc);
+}
+
+void tomato_http_header(esp_http_client_handle_t c, const char* name, const char* value) {
+    if (esp_http_client_set_header(c, name, value) != ESP_OK) return;
+    for (int i = 0; i < s_hdr_n; i++) if (!strcasecmp(s_hdr[i], name)) return;
+    if (s_hdr_n < HDR_MAX && strlen(name) < sizeof(s_hdr[0])) snprintf(s_hdr[s_hdr_n++], sizeof(s_hdr[0]), "%s", name);
+}
+
+esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int body_len, int64_t* length, int* status) {
+    *length = -1;
+    *status = 0;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        const int64_t t0 = esp_timer_get_time();
+        esp_err_t err = tomato_http_open(c, body_len);
+        if (err == ESP_OK && body_len && esp_http_client_write(c, body, body_len) != body_len) err = ESP_FAIL;
+        if (err == ESP_OK) {
+            *length = esp_http_client_fetch_headers(c);
+            *status = esp_http_client_get_status_code(c);
+            // 失败时返回负数；0 是长度未知（分块）。/ Negative on failure; 0 means unknown length (chunked).
+            if (*length >= 0 && *status > 0) {
+                if (*length == 0) *length = -1;
+                s_reused = false;
+                return ESP_OK;
+            }
+            err = ESP_FAIL;
+        }
+        // 服务器可能已经关了空闲连接：只有复用来的连接才值得重连一次。关掉的连接马上就读到结尾；等满超时说明是服务器
+        // 慢（比如小红书的图还在做），重连只会再等一轮，取消也要多卡一轮。
+        // The server may have closed the idle connection: only a reused one is worth one reconnect. A closed one
+        // reads its end at once; running into the timeout means the server is slow (say, Xiaohongshu images still
+        // being made), and a reconnect would only wait another round and hold up a cancel just as long.
+        if (!s_reused || esp_timer_get_time() - t0 > 2000 * 1000) return err;
+        s_reused = false;
+        esp_http_client_close(c);
+    }
+    return ESP_FAIL;
+}
+
+void tomato_http_give(esp_http_client_handle_t c, bool done) {
+    if (!c) return;
+    s_reused = false;
+    ESP_LOGI(TAG, "req %s %lld ms, %s", done ? "ok" : "fail", (long long)((esp_timer_get_time() - s_t0) / 1000),
+             s_was_reused ? "reused" : "new");
+    char url[384];
+    const bool keep = done && esp_http_client_is_complete_data_received(c) &&
+                      esp_http_client_is_persistent_connection(c) &&
+                      esp_http_client_get_url(c, url, sizeof(url)) == ESP_OK;
+    if (!keep) {
+        esp_http_client_close(c);
+        esp_http_client_cleanup(c);
+        return;
+    }
+    tomato_http_drop();
+    s_keep = c;
+    origin_of(url, s_keep_origin, sizeof(s_keep_origin));
 }
 
 static void note(esp_err_t err, int status, esp_http_client_handle_t c) {
@@ -211,30 +339,71 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
     char part[200];
     snprintf(part, sizeof(part), "%s.part", dest);
     *bytes = 0;
-    esp_http_client_handle_t c = open_client(cfg, "GET", path);
-    if (!c) return ESP_ERR_NO_MEM;
+    // 下载缓冲放 PSRAM，别和 TLS 抢内部 RAM。/ Download buffers live in PSRAM so they never compete with TLS.
+    char* buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) return ESP_ERR_NO_MEM;
+    esp_http_client_handle_t c = NULL;
     FILE* f = NULL;
-    char* buf = NULL;
     bool keep_part = false;
-    esp_err_t err = tomato_http_open(c, 0);
-    if (err != ESP_OK) goto done;
-    esp_http_client_fetch_headers(c);
-    int status = esp_http_client_get_status_code(c);
-    if (status != 200) { ESP_LOGW(TAG, "download http=%d", status); note(ESP_FAIL, status, c); err = ESP_ERR_NOT_FOUND; goto done; }
-    buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_DEFAULT);
-    f = fopen(part, "wb");
-    if (!buf || !f) { err = buf ? ESP_FAIL : ESP_ERR_NO_MEM; goto done; }
-    for (;;) {
-        if (*cancel) { err = ESP_ERR_INVALID_STATE; goto done; }
-        int n = esp_http_client_read(c, buf, IO_CHUNK);
-        if (n < 0) { err = ESP_FAIL; goto done; }
-        if (n == 0) break;
-        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { err = ESP_FAIL; goto done; }
-        *bytes += (uint32_t)n;
+    esp_err_t err = ESP_FAIL;
+    uint32_t have = 0;
+    // 慢线路上中途断流（15 秒没数据）很常见：已经收到的留着，用 Range 从断的地方接着下（一块一块往下接）。只要
+    // 每次都有新数据就一直接，连着三次一点没收到才放弃；服务器不认 Range（回 200）只从头重来一次。
+    // On slow links a mid-download stall (15 s without data) is common: keep what arrived and continue from there with
+    // Range, piece by piece. Keep going as long as each try brings new data and give up after three tries in a row with
+    // nothing; a server that ignores Range (answers 200) gets one fresh start only.
+    int idle = 0, restarts = 0;
+    for (int attempt = 0; attempt < 64 && idle < 3; attempt++) {
+        const uint32_t before = have;
+        if (*cancel) { err = ESP_ERR_INVALID_STATE; break; }
+        if (c) { esp_http_client_close(c); esp_http_client_cleanup(c); }
+        c = open_client(cfg, "GET", path);
+        if (!c) { err = ESP_ERR_NO_MEM; break; }
+        if (have) {
+            char range[32];
+            snprintf(range, sizeof(range), "bytes=%lu-", (unsigned long)have);
+            esp_http_client_set_header(c, "Range", range);
+            ESP_LOGW(TAG, "download resume at %lu", (unsigned long)have);
+        }
+        err = tomato_http_open(c, 0);
+        if (err != ESP_OK) {
+            if (!have) break;
+            idle++;
+            continue;
+        }
+        esp_http_client_fetch_headers(c);
+        const int status = esp_http_client_get_status_code(c);
+        if (status == 200 && have) {
+            if (restarts++) { err = ESP_FAIL; break; }
+            have = 0;
+        } else if (status != 200 && (status != 206 || !have)) {
+            ESP_LOGW(TAG, "download http=%d", status);
+            note(ESP_FAIL, status, c);
+            err = ESP_ERR_NOT_FOUND;
+            break;
+        }
+        f = fopen(part, have ? "ab" : "wb");
+        if (!f) { err = ESP_FAIL; break; }
+        *bytes = have;
+        err = ESP_OK;
+        for (;;) {
+            if (*cancel) { err = ESP_ERR_INVALID_STATE; break; }
+            int n = esp_http_client_read(c, buf, IO_CHUNK);
+            if (n < 0) { err = ESP_FAIL; break; }
+            if (n == 0) break;
+            if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { err = ESP_ERR_INVALID_SIZE; break; }
+            have += (uint32_t)n;
+            *bytes = have;
+        }
+        if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
+        if (fclose(f) != 0 && err == ESP_OK) err = ESP_FAIL;
+        f = NULL;
+        // 只有断流才接着下；取消、写卡失败直接结束。/ Only a stall is resumed; a cancel or card write failure ends it.
+        if (err != ESP_FAIL) break;
+        idle = have > before ? 0 : idle + 1;
     }
-    if (!esp_http_client_is_complete_data_received(c)) { err = ESP_FAIL; goto done; }
-    if (fclose(f) != 0) { f = NULL; err = ESP_FAIL; goto done; }
-    f = NULL;
+    if (err == ESP_ERR_INVALID_SIZE) err = ESP_FAIL;
+    if (err != ESP_OK) goto done;
     // FAT 不能覆盖改名：旧文件先改名成 .old，新的改名到位后再删 .old。中途拔卡最多留下 .old，书库扫描时会改回来，
     // 不会出现新旧都没有的情况；改名失败就把旧的放回去并保留 .part。
     // FAT cannot rename over a file: the old file becomes .old first and is removed once the new one is in place. A
@@ -253,12 +422,14 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
         remove(old);
     }
 done:
-    if (err != ESP_OK && !s_detail[0]) note(err, 0, c);
+    if (err != ESP_OK && !s_detail[0] && c) note(err, 0, c);
     if (f) fclose(f);
     if (err != ESP_OK && !keep_part) remove(part);
-    free(buf);
-    esp_http_client_close(c);
-    esp_http_client_cleanup(c);
+    heap_caps_free(buf);
+    if (c) {
+        esp_http_client_close(c);
+        esp_http_client_cleanup(c);
+    }
     return err;
 }
 
@@ -268,26 +439,17 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
                          const volatile bool* cancel) {
     *out = NULL;
     *out_len = 0;
-    esp_http_client_config_t hc = {
-        .url = url,
-        .timeout_ms = image ? IMG_TIMEOUT_MS : TIMEOUT_MS,
-        .buffer_size = IO_CHUNK,
-        .buffer_size_tx = TX_BUF,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    esp_http_client_handle_t c = tomato_http_take(url, image ? IMG_TIMEOUT_MS : TIMEOUT_MS, HTTP_METHOD_GET, TX_BUF);
     if (!c) return ESP_ERR_NO_MEM;
-    if (image) esp_http_client_set_header(c, "Accept", "image/jpeg,image/png;q=0.9");
+    if (image) tomato_http_header(c, "Accept", "image/jpeg,image/png;q=0.9");
     uint8_t* buf = NULL;
     size_t len = 0;
     esp_err_t err = ESP_FAIL;
     int status = 0;
     int64_t length = -1;
     for (int hop = 0; hop < 4; hop++) {
-        err = tomato_http_open(c, 0);
+        err = tomato_http_begin(c, NULL, 0, &length, &status);
         if (err != ESP_OK) break;
-        length = esp_http_client_fetch_headers(c);
-        status = esp_http_client_get_status_code(c);
         if (status < 300 || status >= 400) break;
         // 跟随跳转。/ Follow the redirect.
         if (esp_http_client_set_redirection(c) != ESP_OK) { err = ESP_FAIL; break; }
@@ -317,8 +479,7 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
     if (err == ESP_OK && !len) err = ESP_ERR_INVALID_SIZE;
     if (err != ESP_OK) ESP_LOGW(TAG, "get: %s http=%d", esp_err_to_name(err), status);
     note(err, status, c);
-    esp_http_client_close(c);
-    esp_http_client_cleanup(c);
+    tomato_http_give(c, err == ESP_OK);
     if (err != ESP_OK) { heap_caps_free(buf); return err; }
     buf[len] = 0;
     *out = buf;
@@ -358,7 +519,7 @@ esp_err_t tomato_http_count_keys(const char* url, const char* key_a, const char*
     if (!c) return ESP_ERR_NO_MEM;
     const size_t la = strlen(key_a), lb = strlen(key_b);
     const size_t keep = (la > lb ? la : lb) - 1;
-    char* buf = heap_caps_malloc(IO_CHUNK + keep + 1, MALLOC_CAP_DEFAULT);
+    char* buf = heap_caps_malloc(IO_CHUNK + keep + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     int na = 0, nb = 0, status = 0;
     esp_err_t err = buf ? tomato_http_open(c, 0) : ESP_ERR_NO_MEM;
     if (err == ESP_OK) {

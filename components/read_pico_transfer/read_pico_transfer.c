@@ -878,7 +878,7 @@ static esp_err_t books_handler(httpd_req_t *req) {
             if (page_err != ESP_OK && page_err != ESP_ERR_NOT_FOUND) { cJSON_Delete(json); return respond_error(req, 400); }
             char *end; unsigned long page = strtoul(page_text, &end, 10);
             if (!page_text[0] || *end || page_text[0] == '-' || page > 1000000) { cJSON_Delete(json); return respond_error(req, 400); }
-            transfer_book_page_t *entries = calloc(1, sizeof(*entries));
+            transfer_book_page_t *entries = heap_caps_calloc(1, sizeof(*entries), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
             if (!entries) { cJSON_Delete(json); return ESP_ERR_NO_MEM; }
             int result = list_books(s_root, search, page, entries);
             if (result) { free(entries); cJSON_Delete(json); return respond_error(req, result); }

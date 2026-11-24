@@ -18,7 +18,7 @@
     ["demo_comic/reader_100.png", "One page per screen"]
   ],
   "screens-tomato": [
-    ["demo_tomato/shelf_100.png", "Tomato · shelf"],
+    ["demo_book/ui22_100.png", "Library · store and Tomato updates"],
     ["demo_store/home_100.png", "Store"],
     ["demo_store/rank_100.png", "Rankings"],
     ["demo_store/detail_100.png", "Book details"]

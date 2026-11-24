@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "esp_attr.h"
 #include "app.h"
 #include "app_registry.h"
 #include "auto_turn.h"
@@ -261,7 +262,7 @@ typedef struct {
     uint32_t use;
 } cover_t;
 
-static cover_t s_covers[COVER_SLOTS];
+EXT_RAM_BSS_ATTR static cover_t s_covers[COVER_SLOTS];
 static uint32_t s_cover_clock;
 static bool s_cover_built;
 

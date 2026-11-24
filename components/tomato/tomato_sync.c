@@ -39,7 +39,7 @@
 
 typedef enum {
     OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X, OP_WT,
-    OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME
+    OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME, OP_CHECK_ONE
 } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
@@ -470,6 +470,44 @@ static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int coun
     set_phase(TOMATO_DONE, msg);
 }
 
+// 只查一本：用番茄目录接口数章节，有新章节就直接下载。/ One book only: count chapters from the Tomato directory API
+// and download at once when there are new ones.
+static char s_one_id[TOMATO_ID_LEN];
+static void run_check_one(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
+    int i = 0;
+    while (i < count && strcmp(shelf[i].book_id, s_one_id)) i++;
+    if (i == count) { set_phase(TOMATO_DONE, "这本不在番茄书架上"); return; }
+    tomato_book_t* b = &shelf[i];
+    set_phase(TOMATO_CHECKING, "检查更新");
+    snprintf(s_work->url, sizeof(s_work->url), "https://fanqienovel.com/api/reader/directory/detail?bookId=%s",
+             b->book_id);
+    int chapters = 0;
+    if (tomato_http_count_keys(s_work->url, "\"itemId\"", "\"item_id\"", &s_cancel, &chapters) != ESP_OK ||
+        chapters <= 0) {
+        fail(s_cancel ? ESP_ERR_INVALID_STATE : ESP_FAIL, s_cancel ? "已取消" : "检查更新失败");
+        return;
+    }
+    if (chapters > b->remote) b->remote = (uint16_t)chapters;
+    tomato_shelf_save(shelf, count);
+    set_pending(count_pending(shelf, count));
+    if (b->remote <= b->chapters) { set_phase(TOMATO_DONE, "这本已是最新"); return; }
+    if (book_open_in_reader(b)) { set_phase(TOMATO_DONE, "有新章节，正在读，稍后再更新"); return; }
+    const int before = b->chapters;
+    esp_err_t err = fetch_book(cfg, b);
+    if (err != ESP_OK) {
+        fail(s_cancel ? ESP_ERR_INVALID_STATE : err, s_cancel ? "已取消" : "下载更新失败");
+        return;
+    }
+    tomato_shelf_save(shelf, count);
+    set_pending(count_pending(shelf, count));
+    portENTER_CRITICAL(&s_lock);
+    s_status.updated = 1;
+    portEXIT_CRITICAL(&s_lock);
+    char msg[48];
+    snprintf(msg, sizeof(msg), "更新了 %d 章", b->chapters - before);
+    set_phase(TOMATO_DONE, msg);
+}
+
 // 下载上次检查标出的更新；正在阅读的那本跳过。/ Download updates marked by the last check; skip the book being read.
 static void run_update(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
     int pending = count_pending(shelf, count);
@@ -735,7 +773,7 @@ static void sync_task(void* arg) {
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
-    if ((s_op == OP_CHECK && !count) || (s_op == OP_UPDATE && !count_pending(shelf, count))) {
+    if (((s_op == OP_CHECK || s_op == OP_CHECK_ONE) && !count) || (s_op == OP_UPDATE && !count_pending(shelf, count))) {
         set_phase(TOMATO_DONE, count ? "没有待下载的更新" : "书架上还没有番茄小说");
         goto out;
     }
@@ -751,6 +789,7 @@ static void sync_task(void* arg) {
     switch (s_op) {
     case OP_CHECK: run_check(&cfg, shelf, count); break;
     case OP_UPDATE: run_update(&cfg, shelf, count); break;
+    case OP_CHECK_ONE: run_check_one(&cfg, shelf, count); break;
     case OP_SEARCH: run_search(&cfg); break;
     case OP_DOWNLOAD: run_download(&cfg, shelf, count); break;
     case OP_RANK: run_rank(); break;
@@ -882,6 +921,12 @@ static esp_err_t start(op_t op) {
 }
 
 esp_err_t tomato_sync_start_check(void) { return start(OP_CHECK); }
+esp_err_t tomato_sync_start_check_one(const char* book_id) {
+    if (!book_id || !book_id[0]) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    snprintf(s_one_id, sizeof(s_one_id), "%s", book_id);
+    return start(OP_CHECK_ONE);
+}
 esp_err_t tomato_sync_start_hupu(const tomato_hupu_req_t* req) {
     if (!req) return ESP_ERR_INVALID_ARG;
     if (s_busy) return ESP_ERR_INVALID_STATE;

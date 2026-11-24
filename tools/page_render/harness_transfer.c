@@ -143,4 +143,22 @@ void hr_scenes(void) {
     s_pressed = -1;
     hr_allow_fit();
     shot("password_symbols");
+
+#ifndef HR_BASELINE   // 改动前没有设置里的 Wi-Fi 管理 / No Settings Wi-Fi management before this change
+    // 从设置 › Wi-Fi 进来：试连中、试连失败（长网络名加原因）。/ Opened from Settings › Wi-Fi: testing, and a failed
+    // test with a long network name and the reason.
+    s_manage = true;
+    s_view = TRANSFER_NETWORKS;
+    s_saved_configured = true;
+    snprintf(s_saved_ssid, sizeof(s_saved_ssid), "A-Very-Long-Network-Name-For-Test");
+    s_network_page = 0;
+    s_network_count = 8;
+    snprintf(s_network_message, sizeof(s_network_message), "正在连接…");
+    hr_allow_fit();
+    shot("manage_testing");
+    snprintf(s_network_message, sizeof(s_network_message), "连不上：%s", "连上了但没拿到 IP，检查路由器的 DHCP 设置");
+    hr_allow_fit();
+    shot("manage_failed");
+    s_manage = false;
+#endif
 }

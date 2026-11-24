@@ -11,6 +11,7 @@
  * Frozen: in-memory images stay under MEM_MAX in total; failed decodes are remembered and not retried.
  */
 
+#include "esp_attr.h"
 #include "hupu_img.h"
 
 #include <stdio.h>
@@ -48,7 +49,7 @@ typedef struct {
 
 static slot_t s_slots[SLOT_MAX];
 static uint32_t s_clock;
-static job_t s_queue[QUEUE_MAX];
+EXT_RAM_BSS_ATTR static job_t s_queue[QUEUE_MAX];
 static int s_queue_count;
 static bool s_built;
 static uint32_t s_failed[FAILED_MAX];

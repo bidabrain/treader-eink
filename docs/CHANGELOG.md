@@ -3,6 +3,45 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · rednote 服务器 0.3.3
+
+- 缩略图接口加 `?wait=0`：这篇的图还在做时不等，直接说没有。配合 Treader 1.2.0，小红书拉列表不再被还没做好的缩略图卡住。
+  The thumbnail endpoint takes `?wait=0` and answers at once when a note's images are still being made, so with Treader 1.2.0 a Xiaohongshu list fetch no longer stalls on unfinished thumbnails.
+
+## 2026-11-25 · Treader 1.2.0
+
+- 番茄并进书库，照漫画的样子：底部和“全部”页不再有“番茄”。设置了番茄服务器时，书库右上角多出“书城”；状态行右边是“检查更新”，有新章节后变成“下载 N 本更新”，在跑时可以“取消”；长按番茄书，详情里多了“检查这本更新”，只查这一本、有新章节直接下载。来源胶囊改叫“全部 / 本地 / 番茄”。原来放在底部的番茄自动去掉。
+  Tomato moved into the library, the way comics work: the bar and the All page no longer have Tomato. With a Tomato server set, "Store" appears at the library's top right; the status line offers "Check for updates", then "Download updates (N)" once new chapters are found, with "Cancel" while it runs; a Tomato book's long-press detail gains "Check this book", which checks just that one and downloads its new chapters. The source pill reads All / Local / Tomato. A Tomato tab pinned to the bar is dropped automatically.
+- 书城顶上改成“‹ 书城”，返回书库；搜索栏往上挪，分类多露出一些。
+  The store's top row is now "‹ Store" back to the library; the search bar moves up and more categories show.
+- WEBTOON 作品详情：下载漫画时“检查更新”变成“停止下载”，下载卡住时能手动停下，别的功能就能用了。
+  WEBTOON title details: while comics download, "Check for updates" becomes "Stop download", so a stuck download can be stopped and other features become usable.
+- 番茄下载快很多：设备的 TCP 接收窗口从 5.6 KB 加到 32 KB（缓冲在 PSRAM），经 Cloudflare 这类往返长的线路，以前只有几十 KB/s。下载中途断流不再报 ESP_FAIL 从头来，已经收到的留着，从断的地方接着下，只要还有进展就一直接。
+  Tomato downloads are much faster: the device's TCP receive window grows from 5.6 KB to 32 KB (buffers in PSRAM); over long round trips such as Cloudflare it used to manage only tens of KB/s. A mid-download stall no longer ends in ESP_FAIL and a restart: what arrived is kept and the download continues from where it stopped, for as long as it keeps making progress.
+- 修正小红书拉取时一直“拉取中”：服务器还在做的图片，设备超时后不再换个连接再等一轮。
+  Fixed Xiaohongshu fetches stuck on "Fetching": when the server is still making an image, the device no longer waits a second round on a new connection after timing out.
+
+- 设置首页新增“Wi-Fi”：扫描、输密码保存后马上试连一次并告诉你结果，也能测试连接、遗忘网络。页面写明只能保存一个网络，连新网络会替换旧的。
+  New Wi-Fi entry at the top of Settings: scan, save a network with its password and get an immediate test result, test the connection or forget the network. The page says only one network is kept and a new one replaces it.
+- 小红书、微博、X、WEBTOON、番茄书城、虎扑拉封面和图片时同一个服务器只握手一次，不再每张图都重新建连接，拉取快很多。
+  Covers and images for Xiaohongshu, Weibo, X, WEBTOON, the Tomato store and Hupu reuse one connection per server instead of reconnecting for every image, so fetching is much faster.
+- 拉取都能取消：小红书、微博、X 右上角显示“拉取中 · 取消”，虎扑、WEBTOON 发现是“加载中 · 取消”，书城取榜单和番茄搜索时也有“取消”，点一下就停，已经下好的留着。别的标签在拉取时，本页的“刷新”照样能点，会先让那边停下。
+  Every fetch can be cancelled: Xiaohongshu, Weibo and X show "Fetching · Cancel", Hupu and the WEBTOON store "Loading · Cancel", and the store's rank fetch and Tomato search have "Cancel"; what already arrived stays. While another tab fetches, Refresh still works here and asks that tab to stop first.
+- 小红书、微博、X 和 WEBTOON 发现页拉列表时，当前这一页的缩略图一到就显示，不用等后面的全部下完。
+  While Xiaohongshu, Weibo, X and the WEBTOON store fetch a list, the current page's thumbnails show as soon as they arrive instead of waiting for everything after them.
+- 小红书拉关注列表时只取服务器已经做好的缩略图，还在做的跳过、下次刷新补上，不再一张张卡十几秒（需要 rednote 服务器 0.3.3）。
+  Xiaohongshu following lists take only thumbnails the server has finished; unfinished ones are skipped until the next refresh instead of stalling for seconds each (needs rednote server 0.3.3).
+- 设置 › 内容来源 › 番茄小说新增“手机网页填写”：手机扫码打开网页，粘贴服务器地址和设备密码，和小红书一样。
+  Settings › Content sources › Tomato gains the phone web form: scan the code and paste the server address and device password, as with Xiaohongshu.
+- 设置 → 显示与阅读新增“文字深浅”：标准 / 深 / 更深，界面文字和阅读正文一起加粗，说明、摘要这类灰字也跟着变黑。
+  New Settings › Display & reading › Text darkness: Standard / Dark / Darker thickens UI and reading text together and darkens gray notes and summaries.
+- 验证器在“全部”页和底部标签设置里排在设置前面；设置固定在底部时永远是最后一个。
+  The authenticator now sits before Settings on the All page and in the tab-bar settings; a pinned Settings is always last.
+- 后台联网时刷屏多留余量，修正书城边下封面边翻页时偶尔整屏刷白、之后刷屏变慢。
+  The display keeps more margin while the background is online, fixing an occasional white flash followed by slower refreshes when the bookstore fetched covers during a page turn.
+- 波形表、字体列表、图片队列和几个下载缓冲挪到 PSRAM，给 Wi-Fi 和加密连接多留约 57 KB 内部内存。
+  Waveform tables, the font list, image queues and several download buffers moved to PSRAM, leaving about 57 KB more internal memory for Wi-Fi and encrypted connections.
+
 ## 2026-11-25 · Treader 1.1.2
 
 - 修正虎扑、番茄书城等联网时报“HTTPS 握手失败”（在线升级却能连）：用 RSA 证书的站点验签时内部内存不够，现在加密连接改用 PSRAM。

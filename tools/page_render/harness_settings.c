@@ -103,6 +103,14 @@ void hr_scenes(void) {
     app_settings_set_turn_zone(APP_TURN_LOWER);
     page(P_TURN, "turn_lower");
     page(P_DISPLAY, "display_turn_lower");
+#ifndef HR_BASELINE   // 改动前没有文字深浅 / No text darkness before this change
+    // 最深一档：设置首页和显示页。/ The darkest level: the settings home and the display page.
+    tr_text_depth_apply(2);
+    page(P_DISPLAY, "display_darker");
+    hr_allow_fit();
+    page(P_HOME, "home_darker");
+    tr_text_depth_apply(0);
+#endif
     app_settings_set_turn_zone(APP_TURN_SIDES);
 #endif
     page(P_TABS, "tabs");
@@ -156,6 +164,12 @@ void hr_scenes(void) {
     snprintf(s_web_note, sizeof(s_web_note), "收到地址，正在保存…");
     page(P_SRC_SERVER, "web_ap");
     s_web_note[0] = 0;
+#ifndef HR_BASELINE   // 改动前番茄没有网页填写 / No Tomato web form before this change
+    s_web_status.mode = READ_PICO_TRANSFER_MODE_STA;
+    s_web_tomato = true;
+    page(P_SRC_TOMATO, "web_tomato");
+    s_web_tomato = false;
+#endif
     s_web_on = false;
     hr_allow_fit();
     page(P_SYNC, "sync");

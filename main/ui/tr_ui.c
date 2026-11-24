@@ -17,7 +17,23 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 
-#define TR_WGHT_BOLD 700
+uint8_t tr_gray_secondary = 0x50;
+static int s_bold = 700;   // 粗体字重，随文字深浅 / Bold weight, following Text darkness
+
+void tr_text_depth_apply(uint8_t level) {
+    static const int BODY[TR_TEXT_DEPTHS] = {400, 500, 600};
+    static const int BOLD[TR_TEXT_DEPTHS] = {700, 750, 800};
+    static const uint8_t GRAY[TR_TEXT_DEPTHS] = {0x50, 0x33, 0x11};
+    if (level >= TR_TEXT_DEPTHS) level = 0;
+    s_bold = BOLD[level];
+    tr_gray_secondary = GRAY[level];
+    ttf_set_base_weight(BODY[level]);
+}
+
+const tr_tab_t TR_TAB_ORDER[TR_TAB_MAX] = {
+    TR_TAB_LIBRARY, TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO, TR_TAB_X, TR_TAB_AUTH,
+    TR_TAB_SETTINGS,
+};
 #define TAB_ICON_Y (TR_TABS_Y + TR_S(38))
 #define TAB_LABEL_Y (TR_TABS_Y + TR_S(70))
 
@@ -26,7 +42,7 @@
 static void text_with_weight(uint8_t* fb, int x, int y, int px, const char* text,
                              enum EpdFontFlags align, bool bold, bool inverted) {
     int old = ttf_get_weight();
-    if (bold) ttf_set_weight(TR_WGHT_BOLD);
+    if (bold) ttf_set_weight(s_bold);
     ui_text(fb, x, y, px, text, align, inverted);
     if (bold) ttf_set_weight(old);
 }
@@ -47,7 +63,7 @@ void tr_text_on(uint8_t* fb, int x, int y_top, int px, const char* text, enum Ep
                 uint8_t fg, uint8_t bg) {
     if (!text || !text[0]) return;
     int old = ttf_get_weight();
-    if (bold) ttf_set_weight(TR_WGHT_BOLD);
+    if (bold) ttf_set_weight(s_bold);
     ttf_draw_text_px(fb, x, y_top + ttf_ascender_px(px), px, text, align, fg >> 4, bg >> 4);
     if (bold) ttf_set_weight(old);
 }
@@ -479,7 +495,7 @@ void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t 
 EpdRect tr_tab_area(void) { return (EpdRect){0, TR_TABS_Y, TR_W, TR_H - TR_TABS_Y}; }
 
 static uint16_t s_hidden = 1u << TR_TAB_X;
-static uint8_t s_pins[TR_TAB_MAX] = {TR_TAB_COMIC, TR_TAB_TOMATO, TR_TAB_XHS, TR_TAB_HUPU};
+static uint8_t s_pins[TR_TAB_MAX] = {TR_TAB_COMIC, TR_TAB_XHS, TR_TAB_HUPU, TR_TAB_WEIBO};
 static int s_pin_n = 4;
 
 static const char* const TAB_LABELS[TR_TAB_MAX] = {"书库", "漫画", "番茄", "小红书", "虎扑", "微博", "X", "设置",
@@ -494,7 +510,7 @@ void tr_tabs_configure(uint16_t hidden, const uint8_t* pins, int n) {
     // 只收合法、没隐藏、不重复、不是书库的。/ Keep valid, visible, unique, non-library entries only.
     for (int i = 0; pins && i < n && s_pin_n < TR_TAB_MAX; i++) {
         const int t = pins[i];
-        if (t <= TR_TAB_LIBRARY || t >= TR_TAB_MAX || (s_hidden & (1u << t))) continue;
+        if (t <= TR_TAB_LIBRARY || t >= TR_TAB_MAX || (s_hidden & (1u << t)) || (TR_TABS_RETIRED & (1u << t))) continue;
         bool dup = false;
         for (int k = 0; k < s_pin_n; k++) dup |= s_pins[k] == t;
         if (!dup) s_pins[s_pin_n++] = (uint8_t)t;
@@ -505,7 +521,7 @@ void tr_tabs_configure(uint16_t hidden, const uint8_t* pins, int n) {
 // each cell fits the scaled icon and label.
 int tr_tab_slots(void) { return ui_scale_pct >= 130 ? 4 : ui_scale_pct >= 115 ? 5 : 6; }
 
-bool tr_tab_shown(tr_tab_t tab) { return tab < TR_TAB_MAX && !(s_hidden & (1u << tab)); }
+bool tr_tab_shown(tr_tab_t tab) { return tab < TR_TAB_MAX && !((s_hidden | TR_TABS_RETIRED) & (1u << tab)); }
 const char* tr_tab_label(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_LABELS[tab] : tab == TR_TAB_ALL ? "全部" : ""; }
 tr_icon_t tr_tab_icon(tr_tab_t tab) { return tab < TR_TAB_MAX ? TAB_ICONS[tab] : TR_ICON_MENU; }
 

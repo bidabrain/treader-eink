@@ -127,29 +127,20 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
     *out_len = 0;
     char url[sizeof(srv->cfg->url) + 160];
     snprintf(url, sizeof(url), "%s%s", srv->cfg->url, path);
-    esp_http_client_config_t hc = {
-        .url = url,
-        .timeout_ms = timeout_ms,
-        .buffer_size = IO_CHUNK,
-        .buffer_size_tx = 2048,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-        .method = body ? HTTP_METHOD_POST : HTTP_METHOD_GET,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    // 同一个服务器的连续请求（一批封面）复用连接。/ Back-to-back requests to one server (a batch of covers) reuse
+    // the connection.
+    esp_http_client_handle_t c = tomato_http_take(url, timeout_ms, body ? HTTP_METHOD_POST : HTTP_METHOD_GET, 2048);
     if (!c) { snprintf(msg, cap, "服务器地址格式不对"); return ESP_ERR_INVALID_ARG; }
-    esp_http_client_set_header(c, srv->header, srv->cfg->token);
+    tomato_http_header(c, srv->header, srv->cfg->token);
     const int body_len = body ? (int)strlen(body) : 0;
-    if (body) esp_http_client_set_header(c, "Content-Type", "application/json");
+    if (body) tomato_http_header(c, "Content-Type", "application/json");
     esp_err_t err = ESP_FAIL;
     int status = 0;
     int64_t length = -1;
     // 跟随跳转（比如 http 被跳到 https）。/ Follow redirects (say, http forced to https).
     for (int hop = 0; hop < 4; hop++) {
-        err = tomato_http_open(c, body_len);
+        err = tomato_http_begin(c, body, body_len, &length, &status);
         if (err != ESP_OK) break;
-        if (body_len && esp_http_client_write(c, body, body_len) != body_len) { err = ESP_FAIL; break; }
-        length = esp_http_client_fetch_headers(c);
-        status = esp_http_client_get_status_code(c);
         if (status < 300 || status >= 400 || body) break;
         if (esp_http_client_set_redirection(c) != ESP_OK) { err = ESP_FAIL; break; }
         esp_http_client_close(c);
@@ -186,8 +177,7 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
         if (tomato_http_detail()[0] == 0) tomato_http_set_detail(esp_err_to_name(err));
         snprintf(msg, cap, "连不上 %s 服务器（%s）", srv->name, tomato_http_detail());
     }
-    esp_http_client_close(c);
-    esp_http_client_cleanup(c);
+    tomato_http_give(c, err == ESP_OK);
     if (err != ESP_OK) { heap_caps_free(buf); return err; }
     buf[len] = 0;
     *out = buf;

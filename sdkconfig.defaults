@@ -45,6 +45,13 @@ CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_ESP_WIFI_IRAM_OPT=n
 CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+# TCP 接收窗口从默认 5760（4 个包）加到 32 KB：经 Cloudflare 这种往返长的线路，下载速度约等于窗口除以往返时间，
+# 默认窗口只有几十 KB/s。收包缓冲在 PSRAM（上面一行），不占内部内存。
+# TCP receive window raised from the default 5760 (four segments) to 32 KB: over long round trips such as Cloudflare,
+# download speed is about window / round trip, only tens of KB/s with the default. The buffers live in PSRAM (above),
+# not internal memory.
+CONFIG_LWIP_TCP_WND_DEFAULT=32768
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=32
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=1024
 

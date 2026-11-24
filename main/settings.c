@@ -28,6 +28,7 @@
 #define NVS_KEY_PICKUP "pickup"
 #define NVS_KEY_SHELF_GRID "shelfgrid"
 #define NVS_KEY_FAST_TURN "fastturn"
+#define NVS_KEY_TEXT_DEPTH "txtdepth"
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_BOOK_STYLE "bk_style"
@@ -57,6 +58,7 @@ static uint8_t s_last_boot;
 static bool s_pickup_wake;
 static bool s_shelf_grid;
 static bool s_fast_turn;
+static uint8_t s_text_depth;
 static uint8_t s_book_px = 48;
 static bool s_book_shake;
 // 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
@@ -149,6 +151,8 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_SHELF_GRID, &grid) == ESP_OK) s_shelf_grid = grid != 0;
     uint8_t fast = 0;
     if (nvs_get_u8(h, NVS_KEY_FAST_TURN, &fast) == ESP_OK) s_fast_turn = fast != 0;
+    uint8_t depth = 0;
+    if (nvs_get_u8(h, NVS_KEY_TEXT_DEPTH, &depth) == ESP_OK && depth < 3) s_text_depth = depth;
     uint8_t book_px = 48, book_shake = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_PX, &book_px) == ESP_OK) s_book_px = valid_book_px(book_px);
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
@@ -282,6 +286,16 @@ void app_settings_set_shelf_grid(bool on) {
     nvs_put_u8(NVS_KEY_SHELF_GRID, on ? 1 : 0);
 }
 
+uint8_t app_settings_text_depth(void) {
+    return s_text_depth;
+}
+
+void app_settings_set_text_depth(uint8_t level) {
+    if (level >= 3 || s_text_depth == level) return;
+    s_text_depth = level;
+    nvs_put_u8(NVS_KEY_TEXT_DEPTH, level);
+}
+
 bool app_settings_fast_turn(void) {
     return s_fast_turn;
 }
@@ -333,6 +347,16 @@ uint16_t app_settings_hidden_tabs(void) {
     return s_tabs_off;
 }
 
+// 设置要是放在底部，永远排在最后一个。/ When settings is pinned it always comes last.
+static void settings_last(uint8_t* pins, int n) {
+    for (int i = 0; i + 1 < n; i++) {
+        if (pins[i] != TR_TAB_SETTINGS) continue;
+        for (int j = i; j + 1 < n; j++) pins[j] = pins[j + 1];
+        pins[n - 1] = TR_TAB_SETTINGS;
+        return;
+    }
+}
+
 int app_settings_tab_pins(uint8_t* out) {
     // 没存过（包括新机 NVS 里还没有本命名空间、读设置提前返回时）：旧版底部显示的标签（书库、设置除外）按原顺序
     // 放到底部，隐藏的不放。
@@ -342,12 +366,17 @@ int app_settings_tab_pins(uint8_t* out) {
         s_pin_n = 0;
         for (int t = 0; t < TR_TAB_MAX; t++) {
             // 验证器不默认放到底部，只在“全部”里。/ The authenticator is not pinned by default; it lives on All.
-            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || t == TR_TAB_AUTH || (s_tabs_off & (1u << t))) continue;
+            if (t == TR_TAB_LIBRARY || t == TR_TAB_SETTINGS || t == TR_TAB_AUTH || (s_tabs_off & (1u << t)) ||
+                (TR_TABS_RETIRED & (1u << t)))
+                continue;
             s_pins[s_pin_n++] = (uint8_t)t;
         }
     }
-    const int n = s_pin_n;
-    for (int i = 0; i < n; i++) out[i] = s_pins[i];
+    settings_last(s_pins, s_pin_n);
+    // 并进别的功能的不再放在底部（老设置里的番茄）。/ Merged features leave the bar (Tomato in older settings).
+    int n = 0;
+    for (int i = 0; i < s_pin_n; i++)
+        if (!(TR_TABS_RETIRED & (1u << s_pins[i]))) out[n++] = s_pins[i];
     return n;
 }
 
@@ -356,6 +385,7 @@ void app_settings_set_tab_pins(const uint8_t* pins, int n) {
     if (n > TR_TAB_MAX) n = TR_TAB_MAX;
     for (int i = 0; i < n; i++) s_pins[i] = pins[i];
     s_pin_n = n;
+    settings_last(s_pins, s_pin_n);
     uint8_t blob[1 + TR_TAB_MAX];
     blob[0] = (uint8_t)n;
     for (int i = 0; i < n; i++) blob[1 + i] = s_pins[i];

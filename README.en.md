@@ -19,11 +19,11 @@ It is more than firmware: Tomato, RedNote and Weibo each have an **Android app**
 ## Features
 
 **Reading**
-- Library: TXT and EPUB files in `books/` on the SD card, shown as a list or a cover grid (toggle at the top right), sorted by title or recently read, searchable by pinyin initials, filterable by source (Tomato / other books)
+- Library: TXT and EPUB files in `books/` on the SD card, shown as a list or a cover grid (toggle at the top right), sorted by title or recently read, searchable by pinyin initials, filterable by source (All / Local / Tomato)
 - Image covers: EPUB's own cover, and Tomato books fetch their cover on download; shown in the Library and on the Lock screen
 - Reader: table of contents, font size, per-book progress; layout options for line spacing, paragraph spacing, margins, first-line indent and per-line underlines; tap zones for turning pages can be left/right, center/bottom, or anywhere; one-tap previous / next chapter on the toolbar; partial DU fast refresh for page turns, periodic GC16 to clean the gray background, and a long press on the middle key for a full-screen refresh
 - Timed auto page turn: available on the reading and comics toolbars, 3 to 30 seconds in 3-second steps; touching the screen restarts the timer, it stops on the last page, and the device does not auto-lock meanwhile
-- The Library is the home page: the device boots straight into it; tap the "Continue reading" card at the top to pick up where you left off; the status line tells you when Tomato books have new chapters. Two ways to Transfer books: upload from a web page over Wi-Fi, or connect a USB cable and use the SD card as a USB drive. Bottom tabs: the Library is always the first cell and "All" the last, with your favorite features in between (pick, order and hide them in Settings → Bottom tabs; X is hidden by default). The "All" page lists every feature: Library, Comics, Tomato, RedNote, Hupu, Weibo, X, Settings, Authenticator
+- The Library is the home page: the device boots straight into it; tap the "Continue reading" card at the top to pick up where you left off; with a Tomato server set, "Store" sits at the top right and the right of the status line offers "Check for updates" / "Download updates (N)". Two ways to Transfer books: upload from a web page over Wi-Fi, or connect a USB cable and use the SD card as a USB drive. Bottom tabs: the Library is always the first cell and "All" the last, with your favorite features in between (pick, order and hide them in Settings → Bottom tabs; X is hidden by default). The "All" page lists every feature: Library, Comics, RedNote, Hupu, Weibo, X, Settings, Authenticator (Tomato lives in the Library)
 
 **Comics**
 
@@ -33,13 +33,14 @@ It is more than firmware: Tomato, RedNote and Weibo each have an **Android app**
 - Each comic remembers the page you reached and the reading direction; long press to clear progress or delete
 - WEBTOON Discover and follow-along (needs a self-hosted [webtoon server](webtoon/README.en.md)): tap "Discover" at the top right of My comics to browse rankings, genres, the weekday schedule and completed titles, or search; after you subscribe, "Check for updates" downloads new episodes as CBZ into My comics. The server converts the tall strips to grayscale and cuts screens in the blank gaps between panels, so pages turn as fast as local comics. My comics can be filtered by All / Local / WEBTOON, and subscriptions are tagged "WT" and "N new". When the server has Mihon extension sources enabled, the Discover page can switch to them as well. Only free public episodes are fetched; deploy it yourself, for your own use only
 
-**Tomato (Fanqie novels)** (needs a [self-hosted download server](#self-hosted-tomato-download-server))
+**Tomato (Fanqie novels)** (needs a [self-hosted download server](#self-hosted-tomato-download-server)), part of the Library with no tab of its own
+- Entry: "Store" at the Library's top right; the Store's top bar is search
 - Search: tap a result to see the synopsis, category, chapters and word count before deciding to download
 - Download: the server generates a TXT that is saved into `books/` and read in the Library like any other book
-- Checking for updates is separate from downloading: both run only when you tap them, **there is no automatic checking**; the book you are currently reading is not replaced
+- Checking for updates is separate from downloading: tap "Check for updates" on the right of the Library's status line, then "Download updates (N)" when there are new chapters; the same spot reads "Cancel" while it runs. Long-press a Tomato book and "Check this book" checks just that one and downloads its new chapters. Both run only when you tap them, **there is no automatic checking**; the book you are currently reading is not replaced
 - Store: reads the [FanqieRankTracker](https://github.com/bidabrain/FanqieRankTracker) rankings, 37 categories for male and female readers, shown as a cover grid, with downloads straight from the detail page; when GitHub Pages times out from mainland China it automatically falls back to a jsDelivr mirror
 - Every list is paged: tap a button or swipe once to turn a whole page, the e-ink screen never scrolls
-- There is also a standalone Android app with the same features as the firmware Library and Tomato tab (search, download, Store, reading, progress shared with the device over WebDAV), see [tomato/android](tomato/android/README.md)
+- There is also a standalone Android app with the same features as the firmware Library (Tomato included) (search, download, Store, reading, progress shared with the device over WebDAV), see [tomato/android](tomato/android/README.md)
 
 **Hupu** (read-only, no server needed, ported from the Android [hupuX](https://github.com/bidabrain/hupuX))
 - Recommended: the front-page recommendations, 5 per page, with thumbnails
@@ -85,7 +86,7 @@ It is more than firmware: Tomato, RedNote and Weibo each have an **Android app**
 - USB Transfer: connect a cable to a computer and copy files straight onto the SD card as a USB drive; the device pauses during the transfer and restarts afterwards. Normally the cable is still a serial port, so flashing works as usual
 
 **System**
-- Settings come in six groups: Display & reading, Bottom tabs, Transfer, Content sources, Sync, Power & device
+- Settings come in seven groups: Wi-Fi, Display & reading, Bottom tabs, Transfer, Content sources, Sync, Power & device. Wi-Fi keeps only one network; joining a new one replaces it
 - Display size: Normal / Large / Extra large (100% / 115% / 130%), enlarging text, icons and buttons like Android does; the reading body font size is set separately
 - Pinyin input method: full pinyin, T9, English and symbols, with an offline dictionary on the SD card
 - Lock screen: a book card (the book you are reading and its progress) or a wallpaper from `wallpapers/` on the SD card; pick, preview full screen and delete images in Settings; when viewing a large image in RedNote, Weibo or X you can "Save as wallpaper" directly
@@ -247,7 +248,7 @@ Writing takes about a minute, then the device restarts; settings, progress and b
 2. Settings → Display & reading → Font, choose ChillDuanSans.
 3. Settings → Transfer → Wi-Fi Transfer, join a 2.4 GHz network (you can also send books to the device from a browser here).
 4. Settings → Content sources → Tomato server, enter your server address and password (if one is built into the firmware it shows "Built-in server").
-5. Tomato → search for a book and try downloading it. The clock is synced the first time the device goes online.
+5. Library → "Store" at the top right → search for a book and try downloading it. The clock is synced the first time the device goes online.
 
 ## Keys
 
@@ -344,7 +345,7 @@ After deploying, confirm the server works from a computer before entering it on 
    | Connection refused or timed out | Not listening on `0.0.0.0`, the port is not mapped, or a firewall is blocking it |
    | HTTPS certificate error | The certificate is not trusted, and the device will not connect either |
 
-3. **Try it on the device**: Settings → Content sources → Tomato server, enter the address and password → Tomato → search for a book → download. On failure, the reason is in parentheses after the message; check it against [Network troubleshooting](#network-troubleshooting).
+3. **Try it on the device**: Settings → Content sources → Tomato server, enter the address and password → Library → "Store" at the top right → search for a book → download. On failure, the reason is in parentheses after the message; check it against [Network troubleshooting](#network-troubleshooting).
 
 The API the device uses (same as the Android app): `GET /api/search`, `POST /api/jobs`, `GET /api/jobs?id=`, `GET /api/library?name=`, `GET /download/<path>`, and `GET /api/updates` for checking updates. For details, see the [download server API notes](https://github.com/bidabrain/Tomato-Novel#下载服务器-api-说明) in the Android app's README (Chinese).
 

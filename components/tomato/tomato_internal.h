@@ -30,6 +30,24 @@ bool tomato_net_use_public_dns(void);
 /// 打开 HTTP 连接；域名解析失败时换公共 DNS 再试一次，失败原因留给提示用。
 /// Open an HTTP connection, retrying once with public DNS on a lookup failure; the cause is kept for messages.
 esp_err_t tomato_http_open(esp_http_client_handle_t c, int len);
+/// 取一个连到 url 的 client：和上一个请求同一来源（协议、主机、端口）且连接还开着就复用，省掉一次握手；否则新建。
+/// 只在同步任务里用。头只能用 tomato_http_header 设，复用时会清掉上一个请求的头。
+/// Take a client for url: reuse the kept one when the previous request had the same origin (scheme, host, port) and
+/// its connection is still open, saving a handshake; otherwise create one. Sync task only. Set headers only through
+/// tomato_http_header so a reused client drops the previous request's headers.
+esp_http_client_handle_t tomato_http_take(const char* url, int timeout_ms, esp_http_client_method_t method,
+                                          int tx_size);
+/// 给 take 来的 client 设一个请求头。/ Set a request header on a client from take.
+void tomato_http_header(esp_http_client_handle_t c, const char* name, const char* value);
+/// 发请求并取响应头；复用的连接已被服务器关掉时重连一次。返回响应长度（不知道为 -1），状态码写进 *status。
+/// Send the request and fetch the headers, reconnecting once when a reused connection was closed by the server.
+/// Returns the content length (-1 if unknown) and writes the status to *status.
+esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int body_len, int64_t* length, int* status);
+/// 用完交回：响应完整收完且服务器允许保持连接时留着给下一个请求，否则关掉。/ Give a client back: kept for the next
+/// request when the reply was read in full and the server allows keep-alive, otherwise closed.
+void tomato_http_give(esp_http_client_handle_t c, bool done);
+/// 关掉留着的连接；断网前调用。/ Close the kept connection; call before going offline.
+void tomato_http_drop(void);
 
 /// 百分号编码。keep_slash 用于 /download/ 路径。/ Percent-encode; keep_slash for /download/ paths.
 void tomato_url_escape(const char* in, char* out, size_t cap, bool keep_slash);

@@ -21,6 +21,9 @@
  * Treader 修订（2026-11-17）：首页并入书库，书库是开机页。原来的续读弹窗换成书架顶部常驻的“继续阅读”卡片，点了才打开，
  * 大书照样不会在进书架时阻塞；番茄有更新时状态行右侧提示，点了去番茄页。中键（home）在书架上回第一页，已在第一页则整屏刷新。
  * 用户修订：图片点击后才加载，预览返回不改变正文分页；只缓存当前章节最近查看的一幅图，已读重复位置不冒充全书首次位置。
+ * Treader 修订（1.2.0，用户要求番茄照漫画的样子并进书库）：番茄不再是单独的标签。设置了番茄服务器时，书库右上角多出“书城”，
+ * 状态行右侧原来跳番茄页的更新提示改成就地的“检查更新 / 下载 N 本更新”，进度和“取消”也在这里；长按番茄书的详情里多出
+ * “检查这本更新”。来源胶囊叫“全部 / 本地 / 番茄”。检查和下载仍只在点了以后运行。
  * Frozen: Phase4b uses the shared gesture entry and owns previous/tools/next keys; the toolbar keeps full refresh and the middle-key hold or handle opens the demo menu. Screen turns commit on release without pressed decoration.
  * Shake is experimental, off by default, forward only; exit disables AOI2 and sleeps it. Render only paints.
  * Join preparation before returning callbacks so menus/lock cannot race the page-local TTF lock.
@@ -34,6 +37,11 @@
  * by a persistent "continue reading" card at the top of the shelf that opens only on a tap, so a large book still never
  * blocks shelf entry; pending Tomato updates show on the right of the status line and lead to the Tomato page. On the
  * shelf the home key returns to page one, or does a full refresh when already there.
+ * Treader revision (1.2.0, the user asked for Tomato to join the library the way comics work): Tomato is no longer a
+ * tab of its own. With a Tomato server set, "书城" appears at the library's top right; the status-line hint that used
+ * to lead to the Tomato page becomes in-place "检查更新 / 下载 N 本更新" with progress and "取消" right there; a Tomato
+ * book's long-press detail gains "检查这本更新". The source pill reads All / Local / Tomato. Checks and downloads still
+ * run only on a tap.
  * User revision: load images only after a tap and return without repagination; cache one viewed image in the current chapter and distinguish visited-chapter origins from the first occurrence in the whole book.
  * Treader 修订：书架和阅读工具条改成 RickyOS 风格（docs/design/ui.html），书架带底部标签栏；工具条的晃动开关换成“菜单”入口，
  * 去掉阅读页常驻菜单把手。番茄下载的书显示书名、作者和新章节数。功能和交互逻辑不变。
@@ -114,6 +122,7 @@
 #define CARD_ROWS_TOP TR_S(436)   // 有卡片时书目从这里开始 / Rows start here when the card shows
 #define CONTROL_CARD 130
 #define CONTROL_TOMATO_HINT 117
+#define CONTROL_STORE 119
 #define TOOL_PANEL_Y (UI_BAR_TOP - TR_S(416))   // 下面多了一行自动翻页 / One more row below for auto turn
 #define AUTO_ROW_Y (TOOL_PANEL_Y + TR_S(326))
 // 续读和批量确认弹窗的按钮行。/ Button row of the resume and batch-confirm dialogs.
@@ -135,10 +144,12 @@ typedef struct {
     uint16_t fresh_chapters;   ///< 已下载、打开后还没看的新章节数 / New chapters downloaded but not opened since
     char title[96];            ///< 番茄书名，空则用文件名 / Tomato title; empty means use the file name
     char author[48];
+    char book_id[TOMATO_ID_LEN];   ///< 番茄书号（“检查这本更新”用）/ Tomato book id (for "检查这本更新")
 } shelf_entry_t;
 
 static const char* TAG = "book";
 extern const app_desc_t app_transfer;
+extern const app_desc_t app_tr_store;
 static book_view_t s_view;
 static shelf_entry_t* s_shelf;
 static size_t s_shelf_capacity;
@@ -193,6 +204,14 @@ static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
 static char s_continue[BOOK_STORE_PATH_MAX];
 // 别的页面要求直接打开的书（首页“接着读”、番茄书架）。/ Book another page asked to open directly (Home, Tomato).
 static char s_open_request[BOOK_STORE_PATH_MAX];
+// 番茄并进书库：本页发起的检查或下载更新、它的序号和结束后的结果。/ Tomato in the library: the check or update this
+// page started, its sequence and the outcome once it ends.
+typedef enum { TOM_NONE = 0, TOM_CHECK, TOM_UPDATE, TOM_ONE } tom_op_t;
+static tom_op_t s_tom_op;
+static uint32_t s_tom_seq, s_tom_rev;
+static bool s_tom_cfg;
+static char s_tom_note[96];
+static int64_t s_tom_poll_ms;
 
 void app_book_request_open(const char* path) {
     snprintf(s_open_request, sizeof(s_open_request), "%s", path ? path : "");
@@ -387,12 +406,28 @@ static EpdRect card_rect(void) { return (EpdRect){UI_MARGIN, CARD_TOP, ui_conten
 static EpdRect tomato_hint_rect(void) {
     return (EpdRect){UI_LOCK_WIDTH / 2, TR_S(146), UI_LOCK_WIDTH / 2 - UI_MARGIN, TR_S(52)};
 }
+static EpdRect view_icon_rect(void);
+// “书城”在列表 / 网格切换图标左边（设置了番茄服务器才有）。/ "书城" left of the list / grid switch (only with a
+// Tomato server set).
+static EpdRect store_rect(void) {
+    const EpdRect v = view_icon_rect();
+    const int w = ttf_text_width_px(TR_S(30), "书城") + TR_S(24);
+    return (EpdRect){v.x - w, v.y, w, v.height};
+}
 // 番茄书架上有新章节的本数。/ Tomato books with new chapters.
 static int tomato_pending(void) {
     int n = 0;
     for (int i = 0; i < s_count; ++i) n += s_shelf[i].new_chapters > 0;
     return n;
 }
+// 书库里有没有番茄下载的书。/ Whether the library holds any Tomato book.
+static bool tomato_any(void) {
+    for (int i = 0; i < s_count; ++i) if (s_shelf[i].tomato && !s_shelf[i].removed) return true;
+    return false;
+}
+// 本页发起的番茄任务还在跑。/ The Tomato job this page started is still running.
+static bool tom_running(void) { return s_tom_op != TOM_NONE && tomato_sync_busy() && tomato_sync_seq() == s_tom_seq; }
+static app_redraw_t tomato_action(const char* book_id);
 // 状态行右侧的番茄更新提示只在没有别的提示时出现。/ The Tomato hint shows only when the status line has nothing else to say.
 static bool tomato_hint_shown(void);
 static EpdRect row_rect(int row, bool toc) {
@@ -504,15 +539,24 @@ static pending_progress_t* pending_find(const char* path) {
     return NULL;
 }
 static int layout_name(uint8_t* fb, const char* name, int y, bool draw);
+// 番茄书的详情多一行“检查这本更新”（确认和重试时不显示）。/ A Tomato book's detail gets one more row, "检查这本更新"
+// (not while confirming or retrying).
+static bool manage_check_shown(void) {
+    return s_tom_cfg && s_managed.tomato && s_managed.book_id[0] && !s_clear_confirm && !s_file_removed;
+}
 // 弹窗在标题下面到标签栏上面之间居中。/ The dialog centers between the header and the tab bar.
 static EpdRect manage_panel(void) {
-    int height = layout_name(NULL, s_managed.name, 0, false) + TR_S(420);
+    int height = layout_name(NULL, s_managed.name, 0, false) + TR_S(420) + (manage_check_shown() ? TR_S(96) : 0);
     const int avail = TR_TABS_Y - TR_S(218);
     return (EpdRect){UI_MARGIN - 16, TR_S(190) + (avail - height) / 2, ui_content_width() + 32, height};
 }
 static EpdRect manage_rect(int index, int count) {
     EpdRect panel = manage_panel();
     return ui_row_rect(index, count, panel.y + panel.height - TR_S(94), TR_S(76));
+}
+static EpdRect manage_check_rect(void) {
+    const EpdRect panel = manage_panel();
+    return ui_row_rect(0, 1, panel.y + panel.height - TR_S(190), TR_S(76));
 }
 // 管理模式不显示标签栏，批量按钮放在底部。/ Manage mode hides the tab bar; batch buttons sit at the bottom.
 static EpdRect batch_rect(int id) {
@@ -701,7 +745,9 @@ static void draw_manage(uint8_t* fb) {
     snprintf(info, sizeof(info), s_managed.has_progress ? "阅读进度 %u%%" : "尚无阅读进度", s_managed.pct);
     tr_text_dim(fb, UI_MARGIN, y + TR_S(44), UI_PX_CAPTION, info, EPD_DRAW_ALIGN_LEFT);
     tr_text_dim(fb, UI_MARGIN, y + TR_S(88), UI_PX_CAPTION, s_managed.is_flash ? "/flash/books" : "/sdcard/books", EPD_DRAW_ALIGN_LEFT);
-    if (s_manage_message[0]) ui_text(fb, UI_MARGIN, panel.y + panel.height - TR_S(198), UI_PX_CAPTION, s_manage_message, EPD_DRAW_ALIGN_LEFT, false);
+    const int msg_dy = manage_check_shown() ? TR_S(294) : TR_S(198);
+    if (s_manage_message[0]) ui_text(fb, UI_MARGIN, panel.y + panel.height - msg_dy, UI_PX_CAPTION, s_manage_message, EPD_DRAW_ALIGN_LEFT, false);
+    if (manage_check_shown()) tr_pill(fb, manage_check_rect(), tom_running() ? "后台正在检查更新" : "检查这本更新", false, TR_S(30));
     if (s_clear_confirm) {
         ui_text(fb, UI_MARGIN, panel.y + panel.height - TR_S(142), UI_PX_CAPTION, s_delete_confirm ? "删除后文件无法恢复" : "仅清阅读进度，保留图书文件", EPD_DRAW_ALIGN_LEFT, false);
         tr_pill(fb, manage_rect(0, 2), "取消", false, TR_S(30));
@@ -1014,9 +1060,26 @@ static void shelf_display_title(const shelf_entry_t* e, char* out, size_t cap) {
     char* dot = strrchr(out, '.');
     if (dot && dot != out) *dot = 0;
 }
+// 状态行右边的番茄操作：设置了番茄服务器、书库里有番茄书（或本页的任务在跑）才有。/ The Tomato action on the right of
+// the status line: only with a Tomato server set and Tomato books in the library (or this page's job running).
 static bool tomato_hint_shown(void) {
     const char* note = s_message[0] ? s_message : s_shelf_warning;
-    return s_view == SHELF && !s_save_failed && !note[0] && tomato_pending() > 0;
+    return s_view == SHELF && !s_save_failed && !note[0] && s_tom_cfg && (tomato_any() || tom_running());
+}
+// 在跑：进度加“取消”；有待下载的：下载；否则检查。/ Running: progress plus "取消"; updates pending: download them;
+// otherwise check.
+static void tomato_hint_label(char* out, size_t cap) {
+    if (tom_running()) {
+        tomato_status_t st;
+        tomato_sync_get_status(&st);
+        const char* what = s_tom_op == TOM_UPDATE ? "更新中" : "检查中";
+        if (st.total > 0) snprintf(out, cap, "%s %d/%d · 取消", what, st.current, st.total);
+        else snprintf(out, cap, "%s… · 取消", what);
+    } else if (tomato_pending() > 0) {
+        snprintf(out, cap, "下载 %d 本更新", tomato_pending());
+    } else {
+        copy_text(out, cap, "检查更新");
+    }
 }
 // 网格的一格：封面（新章节小胶囊压在右上角），下面书名，再下面进度条加百分比或“未读 / 读完”；管理时选中的描粗框。
 // / One grid cell: the cover (a new-chapter badge on its top right), the title below, then a progress bar and percent
@@ -1066,11 +1129,16 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     if (s_save_failed && s_view == SHELF) copy_text(line, sizeof(line), "进度未保存：点此重试");
     else if (note[0]) copy_text(line, sizeof(line), note);
     else if (s_view == BULK) snprintf(line, sizeof(line), "已选 %u 本 · 筛选或重扫会清除勾选", (unsigned)selected_count());
+    else if (s_tom_note[0]) snprintf(line, sizeof(line), "%d 本 · %s", s_visible_count, s_tom_note);
     else snprintf(line, sizeof(line), "%d 本 · %s", s_visible_count, s_recent_sort ? "按最近阅读" : "按书名");
+    if (s_tom_cfg && s_view == SHELF) {
+        const EpdRect st = store_rect();
+        tr_text(fb, st.x + st.width - TR_S(12), st.y + TR_S(18), TR_S(30), "书城", EPD_DRAW_ALIGN_RIGHT, true);
+    }
     int line_w = ui_content_width();
     if (tomato_hint_shown()) {
         char hint[48];
-        snprintf(hint, sizeof(hint), "番茄 %d 本有更新 ›", tomato_pending());
+        tomato_hint_label(hint, sizeof(hint));
         tr_text(fb, UI_LOCK_WIDTH - UI_MARGIN, TR_S(156), TR_S(28), hint, EPD_DRAW_ALIGN_RIGHT, true);
         line_w -= ttf_text_width_px(TR_S(28), hint) + TR_S(24);
     }
@@ -1080,7 +1148,7 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     else tr_text_dim(fb, UI_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
 
     // 书都在 TF 卡上，筛选改成按来源。/ All books are on the card, so filter by source instead.
-    tr_pill(fb, chip_rect(0), s_filter == 0 ? "全部" : s_filter == 1 ? "番茄" : "其他书", s_filter != 0, TR_S(28));
+    tr_pill(fb, chip_rect(0), s_filter == 0 ? "全部" : s_filter == 1 ? "本地" : "番茄", s_filter != 0, TR_S(28));
     tr_pill(fb, chip_rect(1), s_recent_sort ? "按最近" : "按书名", false, TR_S(28));
     tr_pill(fb, chip_rect(2), s_view == BULK ? "完成" : "管理", s_view == BULK, TR_S(28));
     if (s_query[0]) {
@@ -1475,7 +1543,8 @@ static app_redraw_t resume_choice(app_ctx_t* ctx, bool confirmed) {
 }
 /* ---- 书架数据 / Shelf data ---- */
 static bool shelf_matches(const shelf_entry_t* item) {
-    return item->search_match && (s_filter == 0 || (s_filter == 1 && item->tomato) || (s_filter == 2 && !item->tomato));
+    // 来源：0 全部、1 本地、2 番茄。/ Source: 0 all, 1 local, 2 Tomato.
+    return item->search_match && (s_filter == 0 || (s_filter == 1 && !item->tomato) || (s_filter == 2 && item->tomato));
 }
 static int compare_books(const void* a, const void* b) {
     const shelf_entry_t* x = a;
@@ -1539,7 +1608,7 @@ static void annotate_tomato(void) {
         shelf_entry_t* e = &s_shelf[i];
         e->tomato = false;
         e->new_chapters = e->fresh_chapters = 0;
-        e->title[0] = e->author[0] = 0;
+        e->title[0] = e->author[0] = e->book_id[0] = 0;
         if (e->is_flash || strncmp(e->path, TOMATO_BOOKS_DIR, dir_len) || e->path[dir_len] != '/') continue;
         const char* base = e->path + dir_len + 1;
         for (int j = 0; j < n; ++j) {
@@ -1547,6 +1616,7 @@ static void annotate_tomato(void) {
             e->tomato = true;
             copy_text(e->title, sizeof(e->title), t[j].title);
             copy_text(e->author, sizeof(e->author), t[j].author);
+            copy_text(e->book_id, sizeof(e->book_id), t[j].book_id);
             e->new_chapters = (uint16_t)tomato_book_pending(&t[j]);
             e->fresh_chapters = (uint16_t)tomato_book_fresh(&t[j]);
             break;
@@ -1873,6 +1943,14 @@ static void goto_font(app_ctx_t* ctx) {
     ctx->request_app = &app_font_pick;
 }
 static app_redraw_t manage_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
+    if (manage_check_shown() && ui_rect_hit(manage_check_rect(), x, y)) {
+        // 查完的结果显示在书库状态行。/ The outcome shows on the library's status line.
+        if (tom_running()) return APP_REDRAW_NONE;
+        char id[TOMATO_ID_LEN];
+        copy_text(id, sizeof(id), s_managed.book_id);
+        s_view = SHELF;
+        return tomato_action(id);
+    }
     int count = s_clear_confirm || s_file_removed ? 2 : 3;
     for (int i = 0; i < count; ++i) if (ui_rect_hit(manage_rect(i, count), x, y)) {
         if (s_clear_confirm) { if (!i) s_clear_confirm = false; else manage_apply(ctx); }
@@ -1937,6 +2015,35 @@ static app_redraw_t batch_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     return APP_REDRAW_NONE;
+}
+// 番茄检查、下载更新、只查一本（book_id 非空）；在跑就取消。后台在跑浏览任务先让它停，停不了就说原因。
+// Tomato check, update download, or a single-book check (book_id set); cancels when running. A browsing job in the
+// background is asked to stop first; otherwise say why it cannot start.
+static app_redraw_t tomato_action(const char* book_id) {
+    if (tom_running()) {
+        tomato_sync_cancel();
+        copy_text(s_tom_note, sizeof(s_tom_note), "正在取消…");
+        return APP_REDRAW_PAGE;
+    }
+    const tomato_preempt_t room = tomato_sync_busy() ? tomato_sync_preempt() : TOMATO_PREEMPT_FREE;
+    if (room != TOMATO_PREEMPT_FREE) {
+        copy_text(s_tom_note, sizeof(s_tom_note), room == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次"
+                                                                                  : "后台正在下载或同步，完成后再试");
+        return APP_REDRAW_PAGE;
+    }
+    const tom_op_t op = book_id ? TOM_ONE : tomato_pending() > 0 ? TOM_UPDATE : TOM_CHECK;
+    const esp_err_t err = op == TOM_ONE ? tomato_sync_start_check_one(book_id)
+                        : op == TOM_UPDATE ? tomato_sync_start_update() : tomato_sync_start_check();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "tomato op %d: %s", op, esp_err_to_name(err));
+        copy_text(s_tom_note, sizeof(s_tom_note), "后台正在忙，稍后再试");
+        return APP_REDRAW_PAGE;
+    }
+    s_tom_op = op;
+    s_tom_seq = tomato_sync_seq();
+    s_tom_rev = 0;
+    s_tom_note[0] = 0;
+    return APP_REDRAW_PAGE;
 }
 static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_resume_path[0]) {
@@ -2076,10 +2183,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             retry_progress();
             return APP_REDRAW_PAGE;
         }
-        if (tomato_hint_shown() && ui_rect_hit(tomato_hint_rect(), x, y)) {
-            ctx->request_app = tr_nav_tab_app(TR_TAB_TOMATO);
+        if (s_tom_cfg && s_view == SHELF && ui_rect_hit(store_rect(), x, y)) {
+            ctx->request_app = &app_tr_store;
             return APP_REDRAW_NONE;
         }
+        if (tomato_hint_shown() && ui_rect_hit(tomato_hint_rect(), x, y)) return tomato_action(NULL);
         if (card_shown() && ui_rect_hit(card_rect(), x, y)) {
             open_book(ctx, s_shelf[continue_index()].path);
             return APP_REDRAW_PAGE;
@@ -2118,6 +2226,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     return APP_REDRAW_NONE;
 }
+// 番茄更新只在末尾追加章节：把阅读进度记录迁到新文件大小。/ A Tomato update only appends chapters: move the progress
+// record to the new file size.
+static void tomato_file_hook(const char* path, uint32_t old_size, uint32_t new_size) {
+    if (old_size && old_size != new_size) book_progress_resize(path, old_size, new_size);
+}
 static void on_enter(app_ctx_t* ctx) {
     s_resume_path[0] = 0;
     ensure_prep();
@@ -2151,6 +2264,18 @@ static void on_enter(app_ctx_t* ctx) {
     read_pico_sd_start_probe();
     s_shake_enabled = app_settings_book_shake();
     if (s_shake_enabled) sensor_set(ctx, true);
+    // 番茄并进书库：服务器设了才显示“书城”和检查更新；更新换书文件时把进度迁到新大小，正在读的书不换。
+    // Tomato in the library: "书城" and the update check show only with a server set; an update moves progress to
+    // the new file size and skips the book being read.
+    tomato_config_t cfg;
+    s_tom_cfg = tomato_config_load(&cfg) == ESP_OK;
+    memset(&cfg, 0, sizeof(cfg));
+    tomato_sync_set_file_hook(tomato_file_hook);
+    tomato_sync_set_open_check(app_book_path_is_open);
+    if (!tom_running() && !(s_tom_op != TOM_NONE && !tomato_sync_busy() && tomato_sync_seq() == s_tom_seq)) {
+        s_tom_op = TOM_NONE;
+        s_tom_note[0] = 0;
+    }
 }
 static void book_on_exit(app_ctx_t* ctx) {
     auto_turn_set_active(false);
@@ -2227,6 +2352,8 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
     }
     if (s_view == BULK) for (int i = 0; i < 5; ++i) { *rect = batch_rect(i); if (ui_rect_hit(*rect, x, y)) return 610 + i; }
     if (s_view == MANAGE) {
+        *rect = manage_check_rect();
+        if (manage_check_shown() && ui_rect_hit(*rect, x, y)) return 410;
         int count = s_clear_confirm || s_file_removed ? 2 : 3;
         for (int i = 0; i < count; ++i) {
             *rect = manage_rect(i, count);
@@ -2285,6 +2412,8 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         if (s_view == SHELF && s_save_failed && ui_rect_hit(*rect, x, y)) return 116;
         *rect = tomato_hint_rect();
         if (tomato_hint_shown() && ui_rect_hit(*rect, x, y)) return CONTROL_TOMATO_HINT;
+        *rect = store_rect();
+        if (s_tom_cfg && s_view == SHELF && ui_rect_hit(*rect, x, y)) return CONTROL_STORE;
         *rect = card_rect();
         if (card_shown() && ui_rect_hit(*rect, x, y)) {
             // 点击判断用卡片本身；刷新区域放大 8 像素，包住画在外圈的按下描边。
@@ -2467,6 +2596,31 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
             }
         }
         return APP_REDRAW_PAGE;
+    }
+    // 本页发起的番茄任务：结束了取结果、重扫书架；还在跑就只局刷状态行右边。/ This page's Tomato job: when it ends
+    // take the outcome and rescan; while it runs, DU only the right of the status line.
+    if (s_tom_op != TOM_NONE && !s_scan_pending && ctx->now_ms - s_tom_poll_ms >= 400 &&
+        (s_view == SHELF || s_view == BULK)) {
+        s_tom_poll_ms = ctx->now_ms;
+        tomato_status_t st;
+        tomato_sync_get_status(&st);
+        if (!tom_running()) {
+            if (tomato_sync_seq() == s_tom_seq && (st.phase == TOMATO_DONE || st.phase == TOMATO_FAILED))
+                copy_text(s_tom_note, sizeof(s_tom_note), st.message);
+            else s_tom_note[0] = 0;
+            s_tom_op = TOM_NONE;
+            const int leaf = ctx->leaf;
+            scan_shelf(ctx);
+            ctx->leaf = leaf < leaves() ? leaf : leaves() - 1;
+            return APP_REDRAW_PAGE;
+        }
+        if (s_view == SHELF && st.revision != s_tom_rev && tomato_hint_shown() && !(ctx->touch && ctx->touch->touched)) {
+            s_tom_rev = st.revision;
+            render(ctx, ctx->fb);
+            s_area = tomato_hint_rect();
+            s_mode = MODE_DU;
+            return APP_REDRAW_AREA;
+        }
     }
     if (s_du_count && (s_du_count >= UI_SETTLE_DU_MAX ||
         ctx->now_ms - s_du_ms >= UI_SETTLE_IDLE_MS)) {

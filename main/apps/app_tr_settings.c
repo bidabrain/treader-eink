@@ -2,17 +2,20 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 设置：首页六个大分类（显示与阅读、底部标签、Wi-Fi 与传书、内容来源、同步、电源与设备），点进去是二级页。
+ * 设置：首页七个大分类（Wi-Fi、显示与阅读、底部标签、传书、内容来源、同步、电源与设备），点进去是二级页；
+ * Wi-Fi 一行打开传书页的选网界面（只管保存的那一个网络，不开传书服务）。
  * 二级页里：字体、壁纸、睡眠、传书、TF 卡、概览等跳到各自页面；底部标签开关、番茄与 WebDAV 的地址在本页用键盘
  * 编辑；内容来源再分番茄、小红书、微博、X 和验证器，小红书、微博和 X 共用一个服务器页（地址、令牌、测试），还能
- * 打开“手机网页填写”，用传书的网页服务收地址和令牌；验证器那一行打开验证器页自己画的设置；“关于 Treader”在本页显示。
+ * 打开“手机网页填写”，用传书的网页服务收地址和令牌；番茄小说页也有“手机网页填写”，收地址和设备密码；验证器那一行
+ * 打开验证器页自己画的设置；“关于 Treader”在本页显示。
  *
- * English: Settings. The home lists six categories (display and reading, tab bar, Wi-Fi and transfer, content sources,
- * sync, power and device); each opens a second-level page. There: font, wallpaper, sleep, transfer, TF card and
+ * English: Settings. The home lists seven categories (Wi-Fi, display and reading, tab bar, transfer, content
+ * sources, sync, power and device); each opens a second-level page. The Wi-Fi row opens the transfer page's network
+ * picker (managing the one saved network, without the transfer service). There: font, wallpaper, sleep, transfer, TF card and
  * overview jump to their own pages; tab switches and the Tomato and WebDAV addresses are edited here with the keyboard;
  * content sources split into Tomato, Xiaohongshu, Weibo, X and the authenticator; Xiaohongshu, Weibo and X share one
  * server page (address, token, test) that can also serve a phone web form (through the transfer web service) for the
- * address and token; the authenticator row opens the settings view drawn by the authenticator page; "About Treader"
+ * address and token, and the Tomato page has the same web form for its address and device password; the authenticator row opens the settings view drawn by the authenticator page; "About Treader"
  * shows here.
  *
  * 冻结：书库和设置两个功能不能隐藏，书库固定在底部第一格；网页填写只收当前服务器页的地址和令牌，
@@ -67,6 +70,7 @@
 extern const app_desc_t app_font_pick;
 extern const app_desc_t app_sleep;
 extern const app_desc_t app_transfer;
+void app_transfer_open_wifi(void);
 extern const app_desc_t app_usb;
 extern const app_desc_t app_home;
 extern const app_desc_t app_selftest;
@@ -113,7 +117,7 @@ static const struct {
 };
 
 // 首页分类。/ Home categories.
-typedef enum { C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
+typedef enum { C_NET, C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
 
 // 二级页的行：y 是行顶；section 非空时在上方画分组名。/ Sub-page rows: y is the row top; section draws a group name.
 typedef struct {
@@ -124,7 +128,7 @@ typedef struct {
 } row_t;
 
 enum {
-    R_SIZE, R_FONT, R_WALL, R_TURN, R_FTURN,
+    R_SIZE, R_FONT, R_WALL, R_TURN, R_FTURN, R_DEPTH,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
@@ -138,6 +142,7 @@ static const row_t DISPLAY_ROWS[] = {
     {R_WALL, NULL, "锁屏壁纸", 334},
     {R_TURN, NULL, "翻页区域", 406},
     {R_FTURN, NULL, "翻页刷新", 478},
+    {R_DEPTH, NULL, "文字深浅", 550},
 };
 // 看书时的翻页区域：名称和一句说明，顺序同 app_turn_zone_t。/ Reader tap zones: name and one-line note, in
 // app_turn_zone_t order.
@@ -149,8 +154,9 @@ static const char* const TURN_NOTES[APP_TURN_ZONES] = {
 };
 
 static const row_t TOMATO_ROWS[] = {
-    {R_SRV, NULL, "番茄服务器", 190},
-    {R_STORE, NULL, "书城榜单", 262},
+    {R_WEB, NULL, "手机网页填写", 190},
+    {R_SRV, NULL, "番茄服务器", 274},
+    {R_STORE, NULL, "书城榜单", 346},
 };
 static const row_t SERVER_ROWS[] = {
     {R_WEB, NULL, "手机网页填写", 190},
@@ -256,6 +262,12 @@ static char s_test_result[S_COUNT][96];
 static bool s_web_on;
 static srv_t s_web_srv;
 static uint32_t s_web_revision;
+// 网页填写的是番茄（地址和设备密码）而不是 SERVERS 里的服务器。/ The web form serves Tomato (address and device
+// password) rather than a server from SERVERS.
+static bool s_web_tomato;
+// 番茄配置没有修改计数：网页每保存一次在 HTTP 任务里加一，主任务看它变没变。/ Tomato config has no revision: the
+// HTTP task bumps this on every web save and the main task watches it.
+static volatile uint32_t s_web_tomato_rev;
 static read_pico_transfer_status_t s_web_status;
 static char s_web_note[96];
 
@@ -344,6 +356,11 @@ static void row_value(int id, char* out, size_t cap) {
     case R_WALL: wall_name(tmp, sizeof(tmp)); snprintf(out, cap, "%s ›", tmp); break;
     case R_TURN: snprintf(out, cap, "%s ›", TURN_NAMES[app_settings_turn_zone() % APP_TURN_ZONES]); break;
     case R_FTURN: snprintf(out, cap, "%s ›", app_settings_fast_turn() ? "快速" : "正常"); break;
+    case R_DEPTH: {
+        static const char* const NAMES[TR_TEXT_DEPTHS] = {"标准", "深", "更深"};
+        snprintf(out, cap, "%s ›", NAMES[app_settings_text_depth() % TR_TEXT_DEPTHS]);
+        break;
+    }
     case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
         char url[160];
@@ -406,7 +423,60 @@ static void row_value(int id, char* out, size_t cap) {
 
 // HTTP 任务里调用：GET 返回地址和“有没有令牌”，POST 保存。令牌从不返回。
 // Runs on the HTTP task: GET returns the address and whether a token exists; POST saves. The token never goes out.
+static int web_form_tomato(const char* body, size_t len, char* reply, size_t cap) {
+    tomato_config_t cur;
+    const bool has = tomato_config_load(&cur) == ESP_OK && !cur.builtin;
+    if (!body) {
+        cJSON* j = cJSON_CreateObject();
+        cJSON_AddStringToObject(j, "name", "番茄小说");
+        cJSON_AddStringToObject(j, "example", "http://192.168.1.10:18423");
+        cJSON_AddStringToObject(j, "hint", "地址和设备密码在番茄服务器面板 → 设备与外网，复制后粘贴到这里。");
+        cJSON_AddStringToObject(j, "secret", "设备密码");
+        cJSON_AddStringToObject(j, "secret_ph", "粘贴设备密码");
+        cJSON_AddStringToObject(j, "secret_hint", "面板上的设备密码；服务器没设密码就留空。");
+        cJSON_AddStringToObject(j, "secret_kept", "已经填过密码，不显示原值；留空表示不改。");
+        cJSON_AddStringToObject(j, "saved", "已保存。回到设备上就能用番茄小说和书城了。");
+        cJSON_AddBoolToObject(j, "optional", true);
+        // 内置服务器不回显。/ Never echo the built-in server.
+        cJSON_AddStringToObject(j, "url", has ? cur.url : "");
+        cJSON_AddBoolToObject(j, "has_token", has && cur.password[0] != 0);
+        memset(&cur, 0, sizeof(cur));
+        char* text = cJSON_PrintUnformatted(j);
+        cJSON_Delete(j);
+        snprintf(reply, cap, "%s", text ? text : "{}");
+        cJSON_free(text);
+        return 200;
+    }
+    cJSON* j = cJSON_ParseWithLength(body, len);
+    const cJSON* url = cJSON_GetObjectItemCaseSensitive(j, "url");
+    const cJSON* pass = cJSON_GetObjectItemCaseSensitive(j, "token");
+    int status = 400;
+    if (!cJSON_IsString(url) || (strncmp(url->valuestring, "http://", 7) && strncmp(url->valuestring, "https://", 8)) ||
+        strlen(url->valuestring) >= sizeof(cur.url) - 1) {
+        snprintf(reply, cap, "{\"error\":\"地址要以 http:// 或 https:// 开头\"}");
+    } else if (cJSON_IsString(pass) && strlen(pass->valuestring) >= sizeof(cur.password) - 1) {
+        snprintf(reply, cap, "{\"error\":\"密码太长\"}");
+    } else {
+        // 密码留空：有自填的旧密码就沿用，没有就是不设密码。/ A blank password keeps an earlier self-hosted one, or
+        // means no password.
+        tomato_config_t next = {0};
+        snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
+        snprintf(next.password, sizeof(next.password), "%s",
+                 cJSON_IsString(pass) && pass->valuestring[0] ? pass->valuestring : has ? cur.password : "");
+        const esp_err_t err = tomato_config_save(&next);
+        memset(&next, 0, sizeof(next));
+        status = err == ESP_OK ? 200 : 500;
+        snprintf(reply, cap, err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存失败\"}");
+        if (err == ESP_OK) s_web_tomato_rev++;
+    }
+    if (cJSON_IsString(pass)) memset(pass->valuestring, 0, strlen(pass->valuestring));
+    cJSON_Delete(j);
+    memset(&cur, 0, sizeof(cur));
+    return status;
+}
+
 static int web_form(const char* body, size_t len, char* reply, size_t cap) {
+    if (s_web_tomato) return web_form_tomato(body, len, reply, cap);
     tomato_srv_config_t cur;
     const bool has = SERVERS[s_web_srv].load(&cur) == ESP_OK;
     if (!body) {
@@ -480,13 +550,14 @@ static void web_start(void) {
         .form_cb = web_form,
     };
     s_web_srv = s_srv;   // 回调在 HTTP 任务里读它，开着期间不变 / Read by the HTTP task; fixed while serving
+    s_web_tomato = s_page == P_SRC_TOMATO;
     const esp_err_t err = read_pico_transfer_start(&cfg);
     if (err != ESP_OK) {
         snprintf(s_message, sizeof(s_message), "打不开网页服务（%s）", esp_err_to_name(err));
         return;
     }
     s_web_on = true;
-    s_web_revision = SERVERS[s_web_srv].revision();
+    s_web_revision = s_web_tomato ? s_web_tomato_rev : SERVERS[s_web_srv].revision();
     s_web_note[0] = 0;
     memset(&s_web_status, 0, sizeof(s_web_status));
     read_pico_transfer_get_status(&s_web_status);
@@ -541,7 +612,7 @@ static void draw_message(uint8_t* fb) {
 
 static void draw_cat(uint8_t* fb, int y, int h, tr_icon_t icon, const char* name, const char* summary, bool last);
 
-// 首页分类行高：放不下六行时压低行高并省掉版本号（关于页里有）。/ Home category row height: when six rows do not
+// 首页分类行高：放不下时压低行高并省掉版本号（关于页里有）。/ Home category row height: when the rows do not
 // fit, rows get shorter and the version line is dropped (About shows it).
 static int home_cat_h(void) {
     if (CAT_TOP + C_COUNT * CAT_H <= TR_TABS_Y - TR_S(84)) return CAT_H;
@@ -582,7 +653,11 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
             len += snprintf(out + len, cap - (size_t)len, "%s%s", i ? "、" : "", tr_tab_label(bar[i]));
         break;
     }
-    case C_WIFI: snprintf(out, cap, "Wi-Fi 传书%s%s · USB 传书", s_wifi[0] ? "：" : "", s_wifi); break;
+    case C_NET:
+        if (s_wifi[0]) snprintf(out, cap, "已保存：%s · 只能保存一个", s_wifi);
+        else snprintf(out, cap, "未保存网络 · 只能保存一个");
+        break;
+    case C_WIFI: snprintf(out, cap, "Wi-Fi 传书 · USB 传书"); break;
     case C_SOURCES:
         snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s · 漫画%s · 验证器%s",
                  !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置", s_has_host[S_RED] ? "已设置" : "未设置",
@@ -600,9 +675,9 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
 }
 
 static void draw_home(uint8_t* fb) {
-    static const char* const NAMES[C_COUNT] = {"显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
-    static const tr_icon_t ICONS[C_COUNT] = {TR_ICON_FONT, TR_ICON_TABS, TR_ICON_WIFI, TR_ICON_SOURCE, TR_ICON_SYNC,
-                                             TR_ICON_POWER};
+    static const char* const NAMES[C_COUNT] = {"Wi-Fi", "显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
+    static const tr_icon_t ICONS[C_COUNT] = {TR_ICON_WIFI, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_IMPORT, TR_ICON_SOURCE,
+                                             TR_ICON_SYNC, TR_ICON_POWER};
     tr_title(fb, "设置");
     draw_message(fb);
     const int h = home_cat_h();
@@ -706,7 +781,7 @@ static void draw_web_box(uint8_t* fb) {
     char line[160];
     if (!s_web_status.network_ready) {
         tr_wrap(fb, bx + pad, by + TR_S(40), bw - 2 * pad, TR_S(28), TR_S(42),
-                s_web_status.state == READ_PICO_TRANSFER_ERROR ? "连不上 Wi-Fi。检查“Wi-Fi 与传书”里保存的网络，或关掉开关再试。"
+                s_web_status.state == READ_PICO_TRANSFER_ERROR ? "连不上 Wi-Fi。检查设置 › Wi-Fi 里保存的网络，或关掉开关再试。"
                                                                : "正在打开网页服务…", more ? more : 3);
     } else {
         const EpdRect qr = {bx + TR_S(28), by + TR_S(28), WEB_QR, WEB_QR};
@@ -733,7 +808,9 @@ static void draw_web_box(uint8_t* fb) {
     const int n = tr_wrap(fb, bx + pad, sep + TR_S(72), bw - 2 * pad, TR_S(24), TR_S(36),
                           s_web_status.mode == READ_PICO_TRANSFER_MODE_AP
                               ? "设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。"
-                              : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。", more ? more : 3);
+                              : s_web_tomato ? "提交后自动保存。关掉开关或离开这一页就停止，网页随之失效。"
+                                             : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。",
+                          more ? more : 3);
     // 框高：正常档固定 480；放大后包住实际内容。/ Box height: 480 at normal size; larger sizes wrap the content.
     int bh = TR_S(480);
     if (more) bh = sep + TR_S(72) + n * TR_S(36) + TR_S(30) - by;
@@ -767,13 +844,15 @@ enum { TB_OVER = 3, TB_HEADS };
 
 static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[TB_HEADS]) {
     s_tb_pin_n = app_settings_tab_pins(s_tb_pins);
-    const uint16_t hidden = app_settings_hidden_tabs();
+    const uint16_t hidden = app_settings_hidden_tabs() & (uint16_t)~TR_TABS_RETIRED;
     const int cap = tb_capacity();
     // 放大后一行放不下名字、说明和三个按钮，超出的常用改放到小标题下面。/ At larger sizes a row cannot hold the
     // name, the note and three buttons, so pins beyond the bar go under a sub-heading.
     const bool over_head = ui_scale_pct != 100 && s_tb_pin_n > cap;
     int count = 1 + s_tb_pin_n;
-    for (int t = 1; t < TR_TAB_MAX; t++) {
+    for (int k = 1; k < TR_TAB_MAX; k++) {
+        const int t = TR_TAB_ORDER[k];   // 按显示顺序，设置最后 / Display order, settings last
+        if (TR_TABS_RETIRED & (1u << t)) continue;
         bool pinned = false;
         for (int i = 0; i < s_tb_pin_n; i++) pinned |= s_tb_pins[i] == t;
         count += !pinned;
@@ -809,7 +888,9 @@ static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[TB_HEADS]) {
     y += gap;
     sec_y[TB_REST] = y;
     y += sec;
-    for (int t = 1; t < TR_TAB_MAX; t++) {
+    for (int k = 1; k < TR_TAB_MAX; k++) {
+        const int t = TR_TAB_ORDER[k];   // 按显示顺序，设置最后 / Display order, settings last
+        if (TR_TABS_RETIRED & (1u << t)) continue;
         bool pinned = false;
         for (int i = 0; i < s_tb_pin_n; i++) pinned |= s_tb_pins[i] == t;
         if (pinned || (hidden & (1u << t))) continue;
@@ -819,7 +900,9 @@ static int tb_layout(tb_row_t rows[TR_TAB_MAX], int sec_y[TB_HEADS]) {
     y += gap;
     sec_y[TB_HIDDEN] = hidden ? y : -1;
     if (hidden) y += sec;
-    for (int t = 1; t < TR_TAB_MAX; t++) {
+    for (int k = 1; k < TR_TAB_MAX; k++) {
+        const int t = TR_TAB_ORDER[k];   // 按显示顺序，设置最后 / Display order, settings last
+        if (TR_TABS_RETIRED & (1u << t)) continue;
         if (!(hidden & (1u << t))) continue;
         rows[n++] = (tb_row_t){(tr_tab_t)t, TB_HIDDEN, -1, y};
         y += s_tb_h;
@@ -1361,6 +1444,11 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     case P_SRC_TOMATO:
         draw_back_title(fb, "番茄小说");
         draw_message(fb);
+        if (s_web_on) {
+            draw_rows(fb, TOMATO_ROWS, 1);
+            draw_web_box(fb);
+            break;
+        }
         draw_rows(fb, TOMATO_ROWS, COUNT(TOMATO_ROWS));
         break;
     case P_SRC_SERVER: draw_server(fb); break;
@@ -1477,7 +1565,7 @@ static app_redraw_t open_page(page_t p) {
 static app_redraw_t go_back(void) {
     s_message[0] = 0;
     s_hupu_ask = false;
-    if (s_page == P_SRC_SERVER) web_stop();
+    if (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO) web_stop();
     s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
              s_page == P_TURN ? P_DISPLAY :
              s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU ? P_SOURCES : P_HOME;
@@ -1507,6 +1595,12 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
     switch ((cat_t)((y - CAT_TOP) / h)) {
     case C_DISPLAY: return open_page(P_DISPLAY);
     case C_TABS: return open_page(P_TABS);
+    case C_NET:
+        // 后台要是在联网就先请它让出 Wi-Fi。/ Ask a background job to give up Wi-Fi first.
+        if (!make_room()) return APP_REDRAW_PAGE;
+        app_transfer_open_wifi();
+        ctx->request_app = &app_transfer;
+        return APP_REDRAW_NONE;
     case C_WIFI: return open_page(P_TRANSFER);
     case C_SOURCES: return open_page(P_SOURCES);
     case C_SYNC: return open_page(P_SYNC);
@@ -1623,6 +1717,11 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     case R_WALL: ctx->request_app = &app_tr_wall; return APP_REDRAW_NONE;
     case R_TURN: return open_page(P_TURN);
     case R_FTURN: app_settings_set_fast_turn(!app_settings_fast_turn()); return APP_REDRAW_PAGE;
+    case R_DEPTH:
+        // 标准 → 深 → 更深 → 标准，马上整屏重画。/ Standard → dark → darker → standard, redrawn full-screen at once.
+        app_settings_set_text_depth((uint8_t)((app_settings_text_depth() + 1) % TR_TEXT_DEPTHS));
+        tr_text_depth_apply(app_settings_text_depth());
+        return APP_REDRAW_FULL;
     case R_SLEEP: ctx->request_app = &app_sleep; return APP_REDRAW_NONE;
     case R_SIZE:
         // 换档后整页排版都变了，整屏重画。/ The whole layout changes with the size; redraw the full screen.
@@ -1727,7 +1826,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
     switch (s_page) {
     case P_TABS: return touch_tabs(x, y);
     case P_SOURCES: return touch_sources(ctx, y);
-    case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, COUNT(TOMATO_ROWS), y); break;
+    case P_SRC_TOMATO: id = row_hit(TOMATO_ROWS, s_web_on ? 1 : COUNT(TOMATO_ROWS), y); break;
     case P_SRC_SERVER: id = row_hit(SRV_ROWS, s_web_on ? 1 : SRV_ROW_COUNT, y); break;
     case P_SRC_HUPU:
         if (s_hupu_ask) return touch_hupu_ask(x, y);
@@ -1832,14 +1931,15 @@ static app_redraw_t tick_web(void) {
     const bool net_changed = next.network_ready != s_web_status.network_ready || strcmp(next.url, s_web_status.url) ||
                              next.state != s_web_status.state;
     s_web_status = next;
-    if (SERVERS[s_web_srv].revision() != s_web_revision) {
+    if ((s_web_tomato ? s_web_tomato_rev : SERVERS[s_web_srv].revision()) != s_web_revision) {
         if (!read_pico_transfer_try_stop_if_idle()) return APP_REDRAW_NONE;
         s_web_on = false;
         ui_wifi_qr_clear();
         app_loop_hold_awake(false);
         load();
         snprintf(s_message, sizeof(s_message), "已收到网页填写的设置");
-        start_test(s_web_srv);
+        // 番茄没有测试连接这一行，存好就行。/ Tomato has no connection-test row; saving is enough.
+        if (!s_web_tomato) start_test(s_web_srv);
         return APP_REDRAW_PAGE;
     }
     if (net_changed) {
@@ -1857,7 +1957,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_poll_ms = ctx->now_ms;
     if (s_web_on) {
         const app_redraw_t r = tick_web();
-        return s_page == P_SRC_SERVER && s_edit == E_NONE ? r : APP_REDRAW_NONE;
+        return (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO) && s_edit == E_NONE ? r : APP_REDRAW_NONE;
     }
     if (!s_syncing && !s_testing) return APP_REDRAW_NONE;
     tomato_status_t st;

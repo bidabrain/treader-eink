@@ -89,6 +89,10 @@ void ttf_measure_line_px(int pixel_height, const char* text, int* above, int* be
 int ttf_text_width_px(int pixel_height, const char* text);
 void ttf_set_weight(int wght);
 int ttf_get_weight(void);
+/// 基础字重：加载字体时和各页用完粗体后恢复到它（设置 › 文字深浅）。/ Base weight: applied when a font loads and
+/// restored by pages after bold text (Settings › Text darkness).
+void ttf_set_base_weight(int wght);
+int ttf_base_weight(void);
 
 void ttf_font_cache_clear(void);
 void ttf_bench_begin(void);

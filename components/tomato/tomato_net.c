@@ -9,6 +9,7 @@
  * Frozen: never connect while the transfer service runs; keep no credential copy, wipe the password after use.
  */
 
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_event.h"
@@ -200,6 +201,7 @@ fail:
 }
 
 void tomato_net_down(void) {
+    tomato_http_drop();
     s_public_dns = false;
     s_synced_now = false;
     if (s_sntp) { esp_netif_sntp_deinit(); s_sntp = false; }
@@ -210,4 +212,21 @@ void tomato_net_down(void) {
     if (s_inited) { esp_wifi_deinit(); s_inited = false; }
     if (s_netif) { esp_netif_destroy_default_wifi(s_netif); s_netif = NULL; }
     if (s_loop_owned) { esp_event_loop_delete_default(); s_loop_owned = false; }
+}
+
+esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap) {
+    // 后台任务自己会联网断网，这时试连会抢 Wi-Fi。/ A background job brings Wi-Fi up and down itself; a test would
+    // fight it for the radio.
+    if (tomato_sync_busy()) {
+        snprintf(msg, cap, "后台正在联网，稍后再试");
+        return ESP_ERR_INVALID_STATE;
+    }
+    tomato_http_clear_detail();
+    esp_err_t err = tomato_net_up(timeout_ms, NULL);
+    if (err == ESP_OK) snprintf(msg, cap, "连上了");
+    else if (err == ESP_ERR_NOT_FOUND) snprintf(msg, cap, "没有保存的网络");
+    else if (tomato_http_detail()[0]) snprintf(msg, cap, "连不上：%s", tomato_http_detail());
+    else snprintf(msg, cap, "连不上（%s）", esp_err_to_name(err));
+    tomato_net_down();
+    return err;
 }
