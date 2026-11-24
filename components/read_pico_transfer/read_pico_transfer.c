@@ -1147,6 +1147,10 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     s_buffer = heap_caps_malloc(16384, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s_buffer) { err = ESP_ERR_NO_MEM; goto fail; }
     err = esp_wifi_start(); if (err != ESP_OK) goto fail;
+    // 连已有 Wi-Fi 传书时关掉省电：默认的 modem sleep 会拖慢上传；传书页停留期间本来就不休眠。/ Power save off when
+    // transferring over an existing network: the default modem sleep slows uploads, and the page keeps the device awake
+    // anyway.
+    if (cfg->mode != READ_PICO_TRANSFER_MODE_AP) esp_wifi_set_ps(WIFI_PS_NONE);
     s_started = true;
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
     http.stack_size = 12288; http.max_uri_handlers = 12; http.recv_wait_timeout = 5;

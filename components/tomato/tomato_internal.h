@@ -73,6 +73,10 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
 /// GET 一个完整 URL 存到 dest（不超过 max 字节）。image 为真时只收 JPEG/PNG，否则不写文件。
 /// GET a full URL into dest (at most max bytes). With image set, only JPEG/PNG content is written.
 esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool image, const volatile bool* cancel);
+/// 只读响应开头最多 cap-1 字节（读够就断开），末尾补 0；网页里要的东西在最前面时用，不下整页。
+/// Read at most cap-1 bytes from the start of the reply (then hang up) and terminate it; for pages whose needed part
+/// sits at the very top, without downloading the whole page.
+esp_err_t tomato_http_head(const char* url, char* out, size_t cap, const volatile bool* cancel);
 /// GET 到 PSRAM 缓冲（调用方 heap_caps_free），末尾补 0；image 时只收 JPEG/PNG。
 /// GET into a PSRAM buffer (caller frees) with a trailing NUL; image accepts JPEG/PNG only.
 esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out, size_t* out_len,

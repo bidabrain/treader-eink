@@ -16,8 +16,10 @@ User-visible changes by date and author; Git retains implementation history. See
   The store's top row is now "‹ Store" back to the library; the search bar moves up and more categories show.
 - WEBTOON 作品详情：下载漫画时“检查更新”变成“停止下载”，下载卡住时能手动停下，别的功能就能用了。
   WEBTOON title details: while comics download, "Check for updates" becomes "Stop download", so a stuck download can be stopped and other features become usable.
-- 番茄下载快很多：设备的 TCP 接收窗口从 5.6 KB 加到 32 KB（缓冲在 PSRAM），经 Cloudflare 这类往返长的线路，以前只有几十 KB/s。下载中途断流不再报 ESP_FAIL 从头来，已经收到的留着，从断的地方接着下，只要还有进展就一直接。
-  Tomato downloads are much faster: the device's TCP receive window grows from 5.6 KB to 32 KB (buffers in PSRAM); over long round trips such as Cloudflare it used to manage only tens of KB/s. A mid-download stall no longer ends in ESP_FAIL and a restart: what arrived is kept and the download continues from where it stopped, for as long as it keeps making progress.
+- 联网下载快很多：联网期间关掉 Wi-Fi 省电（Wi-Fi 本来只在后台任务联网时开着），TCP 接收窗口从 5.6 KB 加到 32 KB（缓冲在 PSRAM）。番茄下载从每秒几百字节到约 100 KB/s，小红书、微博、漫画等拉图和连已有 Wi-Fi 传书也一起变快。下载中途断流不再报 ESP_FAIL 从头来，已经收到的留着，从断的地方接着下，只要还有进展就一直接。
+  Network downloads are much faster: Wi-Fi power save is off while online (Wi-Fi is only up during background jobs anyway) and the TCP receive window grows from 5.6 KB to 32 KB (buffers in PSRAM). Tomato downloads go from a few hundred bytes a second to about 100 KB/s, and images for Xiaohongshu, Weibo, comics and the rest, plus book transfer over an existing network, speed up too. A mid-download stall no longer ends in ESP_FAIL and a restart: what arrived is kept and the download continues from where it stopped, for as long as it keeps making progress.
+- 修正番茄书下载后没有封面：搜索给的封面是设备解不了的 HEIC，改要不带签名的 300×400 JPEG；受限的封面没有这种地址，从番茄书籍网页开头取带签名的 JPEG 地址。已经下好、没有封面的书，在书库点“检查更新”（一次最多补 10 本）或长按点“检查这本更新”时补上封面。
+  Fixed Tomato books arriving without a cover: search hands out HEIC covers the device cannot decode, so the device now asks for an unsigned 300x400 JPEG; restricted covers with no such address take the signed JPEG address from the top of the Tomato book page. Books already downloaded without a cover get one from the library's "Check for updates" (up to 10 per run) or a book's "Check this book".
 - 修正小红书拉取时一直“拉取中”：服务器还在做的图片，设备超时后不再换个连接再等一轮。
   Fixed Xiaohongshu fetches stuck on "Fetching": when the server is still making an image, the device no longer waits a second round on a new connection after timing out.
 

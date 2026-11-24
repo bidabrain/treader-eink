@@ -441,6 +441,8 @@ static const char* server_error_text(int status, const char* fallback) {
 }
 
 // 只检查：更新每本书的 remote 并保存，不下载。/ Check only: refresh each book's remote and save; no downloads.
+static void fill_covers(const tomato_config_t* cfg, const tomato_book_t* shelf, int count, const char* only);
+
 static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int count) {
     if (!count) { set_phase(TOMATO_DONE, "书架上还没有番茄小说"); return; }
     uint8_t found[TOMATO_SHELF_MAX] = {0};
@@ -464,6 +466,9 @@ static void run_check(const tomato_config_t* cfg, tomato_book_t* shelf, int coun
     tomato_shelf_save(shelf, count);
     int pending = count_pending(shelf, count);
     set_pending(pending);
+    // 顺带补缺的封面（之前下载时没取到的）。/ Fill missing covers on the way (ones a download failed to get).
+    fill_covers(cfg, shelf, count, NULL);
+    if (s_cancel) { fail(ESP_ERR_INVALID_STATE, "已取消"); return; }
     char msg[48];
     if (pending) snprintf(msg, sizeof(msg), "%d 本有新章节", pending);
     else snprintf(msg, sizeof(msg), "都是最新的");
@@ -490,6 +495,9 @@ static void run_check_one(const tomato_config_t* cfg, tomato_book_t* shelf, int 
     if (chapters > b->remote) b->remote = (uint16_t)chapters;
     tomato_shelf_save(shelf, count);
     set_pending(count_pending(shelf, count));
+    fill_covers(cfg, shelf, count, b->book_id);
+    if (s_cancel) { fail(ESP_ERR_INVALID_STATE, "已取消"); return; }
+    set_phase(TOMATO_CHECKING, "检查更新");
     if (b->remote <= b->chapters) { set_phase(TOMATO_DONE, "这本已是最新"); return; }
     if (book_open_in_reader(b)) { set_phase(TOMATO_DONE, "有新章节，正在读，稍后再更新"); return; }
     const int before = b->chapters;
@@ -602,12 +610,69 @@ static bool copy_file(const char* from, const char* to) {
     return ok;
 }
 
+// 番茄封面带签名，搜索给的还是 1200 宽的 HEIC（设备解不了），去掉参数又会被拒（403）。同一张图换成不带签名的
+// img 路径并要 300×400 的 JPEG：约 30 KB 的基线 JPEG，正好够封面用。返回是否是番茄图床；受限的图没有这种地址，
+// out 留空。
+// Tomato cover links are signed, and search hands out a 1200-wide HEIC the device cannot decode, while stripping the
+// parameters is refused (403). The same image under the unsigned img path, asked for as a 300x400 JPEG, is a baseline
+// JPEG of about 30 KB, just right for a cover. Returns whether this is Tomato's host; restricted images have no such
+// address and leave out empty.
+static bool cover_jpeg_url(const char* url, char* out, size_t cap) {
+    // novel-pic-r 是受限的桶，不带签名的地址一律 403，直接交给网页那一步。/ novel-pic-r is a restricted bucket whose
+    // unsigned addresses all answer 403; hand it straight to the web page step.
+    if (strstr(url, "/novel-pic-r/")) { out[0] = 0; return true; }
+    const char* key = strstr(url, "/novel-pic/");
+    if (!key) return false;
+    key += strlen("/novel-pic/");
+    const size_t n = strcspn(key, "~?/");
+    if (!n) return false;
+    return snprintf(out, cap, "https://p6-novel.byteimg.com/img/novel-pic/%.*s~300x400.jpeg", (int)n, key) < (int)cap;
+}
+
+// 番茄网页（/page/书号）开头 2 KB 内的结构化数据里有带签名的 JPEG 封面地址（"image":["…"]）。novel-pic-r 这类
+// 受限的图没有不带签名的地址，靠它取。返回是否找到。
+// The Tomato web page (/page/<book id>) carries a signed JPEG cover address in the structured data within its first
+// 2 KB ("image":["..."]). Restricted images such as novel-pic-r have no unsigned address, so this is how they come.
+// Returns whether one was found.
+#define PAGE_HEAD_MAX (16 * 1024)
+static bool page_cover_url(const char* book_id, char* out, size_t cap) {
+    if (!book_id[0]) return false;
+    char* head = heap_caps_malloc(PAGE_HEAD_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!head) return false;
+    snprintf(out, cap, "https://fanqienovel.com/page/%s", book_id);
+    bool ok = false;
+    if (tomato_http_head(out, head, PAGE_HEAD_MAX, &s_cancel) == ESP_OK) {
+        static const char KEY[] = "\"image\":[\"";
+        const char* p = strstr(head, KEY);
+        if (p) {
+            p += sizeof(KEY) - 1;
+            const size_t n = strcspn(p, "\"");
+            ok = n && p[n] == '"' && n < cap && !strncmp(p, "https://", 8);
+            if (ok) snprintf(out, cap, "%.*s", (int)n, p);
+        }
+    }
+    heap_caps_free(head);
+    if (!ok) out[0] = 0;
+    return ok;
+}
+
 // 封面尽力而为：失败只是显示文字封面，不影响下载结果。
 // Covers are best effort: a failure only means a text cover; the download still succeeds.
-static void fetch_cover(const tomato_book_t* book) {
-    if (!s_target.thumb[0] || !book->file[0] || s_cancel) return;
+// 这本书的封面文件路径；路径太长返回 false。/ This book's cover file path; false when too long.
+static bool cover_dest(const tomato_book_t* book, char* dest, size_t cap) {
+    return book->file[0] && snprintf(dest, cap, "%s/%s.img", TOMATO_COVER_DIR, book->file) < (int)cap;
+}
+
+static bool cover_missing(const tomato_book_t* book) {
     char dest[200];
-    if (snprintf(dest, sizeof(dest), "%s/%s.img", TOMATO_COVER_DIR, book->file) >= (int)sizeof(dest)) return;
+    struct stat st;
+    return cover_dest(book, dest, sizeof(dest)) && stat(dest, &st) != 0;
+}
+
+static void fetch_cover(const tomato_book_t* book, const char* thumb) {
+    if (s_cancel) return;
+    char dest[200];
+    if (!cover_dest(book, dest, sizeof(dest))) return;
     struct stat st;
     if (stat(dest, &st) == 0) return;
     mkdir(TOMATO_COVER_DIR, 0775);
@@ -616,15 +681,83 @@ static void fetch_cover(const tomato_book_t* book) {
     char cached[96];
     tomato_rank_cover_path(book->book_id, cached, sizeof(cached));
     if (copy_file(cached, dest)) return;
-    if (tomato_http_fetch(s_target.thumb, dest, 1024 * 1024, true, &s_cancel) == ESP_OK) return;
-    // 图床有时按格式协商给 WEBP；去掉处理参数再要一次原图。/ Hosts may hand back WEBP; retry the bare image without processing params.
-    char* bare = s_work->url;
-    snprintf(bare, sizeof(s_work->url), "%s", s_target.thumb);
-    char* cut = strchr(bare, '~');
-    if (!cut) cut = strchr(bare, '?');
-    if (!cut || s_cancel) return;
+    if (!thumb || !thumb[0]) return;
+    // 番茄图床先要 300×400 的 JPEG，不行再用原地址；别的图床直接用原地址，拿到 WEBP 这类就去掉处理参数再要一次。
+    // Tomato's host: ask for the 300x400 JPEG first, then the original address; other hosts: the original address,
+    // retrying without processing params when it hands back WEBP and the like.
+    char* alt = s_work->url;
+    if (cover_jpeg_url(thumb, alt, sizeof(s_work->url))) {
+        if (alt[0] && tomato_http_fetch(alt, dest, 1024 * 1024, true, &s_cancel) == ESP_OK) return;
+        if (s_cancel) return;
+        ESP_LOGW(TAG, "cover %.*s", (int)strcspn(thumb, "?"), thumb);
+        // 受限的图（novel-pic-r）没有不带签名的地址：从番茄网页取带签名的 JPEG 地址。/ Restricted images
+        // (novel-pic-r) have no unsigned address: take the signed JPEG address from the Tomato web page.
+        if (page_cover_url(book->book_id, alt, sizeof(s_work->url)) &&
+            (tomato_http_fetch(alt, dest, 1024 * 1024, true, &s_cancel) == ESP_OK || s_cancel))
+            return;
+        tomato_http_fetch(thumb, dest, 1024 * 1024, true, &s_cancel);
+        return;
+    }
+    if (tomato_http_fetch(thumb, dest, 1024 * 1024, true, &s_cancel) == ESP_OK || s_cancel) return;
+    ESP_LOGW(TAG, "cover %.*s", (int)strcspn(thumb, "?"), thumb);
+    snprintf(alt, sizeof(s_work->url), "%s", thumb);
+    char* cut = strchr(alt, '~');
+    if (!cut) cut = strchr(alt, '?');
+    if (!cut) return;
     *cut = 0;
-    tomato_http_fetch(bare, dest, 1024 * 1024, true, &s_cancel);
+    tomato_http_fetch(alt, dest, 1024 * 1024, true, &s_cancel);
+}
+
+// 已经下好的书没存封面地址：按书名到服务器搜一次，用书号对上那一条的封面地址。/ Downloaded books keep no cover
+// address: search the server by title once and take the cover address of the hit with the same book id.
+static bool find_thumb(const tomato_config_t* cfg, const tomato_book_t* book, char* out, size_t cap) {
+    out[0] = 0;
+    tomato_url_escape(book->title, s_work->esc, sizeof(s_work->esc), false);
+    snprintf(s_work->path, sizeof(s_work->path), "/api/search?q=%s", s_work->esc);
+    cJSON* root = NULL;
+    int status;
+    if (tomato_http_json(cfg, "GET", s_work->path, NULL, &root, &status) != ESP_OK) return false;
+    const cJSON* it;
+    cJSON_ArrayForEach(it, cJSON_GetObjectItemCaseSensitive(root, "items")) {
+        char id[TOMATO_ID_LEN];
+        tomato_json_str(it, "book_id", id, sizeof(id));
+        if (strcmp(id, book->book_id)) continue;
+        const cJSON* thumb = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(it, "raw"), "thumb_url");
+        if (cJSON_IsString(thumb) && thumb->valuestring && strlen(thumb->valuestring) < cap)
+            strcpy(out, thumb->valuestring);
+        break;
+    }
+    cJSON_Delete(root);
+    return out[0] != 0;
+}
+
+// 补缺的封面：only 非空只补这一本，否则补书架上所有缺的（一次最多 COVER_FILL_MAX 本，下次检查接着补）。尽力而为，
+// 失败不影响检查结果。/ Fill missing covers: only that book when only is set, else every shelf book missing one (at
+// most COVER_FILL_MAX per run; the next check continues). Best effort; failures never change the check result.
+#define COVER_FILL_MAX 10
+static void fill_covers(const tomato_config_t* cfg, const tomato_book_t* shelf, int count, const char* only) {
+    int need = 0;
+    for (int i = 0; i < count; i++)
+        need += (!only || !strcmp(shelf[i].book_id, only)) && shelf[i].title[0] && cover_missing(&shelf[i]);
+    if (!need) return;
+    if (need > COVER_FILL_MAX) need = COVER_FILL_MAX;
+    set_phase(TOMATO_DOWNLOADING, "下载封面");
+    mkdir(TOMATO_COVER_DIR, 0775);
+    char* thumb = heap_caps_malloc(sizeof(s_target.thumb), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!thumb) return;
+    int done = 0;
+    for (int i = 0; i < count && done < need && !s_cancel; i++) {
+        const tomato_book_t* b = &shelf[i];
+        if ((only && strcmp(b->book_id, only)) || !b->title[0] || !cover_missing(b)) continue;
+        set_progress(++done, need);
+        // 书城下过就直接复制，不用搜。/ Copy the bookstore's cover when it has one; no search needed.
+        char cached[96];
+        tomato_rank_cover_path(b->book_id, cached, sizeof(cached));
+        char dest[200];
+        if (cover_dest(b, dest, sizeof(dest)) && copy_file(cached, dest)) continue;
+        if (find_thumb(cfg, b, thumb, sizeof(s_target.thumb))) fetch_cover(b, thumb);
+    }
+    heap_caps_free(thumb);
 }
 
 /* ---- 书城 / Bookstore ---- */
@@ -682,11 +815,15 @@ static void run_rank(void) {
 static esp_err_t fetch_rank_cover(const tomato_rank_book_t* b, const char* dest) {
     esp_err_t err = tomato_http_fetch(b->cover, dest, 1024 * 1024, true, &s_cancel);
     if (err != ESP_OK && !s_cancel) {
-        // 和番茄下载一样，拿到 WEBP 就去掉处理参数再要一次。/ As with downloads, retry without processing params on WEBP.
-        snprintf(s_work->url, sizeof(s_work->url), "%s", b->cover);
-        char* cut = strchr(s_work->url, '~');
-        if (!cut) cut = strchr(s_work->url, '?');
-        if (cut) { *cut = 0; err = tomato_http_fetch(s_work->url, dest, 1024 * 1024, true, &s_cancel); }
+        // 和番茄下载一样，拿到 WEBP 就换 300×400 的 JPEG 再要一次。/ As with downloads, retry the 300x400 JPEG on WEBP.
+        if (cover_jpeg_url(b->cover, s_work->url, sizeof(s_work->url))) {
+            if (s_work->url[0]) err = tomato_http_fetch(s_work->url, dest, 1024 * 1024, true, &s_cancel);
+        } else {
+            snprintf(s_work->url, sizeof(s_work->url), "%s", b->cover);
+            char* cut = strchr(s_work->url, '~');
+            if (!cut) cut = strchr(s_work->url, '?');
+            if (cut) { *cut = 0; err = tomato_http_fetch(s_work->url, dest, 1024 * 1024, true, &s_cancel); }
+        }
     }
     return err;
 }
@@ -737,7 +874,7 @@ static void run_download(const tomato_config_t* cfg, tomato_book_t* shelf, int c
     tomato_shelf_save(shelf, count);
     // 重新下载的书不再算“已删除”。/ A re-downloaded book is no longer "removed".
     tomato_removed_mark(shelf[at].book_id, false);
-    fetch_cover(&shelf[at]);
+    fetch_cover(&shelf[at], s_target.thumb);
     set_phase(TOMATO_DONE, "已加入书架");
 }
 

@@ -818,7 +818,7 @@ TF 卡上没有验证器文件	No Authenticator file on the SD card
 验证器已清空	Authenticator cleared
 # main/apps/app_tr_auth.c:1060
 验证器是空的	The Authenticator is empty
-# main/apps/app_tr_auth.c:1168 components/tomato/tomato_sync.c:877
+# main/apps/app_tr_auth.c:1168 components/tomato/tomato_sync.c:974
 已校时	Time synced
 # main/apps/app_tr_auth.c:1168
 校时失败	Time sync failed
@@ -1176,7 +1176,7 @@ WebDAV 密码	WebDAV password
 先填地址	Enter address first
 # main/apps/app_tr_settings.c:380
 %d 话 ›	%d ep. ›
-# main/apps/app_tr_settings.c:385 components/tomato/tomato_sync.c:780
+# main/apps/app_tr_settings.c:385 components/tomato/tomato_sync.c:877
 连接 Wi-Fi	Connect Wi-Fi
 # main/apps/app_tr_settings.c:385
 同步中	Syncing
@@ -1454,7 +1454,7 @@ Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
 正在连接 Wi-Fi	Connecting to Wi-Fi
 # main/apps/app_tr_store.c:441 main/apps/app_tr_tomato.c:360
 服务器正在生成 TXT	Server is making the TXT
-# main/apps/app_tr_store.c:441 main/apps/app_tr_tomato.c:360 components/tomato/tomato_sync.c:864
+# main/apps/app_tr_store.c:441 main/apps/app_tr_tomato.c:360 components/tomato/tomato_sync.c:961
 正在下载	Downloading
 # main/apps/app_tr_store.c:457 main/apps/app_tr_tomato.c:372
 开始阅读	Start reading
@@ -1506,7 +1506,7 @@ Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
 连载	Ongoing
 # main/apps/app_tr_tomato.c:261 main/apps/app_tr_wt.c:551
 正在搜索…	Searching…
-# main/apps/app_tr_tomato.c:263 components/tomato/tomato_sync.c:579
+# main/apps/app_tr_tomato.c:263 components/tomato/tomato_sync.c:587
 没有找到	Nothing found
 # main/apps/app_tr_tomato.c:264
 %d 个结果	%d results
@@ -1566,7 +1566,7 @@ Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
 已下载好，但电量低于 30%，充电后再点升级	Downloaded, but battery is below 30%. Charge, then tap Update
 # main/apps/app_tr_update.c:438
 检查失败	Check failed
-# main/apps/app_tr_update.c:449 components/tomato/tomato_sync.c:736
+# main/apps/app_tr_update.c:449 components/tomato/tomato_sync.c:833
 下载失败	Download failed
 # main/apps/app_tr_update.c:515 main/apps/app_tr_update.c:855
 系统升级	Update
@@ -2506,67 +2506,67 @@ TF 卡空间不足，还需要 %.1f MB	Not enough SD card space, need %.1f MB mo
 服务器密码不对	Wrong server password
 # components/tomato/tomato_sync.c:439
 服务器忙，稍后再试	Server busy, try later
-# components/tomato/tomato_sync.c:445 components/tomato/tomato_sync.c:777
+# components/tomato/tomato_sync.c:447 components/tomato/tomato_sync.c:874
 书架上还没有番茄小说	No Tomato novels on the shelf yet
-# components/tomato/tomato_sync.c:449
+# components/tomato/tomato_sync.c:451
 服务器扫描超时，稍后再试	Server scan timed out, try later
-# components/tomato/tomato_sync.c:449 components/tomato/tomato_sync.c:487
+# components/tomato/tomato_sync.c:451 components/tomato/tomato_sync.c:492
 检查更新失败	Update check failed
-# components/tomato/tomato_sync.c:468
+# components/tomato/tomato_sync.c:473
 %d 本有新章节	%d books have new chapters
-# components/tomato/tomato_sync.c:469
+# components/tomato/tomato_sync.c:474
 都是最新的	All up to date
-# components/tomato/tomato_sync.c:514 components/tomato/tomato_sync.c:777
+# components/tomato/tomato_sync.c:522 components/tomato/tomato_sync.c:874
 没有待下载的更新	No updates to download
-# components/tomato/tomato_sync.c:531
+# components/tomato/tomato_sync.c:539
 已取消，更新了 %d 本	Canceled, %d books updated
-# components/tomato/tomato_sync.c:532
+# components/tomato/tomato_sync.c:540
 更新了 %d 本，正在读的那本稍后再更新	%d books updated, the open one updates later
-# components/tomato/tomato_sync.c:533
+# components/tomato/tomato_sync.c:541
 更新了 %d 本	%d books updated
-# components/tomato/tomato_sync.c:534
+# components/tomato/tomato_sync.c:542
 更新了 %d 本，%d 本失败	%d books updated, %d failed
-# components/tomato/tomato_sync.c:544
+# components/tomato/tomato_sync.c:552
 搜索失败	Search failed
-# components/tomato/tomato_sync.c:614 components/tomato/tomato_sync.c:707
+# components/tomato/tomato_sync.c:645 components/tomato/tomato_sync.c:704 components/tomato/tomato_sync.c:804
 下载封面	Downloading cover
-# components/tomato/tomato_sync.c:664
+# components/tomato/tomato_sync.c:757
 正在获取榜单	Fetching charts
-# components/tomato/tomato_sync.c:671
+# components/tomato/tomato_sync.c:764
 换镜像获取榜单	Fetching charts via mirror
-# components/tomato/tomato_sync.c:676
+# components/tomato/tomato_sync.c:769
 榜单地址太长	Chart URL too long
-# components/tomato/tomato_sync.c:677
+# components/tomato/tomato_sync.c:770
 榜单获取失败，检查网络和榜单地址	Chart fetch failed, check network and chart URL
-# components/tomato/tomato_sync.c:678
+# components/tomato/tomato_sync.c:771
 榜单已更新（经镜像）	Charts updated (via mirror)
-# components/tomato/tomato_sync.c:678
+# components/tomato/tomato_sync.c:771
 榜单已更新	Charts updated
-# components/tomato/tomato_sync.c:716
+# components/tomato/tomato_sync.c:813
 封面下载失败	Cover download failed
-# components/tomato/tomato_sync.c:724
+# components/tomato/tomato_sync.c:821
 书架已满	Shelf full
-# components/tomato/tomato_sync.c:733
+# components/tomato/tomato_sync.c:830
 这本书正在阅读，先退出再更新	This book is open, close it to update
-# components/tomato/tomato_sync.c:741
+# components/tomato/tomato_sync.c:838
 已加入书架	Added to shelf
-# components/tomato/tomato_sync.c:773
+# components/tomato/tomato_sync.c:870
 未设置服务器	No server set
-# components/tomato/tomato_sync.c:786
+# components/tomato/tomato_sync.c:883
 未设置 Wi-Fi	No Wi-Fi set
-# components/tomato/tomato_sync.c:786
+# components/tomato/tomato_sync.c:883
 Wi-Fi 连接失败	Wi-Fi connection failed
-# components/tomato/tomato_sync.c:798 components/tomato/tomato_sync.c:816 components/tomato/tomato_sync.c:824 components/tomato/tomato_sync.c:832 …
+# components/tomato/tomato_sync.c:895 components/tomato/tomato_sync.c:913 components/tomato/tomato_sync.c:921 components/tomato/tomato_sync.c:929 …
 正在加载	Loading
-# components/tomato/tomato_sync.c:840
+# components/tomato/tomato_sync.c:937
 正在检查更新	Checking for updates
-# components/tomato/tomato_sync.c:848
+# components/tomato/tomato_sync.c:945
 正在检查	Checking
-# components/tomato/tomato_sync.c:876
+# components/tomato/tomato_sync.c:973
 正在校时	Syncing time
-# components/tomato/tomato_sync.c:878
+# components/tomato/tomato_sync.c:975
 校时失败，连不上时间服务器	Time sync failed, can't reach time server
-# components/tomato/tomato_sync.c:881
+# components/tomato/tomato_sync.c:978
 正在同步	Syncing
 # components/tomato/tomato_webdav.c:239
 未设置 WebDAV	No WebDAV set
@@ -2744,15 +2744,15 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 拉取中 · 取消	Fetching · Cancel
 # main/apps/app_transfer.c:209
 只能保存一个 2.4 GHz 网络，连新网络会替换它	Only one 2.4 GHz network is kept; a new one replaces it
-# components/tomato/tomato_net.c:221
-后台正在联网，稍后再试	Busy online in the background; try later
 # components/tomato/tomato_net.c:226
+后台正在联网，稍后再试	Busy online in the background; try later
+# components/tomato/tomato_net.c:231
 连上了	Connected
-# components/tomato/tomato_net.c:227
+# components/tomato/tomato_net.c:232
 没有保存的网络	No saved network
-# components/tomato/tomato_net.c:228
+# components/tomato/tomato_net.c:233
 连不上：%s	Can't connect: %s
-# components/tomato/tomato_net.c:229
+# components/tomato/tomato_net.c:234
 连不上（%s）	Can't connect (%s)
 # main/apps/app_transfer.c:107
 正在连接…	Connecting…
@@ -2798,15 +2798,15 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 番茄搜索	Tomato search
 # main/apps/app_tr_tomato.c:636
 搜索、下载到书库	Search and download to the library
-# components/tomato/tomato_sync.c:479
+# components/tomato/tomato_sync.c:484
 这本不在番茄书架上	Not on the Tomato shelf
-# components/tomato/tomato_sync.c:493
+# components/tomato/tomato_sync.c:501
 这本已是最新	Already up to date
-# components/tomato/tomato_sync.c:494
+# components/tomato/tomato_sync.c:502
 有新章节，正在读，稍后再更新	New chapters; updates after reading
-# components/tomato/tomato_sync.c:498
+# components/tomato/tomato_sync.c:506
 下载更新失败	Update download failed
-# components/tomato/tomato_sync.c:507
+# components/tomato/tomato_sync.c:515
 更新了 %d 章	%d new chapters
 # main/apps/app_tr_wt.c:660
 停止下载	Stop download

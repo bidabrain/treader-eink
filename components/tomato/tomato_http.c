@@ -386,6 +386,8 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
         if (!f) { err = ESP_FAIL; break; }
         *bytes = have;
         err = ESP_OK;
+        int64_t mark_us = esp_timer_get_time();
+        uint32_t mark = have;
         for (;;) {
             if (*cancel) { err = ESP_ERR_INVALID_STATE; break; }
             int n = esp_http_client_read(c, buf, IO_CHUNK);
@@ -394,6 +396,14 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
             if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { err = ESP_ERR_INVALID_SIZE; break; }
             have += (uint32_t)n;
             *bytes = have;
+            // 每 10 秒记一次速度，真机上好查慢在哪。/ Log the speed every 10 s to see where it is slow on the device.
+            const int64_t now = esp_timer_get_time();
+            if (now - mark_us >= 10000000) {
+                ESP_LOGI(TAG, "download %lu KB, %lu KB/s", (unsigned long)(have / 1024),
+                         (unsigned long)((have - mark) * 1000000ull / (uint64_t)(now - mark_us) / 1024));
+                mark_us = now;
+                mark = have;
+            }
         }
         if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
         if (fclose(f) != 0 && err == ESP_OK) err = ESP_FAIL;
@@ -475,7 +485,13 @@ esp_err_t tomato_http_get(const char* url, size_t max, bool image, uint8_t** out
     if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
     const bool jpeg = len > 3 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF;
     const bool png = len > 8 && buf[0] == 0x89 && !memcmp(buf + 1, "PNG", 3);
-    if (err == ESP_OK && image && !jpeg && !png) err = ESP_ERR_NOT_SUPPORTED;
+    if (err == ESP_OK && image && !jpeg && !png) {
+        // 记下图床给了什么（前几个字节能看出 WEBP、HEIC 还是网页）。/ Log what the host sent (the first bytes tell
+        // WEBP, HEIC or a web page apart).
+        if (len >= 12) ESP_LOGW(TAG, "not jpeg/png: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x", buf[0], buf[1],
+                 buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11]);
+        err = ESP_ERR_NOT_SUPPORTED;
+    }
     if (err == ESP_OK && !len) err = ESP_ERR_INVALID_SIZE;
     if (err != ESP_OK) ESP_LOGW(TAG, "get: %s http=%d", esp_err_to_name(err), status);
     note(err, status, c);
@@ -501,6 +517,36 @@ esp_err_t tomato_http_fetch(const char* url, const char* dest, size_t max, bool 
     if (!ok || rename(tmp, dest) != 0) { remove(tmp); err = ESP_FAIL; }
     heap_caps_free(buf);
     return err;
+}
+
+esp_err_t tomato_http_head(const char* url, char* out, size_t cap, const volatile bool* cancel) {
+    if (!cap) return ESP_ERR_INVALID_ARG;
+    out[0] = 0;
+    esp_http_client_config_t hc = {
+        .url = url,
+        .timeout_ms = TIMEOUT_MS,
+        .buffer_size = IO_CHUNK,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&hc);
+    if (!c) return ESP_ERR_NO_MEM;
+    esp_err_t err = tomato_http_open(c, 0);
+    size_t len = 0;
+    if (err == ESP_OK) {
+        esp_http_client_fetch_headers(c);
+        if (esp_http_client_get_status_code(c) != 200) err = ESP_ERR_NOT_FOUND;
+    }
+    while (err == ESP_OK && len + 1 < cap) {
+        if (cancel && *cancel) { err = ESP_ERR_INVALID_STATE; break; }
+        int n = esp_http_client_read(c, out + len, (int)(cap - 1 - len));
+        if (n < 0) { err = ESP_FAIL; break; }
+        if (n == 0) break;
+        len += (size_t)n;
+    }
+    out[len] = 0;
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
+    return err == ESP_OK && !len ? ESP_FAIL : err;
 }
 
 // 边收边数两个键名出现的次数，取较大者；不缓存整个响应。只数结尾落在新数据里的匹配，跨块不重不漏。

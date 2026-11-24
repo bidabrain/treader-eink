@@ -186,6 +186,11 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
     else if (err == ESP_ERR_TIMEOUT) tomato_http_set_detail("连上了但没拿到 IP");
     if (err != ESP_OK) goto fail;
     memset(pass, 0, sizeof(pass));
+    // 联网期间关掉 Wi-Fi 省电：默认的 modem sleep 在有的路由器上把下载拖到每秒几百字节。只在后台任务联网时开着，
+    // 用完就断，耗电影响很小。
+    // Wi-Fi power save off while online: the default modem sleep drags downloads to a few hundred bytes a second on some
+    // routers. Wi-Fi is only up during a background job and dropped afterwards, so the battery cost is small.
+    esp_wifi_set_ps(WIFI_PS_NONE);
     ESP_LOGI(TAG, "connected");
     // 顺便对时，最多等 3 秒；失败不影响后续操作。SNTP 给的是 UTC，显示用哪个时区由主程序设定；关了自动校时就不对。
     // Sync time on the way, waiting at most 3 s; failure is harmless. SNTP gives UTC and the app sets the display

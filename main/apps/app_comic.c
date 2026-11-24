@@ -324,8 +324,15 @@ static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w
     if (!len || len > PAGE_INPUT_MAX) return false;
     if (len > 2u * 1024u * 1024u && heap_caps_get_largest_free_block(PSRAM_CAPS) < len + 2u * 1024u * 1024u) return false;
     uint8_t* data = heap_caps_malloc(len, PSRAM_CAPS);
-    if (!data) return false;
-    bool ok = zip_extract(z, entry, data, len) == ESP_OK && book_image_decode(data, len, 648u * 1000u, gray, w, h);
+    if (!data) { ESP_LOGW(TAG, "page %d: no memory for %u bytes", entry, (unsigned)len); return false; }
+    const esp_err_t zerr = zip_extract(z, entry, data, len);
+    bool ok = zerr == ESP_OK && book_image_decode(data, len, 648u * 1000u, gray, w, h);
+    // 解不了的页记下是哪一步、多大、开头几个字节，真机上好查。/ Log which step failed, the size and the first bytes
+    // of an undecodable page to diagnose on the device.
+    if (!ok) ESP_LOGW(TAG, "page %d: %s, %u bytes, %02x %02x %02x %02x, psram free %u", entry,
+                      zerr != ESP_OK ? esp_err_to_name(zerr) : "decode failed", (unsigned)len, data[0], len > 1 ? data[1] : 0,
+                      len > 2 ? data[2] : 0, len > 3 ? data[3] : 0,
+                      (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
     heap_caps_free(data);
     return ok;
 }
