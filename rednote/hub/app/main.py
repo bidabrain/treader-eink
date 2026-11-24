@@ -409,20 +409,22 @@ async def device_more_comments(request: Request, note_id: str, start: int = 0, w
     return {**_full(store.note(note_id) or n), "loading": False}
 
 
-async def _image(note_id: str, name: str) -> FileResponse:
+async def _image(note_id: str, name: str, wait: bool = True) -> FileResponse:
     if not ID_RE.match(note_id) or not re.match(r"^(thumb|\d{1,3})\.jpg$", name):
         raise HTTPException(400, "路径不对")
     path = images.note_dir(note_id) / name
-    # 这篇的图还在后台做：等这一页做好。/ This note's images are still being made: wait for the page.
-    if not path.exists() and not await images.wait_page(note_id, path):
+    # 这篇的图还在后台做：等这一页做好。wait=0（设备拉列表缩略图）不等，没做好直接 404，下次刷新再取。
+    # This note's images are still being made: wait for the page. wait=0 (device list thumbnails) does not wait;
+    # an unfinished one is a 404 and the next refresh picks it up.
+    if not path.exists() and not (wait and await images.wait_page(note_id, path)):
         raise HTTPException(404, "没有这张图")
     return FileResponse(path, media_type="image/jpeg")
 
 
 @app.get("/api/device/v1/img/{note_id}/{name}")
-async def device_img(request: Request, note_id: str, name: str):
+async def device_img(request: Request, note_id: str, name: str, wait: int = 1):
     _device(request)
-    return await _image(note_id, name)
+    return await _image(note_id, name, bool(wait))
 
 
 # ---- 设备接口：推荐（按需代拉） / Device API: recommendations (fetched on demand) ----

@@ -136,7 +136,7 @@ Send the header `x-rednote-token: device-token` (or use `?token=`).
 | `GET /api/device/v1/note/{id}` | The fields above plus `body` (text), `comment_list` (first 20: `user`, `text`, `likes`) and `comments_more` (more comments can be loaded: the server has this note's token, they have not been loaded yet, and the total comment count is higher than what is stored) |
 | `GET /api/device/v1/note/{id}/more_comments?start=1` | Load more comments: `start=1` makes the server fetch up to 60 for this note on the spot (the browser scrolls down, about 20–60 seconds; counts as one on-demand request, subject to the recommendation and daily total limits). Then ask repeatedly without `start`, each call waiting up to 20 seconds: `{"loading": true}` while still fetching, and the same content as `note/{id}` when done. It is split into separate calls to stay clear of Cloudflare's roughly 100-second timeout. Returns 409 when there is no token for this note (fetched before the server upgrade and not seen again on the creator's profile since) |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | Image page n (starting at 1), grayscale baseline JPEG, within 648×1000 |
-| `GET /api/device/v1/img/{id}/thumb.jpg` | Cover: 300 wide, keeps the original aspect ratio (height-to-width ratio clamped between 3:4 and 4:3, which is the `ratio` in the API) |
+| `GET /api/device/v1/img/{id}/thumb.jpg` | Cover: 300 wide, keeps the original aspect ratio (height-to-width ratio clamped between 3:4 and 4:3, which is the `ratio` in the API). With `?wait=0` it does not wait for a note still being processed and answers 404 at once (the device's list thumbnails); without it, it waits up to 40 seconds |
 
 ## Maintenance
 
