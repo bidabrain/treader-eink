@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.1.2
+
+- 修正虎扑、番茄书城等联网时报“HTTPS 握手失败”（在线升级却能连）：用 RSA 证书的站点验签时内部内存不够，现在加密连接改用 PSRAM。
+  Fixed "HTTPS handshake failed" on Hupu, the Tomato store and others while online update still worked: signature checks for RSA-certificate sites ran out of internal memory; encrypted connections now use PSRAM.
+
 ## 2026-11-23 · Treader 1.1.1
 
 - 设置 → 显示与阅读新增“翻页刷新”：正常（原来的效果）或快速。快速档正文和页脚一次刷完，并改用 8 级灰阶，翻一页快约四分之一，字边缘的灰阶少一些。
