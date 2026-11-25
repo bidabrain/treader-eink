@@ -175,6 +175,9 @@ void tr_segment(uint8_t* fb, EpdRect r, const char* const* labels, int n, int ac
 int tr_segment_hit(EpdRect r, int n, uint16_t x, uint16_t y);
 /// 分页指示：两侧灰底圆钮，中间“1 / 5”。/ Pager: gray round buttons either side of "1 / 5".
 void tr_pager(uint8_t* fb, int y, int page, int pages);
+/// 后面还能再拉、总页数未定时的分页指示：“3 / 5+”，只有一页也画。/ Pager when more can still be fetched and the total
+/// is open: "3 / 5+", drawn even for a single page.
+void tr_pager_more(uint8_t* fb, int y, int page, int pages);
 /// 分页指示的左右热区。返回 -1 上一页、1 下一页、0 未命中。/ Pager hit: -1 prev, 1 next, 0 none.
 int tr_pager_hit(int y, uint16_t x, uint16_t y_touch);
 

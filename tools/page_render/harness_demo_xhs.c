@@ -14,6 +14,10 @@ const char* hr_page = "demo_xhs";
 
 /* ---- 替身 / Stand-ins ---- */
 
+static bool s_more_stub;   // “往后翻接着拉”开关 / The keep-pulling switch
+bool tomato_feed_more_on(void) { return s_more_stub; }
+esp_err_t tomato_feed_more_set(bool on) { s_more_stub = on; return ESP_OK; }
+
 #define DEMO_DIR "/tmp/hrdemo_xhs"
 
 esp_err_t tomato_red_config_load(tomato_red_config_t* out) { (void)out; return ESP_OK; }

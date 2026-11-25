@@ -97,12 +97,50 @@ esp_err_t tomato_srv_list_limit_set(const char* ns, int n) {
     return err;
 }
 
+// “往后翻接着拉服务器”开关：小红书、微博、X 共用，存在 rednote 之外单独的命名空间。/ The "keep pulling from the
+// server" switch shared by Xiaohongshu, Weibo and X, in a namespace of its own.
+#define MORE_NS "feedmore"
+
+bool tomato_feed_more_on(void) {
+    nvs_handle_t h;
+    uint8_t v = 0;
+    if (nvs_open(MORE_NS, NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_u8(h, "on", &v) != ESP_OK) v = 0;
+        nvs_close(h);
+    }
+    return v != 0;
+}
+
+esp_err_t tomato_feed_more_set(bool on) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(MORE_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u8(h, "on", on ? 1 : 0);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+int tomato_list_keep(int keep, int limit) {
+    if (tomato_feed_more_on()) return TOMATO_LIST_CAP;
+    return keep > limit ? keep : limit;
+}
+
 /* ---- 小工具 / Small helpers ---- */
 
 void tomato_safe_id(const char* in, char* out, size_t cap) {
     size_t n = 0;
     for (; in && *in && n + 1 < cap; in++)
         if (isalnum((unsigned char)*in)) out[n++] = *in;
+    out[n] = 0;
+}
+
+void tomato_url_cursor(char* out, size_t cap, const char* cursor) {
+    size_t n = strlen(out);
+    for (; cursor && *cursor && n + 4 < cap; cursor++) {
+        if (isalnum((unsigned char)*cursor) || *cursor == '.' || *cursor == '-' || *cursor == '_') out[n++] = *cursor;
+        else n += (size_t)snprintf(out + n, cap - n, "%%%02X", (unsigned char)*cursor);
+    }
     out[n] = 0;
 }
 
@@ -701,6 +739,69 @@ int tomato_list_merge_old(cJSON* items, const cJSON* old_items, int cap) {
         n++;
     }
     return n;
+}
+
+static const cJSON* find_id(const cJSON* items, const char* id, int* at) {
+    const cJSON* x;
+    int i = 0;
+    cJSON_ArrayForEach(x, items) {
+        const cJSON* xid = cJSON_GetObjectItemCaseSensitive(x, "id");
+        if (cJSON_IsString(xid) && !strcmp(xid->valuestring, id)) { if (at) *at = i; return x; }
+        i++;
+    }
+    return NULL;
+}
+
+static const char* next_of(const cJSON* o) {
+    const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, "next");
+    return cJSON_IsString(v) && v->valuestring[0] ? v->valuestring : NULL;
+}
+
+void tomato_list_mark_next(cJSON* items, int fresh, const cJSON* old_items, const cJSON* reply) {
+    if (fresh <= 0) return;
+    const cJSON* nv = cJSON_GetObjectItemCaseSensitive(reply, "next");
+    if (!cJSON_IsString(nv) || !nv->valuestring[0]) return;
+    cJSON* last = cJSON_GetArrayItem(items, fresh - 1);
+    const cJSON* lid = cJSON_GetObjectItemCaseSensitive(last, "id");
+    if (!cJSON_IsString(lid)) return;
+    // 这一条旧列表里就有、后面还接着旧条目、而且旧列表在它后面没有断开：已经接上了，不用标。
+    // Already joined: the old list has this item with entries after it and no break after it.
+    int at = -1;
+    const cJSON* o = find_id(old_items, lid->valuestring, &at);
+    if (o && at + 1 < cJSON_GetArraySize(old_items) && !next_of(o)) return;
+    cJSON_DeleteItemFromObjectCaseSensitive(last, "next");
+    cJSON_AddStringToObject(last, "next", nv->valuestring);
+}
+
+int tomato_list_insert_older(cJSON* items, const char* after, cJSON* older, const cJSON* reply, int cap, int* from) {
+    int at = -1;
+    cJSON* anchor = (cJSON*)find_id(items, after, &at);
+    *from = at + 1;
+    if (!anchor) return 0;
+    cJSON_DeleteItemFromObjectCaseSensitive(anchor, "next");
+    int added = 0;
+    bool joined = false;
+    cJSON* last = NULL;
+    while (cJSON_GetArraySize(older) > 0) {
+        cJSON* x = cJSON_DetachItemFromArray(older, 0);
+        const cJSON* xid = cJSON_GetObjectItemCaseSensitive(x, "id");
+        // 拉到卡上已有的：中间的空档补上了，后面都是旧缓存。/ Reached one already on the card: the gap is filled and
+        // the old cache follows.
+        if (!cJSON_IsString(xid) || find_id(items, xid->valuestring, NULL)) {
+            joined = cJSON_IsString(xid);
+            cJSON_Delete(x);
+            if (joined) break;
+            continue;
+        }
+        cJSON_InsertItemInArray(items, at + 1 + added, x);
+        last = x;
+        added++;
+    }
+    const cJSON* nv = cJSON_GetObjectItemCaseSensitive(reply, "next");
+    if (last && !joined && cJSON_IsString(nv) && nv->valuestring[0]) cJSON_AddStringToObject(last, "next", nv->valuestring);
+    // 超出上限从最旧的一头删。/ Past the cap, drop from the oldest end.
+    while (cJSON_GetArraySize(items) > cap) cJSON_DeleteItemFromArray(items, cJSON_GetArraySize(items) - 1);
+    return added;
 }
 
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,

@@ -14,6 +14,10 @@
 
 const char* hr_page = "demo_settings";
 
+static bool s_more_stub;   // “往后翻接着拉”开关 / The keep-pulling switch
+bool tomato_feed_more_on(void) { return s_more_stub; }
+esp_err_t tomato_feed_more_set(bool on) { s_more_stub = on; return ESP_OK; }
+
 // 组件替身：返回演示数据。/ Component stand-ins returning demo data.
 bool tr_lock_wallpaper_get(char* out, size_t cap) {
     snprintf(out, cap, "/sdcard/wallpapers/晨雾.jpg");

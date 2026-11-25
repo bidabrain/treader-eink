@@ -124,7 +124,9 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
     cJSON* items = NULL;
     const cJSON* n;
     int count = 0;
-    char path[112];
+    int tfrom = r->thumbs_from, tcount = r->thumbs_count;
+    int older_added = 0;
+    char path[200];
     if (r->thumbs_only) {
         // 翻到的页补缩略图：不重新取列表，用卡上这份。/ Thumbnails for the pages being viewed: no refetch, use the list
         // already on the card.
@@ -133,15 +135,31 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
         if (!cJSON_IsArray(items)) { cJSON_Delete(out); snprintf(msg, cap, "列表还没取过"); return ESP_ERR_NOT_FOUND; }
         count = cJSON_GetArraySize(items);
     } else {
+        const int keep = tomato_list_keep(POST_KEEP, tomato_wb_list_limit());
         snprintf(path, sizeof(path), "/api/device/v1/feed?seg=%s&limit=%d", hot ? "hot" : "follow", tomato_wb_list_limit());
-        cJSON* root = NULL;
-        esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
-        if (err != ESP_OK) return err;
         cJSON* old = hot ? NULL : tomato_cache_read_json(file);
         const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
-        out = cJSON_CreateObject();
-        copy_num(out, root, "now");
-        items = cJSON_AddArrayToObject(out, "items");
+        if (r->older) {
+            // 往后拉：用 id 那条上记着的游标。/ Pulling older: use the cursor stored on entry id.
+            const cJSON* anchor = NULL;
+            const cJSON* o;
+            cJSON_ArrayForEach(o, old_items) {
+                const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
+                if (cJSON_IsString(oid) && !strcmp(oid->valuestring, r->id)) { anchor = o; break; }
+            }
+            const cJSON* nv = cJSON_GetObjectItemCaseSensitive(anchor, "next");
+            if (hot || !cJSON_IsString(nv) || !nv->valuestring[0]) {
+                cJSON_Delete(old);
+                snprintf(msg, cap, "没有更早的了");
+                return ESP_OK;
+            }
+            strlcat(path, "&before=", sizeof(path));
+            tomato_url_cursor(path, sizeof(path), nv->valuestring);
+        }
+        cJSON* root = NULL;
+        esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
+        if (err != ESP_OK) { cJSON_Delete(old); return err; }
+        cJSON* fresh = cJSON_CreateArray();
         cJSON_ArrayForEach(n, cJSON_GetObjectItemCaseSensitive(root, "posts")) {
             const cJSON* id = cJSON_GetObjectItemCaseSensitive(n, "id");
             if (!cJSON_IsString(id) || !id->valuestring[0]) continue;
@@ -159,9 +177,9 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
             copy_num(x, n, "likes");
             copy_num(x, n, "comments");
             copy_num(x, n, "reposts");
-            // 新到的标“新”；以前看过的保持；第一次取到的都算看过。热门不标。/ New arrivals are unseen and earlier marks
-            // stay; a first fetch counts as seen. Hot posts carry no marks.
-            bool seen = hot || !old;
+            // 新到的标“新”；以前看过的保持；第一次取到的都算看过（往后拉到的不算）。热门不标。/ New arrivals are unseen
+            // and earlier marks stay; a first fetch counts as seen (an older batch does not). Hot posts carry no marks.
+            bool seen = hot || (!old && !r->older);
             const cJSON* o;
             cJSON_ArrayForEach(o, old_items) {
                 const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
@@ -171,12 +189,32 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
                 }
             }
             cJSON_AddBoolToObject(x, "seen", seen);
-            cJSON_AddItemToArray(items, x);
-            count++;
+            cJSON_AddItemToArray(fresh, x);
         }
-        // 关注：保留以前缓存的条目，新拉的排在前面；热门每次整个替换。/ Following keeps earlier cached entries behind the
-        // fresh ones; Hot is replaced whole each time.
-        if (!hot) count = tomato_list_merge_old(items, old_items, POST_KEEP > tomato_wb_list_limit() ? POST_KEEP : tomato_wb_list_limit());
+        if (r->older) {
+            // 接在 id 那条后面，只补插进来的那几条的缩略图。/ Insert after entry id and fill thumbnails for those only.
+            out = old;
+            old = NULL;
+            items = cJSON_GetObjectItemCaseSensitive(out, "items");
+            int from = 0;
+            const int added = tomato_list_insert_older(items, r->id, fresh, root, keep, &from);
+            cJSON_Delete(fresh);
+            tfrom = from;
+            tcount = added && r->thumbs_count && r->thumbs_count < added ? r->thumbs_count : added;
+            older_added = added;
+        } else {
+            out = cJSON_CreateObject();
+            copy_num(out, root, "now");
+            cJSON_AddItemToObject(out, "items", fresh);
+            items = fresh;
+            // 关注：保留以前缓存的条目，新拉的排在前面，接不上的地方记下游标；热门每次整个替换。/ Following keeps earlier
+            // cached entries behind the fresh ones, with a cursor where they may not join; Hot is replaced whole.
+            if (!hot) {
+                tomato_list_mark_next(items, cJSON_GetArraySize(items), old_items, root);
+                tomato_list_merge_old(items, old_items, keep);
+            }
+        }
+        count = cJSON_GetArraySize(items);
         cJSON_Delete(root);
         cJSON_Delete(old);
         mkdirs();
@@ -196,7 +234,7 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
         if (*cancel) break;
         i++;
         // 只补要的那几条（0 是全部）。/ Only the requested items (0 means all).
-        if (i - 1 < r->thumbs_from || (r->thumbs_count && i - 1 >= r->thumbs_from + r->thumbs_count)) continue;
+        if (i - 1 < tfrom || (tcount && i - 1 >= tfrom + tcount) || (r->older && !tcount)) continue;
         const char* id = cJSON_GetObjectItemCaseSensitive(n, "id")->valuestring;
         const int pics = json_int(n, "pics");
         if (json_int(n, "images") <= 0) continue;
@@ -225,7 +263,8 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_wb_req_t* r, con
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     if (!r->thumbs_only) prune_posts(NULL);
-    snprintf(msg, cap, "%s %d 条", hot ? "热门" : "关注", count);
+    if (r->older) snprintf(msg, cap, "又拉到 %d 条", older_added);
+    else snprintf(msg, cap, "%s %d 条", hot ? "热门" : "关注", count);
     return ESP_OK;
 }
 

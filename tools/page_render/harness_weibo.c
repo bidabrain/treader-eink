@@ -11,6 +11,10 @@ const char* hr_page = "weibo";
 
 /* ---- 替身 / Stand-ins ---- */
 
+static bool s_more_stub;   // “往后翻接着拉”开关 / The keep-pulling switch
+bool tomato_feed_more_on(void) { return s_more_stub; }
+esp_err_t tomato_feed_more_set(bool on) { s_more_stub = on; return ESP_OK; }
+
 static bool s_cfg_ok = true;
 esp_err_t tomato_wb_config_load(tomato_wb_config_t* out) { (void)out; return s_cfg_ok ? ESP_OK : ESP_FAIL; }
 bool tomato_sync_busy(void) { return false; }

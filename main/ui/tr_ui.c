@@ -751,10 +751,22 @@ int tr_segment_hit(EpdRect r, int n, uint16_t x, uint16_t y) {
     return i < n ? i : n - 1;
 }
 
+static void pager(uint8_t* fb, int y, const char* label);
+
 void tr_pager(uint8_t* fb, int y, int page, int pages) {
     if (pages <= 1) return;
     char label[32];
     snprintf(label, sizeof(label), "%d / %d", page + 1, pages);
+    pager(fb, y, label);
+}
+
+void tr_pager_more(uint8_t* fb, int y, int page, int pages) {
+    char label[32];
+    snprintf(label, sizeof(label), "%d / %d+", page + 1, pages);
+    pager(fb, y, label);
+}
+
+static void pager(uint8_t* fb, int y, const char* label) {
     tr_text(fb, TR_W / 2, y, TR_S(30), label, EPD_DRAW_ALIGN_CENTER, true);
     // 两侧灰底圆钮里画箭头；位置和以前的“‹ ›”一样，热区不变。
     // Arrows inside gray round buttons, where "‹ ›" used to be; the hit zones are unchanged.

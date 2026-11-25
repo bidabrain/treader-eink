@@ -11,6 +11,10 @@ const char* hr_page = "xhs";
 
 /* ---- 替身 / Stand-ins ---- */
 
+static bool s_more_stub;   // “往后翻接着拉”开关 / The keep-pulling switch
+bool tomato_feed_more_on(void) { return s_more_stub; }
+esp_err_t tomato_feed_more_set(bool on) { s_more_stub = on; return ESP_OK; }
+
 static bool s_cfg_ok = true;
 esp_err_t tomato_red_config_load(tomato_red_config_t* out) { (void)out; return s_cfg_ok ? ESP_OK : ESP_FAIL; }
 bool tomato_sync_busy(void) { return false; }
@@ -107,6 +111,19 @@ void hr_scenes(void) {
     shot(&ctx, "list_p1", true);
     s_list_page = list_pages() - 1;
     shot(&ctx, "list_last", true);
+    s_list_page = 0;
+    // 开着“往后翻接着拉”、第 5 篇后面有断点：只显示到第 5 篇，翻页写“n / m+”。/ With keep-pulling on and a break
+    // after note 5: the list stops there and the pager reads "n / m+".
+    s_more_stub = true;
+    s_items[4].next = true;
+    set_visible();
+    layout_list();
+    s_list_page = list_pages() - 1;
+    shot(&ctx, "list_more", true);
+    s_more_stub = false;
+    s_items[4].next = false;
+    set_visible();
+    layout_list();
     s_list_page = 0;
     s_seg = SEG_REC;
     shot(&ctx, "list_rec", true);

@@ -238,6 +238,24 @@ cJSON* tomato_cache_read_json(const char* path);
 /// return the total. New ones come first and old ones keep their order; whatever falls past cap is no longer listed, so
 /// cache pruning removes it and neither the list nor the cache grows without bound.
 int tomato_list_merge_old(cJSON* items, const cJSON* old_items, int cap);
+
+/// 列表留几条：开了“往后翻接着拉服务器”是 TOMATO_LIST_CAP，否则取 keep 和每次拉取里大的。
+/// How many entries a list keeps: TOMATO_LIST_CAP with "keep pulling from the server" on, else the larger of keep and
+/// the fetch size.
+int tomato_list_keep(int keep, int limit);
+/// 刷新后：服务器回复里有 next（还有更早的）时，把它记在新拉的最后一条（前 fresh 条）上，表示这条后面和旧缓存之间
+/// 可能有空档；这一条旧列表里就有且后面没断开时不记。
+/// After a refresh: when the reply carries next (older entries remain), store it on the last fresh entry (of the first
+/// fresh) to mark a possible gap before the old cache; skipped when that entry was already joined in the old list.
+void tomato_list_mark_next(cJSON* items, int fresh, const cJSON* old_items, const cJSON* reply);
+/// 往后拉的一批（older，用完清空）插到 after 那条后面，去掉它的 next；碰到卡上已有的就停（空档补上了），否则把回复
+/// 里的 next 记在插入的最后一条上；超出 cap 从末尾删。返回插入几条，from 是插入起点。
+/// Insert an older batch (older, emptied) after the entry after, dropping its next; stop at one already on the card
+/// (the gap is filled), else store the reply's next on the last inserted; past cap, drop from the end. Returns how many
+/// were inserted, with from as the first index.
+int tomato_list_insert_older(cJSON* items, const char* after, cJSON* older, const cJSON* reply, int cap, int* from);
+/// 游标里的 | 写成 %7C 拼进网址。/ Append a cursor to a URL with | written as %7C.
+void tomato_url_cursor(char* out, size_t cap, const char* cursor);
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,
                         uint64_t max_bytes);
 /// 列表文件里把 id 标成看过。/ Mark id as seen in a list file.

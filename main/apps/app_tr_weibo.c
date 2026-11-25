@@ -28,6 +28,11 @@
  * and hands each page's leftover space back to its cards: images back to normal size first, then more text and repost
  * lines, then bigger images, so no large blank is left. The list area splits like a book page: the outer 30% on each
  * side turns the page and the middle opens; the bottom pager stays.
+ * Treader 修订（1.2.8，用户要求）：联网时机多一条：设置里“往后翻接着拉”开着时，翻过已经拉到的最后一页，向服务器要
+ * 更早的一批（关注类和 X 为你推荐），直到接上卡上缓存；拉不到就先接卡上缓存。原因：两次刷新之间漏掉的帖子要能补上。
+ * Treader revision (1.2.8, user request): one more time to go online: with Settings "keep pulling" on, paging past the
+ * last fetched page asks the server for the next older batch (following lists and X For You) until it joins the
+ * card's cache; on failure the card's cache follows. Reason: posts missed between refreshes should be recoverable.
  */
 
 #include <stdio.h>
@@ -153,6 +158,7 @@ typedef struct {
     int16_t nw, nh;       // 图片的正常大小 / The images' normal size
     int32_t likes, comments, reposts;
     bool seen;
+    bool next;            // 服务器在这条后面可能还有更早的 / The server may hold older entries after this one
 } item_t;
 
 typedef struct {
@@ -202,6 +208,11 @@ static int s_list_page;
 static double s_list_time;           // 服务器给列表的时间（秒）/ Server time of the list (seconds)
 static uint16_t s_page_first[LIST_MAX + 1];   // 每页第一条 / First item of each page
 static int s_list_page_count;
+// 往后翻接着拉服务器（设置里的开关）。/ Keep pulling from the server (the Settings switch).
+static bool s_more_on;     // 开着且这一段支持 / On, and this segment supports it
+static bool s_gap_skip;    // 这次拉不到，先接卡上缓存 / A pull failed; show the card's cache for now
+static bool s_turn_after;  // 拉到以后自动翻到下一页 / Turn to the next page once the pull lands
+static int s_vis;          // 显示到第几条（第一个断点为止）/ Entries shown (up to the first break)
 
 // 关注列表刷新期间点开的微博：刷新会覆盖 follow.json，等它结束再写“看过”。
 // Posts opened while the following list refreshes: the refresh rewrites follow.json, so mark them seen afterwards.
@@ -569,11 +580,24 @@ static int card_grow(item_t* x, int budget) {
     return budget - left;
 }
 
+// 开关开着时列表只显示到第一个断点（服务器在那条后面可能还有），翻过去再拉。/ With the switch on, the list shows
+// up to the first break (the server may hold more after it), pulled when paged past.
+static void set_visible(void) {
+    s_more_on = s_seg == SEG_FOLLOW && tomato_feed_more_on();
+    s_vis = s_item_count;
+    if (!s_more_on || s_gap_skip) return;
+    for (int i = 0; i < s_item_count; i++)
+        if (s_items[i].next) { s_vis = i + 1; return; }
+}
+
+// 翻过最后一页还能向服务器要。/ Paging past the last page can still ask the server.
+static bool more_left(void) { return s_more_on && !s_gap_skip && s_vis > 0 && s_items[s_vis - 1].next; }
+
 // 按卡片高度分页：放不下的整张挪到下一页。/ Page by card height: a card that does not fit moves to the next page.
 static void layout_list(void) {
     s_list_page_count = 0;
     int y = LIST_BOTTOM;
-    for (int i = 0; i < s_item_count; i++) {
+    for (int i = 0; i < s_vis; i++) {
         card_base(&s_items[i]);
         if (y + s_items[i].height > LIST_BOTTOM && y != LIST_TOP) {
             s_page_first[s_list_page_count++] = (uint16_t)i;
@@ -581,7 +605,7 @@ static void layout_list(void) {
         }
         y += s_items[i].height;
     }
-    s_page_first[s_list_page_count] = (uint16_t)s_item_count;
+    s_page_first[s_list_page_count] = (uint16_t)s_vis;
     // 空列表也把第一页的结尾写成 0：否则沿用上一份列表的结尾，点空白处会打开看不见的旧帖子。
     // An empty list also ends page one at 0; otherwise the previous list's end stays and a tap on blank space opens an
     // invisible old post.
@@ -621,9 +645,11 @@ static void load_list(void) {
         x->comments = (int32_t)dnum(it, "comments");
         x->reposts = (int32_t)dnum(it, "reposts");
         x->seen = s_seg == SEG_HOT || cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(it, "seen"));
+        x->next = cJSON_IsString(cJSON_GetObjectItemCaseSensitive(it, "next"));
         s_item_count++;
     }
     cJSON_Delete(root);
+    set_visible();
     layout_list();
     if (s_list_page >= list_pages()) s_list_page = list_pages() - 1;
 }
@@ -993,7 +1019,7 @@ static void draw_list(uint8_t* fb) {
     char line[160];
     const bool loading = list_job_running();
     if (loading) {
-        snprintf(line, sizeof(line), "%s", loading_text(s_step_loaded ? "正在下载缩略图…" : "正在加载…"));
+        snprintf(line, sizeof(line), "%s", loading_text(s_job.older ? "正在向服务器要更早的…" : s_step_loaded ? "正在下载缩略图…" : "正在加载…"));
     } else if (s_msg[0]) {
         snprintf(line, sizeof(line), "%s", s_msg);
     } else {
@@ -1012,7 +1038,8 @@ static void draw_list(uint8_t* fb) {
         return;
     }
     draw_cards(fb);
-    tr_pager(fb, PAGER_Y, s_list_page, list_pages());
+    if (more_left()) tr_pager_more(fb, PAGER_Y, s_list_page, list_pages());
+    else tr_pager(fb, PAGER_Y, s_list_page, list_pages());
 }
 
 static void draw_wait(uint8_t* fb) {
@@ -1204,6 +1231,8 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
 /* ---- 动作 / Actions ---- */
 
 static app_redraw_t show_seg(seg_t seg) {
+    s_gap_skip = false;
+    s_turn_after = false;
     s_seg = seg;
     s_thumbs_tried = -1;
     s_list_page = 0;
@@ -1217,6 +1246,8 @@ static app_redraw_t show_seg(seg_t seg) {
 }
 
 static app_redraw_t refresh(void) {
+    s_gap_skip = false;
+    s_turn_after = false;
     start_feed(s_seg == SEG_HOT);
     return APP_REDRAW_PAGE;
 }
@@ -1298,11 +1329,34 @@ static app_redraw_t back_to_list(void) {
     return APP_REDRAW_PAGE;
 }
 
+// 向服务器要断点后面更早的一批，拉到后翻到下一页。/ Ask the server for the older batch after the break and turn
+// the page once it lands.
+static app_redraw_t pull_older(void) {
+    if (job_running(TOMATO_WB_FEED)) return APP_REDRAW_NONE;
+    tomato_wb_req_t req = {.job = TOMATO_WB_FEED, .hot = s_seg == SEG_HOT, .older = true, .thumbs_count = THUMB_FIRST};
+    snprintf(req.id, sizeof(req.id), "%s", s_items[s_vis - 1].id);
+    s_turn_after = true;
+    s_msg[0] = 0;
+    queue_req(&req);
+    return APP_REDRAW_PAGE;
+}
+
+// 往后拉的一批写好了：等着翻页的就翻过去。/ The older batch is written: turn the page if a turn was waiting.
+static void after_older(void) {
+    if (s_turn_after && s_list_page + 1 < list_pages()) {
+        s_list_page++;
+        s_thumbs_page = -1;
+        hupu_img_drop_pending();
+    }
+    s_turn_after = false;
+}
+
 // 翻页一条线：正文 → 图片 → 评论，往回同理。/ Paging runs one line: text, then images, then comments, and back.
 static app_redraw_t turn(int dir) {
     tr_wallsave_close(&s_ws);
     if (s_view == V_LIST) {
         const int next = s_list_page + dir;
+        if (dir > 0 && next >= list_pages() && more_left()) return pull_older();
         if (next < 0 || next >= list_pages()) return APP_REDRAW_NONE;
         s_list_page = next;
         hupu_img_drop_pending();
@@ -1487,6 +1541,7 @@ static app_redraw_t job_done(bool ok) {
     case TOMATO_WB_FEED:
         if (s_view == V_LIST && s_job.hot == (s_seg == SEG_HOT)) {
             load_list();
+            if (s_job.older) after_older();
             if (ok) { queue_visible_images(); if (hupu_img_pending()) return APP_REDRAW_NONE; }
             return APP_REDRAW_PAGE;
         }
@@ -1585,9 +1640,11 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (busy && !s_step_loaded && s_status.current >= 1 && s_status.phase != TOMATO_FAILED) {
         s_step_loaded = true;
         if (s_job.job == TOMATO_WB_FEED) {
-            // 留在原来那页，回第一页用双击分段。/ Stay on the current page; a double tap on the segment goes to the first.
+            // 留在原来那页，回第一页用双击分段；往后拉的一批等着翻页就翻过去。/ Stay on the current page (a double tap
+            // on the segment goes to the first); an older batch turns the page if a turn was waiting.
             if (s_view == V_LIST && s_job.hot == (s_seg == SEG_HOT)) {
                 load_list();
+                if (s_job.older) after_older();
                 return APP_REDRAW_PAGE;
             }
             return APP_REDRAW_NONE;
@@ -1621,6 +1678,17 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         else if (!ok && s_status.error != ESP_ERR_INVALID_STATE) s_lazy_ok = false;
         else if (!ok) s_thumbs_tried = -1;
     }
+    if (!ok && s_job.job == TOMATO_WB_FEED && s_job.older) {
+        // 拉不到更早的：这次先接卡上缓存；取消了就只是不翻。/ The older pull failed: show the card's cache for now;
+        // a cancel just skips the turn.
+        if (s_status.error != ESP_ERR_INVALID_STATE) {
+            s_gap_skip = true;
+            snprintf(s_msg, sizeof(s_msg), "拉不到更早的，下面接卡上缓存");
+            if (s_view == V_LIST) { load_list(); after_older(); }
+            return APP_REDRAW_PAGE;
+        }
+        s_turn_after = false;
+    }
     if (!ok) {
         if (s_status.error == ESP_ERR_INVALID_STATE) s_msg[0] = 0;
         else snprintf(s_msg, sizeof(s_msg), "%s", s_status.message);
@@ -1649,6 +1717,8 @@ static void on_enter(app_ctx_t* ctx) {
     s_view = V_LIST;
     s_wait = false;
     s_lazy_ok = false;
+    s_gap_skip = false;
+    s_turn_after = false;
     s_thumbs_tried = -1;
     s_list_page = 0;
     // 离开期间的任务：不是自己的、或已经结束，都不再跟踪。/ A job from before: stop tracking it unless ours still runs.

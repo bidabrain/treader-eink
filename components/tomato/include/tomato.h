@@ -314,6 +314,15 @@ typedef tomato_srv_config_t tomato_red_config_t;
 int tomato_red_list_limit(void);
 esp_err_t tomato_red_list_limit_set(int n);
 
+/// “往后翻接着拉服务器”（小红书关注、微博关注、X 两段共用，默认关）：开着时翻完已经拉到的，就向服务器要更早的一批，
+/// 直到和卡上旧缓存接上；列表最多 TOMATO_LIST_CAP 条。关着时刷新后直接接卡上旧缓存，最多 100 条。
+/// "Keep pulling from the server" (shared by Xiaohongshu Following, Weibo Following and both X segments; off by
+/// default): when on, paging past what was fetched asks the server for the next older batch until it joins the old
+/// cache on the card, with lists up to TOMATO_LIST_CAP; when off, a refresh is followed directly by the old cache, up to
+/// 100.
+bool tomato_feed_more_on(void);
+esp_err_t tomato_feed_more_set(bool on);
+
 /// 没设置地址返回 ESP_ERR_NOT_FOUND（结构体清零）。/ ESP_ERR_NOT_FOUND (zeroed struct) when no address is set.
 esp_err_t tomato_red_config_load(tomato_red_config_t* out);
 esp_err_t tomato_red_config_save(const tomato_red_config_t* cfg);
@@ -337,6 +346,9 @@ typedef struct {
     bool more_comments; ///< 笔记：让服务器现拉更多评论（慢）/ Note: have the server fetch more comments now (slow)
     bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
     uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    /// 列表：往后拉一批，接在 id 那条后面（它带着服务器给的游标）/ List: pull the next older batch after entry id (which
+    /// holds the server's cursor)
+    bool older;
     uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_red_req_t;
 
@@ -382,6 +394,9 @@ typedef struct {
     bool images_only;   ///< 微博已缓存，只补缺的图 / Post cached; fetch missing images only
     bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
     uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    /// 列表：往后拉一批，接在 id 那条后面（它带着服务器给的游标）/ List: pull the next older batch after entry id (which
+    /// holds the server's cursor)
+    bool older;
     uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_wb_req_t;
 
@@ -429,6 +444,9 @@ typedef struct {
     bool images_only;   ///< 推文已缓存，只补缺的图 / Post cached; fetch missing images only
     bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
     uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    /// 列表：往后拉一批，接在 id 那条后面（它带着服务器给的游标）/ List: pull the next older batch after entry id (which
+    /// holds the server's cursor)
+    bool older;
     uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_x_req_t;
 

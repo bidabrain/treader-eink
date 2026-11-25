@@ -3,6 +3,16 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.8
+
+- 设置 › 内容来源 › 小红书 / 微博 / X 新增“往后翻接着拉”（三处是同一个开关，默认关）。开着时，小红书关注、微博关注、X 正在关注和为你推荐翻完刷新拿到的那批，会继续向服务器要更早的，一批是“每次拉取”的条数，直到和卡上以前的缓存接上，两次刷新之间漏掉的帖子就补上了；卡上缓存也翻完时还能接着往后要，直到服务器没有更早的。拉到后自动翻到下一页；还能再拉时页码写成“3 / 5+”。没网或服务器出错时提示一下，接着显示卡上缓存。开着时列表最多 300 条（关着仍是 100 条）。需要 rednote 0.3.5、weibo 0.1.7、x 0.1.6 或更新的服务器。
+  Settings > Content sources > Xiaohongshu / Weibo / X gain "Keep pulling" (one switch shared by all three, off by default). When on, paging past the batch a refresh brought in Xiaohongshu Following, Weibo Following and X Following and For You keeps asking the server for older posts, a "fetch size" at a time, until they meet the earlier cache on the card, so posts missed between refreshes are filled in; once the card's cache runs out too it keeps going until the server has nothing older. The page turns by itself when a batch arrives, and the pager reads "3 / 5+" while more can be pulled. Without a network or on a server error it says so and shows the card's cache. With the switch on, lists hold up to 300 (still 100 when off). Needs rednote 0.3.5, weibo 0.1.7, x 0.1.6 or newer.
+
+## 2026-11-25 · rednote 服务器 0.3.5、weibo 服务器 0.1.7、x 服务器 0.1.6
+
+- 设备列表接口 `GET /api/device/v1/feed` 新增可选参数 `before`，回复里多一个 `next` 游标：还有更早的帖子时给出，原样放进 `before=` 再请求就得到接下来的一批（rednote 关注、weibo 关注、x 正在关注和为你推荐；weibo 热门不给）。用游标而不是“第几条”，服务器中途抓到新帖也不会重复或漏掉。旧固件和安卓 App 不传 `before`，结果和以前一样；只是发布时间完全相同的几条现在按编号固定排序。
+  The device list endpoint `GET /api/device/v1/feed` gains an optional `before` parameter and a `next` cursor in the reply: present while older posts remain, it is passed back as `before=` for the next batch (rednote following, weibo following, x Following and For You; not weibo hot). A cursor rather than a position means posts fetched meanwhile cause no repeats or gaps. Older firmware and the Android apps send no `before` and get the same results as before, except that posts with identical times are now ordered by id.
+
 ## 2026-11-25 · Treader 1.2.7
 
 - 小红书列表改成和微博、X 一样一行一篇：左边大封面（按原图比例），右边头像、作者、时间和图数、标题、赞和评论；每页固定两篇，三档显示大小都一样。列表区左右各三成点一下翻页，中间打开。封面比例和评论数来自服务器已有的数据，升级后点一次“刷新”就有；老缓存先按竖图显示。

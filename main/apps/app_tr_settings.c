@@ -129,7 +129,7 @@ typedef struct {
 
 enum {
     R_SIZE, R_FONT, R_WALL, R_TURN, R_FTURN, R_DEPTH,
-    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
+    R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_MORE, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
@@ -164,6 +164,7 @@ static const row_t SERVER_ROWS[] = {
     {R_TOKEN, NULL, "设备令牌", 346},
     {R_TEST, NULL, "测试连接", 418},
     {R_LIST, NULL, "每次拉取", 490},
+    {R_MORE, NULL, "往后翻接着拉", 562},
 };
 // 漫画服务器页：没有列表条数，换成语言版本、简体显示和每次最多下载几话。/ The comic server page: no list size;
 // language version, simplified display and episodes per check instead.
@@ -379,6 +380,7 @@ static void row_value(int id, char* out, size_t cap) {
         else snprintf(out, cap, s_has_host[s_srv] ? "点一下测试 ›" : "先填地址");
         break;
     case R_LIST: snprintf(out, cap, "%d %s ›", SERVERS[s_srv].list(), SERVERS[s_srv].unit); break;
+    case R_MORE: snprintf(out, cap, "%s ›", tomato_feed_more_on() ? "开" : "关"); break;
     case R_WT_LANG: snprintf(out, cap, "%s ›", tomato_wt_lang_name(tomato_wt_lang())); break;
     case R_WT_SIMP: snprintf(out, cap, "%s ›", tomato_wt_simp() ? "开" : "关"); break;
     case R_WT_MAX: snprintf(out, cap, "%d 话 ›", tomato_wt_max()); break;
@@ -1183,23 +1185,24 @@ static void draw_server(uint8_t* fb) {
     char hint[200];
     snprintf(hint, sizeof(hint), "地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。",
              SERVERS[s_srv].panel);
-    // 漫画多两行设置，说明往下挪两行。/ Comics have two more rows; the notes move down two rows.
-    const int top = s_srv == S_WT ? 726 : 582;
-    // 漫画页行多：放大后标签栏上面剩几行就写几行，放不下的说明不写。/ The comic page has more rows: scaled up, write
-    // only the note lines that fit above the tab bar and skip the rest.
-    const int room = s_srv == S_WT ? (TR_TABS_Y - TR_S(8) - TR_S(top)) / TR_S(36) : 3;
+    // 漫画多一行设置，说明往下挪一行。/ Comics have one more row; the notes move down a row.
+    const int top = s_srv == S_WT ? 726 : 654;
+    // 放大后标签栏上面剩几行就写几行，放不下的说明不写。/ Scaled up, write only the note lines that fit above the tab
+    // bar and skip the rest.
+    const int room = (TR_TABS_Y - TR_S(8) - TR_S(top)) / TR_S(36);
     if (room <= 0) return;
     const int n = tr_wrap(fb, TR_MARGIN, TR_S(top), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), hint, room < 3 ? room : 3);
     // 第二段跟在第一段后面（放大后第一段可能多折一行）。/ The second note follows the first (which may wrap to an
     // extra line at larger sizes).
     int y = TR_S(top + 118);
     if (y < TR_S(top) + n * TR_S(36) + TR_S(10)) y = TR_S(top) + n * TR_S(36) + TR_S(10);
-    const int room2 = s_srv == S_WT ? (TR_TABS_Y - TR_S(8) - y) / TR_S(36) : 3;
+    const int room2 = (TR_TABS_Y - TR_S(8) - y) / TR_S(36);
     if (room2 <= 0) return;
     tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), s_srv == S_WT ?
             "语言版本、简体显示：点一下切换，下次刷新发现页时生效。每次最多下载：一次“检查更新”最多下几话，5、10、20、50 轮换。" :
-            "每次拉取：20、30、50 轮换，下次刷新生效。关注列表会保留以前缓存的条目（最多 100 条），新拉的排前面；缩略图先下前两页，翻到再补。",
-            room2 < 3 ? room2 : 3);
+            "每次拉取：20、30、50 轮换。往后翻接着拉（小红书、微博、X 共用）：开着时翻完新拉的，继续向服务器要更早的，"
+            "直到接上卡上缓存，列表最多 300 条；关着时直接接卡上缓存，最多 100 条。",
+            room2 < 4 ? room2 : 4);
 }
 
 static void draw_edit(uint8_t* fb) {
@@ -1894,6 +1897,10 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
                                                              : TOMATO_LIST_LIMIT_MIN);
         return APP_REDRAW_PAGE;
     }
+    case R_MORE:
+        // 小红书、微博、X 共用一个开关。/ One switch shared by Xiaohongshu, Weibo and X.
+        tomato_feed_more_set(!tomato_feed_more_on());
+        return APP_REDRAW_PAGE;
     case R_TEST:
         if (!make_room()) return APP_REDRAW_PAGE;
         start_test(s_srv);

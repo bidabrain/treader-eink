@@ -15,6 +15,10 @@ const char* hr_page = "demo_weibo";
 
 /* ---- 替身 / Stand-ins ---- */
 
+static bool s_more_stub;   // “往后翻接着拉”开关 / The keep-pulling switch
+bool tomato_feed_more_on(void) { return s_more_stub; }
+esp_err_t tomato_feed_more_set(bool on) { s_more_stub = on; return ESP_OK; }
+
 #define DEMO_DIR "/tmp/hrdemo_weibo"
 #define NOW 1795275780   // 2026-11-21 15:43
 
