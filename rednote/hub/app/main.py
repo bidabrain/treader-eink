@@ -368,10 +368,19 @@ def _full(n: dict) -> dict:
 
 
 @app.get("/api/device/v1/feed")
-async def device_feed(request: Request, since: float = 0, limit: int = 50):
+async def device_feed(request: Request, since: float = 0, limit: int = 50, before: str = ""):
+    """before 是上一批回复里的 next：从那里往后再要一批。next 为空表示没有更早的了。/ before is the previous
+    reply's next, asking for the batch after it; an empty next means nothing older is left."""
     _device(request)
-    rows = store.notes(since, min(max(limit, 1), 300), source="follow")
-    return {"now": time.time(), "notes": [_brief(n) for n in rows]}
+    limit = min(max(limit, 1), 300)
+    try:
+        rows = store.notes(since, limit + 1, source="follow", before=before)
+    except ValueError:
+        raise HTTPException(400, "before 不对")
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return {"now": time.time(), "notes": [_brief(n) for n in rows],
+            "next": store.cursor(rows[-1]) if more and rows else ""}
 
 
 @app.get("/api/device/v1/note/{note_id}")

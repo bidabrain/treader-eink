@@ -129,7 +129,7 @@ docker compose up -d
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/feed?since=时间戳&limit=50` | 关注博主的笔记（`limit` 最多 300）：`{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source, ratio}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的 |
+| `GET /api/device/v1/feed?since=时间戳&limit=50` | 关注博主的笔记（`limit` 最多 300）：`{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source, ratio}]}`，按拉取时间倒序；`since` 传上次返回的 `now` 就只取新的。0.3.5 起回复里多一个 `next`：还有更早的笔记时是一个游标，原样放进 `before=` 再请求就得到接下来的一批；为空表示没有更早的了 |
 | `GET /api/device/v1/rec?refresh=1` | 推荐列表 `{fetched_at, refresh_after, left_today, notes:[{id, title, author, likes, ratio, thumb, ready}]}`。`refresh=1` 且过了缓存期才去读首页，否则返回上次的；`ready` 表示已经拉过详情 |
 | `GET /api/device/v1/rec/cover/{id}.jpg` | 推荐列表里的封面，规格和下面的 `thumb.jpg` 一样 |
 | `GET /api/device/v1/rec/note/{id}` | 点开推荐里的一篇：没拉过就现拉（视频返回 415），返回和 `note/{id}` 一样；之后图片用下面的 `img` 接口。次数用完 429，暂停中 503，不在近期列表里 404 |

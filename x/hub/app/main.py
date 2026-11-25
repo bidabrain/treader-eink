@@ -405,7 +405,9 @@ def _brief(p: dict) -> dict:
 
 
 @app.get("/api/device/v1/feed")
-async def device_feed(request: Request, seg: str = "foryou", since: float = 0, limit: int = 100):
+async def device_feed(request: Request, seg: str = "foryou", since: float = 0, limit: int = 100, before: str = ""):
+    """before 是上一批回复里的 next：从那里往后再要一批。next 为空表示没有更早的了。/ before is the previous
+    reply's next, asking for the batch after it; an empty next means nothing older is left."""
     _device(request)
     if seg not in config.FEEDS:
         raise HTTPException(400, "seg 只能是 foryou 或 following")
@@ -413,9 +415,15 @@ async def device_feed(request: Request, seg: str = "foryou", since: float = 0, l
     # 总开关关着：返回空列表并带 on=false，客户端据此把标签变灰。/ Master switch off: an empty list with on=false,
     # so clients grey out the tab.
     on = fetcher.feed_on(cfg, seg)
-    rows = store.feed(seg, since, min(max(limit, 1), 300)) if on else []
+    limit = min(max(limit, 1), 300)
+    try:
+        rows = store.feed(seg, since, limit + 1, before) if on else []
+    except ValueError:
+        raise HTTPException(400, "before 不对")
+    more = len(rows) > limit
+    rows = rows[:limit]
     return {"now": time.time(), "on": on, "feeds_on": {k: fetcher.feed_on(cfg, k) for k in config.FEEDS},
-            "posts": [_brief(p) for p in rows]}
+            "posts": [_brief(p) for p in rows], "next": store.cursor(seg, rows[-1]) if more and rows else ""}
 
 
 @app.get("/api/device/v1/status")

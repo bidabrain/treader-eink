@@ -129,7 +129,7 @@ Send the header `x-rednote-token: device-token` (or use `?token=`).
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/device/v1/feed?since=时间戳&limit=50` | Notes from followed creators (`limit` up to 300): `{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source, ratio}]}`, newest fetch first; pass the `now` from the previous response as `since` (a timestamp) to get only new ones |
+| `GET /api/device/v1/feed?since=时间戳&limit=50` | Notes from followed creators (`limit` up to 300): `{now, notes:[{id, title, author, time, images, likes, comments, fetched_at, source, ratio}]}`, newest fetch first; pass the `now` from the previous response as `since` (a timestamp) to get only new ones. Since 0.3.5 the reply also has `next`: a cursor while older notes remain, which passed back as `before=` returns the next batch; empty means nothing older is left |
 | `GET /api/device/v1/rec?refresh=1` | Recommendation list `{fetched_at, refresh_after, left_today, notes:[{id, title, author, likes, ratio, thumb, ready}]}`. The home feed is read only with `refresh=1` after the cache period; otherwise the previous list is returned. `ready` means the details have been fetched |
 | `GET /api/device/v1/rec/cover/{id}.jpg` | Cover in the recommendation list, same format as `thumb.jpg` below |
 | `GET /api/device/v1/rec/note/{id}` | Opens a note from the recommendations: fetched on the spot if not fetched yet (videos return 415), same response as `note/{id}`; after that, use the `img` endpoint below for images. 429 when the quota is used up, 503 while paused, 404 if not in the recent list |

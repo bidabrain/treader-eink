@@ -139,12 +139,23 @@ def save_comments(note_id: str, comment_count: str, comments: list[dict[str, Any
           (comment_count, json.dumps(comments, ensure_ascii=False), note_id))
 
 
-def notes(since: float = 0, limit: int = 50, source: str | None = None) -> list[dict[str, Any]]:
+def cursor(n: dict[str, Any]) -> str:
+    """一条在列表里的位置，设备拿它要更早的。/ A row's place in the list; the device sends it back for older rows."""
+    return f"{n['fetched_at']!r}|{n['id']}"
+
+
+def notes(since: float = 0, limit: int = 50, source: str | None = None, before: str = "") -> list[dict[str, Any]]:
+    """按抓取时间从新到旧；before 是上一批最后一条的游标，只要比它更早的。/ Newest fetched first; before is the
+    last row's cursor from the previous batch, asking only for older rows."""
+    where, args = "fetched_at>?", [since]
     if source:
-        rows = _rows("SELECT * FROM notes WHERE fetched_at>? AND source=? ORDER BY fetched_at DESC LIMIT ?",
-                     (since, source, limit))
-    else:
-        rows = _rows("SELECT * FROM notes WHERE fetched_at>? ORDER BY fetched_at DESC LIMIT ?", (since, limit))
+        where += " AND source=?"
+        args.append(source)
+    if before:
+        key, _, nid = before.partition("|")
+        where += " AND (fetched_at<? OR (fetched_at=? AND id<?))"
+        args += [float(key), float(key), nid]
+    rows = _rows(f"SELECT * FROM notes WHERE {where} ORDER BY fetched_at DESC, id DESC LIMIT ?", (*args, limit))
     for r in rows:
         r["comments"] = json.loads(r["comments"] or "[]")
     return rows

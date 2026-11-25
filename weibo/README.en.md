@@ -97,7 +97,7 @@ Send the header `x-weibo-token: device-token` (or use `?token=`).
 
 | Endpoint | Returns |
 | --- | --- |
-| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` is `follow` (newest posted first) or `hot` (by time on the list and rank). `limit` up to 300. `since` is a timestamp. `{now, posts:[{id, user, time, source, text, more, images, pics, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`; `text` is cut at 140 characters, `more` means there is full text or reposted content; `images` is the number of large image pages, `pics` is the number of original images that have a square thumbnail (0 for posts fetched before 0.1.3) |
+| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` is `follow` (newest posted first) or `hot` (by time on the list and rank). `limit` up to 300. `since` is a timestamp. `{now, posts:[{id, user, time, source, text, more, images, pics, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`; `text` is cut at 140 characters, `more` means there is full text or reposted content; `images` is the number of large image pages, `pics` is the number of original images that have a square thumbnail (0 for posts fetched before 0.1.3). Since 0.1.7 a `follow` reply also has `next`: a cursor while older posts remain, which passed back as `before=` returns the next batch; empty means nothing older is left |
 | `GET /api/device/v1/post/{id}` | The fields above, with `text` and `rt_text` as full text, plus `starts` (the first page of each original image, starting at 0) |
 | `GET /api/device/v1/post/{id}/comments` | `{comments:[{user, text, likes}]}`, fetched on the first request |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | Image page n (starting at 1), grayscale baseline JPEG, within 648×1000 |

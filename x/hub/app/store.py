@@ -77,12 +77,31 @@ def refresh(pid: str, p: dict[str, Any], feed: str, at: float, rank: int) -> Non
         _exec("UPDATE posts SET in_following=1 WHERE id=?", (pid,))
 
 
-def feed(seg: str, since: float = 0, limit: int = 100) -> list[dict[str, Any]]:
+def cursor(seg: str, p: dict[str, Any]) -> str:
+    """一条在列表里的位置，设备拿它要更早的。/ A row's place in the list; the device sends it back for older rows."""
     if seg == "foryou":
-        return _rows("SELECT * FROM posts WHERE in_foryou=1 AND foryou_at>? ORDER BY foryou_at DESC, foryou_rank ASC "
-                     "LIMIT ?", (since, limit))
-    return _rows("SELECT * FROM posts WHERE in_following=1 AND fetched_at>? ORDER BY created_ts DESC LIMIT ?",
-                 (since, limit))
+        return f"{p['foryou_at']!r}|{int(p['foryou_rank'] or 0)}|{p['id']}"
+    return f"{int(p['created_ts'] or 0)}|{p['id']}"
+
+
+def feed(seg: str, since: float = 0, limit: int = 100, before: str = "") -> list[dict[str, Any]]:
+    """为你推荐按进来的批次从新到旧、批内按名次；正在关注按发布时间从新到旧。before 是上一批最后一条的游标。
+    For You is newest batch first, by rank within a batch; Following is newest first by post time. before is the
+    previous batch's last cursor."""
+    if seg == "foryou":
+        where, args = "in_foryou=1 AND foryou_at>?", [since]
+        if before:
+            at, rank, pid = before.split("|", 2)
+            where += (" AND (foryou_at<? OR (foryou_at=? AND (foryou_rank>? OR (foryou_rank=? AND id>?))))")
+            args += [float(at), float(at), int(rank), int(rank), pid]
+        return _rows(f"SELECT * FROM posts WHERE {where} ORDER BY foryou_at DESC, foryou_rank ASC, id ASC LIMIT ?",
+                     (*args, limit))
+    where, args = "in_following=1 AND fetched_at>?", [since]
+    if before:
+        key, _, pid = before.partition("|")
+        where += " AND (created_ts<? OR (created_ts=? AND id<?))"
+        args += [int(key), int(key), pid]
+    return _rows(f"SELECT * FROM posts WHERE {where} ORDER BY created_ts DESC, id DESC LIMIT ?", (*args, limit))
 
 
 def post(pid: str) -> dict[str, Any] | None:

@@ -19,7 +19,7 @@ AUTH_PATH = DATA / "auth.json"
 MCP_URL = os.environ.get("MCP_URL", "http://mcp:18060").rstrip("/")
 NOVNC_URL = os.environ.get("NOVNC_URL", "http://mcp:6080").rstrip("/")
 PORT = int(os.environ.get("PORT", "8091"))
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 
 DEFAULTS: dict[str, Any] = {
     # 每轮之间隔多少分钟。/ Minutes between rounds.

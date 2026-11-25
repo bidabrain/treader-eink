@@ -424,12 +424,24 @@ def _brief(p: dict) -> dict:
 
 
 @app.get("/api/device/v1/feed")
-async def device_feed(request: Request, seg: str = "follow", since: float = 0, limit: int = 100):
+async def device_feed(request: Request, seg: str = "follow", since: float = 0, limit: int = 100, before: str = ""):
+    """关注可以带 before（上一批回复里的 next）往后再要一批；next 为空表示没有更早的了，热门不给 next。
+    Following accepts before (the previous reply's next) for the next batch; an empty next means nothing older is
+    left, and hot carries no next."""
     _device(request)
     if seg not in ("follow", "hot"):
         raise HTTPException(400, "seg 只能是 follow 或 hot")
-    rows = store.feed(seg, since, min(max(limit, 1), 300))
-    return {"now": time.time(), "posts": [_brief(p) for p in rows]}
+    limit = min(max(limit, 1), 300)
+    try:
+        rows = store.feed(seg, since, limit + 1, before if seg == "follow" else "")
+    except ValueError:
+        raise HTTPException(400, "before 不对")
+    more = len(rows) > limit
+    rows = rows[:limit]
+    out = {"now": time.time(), "posts": [_brief(p) for p in rows]}
+    if seg == "follow":
+        out["next"] = store.cursor(rows[-1]) if more and rows else ""
+    return out
 
 
 @app.get("/api/device/v1/post/{pid}")

@@ -78,7 +78,7 @@ The fields match the Weibo hub, so clients can reuse the same code. Pass the tok
 | Endpoint | Description |
 | --- | --- |
 | `GET /api/device/v1/status` | Account status; each feed's master switch (`feeds.following.on`), last and next fetch times |
-| `GET /api/device/v1/feed?seg=foryou\|following&since=&limit=` | List. When the master switch is off, returns an empty list and `on: false` |
+| `GET /api/device/v1/feed?seg=foryou\|following&since=&limit=` | List. When the master switch is off, returns an empty list and `on: false`. Since 0.1.6 the reply also has `next`: a cursor while older posts remain, which passed back as `before=` returns the next batch; empty means nothing older is left |
 | `POST /api/device/v1/refresh?seg=foryou` | Fetch once now, same as a manual fetch in the panel |
 | `GET /api/device/v1/post/{id}` | Full text; a quoted post goes in `rt_user` and `rt_text` |
 | `GET /api/device/v1/post/{id}/comments` | Replies. On the first request the browser opens this post to fetch them; cached after that |

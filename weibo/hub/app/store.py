@@ -158,12 +158,23 @@ def update_counts(pid: str, likes: int, comments: int, reposts: int) -> None:
     _exec("UPDATE posts SET likes=?, comments=?, reposts=? WHERE id=?", (likes, comments, reposts, pid))
 
 
-def feed(seg: str, since: float = 0, limit: int = 50) -> list[dict[str, Any]]:
+def cursor(p: dict[str, Any]) -> str:
+    """关注列表里一条的位置，设备拿它要更早的。/ A following row's place; the device sends it back for older rows."""
+    return f"{int(p['created_ts'] or 0)}|{p['id']}"
+
+
+def feed(seg: str, since: float = 0, limit: int = 50, before: str = "") -> list[dict[str, Any]]:
+    """关注按发布时间从新到旧，before 是上一批最后一条的游标（只对关注）。/ Following is newest first by post time;
+    before is the previous batch's last cursor (following only)."""
     if seg == "hot":
         return _rows("SELECT * FROM posts WHERE in_hot=1 AND hot_at>? ORDER BY hot_at DESC, hot_rank ASC LIMIT ?",
                      (since, limit))
-    return _rows("SELECT * FROM posts WHERE in_follow=1 AND fetched_at>? ORDER BY created_ts DESC LIMIT ?",
-                 (since, limit))
+    where, args = "in_follow=1 AND fetched_at>?", [since]
+    if before:
+        key, _, pid = before.partition("|")
+        where += " AND (created_ts<? OR (created_ts=? AND id<?))"
+        args += [int(key), int(key), pid]
+    return _rows(f"SELECT * FROM posts WHERE {where} ORDER BY created_ts DESC, id DESC LIMIT ?", (*args, limit))
 
 
 def post(pid: str) -> dict[str, Any] | None:

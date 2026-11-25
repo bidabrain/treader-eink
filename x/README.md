@@ -78,7 +78,7 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/device/v1/status` | 账号状态；每条流的总开关（`feeds.following.on`）、上次和下次拉取时间 |
-| `GET /api/device/v1/feed?seg=foryou\|following&since=&limit=` | 列表。总开关关着时返回空列表和 `on: false` |
+| `GET /api/device/v1/feed?seg=foryou\|following&since=&limit=` | 列表。总开关关着时返回空列表和 `on: false`。0.1.6 起回复里多一个 `next`：还有更早的推文时是一个游标，原样放进 `before=` 再请求就得到接下来的一批；为空表示没有更早的了 |
 | `POST /api/device/v1/refresh?seg=foryou` | 立即拉一次，等同于面板上的手动拉取 |
 | `GET /api/device/v1/post/{id}` | 全文；引用推文放在 `rt_user` 和 `rt_text` |
 | `GET /api/device/v1/post/{id}/comments` | 回复。第一次请求时用浏览器打开这条推文去取，之后走缓存 |

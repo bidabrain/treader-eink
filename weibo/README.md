@@ -97,7 +97,7 @@ docker compose up -d
 
 | 接口 | 返回 |
 | --- | --- |
-| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` 是 `follow`（按发布时间倒序）或 `hot`（按上榜时间、名次）。`limit` 最多 300。`{now, posts:[{id, user, time, source, text, more, images, pics, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`；`text` 截到 140 字，`more` 表示还有全文或转发内容；`images` 是大图页数，`pics` 是有方形小图的原图张数（0.1.3 之前拉的为 0） |
+| `GET /api/device/v1/feed?seg=follow&since=时间戳&limit=100` | `seg` 是 `follow`（按发布时间倒序）或 `hot`（按上榜时间、名次）。`limit` 最多 300。`{now, posts:[{id, user, time, source, text, more, images, pics, ratio, likes, comments, reposts, rt_user, rt_text, fetched_at}]}`；`text` 截到 140 字，`more` 表示还有全文或转发内容；`images` 是大图页数，`pics` 是有方形小图的原图张数（0.1.3 之前拉的为 0）。0.1.7 起 `follow` 的回复里多一个 `next`：还有更早的微博时是一个游标，原样放进 `before=` 再请求就得到接下来的一批；为空表示没有更早的了 |
 | `GET /api/device/v1/post/{id}` | 上面的字段，`text` 和 `rt_text` 是全文，另加 `starts`（每张原图的第一页，从 0 起） |
 | `GET /api/device/v1/post/{id}/comments` | `{comments:[{user, text, likes}]}`，第一次请求时现取 |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
