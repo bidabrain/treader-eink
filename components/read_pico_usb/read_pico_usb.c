@@ -17,7 +17,10 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdmmc_cmd.h"
+#include "soc/rtc_cntl_struct.h"
+#include "soc/usb_wrap_struct.h"
 #include "class/msc/msc_device.h"
 #include "tinyusb.h"
 #include "tinyusb_default_config.h"
@@ -162,8 +165,22 @@ void read_pico_usb_get_status(read_pico_usb_status_t* out) {
 
 void read_pico_usb_stop(void) {
     if (!s_started) return;
-    // 什么都不拆：卸驱动或删存储在弹出挂载失败后会断言；重启会复位 USB 外设，电脑同样马上看到设备断开。
-    // Tear nothing down: uninstalling or deleting storage asserts after a failed eject mount; the restart resets the
-    // USB peripheral and the computer sees the device leave just the same.
+    // 不卸驱动、不删存储：弹出挂载失败后那样做会断言；直接动寄存器。/ No driver uninstall or storage delete (they
+    // assert after a failed eject mount); work on the registers directly.
     s_usb_up = false;
+    // 先撤掉 D+ 上拉，电脑看到 U 盘拔出。/ Drop the D+ pull-up first so the computer sees the drive unplugged.
+    USB_WRAP.otg_conf.dp_pullup = 0;
+    USB_WRAP.otg_conf.dp_pulldown = 0;
+    USB_WRAP.otg_conf.dm_pullup = 0;
+    USB_WRAP.otg_conf.dm_pulldown = 0;
+    USB_WRAP.otg_conf.pad_pull_override = 1;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    USB_WRAP.otg_conf.pad_enable = 0;
+    // 内部 PHY 给 OTG 的开关在 RTC 域，esp_restart 不复位它：不交还的话，重启后 USB 串口/JTAG 没有 PHY，电脑找不到
+    // 刷机口，只有断电才恢复。交还硬件默认（接 USB 串口/JTAG）。
+    // The switch giving the internal PHY to OTG is in the RTC domain and esp_restart leaves it: without handing it
+    // back, USB Serial/JTAG has no PHY after the restart and the computer finds no flashing port until a power cycle.
+    // Return it to the hardware default (USB Serial/JTAG).
+    RTCCNTL.usb_conf.sw_usb_phy_sel = 0;
+    RTCCNTL.usb_conf.sw_hw_usb_phy_sel = 0;
 }

@@ -9,6 +9,8 @@ User-visible changes by date and author; Git retains implementation history. See
   Xiaohongshu, Weibo and X list thumbnails (and Xiaohongshu recommendation covers) download in batches: missing images come 18 to a request instead of a round trip each (1 to 3.6 s per image through the Cloudflare tunnel in testing). When a batch breaks midway, the complete images are kept and the rest asked for again on a fresh connection; a round that gains nothing stops until the page is visited again. Needs rednote 0.3.4, weibo 0.1.6, x 0.1.5 or newer; older servers fall back to one by one.
 - 漫画页第一次没解出来（多半是内存一时不够）时，先放掉字形缓存和书库封面缓存再解一次，减少“这一页显示不了”。
   A comic page that fails to decode the first time (usually memory briefly short) is decoded once more after freeing the glyph cache and the library cover cache, so fewer pages fail to show.
+- 修正 USB 传书结束后电脑找不到刷机口（也看不到串口日志），只有强制重启才恢复：传书时 USB 接口切给了 U 盘，重启前现在会先让电脑看到 U 盘拔出，再把接口交还刷机口。
+  Fixed the computer finding no flashing port (and no serial log) after USB transfer until a forced restart: the USB interface was handed to the drive during transfer, and now, before restarting, the computer first sees the drive unplugged and the interface goes back to the flashing port.
 
 ## 2026-11-25 · rednote 服务器 0.3.4、weibo 服务器 0.1.6、x 服务器 0.1.5
 

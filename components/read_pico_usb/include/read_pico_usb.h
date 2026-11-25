@@ -42,9 +42,11 @@ typedef struct {
 /// filesystem mounted) over USB.
 esp_err_t read_pico_usb_start(void* card);
 void read_pico_usb_get_status(read_pico_usb_status_t* out);
-/// 结束前调用，之后调用方立刻重启（重启复位 USB）。不卸驱动、不删存储：弹出后挂载失败时那样做会断言。
-/// Call before ending; the caller restarts right after (the restart resets USB). No driver uninstall or storage
-/// delete: after a failed eject mount either would assert.
+/// 结束前调用，之后调用方立刻重启。先让电脑看到 U 盘拔出，再把内部 USB PHY 交还 USB 串口/JTAG（重启后的刷机和日志
+/// 口）。不卸驱动、不删存储：弹出后挂载失败时那样做会断言。会阻塞约 100 ms。
+/// Call before ending; the caller restarts right after. The computer first sees the drive unplugged, then the
+/// internal USB PHY goes back to USB Serial/JTAG (the flashing and log port after the restart). No driver uninstall or
+/// storage delete: after a failed eject mount either would assert. Blocks for about 100 ms.
 void read_pico_usb_stop(void);
 
 #ifdef __cplusplus
