@@ -55,6 +55,10 @@ static bool utf8_valid(const char *out, size_t n) {
 }
 
 // kind：0 图书，1 字体，2 漫画。/ kind: 0 book, 1 font, 2 comic.
+// 壁纸模式：根目录收 JPG/PNG。start 里设，文件名校验要用。/ Wallpaper mode: the root takes JPG/PNG. Set in start,
+// used by name checks.
+static bool s_images;
+
 static bool decode_name_type(const char *encoded, char *out, size_t cap, int kind) {
     if (!cap) return false;
     size_t n = 0;
@@ -74,6 +78,7 @@ static bool decode_name_type(const char *encoded, char *out, size_t cap, int kin
     const char *ext = strrchr(out, '.');
     if (!ext) return false;
     if (kind == 1 ? strcasecmp(ext, ".ttf") : kind == 2 ? strcasecmp(ext, ".cbz") :
+        s_images ? (strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".png")) :
         (strcasecmp(ext, ".txt") && strcasecmp(ext, ".epub"))) return false;
     return utf8_valid(out, n);
 }
@@ -627,6 +632,7 @@ static esp_err_t respond_error(httpd_req_t *req, int code) {
 static esp_err_t index_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     if (s_cfg.form_html) return httpd_resp_send(req, s_cfg.form_html, (ssize_t)s_cfg.form_html_len);
+    if (s_cfg.page_html) return httpd_resp_send(req, s_cfg.page_html, (ssize_t)s_cfg.page_html_len);
     return httpd_resp_send(req, upload_start, upload_end - upload_start - 1);
 }
 
@@ -1004,7 +1010,7 @@ static esp_err_t upload_handler(httpd_req_t *req) {
     ESP_LOGI("transfer", "receive name=%s bytes=%u", name, (unsigned)req->content_len);
     file_result_t result = upload_managed(path, part, req->content_len, font ? TRANSFER_FONT_MAX : comic ? 0 : s_cfg.file_limit,
         s_cfg.free_bytes_cb(s_cfg.free_bytes_ctx), overwrite, s_buffer, 16384, receive_http, req, upload_progress,
-        font || comic ? NULL : s_cfg.file_changed_cb);
+        font || comic || s_cfg.images ? NULL : s_cfg.file_changed_cb);
     if (!result.changed && series[0]) rmdir(dir);
     portENTER_CRITICAL(&s_lock);
     s_upload_active = false;
@@ -1070,6 +1076,7 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
         (cfg->mode != READ_PICO_TRANSFER_MODE_AP && cfg->mode != READ_PICO_TRANSFER_MODE_STA))) return ESP_ERR_INVALID_ARG;
     if (s_wifi || s_netif || s_http) return ESP_ERR_INVALID_STATE;
     s_cfg = *cfg;
+    s_images = !form && cfg->images;
     // 表单模式不碰存储：没有根目录、字体和漫画目录。/ Form mode never touches storage: no root, font or comic dirs.
     snprintf(s_root, sizeof(s_root), "%s", form ? "" : cfg->root_dir);
     s_cfg.root_dir = s_root;
@@ -1174,8 +1181,16 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
         { .uri = "/wifi", .method = HTTP_POST, .handler = wifi_handler },
         { .uri = "/wifi", .method = HTTP_DELETE, .handler = wifi_handler },
     };
-    const httpd_uri_t *route_list = form ? form_routes : routes;
-    const size_t route_count = form ? sizeof(form_routes) / sizeof(*form_routes) : sizeof(routes) / sizeof(*routes);
+    // 壁纸模式只要首页、空间和上传。/ Wallpaper mode needs only the index, space info and uploads.
+    const httpd_uri_t image_routes[] = {
+        { .uri = "/", .method = HTTP_GET, .handler = index_handler },
+        { .uri = "/info", .method = HTTP_GET, .handler = info_handler },
+        { .uri = "/upload", .method = HTTP_PUT, .handler = upload_handler },
+    };
+    const httpd_uri_t *route_list = form ? form_routes : s_cfg.images ? image_routes : routes;
+    const size_t route_count = form ? sizeof(form_routes) / sizeof(*form_routes)
+                             : s_cfg.images ? sizeof(image_routes) / sizeof(*image_routes)
+                                            : sizeof(routes) / sizeof(*routes);
     for (size_t i = 0; i < route_count; ++i) {
         err = httpd_register_uri_handler(s_http, &route_list[i]); if (err != ESP_OK) goto fail;
     }

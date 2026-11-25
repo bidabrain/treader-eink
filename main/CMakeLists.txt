@@ -95,6 +95,7 @@ idf_component_register(
     EMBED_TXTFILES
         "apps/server_form.html"
         "apps/auth_form.html"
+        "apps/wall_upload.html"
 )
 
 # 图片解码器碰到损坏的图会让有符号整数溢出，用 -fwrapv 把它定义为回绕（与原来生成的结果一致）。

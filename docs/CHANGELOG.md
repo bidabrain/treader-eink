@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - 设置 › 内容来源 › 小红书 / 微博 / X 新增“往后翻接着拉”（三处是同一个开关，默认关）。开着时，小红书关注、微博关注、X 正在关注和为你推荐翻完刷新拿到的那批，会继续向服务器要更早的，一批是“每次拉取”的条数，直到和卡上以前的缓存接上，两次刷新之间漏掉的帖子就补上了；卡上缓存也翻完时还能接着往后要，直到服务器没有更早的。拉到后自动翻到下一页；还能再拉时页码写成“3 / 5+”。没网或服务器出错时提示一下，接着显示卡上缓存。开着时列表最多 300 条（关着仍是 100 条）。需要 rednote 0.3.5、weibo 0.1.7、x 0.1.6 或更新的服务器。
   Settings > Content sources > Xiaohongshu / Weibo / X gain "Keep pulling" (one switch shared by all three, off by default). When on, paging past the batch a refresh brought in Xiaohongshu Following, Weibo Following and X Following and For You keeps asking the server for older posts, a "fetch size" at a time, until they meet the earlier cache on the card, so posts missed between refreshes are filled in; once the card's cache runs out too it keeps going until the server has nothing older. The page turns by itself when a batch arrives, and the pager reads "3 / 5+" while more can be pulled. Without a network or on a server error it says so and shows the card's cache. With the switch on, lists hold up to 300 (still 100 when off). Needs rednote 0.3.5, weibo 0.1.7, x 0.1.6 or newer.
+- 设置 → 显示与阅读 → 锁屏壁纸右上角新增“手机上传”：设备显示二维码和网址，手机浏览器选图后自动缩成屏幕大小的灰度图（可选铺满裁边或完整留白）再传进 TF 卡的 wallpapers 文件夹，同名自动加序号；传完点“完成”就能在列表里选来当壁纸。不用再拿读卡器拷图。
+  Settings > Display and reading > Lock wallpaper gains "From phone" at the top right: the device shows a QR code and address, and the phone's browser shrinks the chosen pictures to screen-size grayscale (filled and cropped, or whole with margins) before sending them to the wallpapers folder on the TF card, numbering clashing names; tap "Done" and pick one in the list. No card reader needed.
 
 ## 2026-11-25 · rednote 服务器 0.3.5、weibo 服务器 0.1.7、x 服务器 0.1.6
 

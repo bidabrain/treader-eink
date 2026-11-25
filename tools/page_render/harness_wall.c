@@ -16,6 +16,11 @@ void book_screen_draw(uint8_t* fb, const uint8_t* packed) {
     epd_fill_rect((EpdRect){0, 0, TR_W, TR_H}, 0x90, fb);
 }
 
+void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
+    epd_fill_rect(area, 0x00, fb);
+    epd_fill_rect((EpdRect){area.x + 12, area.y + 12, area.width - 24, area.height - 24}, 0xFF, fb);
+}
+
 static void shot(const char* name) {
     app_ctx_t ctx = {.fb = hr_fb};
     hr_no_bar_check();
@@ -53,6 +58,24 @@ void hr_scenes(void) {
     s_no_card = true;
     shot("no_card");
     s_no_card = false;
+    // 手机上传：打开中、已有 Wi-Fi、热点、接收中。/ Upload from phone: starting, saved Wi-Fi, hotspot, receiving.
+    s_view = V_UPLOAD;
+    memset(&s_up, 0, sizeof(s_up));
+    shot("upload_starting");
+    s_up.network_ready = true;
+    s_up.mode = READ_PICO_TRANSFER_MODE_STA;
+    snprintf(s_up.wifi_ssid, sizeof(s_up.wifi_ssid), "HomeNetwork-5G");
+    snprintf(s_up.url, sizeof(s_up.url), "http://192.168.1.123");
+    shot("upload_sta");
+    s_up.mode = READ_PICO_TRANSFER_MODE_AP;
+    snprintf(s_up.ssid, sizeof(s_up.ssid), "ReadPico-1A2B");
+    s_up.done_count = 3;
+    shot("upload_ap");
+    s_up.state = READ_PICO_TRANSFER_UPLOADING;
+    snprintf(s_up.cur_name, sizeof(s_up.cur_name), "a-very-long-wallpaper-file-name-from-the-camera-roll.jpg");
+    hr_allow_fit();
+    shot("upload_receiving");
+    s_view = V_LIST;
     static uint8_t img[4];
     s_preview = img;
     s_view = V_PREVIEW;

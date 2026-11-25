@@ -54,6 +54,13 @@ typedef struct {
     int (*form_cb)(const char *body, size_t len, char *reply, size_t cap);
     size_t form_body_max; ///< 表单请求体上限，0 表示 1024 / Form body limit, 0 means 1024
     size_t form_reply_max; ///< 表单回复上限，0 表示 512 / Form reply limit, 0 means 512
+    /// 可选：壁纸模式。为真时 root_dir 是壁纸文件夹，/upload 只收 JPG/PNG（不清阅读进度），首页换成 page_html，
+    /// 不开放书目、字体、漫画和 Wi-Fi 接口。
+    /// Optional wallpaper mode. When set, root_dir is the wallpaper folder, /upload takes only JPG/PNG (no progress
+    /// clearing), the index becomes page_html, and the book list, font, comic and Wi-Fi endpoints stay closed.
+    bool images;
+    const char *page_html;
+    size_t page_html_len; ///< page_html 字节数 / Bytes in page_html
     /// 可选：热点口令（8～63 个字符），NULL 用默认口令。/ Optional hotspot passphrase (8-63 chars); NULL uses the default.
     const char *ap_password;
     uint8_t ap_max_conn; ///< 热点最多几台设备，0 表示 2 / Hotspot station limit, 0 means 2
