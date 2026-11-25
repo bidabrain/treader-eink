@@ -184,6 +184,30 @@ esp_err_t tomato_srv_poll(const tomato_srv_t* srv, const char* first, const char
 /// 取一张 JPEG 存到 dest；不是 JPEG 不写。/ Fetch one JPEG into dest; anything else is not written.
 esp_err_t tomato_srv_image(const tomato_srv_t* srv, const char* path, const char* dest, int timeout_ms,
                            const volatile bool* cancel);
+/// 一批里最多几张图。/ Most images in one batch.
+#define TOMATO_SRV_BATCH_MAX 18
+
+/// 一批列表小图：攒满或 flush 时用一个请求（POST /api/device/v1/imgs）取回，省掉逐张的往返。服务器没有这个接口（旧
+/// 版本）就退回逐张取。调用方放在 EXT_RAM_BSS_ATTR 静态区，只在同步任务里用。
+/// A batch of list images: fetched with one request (POST /api/device/v1/imgs) when full or flushed, saving a round
+/// trip per image. A server without the endpoint (older versions) falls back to one by one. Callers keep it in
+/// EXT_RAM_BSS_ATTR static storage and use it on the sync task only.
+typedef struct {
+    const tomato_srv_t* srv;
+    const char* query;               ///< 逐张取时加在地址后面（比如 "?wait=0"）/ Appended when fetching one by one
+    const volatile bool* cancel;
+    int n;
+    char rel[TOMATO_SRV_BATCH_MAX][48];   ///< 相对 /api/device/v1/ 的图片地址 / Image path under /api/device/v1/
+    char dest[TOMATO_SRV_BATCH_MAX][96];  ///< 卡上存到哪 / Where it goes on the card
+} tomato_srv_batch_t;
+
+void tomato_srv_batch_begin(tomato_srv_batch_t* b, const tomato_srv_t* srv, const char* query,
+                            const volatile bool* cancel);
+/// 加一张；攒满就取回这一批，返回 true（调用方可以报进度）。/ Add one; a full batch is fetched and true returned (the
+/// caller may report progress).
+bool tomato_srv_batch_add(tomato_srv_batch_t* b, const char* rel, const char* dest);
+/// 取回攒着的。失败的图跳过，等下次再补。/ Fetch what is queued. Failed images are skipped until next time.
+void tomato_srv_batch_flush(tomato_srv_batch_t* b);
 /// 编号只留字母和数字，免得拼进路径时出现 ../。/ Keep only letters and digits from ids used in paths.
 void tomato_safe_id(const char* in, char* out, size_t cap);
 bool tomato_file_exists(const char* path);

@@ -123,10 +123,13 @@ static esp_err_t status_error(int status, const uint8_t* body, char* msg, size_t
     return status == 401 ? ESP_ERR_INVALID_RESPONSE : ESP_ERR_NOT_FOUND;
 }
 
-// body 为 NULL 时 GET，否则把它当 JSON POST 出去（POST 不跟随跳转）。/ GET when body is NULL; otherwise POST it as
-// JSON (POST does not follow redirects).
+// body 为 NULL 时 GET，否则把它当 JSON POST 出去（POST 不跟随跳转）。partial 时，200 的回答传到一半断了也把收到的
+// 部分交出来（仍返回错误），调用方自己挑出完整的。
+// GET when body is NULL; otherwise POST it as JSON (POST does not follow redirects). With partial, a 200 answer that
+// breaks midway still hands over what arrived (and returns the error) so the caller can keep the complete parts.
 static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const char* body, size_t max, int timeout_ms,
-                             const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap) {
+                             const volatile bool* cancel, bool partial, uint8_t** out, size_t* out_len, char* msg,
+                             size_t cap) {
     *out = NULL;
     *out_len = 0;
     char url[sizeof(srv->cfg->url) + 160];
@@ -189,16 +192,16 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
     if (err != ESP_OK) ESP_LOGW(TAG, "srv %s: %s http=%d got %u of %lld B", path, esp_err_to_name(err), status,
                                 (unsigned)len, (long long)length);
     tomato_http_give(c, read_ok);
-    if (err != ESP_OK) { heap_caps_free(buf); return err; }
+    if (err != ESP_OK && !(partial && status == 200 && buf && len)) { heap_caps_free(buf); return err; }
     buf[len] = 0;
     *out = buf;
     *out_len = len;
-    return ESP_OK;
+    return err;
 }
 
 esp_err_t tomato_srv_get(const tomato_srv_t* srv, const char* path, size_t max, int timeout_ms,
                          const volatile bool* cancel, uint8_t** out, size_t* out_len, char* msg, size_t cap) {
-    return srv_request(srv, path, NULL, max, timeout_ms, cancel, out, out_len, msg, cap);
+    return srv_request(srv, path, NULL, max, timeout_ms, cancel, false, out, out_len, msg, cap);
 }
 
 esp_err_t tomato_srv_post(const tomato_srv_t* srv, const char* path, const char* body, int timeout_ms,
@@ -206,7 +209,7 @@ esp_err_t tomato_srv_post(const tomato_srv_t* srv, const char* path, const char*
     uint8_t* buf;
     size_t len;
     *out = NULL;
-    esp_err_t err = srv_request(srv, path, body ? body : "{}", TOMATO_SRV_JSON_MAX, timeout_ms, cancel, &buf, &len,
+    esp_err_t err = srv_request(srv, path, body ? body : "{}", TOMATO_SRV_JSON_MAX, timeout_ms, cancel, false, &buf, &len,
                                 msg, cap);
     if (err != ESP_OK) return err;
     tomato_json_use_psram();
@@ -336,6 +339,123 @@ esp_err_t tomato_srv_image(const tomato_srv_t* srv, const char* path, const char
     err = jpeg ? tomato_cache_write(dest, buf, len) : ESP_ERR_NOT_SUPPORTED;
     heap_caps_free(buf);
     return err;
+}
+
+/* ---- 一批小图 / Image batches ---- */
+
+// 没有批量接口的服务器（按令牌头区分来源）记这么久，期间直接逐张取，不再白问；过了再试，服务器升级后就用上。
+// Servers without the batch endpoint (told apart by token header) are remembered this long and fetched one by one
+// meanwhile; after that they are asked again, so a server upgrade gets picked up.
+#define NO_BATCH_MS (10 * 60 * 1000)
+#define NO_BATCH_SLOTS 4
+
+static struct {
+    const char* header;
+    int64_t at_ms;
+} s_no_batch[NO_BATCH_SLOTS];
+
+static bool batch_known_missing(const tomato_srv_t* srv) {
+    const int64_t now = esp_timer_get_time() / 1000;
+    for (int i = 0; i < NO_BATCH_SLOTS; i++)
+        if (s_no_batch[i].header && !strcmp(s_no_batch[i].header, srv->header))
+            return now - s_no_batch[i].at_ms < NO_BATCH_MS;
+    return false;
+}
+
+static void batch_mark_missing(const tomato_srv_t* srv) {
+    int slot = 0;
+    for (int i = 0; i < NO_BATCH_SLOTS; i++) {
+        if (s_no_batch[i].header && !strcmp(s_no_batch[i].header, srv->header)) { slot = i; break; }
+        if (!s_no_batch[i].header || s_no_batch[i].at_ms < s_no_batch[slot].at_ms) slot = i;
+    }
+    s_no_batch[slot].header = srv->header;
+    s_no_batch[slot].at_ms = esp_timer_get_time() / 1000;
+}
+
+// 回答是一串 [4 字节大端长度][JPEG]，顺序和请求一样，长度 0 是服务器上没有。传到一半断了：收全的先存下，剩下的换
+// 新连接再要；一轮一张都没多收到就算了，等下次再补。
+// The reply is a run of [4-byte big-endian length][JPEG] in request order; length 0 means the server has none. When
+// it breaks midway, the complete images are kept and the rest asked for again on a fresh connection; a round that
+// gains nothing ends it until next time.
+static esp_err_t batch_fetch(tomato_srv_batch_t* b, int n) {
+    int first = 0, got = 0, rounds = 0;
+    bool gained = true;
+    esp_err_t err = ESP_OK;
+    while (first < n && gained && !(b->cancel && *b->cancel)) {
+        tomato_json_use_psram();
+        cJSON* root = cJSON_CreateObject();
+        cJSON* arr = root ? cJSON_AddArrayToObject(root, "paths") : NULL;
+        for (int i = first; arr && i < n; i++) cJSON_AddItemToArray(arr, cJSON_CreateString(b->rel[i]));
+        char* body = arr ? cJSON_PrintUnformatted(root) : NULL;
+        cJSON_Delete(root);
+        if (!body) return ESP_ERR_NO_MEM;
+        if (rounds++) ESP_LOGW(TAG, "batch retry (%d of %d images left)", n - first, n);
+        uint8_t* buf = NULL;
+        size_t len = 0;
+        char ignore[64];
+        // 和单张图一样用短超时：断流要等满超时才知道。/ A short timeout as for single images: a stall only shows once
+        // it runs out.
+        err = srv_request(b->srv, "/api/device/v1/imgs", body, TOMATO_SRV_IMG_MAX, IMG_TIMEOUT_MS, b->cancel, true,
+                          &buf, &len, ignore, sizeof(ignore));
+        cJSON_free(body);
+        // 旧服务器（404）只在头一轮算数，让调用方退回逐张取。/ An older server (404) only counts on the first round, so
+        // the caller falls back to one by one.
+        if (err == ESP_ERR_NOT_FOUND && rounds == 1) return err;
+        const int before = first;
+        size_t off = 0;
+        while (buf && first < n && off + 4 <= len) {
+            const size_t size = (size_t)buf[off] << 24 | (size_t)buf[off + 1] << 16 | (size_t)buf[off + 2] << 8 |
+                                buf[off + 3];
+            if (size > len - off - 4) break;
+            const uint8_t* p = buf + off + 4;
+            if (size > 3 && p[0] == 0xFF && p[1] == 0xD8 && p[2] == 0xFF &&
+                tomato_cache_write(b->dest[first], p, size) == ESP_OK)
+                got++;
+            off += 4 + size;
+            first++;
+        }
+        heap_caps_free(buf);
+        if (err == ESP_OK) break;
+        // 第一轮失败总再试一次（和单张图一样）；之后只要上一轮有进展就接着要剩下的。/ A failed first round always
+        // gets one retry (as single images do); after that, keep asking for the rest while rounds make progress.
+        gained = first > before || rounds == 1;
+        if (err != ESP_FAIL) break;
+    }
+    ESP_LOGI(TAG, "batch %d/%d images in %d rounds", got, n, rounds);
+    return err;
+}
+
+void tomato_srv_batch_begin(tomato_srv_batch_t* b, const tomato_srv_t* srv, const char* query,
+                            const volatile bool* cancel) {
+    b->srv = srv;
+    b->query = query ? query : "";
+    b->cancel = cancel;
+    b->n = 0;
+}
+
+bool tomato_srv_batch_add(tomato_srv_batch_t* b, const char* rel, const char* dest) {
+    snprintf(b->rel[b->n], sizeof(b->rel[0]), "%s", rel);
+    snprintf(b->dest[b->n], sizeof(b->dest[0]), "%s", dest);
+    if (++b->n < TOMATO_SRV_BATCH_MAX) return false;
+    tomato_srv_batch_flush(b);
+    return true;
+}
+
+void tomato_srv_batch_flush(tomato_srv_batch_t* b) {
+    const int n = b->n;
+    b->n = 0;
+    if (!n || (b->cancel && *b->cancel)) return;
+    if (!batch_known_missing(b->srv)) {
+        // 404 是旧服务器没有这个接口；别的错误（断网、超时）这一批就算了，下次再补。/ A 404 is an older server without
+        // the endpoint; any other error (network, timeout) gives up on this batch until next time.
+        if (batch_fetch(b, n) != ESP_ERR_NOT_FOUND) return;
+        batch_mark_missing(b->srv);
+    }
+    char path[112];
+    for (int i = 0; i < n && !(b->cancel && *b->cancel); i++) {
+        snprintf(path, sizeof(path), "/api/device/v1/%s%s", b->rel[i], b->query);
+        tomato_srv_image(b->srv, path, b->dest[i], IMG_TIMEOUT_MS, b->cancel);
+    }
 }
 
 /* ---- 缓存文件 / Cache files ---- */

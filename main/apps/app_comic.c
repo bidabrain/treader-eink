@@ -329,8 +329,15 @@ static int first_image(zip_reader_t* z) {
 static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w, uint16_t* h) {
     const size_t len = zip_entry_size(z, entry);
     // 大于 2 MB 的图要确认 PSRAM 放得下（原文件加解码还要的余量）。/ Images over 2 MB need room for the file plus decoding.
-    if (!len || len > PAGE_INPUT_MAX) return false;
-    if (len > 2u * 1024u * 1024u && heap_caps_get_largest_free_block(PSRAM_CAPS) < len + 2u * 1024u * 1024u) return false;
+    if (!len || len > PAGE_INPUT_MAX) {
+        ESP_LOGW(TAG, "page %d: %u bytes is outside 1..%u", entry, (unsigned)len, (unsigned)PAGE_INPUT_MAX);
+        return false;
+    }
+    if (len > 2u * 1024u * 1024u && heap_caps_get_largest_free_block(PSRAM_CAPS) < len + 2u * 1024u * 1024u) {
+        ESP_LOGW(TAG, "page %d: %u bytes needs %u contiguous PSRAM, largest block %u", entry, (unsigned)len,
+                 (unsigned)(len + 2u * 1024u * 1024u), (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
+        return false;
+    }
     uint8_t* data = heap_caps_malloc(len, PSRAM_CAPS);
     if (!data) { ESP_LOGW(TAG, "page %d: no memory for %u bytes", entry, (unsigned)len); return false; }
     const esp_err_t zerr = zip_extract(z, entry, data, len);
@@ -851,15 +858,12 @@ static void save_progress(bool flush) {
 }
 
 // 把一页解码并缩到屏幕里（保持比例）。/ Decode one page and fit it to the screen, keeping the aspect ratio.
-static void decode_page(pagebuf_t* b, int idx) {
-    page_free(b);
-    b->idx = idx;
+// 解一页并缩成显示缓冲，成功返回真（b->px 有了）。失败原因都写日志。/ Decode one page and scale it into the display
+// buffer; true on success (b->px is set). Every failure reason is logged.
+static bool decode_page_once(pagebuf_t* b, int idx) {
     uint8_t* gray = NULL;
     uint16_t gw = 0, gh = 0;
-    if (!s_zip || idx < 0 || idx >= s_page_count || !decode_entry(s_zip, s_pages[idx], &gray, &gw, &gh)) {
-        b->failed = true;
-        return;
-    }
+    if (!s_zip || idx < 0 || idx >= s_page_count || !decode_entry(s_zip, s_pages[idx], &gray, &gw, &gh)) return false;
     float s = (float)AREA_W / gw;
     if ((float)AREA_H / gh < s) s = (float)AREA_H / gh;
     b->w = (int)(gw * s);
@@ -867,15 +871,44 @@ static void decode_page(pagebuf_t* b, int idx) {
     if (b->w < 1) b->w = 1;
     if (b->h < 1) b->h = 1;
     b->px = heap_caps_malloc((size_t)b->w * b->h, PSRAM_CAPS);
-    if (b->px) book_image_fill(gray, gw, gh, b->px, b->w, b->h);
-    else b->failed = true;
+    if (b->px) {
+        book_image_fill(gray, gw, gh, b->px, b->w, b->h);
+    } else {
+        ESP_LOGW(TAG, "page %d: no memory for the %dx%d page buffer, largest block %u", idx, b->w, b->h,
+                 (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
+    }
     free(gray);
+    return b->px != NULL;
+}
+
+// 当前页第一次没解出来（多半是 PSRAM 一时不够）：放掉字形缓存和书库封面缓存（用到再生成），再解一次；预解码的下一页
+// 不值得这样做，它失败了翻到时由 ensure_current 重解。/ A current page that fails once (mostly PSRAM briefly short):
+// free the glyph cache and the library cover cache (both rebuild on use) and decode once more; a prefetched next page
+// is not worth it, and ensure_current decodes it again when it is turned to.
+static void decode_page(pagebuf_t* b, int idx) {
+    const bool current = b == &s_buf[0];
+    for (int attempt = 0;; attempt++) {
+        page_free(b);
+        b->idx = idx;
+        if (decode_page_once(b, idx)) return;
+        page_free(b);
+        b->idx = idx;
+        if (attempt > 0 || !current) break;
+        const size_t before = heap_caps_get_largest_free_block(PSRAM_CAPS);
+        ttf_font_cache_clear();
+        book_cover_release();
+        ESP_LOGW(TAG, "page %d: retrying after freeing caches, largest block %u -> %u", idx, (unsigned)before,
+                 (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
+    }
+    b->failed = true;
 }
 
 // 把 s_cur 准备好：预解码过就直接换过来。/ Make s_cur ready, swapping in the prefetched page when it matches.
 static void ensure_current(void) {
     if (s_buf[0].idx == s_cur && (s_buf[0].px || s_buf[0].failed)) return;
-    if (s_buf[1].idx == s_cur) {
+    // 预解码成功的才直接换进来；预解码失败的当没解过，重新解（带重试）。/ Only a successful prefetch is swapped in; a
+    // failed one counts as not decoded and is decoded again (with the retry).
+    if (s_buf[1].idx == s_cur && !s_buf[1].failed) {
         pagebuf_t t = s_buf[0];
         s_buf[0] = s_buf[1];
         s_buf[1] = t;

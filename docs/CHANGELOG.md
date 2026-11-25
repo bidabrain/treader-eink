@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.5
+
+- 小红书、微博、X 的列表缩略图（还有小红书推荐的封面）改成成批下载：缺的图每 18 张用一个请求取回，不再一张一张各等一个来回（经 Cloudflare 隧道实测每张 1～3.6 秒）。一批传到一半断了，已经收全的图先存下，剩下的换新连接再要；一轮一张都没多收到就停下，翻到这页时再补。需要 rednote 0.3.4、weibo 0.1.6、x 0.1.5 或更新的服务器；旧服务器自动退回逐张取。
+  Xiaohongshu, Weibo and X list thumbnails (and Xiaohongshu recommendation covers) download in batches: missing images come 18 to a request instead of a round trip each (1 to 3.6 s per image through the Cloudflare tunnel in testing). When a batch breaks midway, the complete images are kept and the rest asked for again on a fresh connection; a round that gains nothing stops until the page is visited again. Needs rednote 0.3.4, weibo 0.1.6, x 0.1.5 or newer; older servers fall back to one by one.
+- 漫画页第一次没解出来（多半是内存一时不够）时，先放掉字形缓存和书库封面缓存再解一次，减少“这一页显示不了”。
+  A comic page that fails to decode the first time (usually memory briefly short) is decoded once more after freeing the glyph cache and the library cover cache, so fewer pages fail to show.
+
 ## 2026-11-25 · rednote 服务器 0.3.4、weibo 服务器 0.1.6、x 服务器 0.1.5
 
 - 新增设备接口 `POST /api/device/v1/imgs`：一次请求取回多张列表小图（缩略图、方形小图、推荐封面），按请求顺序拼在一起返回，没有的图长度为 0。设备逐张取时每张都要等一个来回（经 Cloudflare 隧道实测每张 1～3.6 秒），一页十几张就是十几个来回；配合之后的固件改成一批一个来回。旧固件和安卓 App 不受影响，照旧逐张取。

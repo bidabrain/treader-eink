@@ -24,6 +24,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "esp_attr.h"
 #include "tomato_internal.h"
 
 #define NVS_NS "x"
@@ -239,8 +240,11 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
     progress(1, count + 1);
     // 图：两张以上取前几张方形小图，一张取封面缩略图。失败的跳过，下次刷新再补。/ Images: with two or more, the first
     // square images; with one, the cover thumbnail. Failures wait for the next refresh.
+    // 缺的图攒成一批一起取。/ Missing images are fetched together in batches.
+    EXT_RAM_BSS_ATTR static tomato_srv_batch_t batch;
+    tomato_srv_batch_begin(&batch, srv, NULL, cancel);
     int i = 0;
-    char dir[64], dest[96], sid[28];
+    char dir[64], dest[96], sid[28], rel[48];
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
@@ -252,22 +256,25 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
         tomato_x_post_dir(id, dir, sizeof(dir));
         mkdir(dir, 0775);
         tomato_safe_id(id, sid, sizeof(sid));
+        bool flushed = false;
         if (pics >= 2) {
             for (int k = 1; k <= pics && k <= TOMATO_WB_LIST_SQUARES && !*cancel; k++) {
                 tomato_x_square_path(id, k, dest, sizeof(dest));
                 if (tomato_file_exists(dest)) continue;
-                snprintf(path, sizeof(path), "/api/device/v1/img/%s/s%d.jpg", sid, k);
-                tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+                snprintf(rel, sizeof(rel), "img/%s/s%d.jpg", sid, k);
+                flushed |= tomato_srv_batch_add(&batch, rel, dest);
             }
         } else {
             tomato_x_img_path(id, 0, dest, sizeof(dest));
             if (!tomato_file_exists(dest)) {
-                snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg", sid);
-                tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+                snprintf(rel, sizeof(rel), "img/%s/thumb.jpg", sid);
+                flushed = tomato_srv_batch_add(&batch, rel, dest);
             }
         }
-        progress(1 + i, count + 1);
+        if (flushed) progress(1 + i, count + 1);
     }
+    tomato_srv_batch_flush(&batch);
+    progress(count + 1, count + 1);
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     if (!r->thumbs_only) prune_posts(NULL);

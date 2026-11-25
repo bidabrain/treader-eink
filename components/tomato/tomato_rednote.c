@@ -32,6 +32,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
+#include "esp_attr.h"
 #include "tomato_internal.h"
 
 #define TAG "tomato_red"
@@ -242,9 +243,15 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const tomato_red_req_t
         if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     }
     progress(1, count + 1);
-    // 缩略图：一篇一张，失败的跳过，下次刷新再补。/ One thumbnail per note; failures are skipped until the next refresh.
-    int i = 0, got = 0;
-    char dir[64], dest[96];
+    // 缩略图：一篇一张，攒成一批一起取；失败的跳过，下次刷新再补。批量接口和逐张的 wait=0 一样不等服务器还在做的
+    // 图（老服务器不认 wait=0，照旧等）。
+    // One thumbnail per note, fetched together in batches; failures are skipped until the next refresh. Like wait=0
+    // one by one, the batch endpoint skips images the server is still making (older servers ignore wait=0 and wait).
+    const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
+    EXT_RAM_BSS_ATTR static tomato_srv_batch_t batch;
+    tomato_srv_batch_begin(&batch, &srv, "?wait=0", cancel);
+    int i = 0;
+    char dir[64], dest[96], rel[48];
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
@@ -257,12 +264,11 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const tomato_red_req_t
         mkdir(dir, 0775);
         char sid[32];
         safe_id(id, sid, sizeof(sid));
-        // wait=0：服务器还在做的图不等，下次刷新再取；老服务器不认这个参数，照旧等。/ wait=0: skip images the
-        // server is still making until the next refresh; older servers ignore it and wait as before.
-        snprintf(path, sizeof(path), "/api/device/v1/img/%s/thumb.jpg?wait=0", sid);
-        if (fetch_image(cfg, path, dest, cancel) == ESP_OK) got++;
-        progress(1 + i, count + 1);
+        snprintf(rel, sizeof(rel), "img/%s/thumb.jpg", sid);
+        if (tomato_srv_batch_add(&batch, rel, dest)) progress(1 + i, count + 1);
     }
+    tomato_srv_batch_flush(&batch);
+    progress(count + 1, count + 1);
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     if (!r->thumbs_only) prune_notes(NULL);
@@ -302,8 +308,12 @@ static esp_err_t run_rec(const tomato_red_config_t* cfg, bool refresh, const vol
     err = write_json(TOMATO_RED_REC_FILE, out);
     if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     progress(1, count + 1);
+    // 封面攒成一批一起取。/ Covers are fetched together in batches.
+    const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
+    EXT_RAM_BSS_ATTR static tomato_srv_batch_t batch;
+    tomato_srv_batch_begin(&batch, &srv, NULL, cancel);
     int i = 0;
-    char path[96], dest[96], sid[32];
+    char rel[48], dest[96], sid[32];
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
@@ -312,10 +322,11 @@ static esp_err_t run_rec(const tomato_red_config_t* cfg, bool refresh, const vol
         tomato_red_cover_path(id, dest, sizeof(dest));
         if (exists(dest)) continue;
         safe_id(id, sid, sizeof(sid));
-        snprintf(path, sizeof(path), "/api/device/v1/rec/cover/%s.jpg", sid);
-        fetch_image(cfg, path, dest, cancel);
-        progress(1 + i, count + 1);
+        snprintf(rel, sizeof(rel), "rec/cover/%s.jpg", sid);
+        if (tomato_srv_batch_add(&batch, rel, dest)) progress(1 + i, count + 1);
     }
+    tomato_srv_batch_flush(&batch);
+    progress(count + 1, count + 1);
     prune_covers(items);
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
