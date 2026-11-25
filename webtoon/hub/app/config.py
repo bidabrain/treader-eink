@@ -16,7 +16,7 @@ CACHE_DIR = DATA / "cache"
 CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8095"))
-VERSION = "0.3.2"
+VERSION = "0.3.3"
 BASE = os.environ.get("WEBTOON_BASE", "https://www.webtoons.com").rstrip("/")
 MOBILE = os.environ.get("WEBTOON_MOBILE", "https://m.webtoons.com").rstrip("/")
 

@@ -283,6 +283,16 @@ $('#tApply').onclick = async () => {
   } catch (e) { $('#tState').textContent = e.message; }
 };
 
+// ---- 缓存 / Cache ----
+loaders.cache = async () => {
+  const r = await api('/api/panel/cache');
+  $('#cacheSum').textContent = r.items.length ? `${r.items.length} 话，共 ${r.mb} MB` : '';
+  $('#cacheList').innerHTML = r.items.length ? r.items.map((i) => {
+    const q = `lang=${encodeURIComponent(i.lang)}&id=${encodeURIComponent(i.id)}&no=${i.no}`;
+    return `<li><span>${esc(i.series || i.id)} · 第 ${i.no} 话${i.title ? ' ' + esc(i.title) : ''} <span class="muted">${i.pages ? i.pages + ' 页 · ' : ''}${i.mb} MB · ${when(i.at)}</span></span><a class="button" href="/api/panel/cache/file?${q}" download>下载</a></li>`;
+  }).join('') : '<li class="muted">缓存里没有转好的话</li>';
+};
+
 // ---- 设置 / Settings ----
 loaders.settings = async () => {
   const cfg = await api('/api/panel/settings');

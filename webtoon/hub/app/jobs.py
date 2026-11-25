@@ -188,6 +188,49 @@ def cache_mb() -> float:
     return sum(p.stat().st_size for p in config.CACHE_DIR.rglob("*") if p.is_file()) / 1048576
 
 
+_meta_seen: dict[str, tuple[float, int, dict]] = {}   # 路径 → (修改时间, 大小, 信息)，少开几次 ZIP / path -> (mtime, size, info)
+
+
+def _comic_info(p: Path, st: os.stat_result) -> dict:
+    """读 CBZ 末尾 ComicInfo.xml 里的系列名、话名、页数；读不出来就给空。/ Series, episode title and page count from the
+    CBZ's ComicInfo.xml; empty when unreadable."""
+    hit = _meta_seen.get(str(p))
+    if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+        return hit[2]
+    info = {"series": "", "title": "", "pages": 0}
+    try:
+        import zipfile
+        from xml.etree import ElementTree
+        with zipfile.ZipFile(p) as z:
+            root = ElementTree.fromstring(z.read("ComicInfo.xml"))
+            info = {"series": root.findtext("Series") or "", "title": root.findtext("Title") or "",
+                    "pages": int(root.findtext("PageCount") or 0)}
+    except Exception:  # noqa: BLE001
+        pass
+    _meta_seen[str(p)] = (st.st_mtime, st.st_size, info)
+    return info
+
+
+def list_cache() -> list[dict]:
+    """缓存里所有转好的话，新的在前。路径是 缓存/语言/作品编号/话号.cbz，封面和 .part 不算。/ Every converted episode in
+    the cache, newest first. Layout is cache/lang/id/no.cbz; covers and .part files are not episodes."""
+    items = []
+    for p in config.CACHE_DIR.glob("*/*/*.cbz"):
+        if p.parent.parent.name == "covers" or not p.stem.isdigit():
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        items.append({"lang": p.parent.parent.name, "id": p.parent.name, "no": int(p.stem), "mb": round(st.st_size / 1048576, 1),
+                      "at": int(st.st_mtime), **_comic_info(p, st)})
+    items.sort(key=lambda i: -i["at"])
+    live = {str(p) for p in config.CACHE_DIR.glob("*/*/*.cbz")}
+    for k in [k for k in _meta_seen if k not in live]:
+        del _meta_seen[k]
+    return items
+
+
 def prune() -> int:
     """删掉超过保留天数的，再按最久没用删到总大小以内。返回删了几个。/ Delete files past the retention days, then the
     least recently used until under the size cap. Returns how many were deleted."""

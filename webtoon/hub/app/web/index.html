@@ -21,7 +21,7 @@
   <header>
     <b>webtoon 面板</b><span id="ver" class="muted"></span>
     <nav>
-      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="eh">E-Hentai</a><a data-tab="device">设备与外网</a>
+      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="eh">E-Hentai</a><a data-tab="cache">缓存</a><a data-tab="device">设备与外网</a>
       <a data-tab="settings">设置</a>
     </nav>
     <button id="logout" class="ghost">退出</button>
@@ -149,6 +149,15 @@
         <input id="tToken" type="password" placeholder="Cloudflare Zero Trust 里隧道的令牌（服务填 http://localhost:8095）">
         <button id="tApply">保存并应用</button>
         <p id="tState"></p>
+      </div>
+    </section>
+
+    <section data-panel="cache" hidden>
+      <div class="card">
+        <h2>已转好的话</h2>
+        <p class="muted">服务器上还留着的 CBZ，点“下载”用浏览器直接存到电脑，再拷到 TF 卡的 comics 文件夹。超过保留天数或缓存上限的会自动清掉。</p>
+        <p id="cacheSum" class="muted"></p>
+        <ul id="cacheList" class="list"></ul>
       </div>
     </section>
 

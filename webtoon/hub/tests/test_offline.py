@@ -179,6 +179,33 @@ def test_device_api(monkeypatch):
         assert c.get("/api/panel/status").status_code == 401
 
 
+def test_panel_cache_list_and_download():
+    """面板缓存页：列出转好的话（系列名来自 ComicInfo），能按文件名下载，封面和 .part 不算，不存在的 404。/ The panel
+    cache page lists converted episodes (series from ComicInfo), downloads them by name, ignores covers and .part
+    files, and answers 404 for a missing one."""
+    pages = [Image.new("L", (40, 60), 200)]
+    p = jobs.cbz_path("zh-hant", "4321", 7)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(convert.cbz(pages, 80, {"series": "Q/名:字", "title": "第七話", "no": 7}))
+    (p.parent / "8.cbz.part").write_bytes(b"x")
+    cp = jobs.cover_path("zh-hant", "4321")
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    cp.write_bytes(b"x")
+    with TestClient(main.app) as c:
+        assert c.get("/api/panel/cache").status_code == 401
+        c.post("/api/panel/setup", json={"password": "password123"})
+        c.post("/api/panel/login", json={"password": "password123"})
+        r = c.get("/api/panel/cache").json()
+        mine = [i for i in r["items"] if i["id"] == "4321"]
+        assert len(mine) == 1 and mine[0]["no"] == 7 and mine[0]["series"] == "Q/名:字" and mine[0]["pages"] == 1
+        assert not any(i["id"].startswith("zh-hant_") for i in r["items"])
+        d = c.get("/api/panel/cache/file", params={"lang": "zh-hant", "id": "4321", "no": 7})
+        assert d.status_code == 200 and zipfile.ZipFile(io.BytesIO(d.content)).namelist()[-1] == "ComicInfo.xml"
+        assert "Q_名_字" in d.headers["content-disposition"] or "Q_%E5" in d.headers["content-disposition"]
+        assert c.get("/api/panel/cache/file", params={"lang": "zh-hant", "id": "4321", "no": 8}).status_code == 404
+    p.unlink()
+
+
 def test_prune():
     p = jobs.cbz_path("en", "9", 1)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -360,6 +387,7 @@ def test_device_api_mihon(monkeypatch):
         assert c.get("/api/device/v1/episode/m9x/1", headers=h).status_code == 400
         # 面板里用户自己勾掉的来源才不发。/ Only sources the user unticked in the panel are left out.
         c.post("/api/panel/setup", json={"password": "password123"})
+        c.post("/api/panel/login", json={"password": "password123"})
         r = c.post("/api/panel/mihon/settings", json={"mihon_hidden": ["0"], "mihon_order": ["88", "77"]}).json()
         assert [s["key"] for s in r["items"]] == ["webtoon", "88", "77", "0"] and r["items"][3]["hidden"]
         r = c.get("/api/device/v1/sources", headers=h).json()

@@ -102,6 +102,11 @@ User-visible changes by date and author; Git retains implementation history. See
 - 设置 → 显示与阅读新增“翻页刷新”：正常（原来的效果）或快速。快速档正文和页脚一次刷完，并改用 8 级灰阶，翻一页快约四分之一，字边缘的灰阶少一些。
   New Settings › Display & reading › Page refresh: Normal (as before) or Fast. Fast refreshes the text and footer in one pass with 8 gray levels, turning pages about a quarter faster with fewer gray steps on letter edges.
 
+## 2026-11-25 · webtoon 服务器 0.3.3
+
+- 面板新增“缓存”页：列出服务器上还留着的转好的话（系列名、话名、页数、大小、转好时间，新的在前），点“下载”用浏览器把 CBZ 存到电脑，文件名是“系列名 第N话.cbz”，再拷进 TF 卡的 `comics` 文件夹。下载不会刷新这一话的“最近用过”时间，所以不会因此逃过自动清理。设备接口和固件、安卓 App 都不用改。
+  The panel has a new Cache page listing the converted episodes still kept on the server (series, episode title, pages, size and conversion time, newest first); "下载" saves the CBZ in the browser as "series 第N话.cbz" to copy into the TF card's `comics` folder. A download does not refresh the episode's last-used time, so it does not escape pruning. No device, firmware or Android change.
+
 ## 2026-11-23 · webtoon 服务器 0.3.2
 
 - E-Hentai 改成填 cookie 登录，去掉用户名密码登录：登录页整站要过 Cloudflare 验证，服务器和 FlareSolverr 都过不去，而且 FlareSolverr 会把提交的密码记进日志。在浏览器登录后，把 cookie 整段粘贴到面板（Cookie 请求头或浏览器导出的 JSON 都行），面板自动挑出要用的几项；保存时服务器当场试一次，告诉你能不能用，能用时顺便取好 ExHentai 的 igneous。

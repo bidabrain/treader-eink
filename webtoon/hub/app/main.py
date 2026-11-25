@@ -15,6 +15,7 @@ through ehentai.py (the E-Hentai channel switched on in the panel).
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -306,6 +307,25 @@ async def panel_settings_set(body: Settings):
         raise HTTPException(400, "等待时间不对")
     config.save(up)
     return await panel_settings()
+
+
+@app.get("/api/panel/cache")
+async def panel_cache():
+    """服务器上还留着的转好的话。/ Converted episodes still kept on the server."""
+    return {"items": await asyncio.to_thread(jobs.list_cache), "mb": round(await asyncio.to_thread(jobs.cache_mb), 1)}
+
+
+@app.get("/api/panel/cache/file")
+async def panel_cache_file(lang: str, id: str, no: int):
+    """浏览器下载缓存里的一话，文件名带系列名和话号。不动“最近用过”的时间，免得下载把它从清理里救出来。/ Download a
+    cached episode in the browser, named with the series and number. Leaves the last-used time alone so a download does
+    not save it from pruning."""
+    path = jobs.cbz_path(_check(lang, id), id, no)
+    if not path.is_file():
+        raise HTTPException(404, "这一话已经不在缓存里")
+    series = next((i["series"] for i in jobs.list_cache() if (i["lang"], i["id"], i["no"]) == (lang, id, no)), "")
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", series).strip() or id
+    return FileResponse(path, media_type="application/vnd.comicbook+zip", filename=f"{safe} 第{no}话.cbz")
 
 
 @app.post("/api/panel/cache/clear")
