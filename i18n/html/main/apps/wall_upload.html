@@ -1,4 +1,4 @@
-<!-- en of main/apps/wall_upload.html sha256:f87a986b7267af2bccb3848881cf48e710a17c554d149c2025bc94afa85af737 -->
+<!-- en of main/apps/wall_upload.html sha256:c50ec22be7320b4487d5a6cb65f6311d91f3cb6e6cdc7bb03f3b7a22bd9c0715 -->
 <!doctype html>
 <!--
 SPDX-FileCopyrightText: 2026 Treader contributors
@@ -53,12 +53,18 @@ fetch('/info', {cache: 'no-store'}).then((r) => r.json()).then((d) => {
 }).catch(() => { $('#space').textContent = 'Cannot read the device. Make sure the phone is on the network the device shows, then reload.'; });
 $('#files').onchange = () => { $('#send').disabled = busy || !$('#files').files.length; };
 
-// Replace characters the device rejects, drop the extension, keep at most 60 characters.
+// Replace characters the device rejects and drop the extension.
 function baseName(name) {
   let b = name.replace(/\.[^.]*$/, '').replace(/[\/\\:*?"<>|\x00-\x1f\x7f]/g, '_').replace(/\.\.+/g, '.');
   b = b.replace(/^[.\s]+|\s+$/g, '');
-  b = Array.from(b).slice(0, 60).join('');
-  return b || 'wallpaper';
+  // Cut by UTF-8 bytes: device names hold 120 bytes, with room left for -99.jpg.
+  const enc = new TextEncoder();
+  let out = '';
+  for (const ch of b) {
+    if (enc.encode(out + ch).length > 96) break;
+    out += ch;
+  }
+  return out || 'wallpaper';
 }
 
 async function load(file) {
@@ -104,16 +110,11 @@ function put(blob, name) {
   });
 }
 
-// On a clash add -2, -3..., never overwriting an existing wallpaper.
+// On a clash the device itself renames to -2, -3... and returns the name it saved.
 async function send(blob, base) {
-  for (let n = 1; n <= 30; n++) {
-    const name = base + (n > 1 ? '-' + n : '') + '.jpg';
-    const r = await put(blob, name);
-    if (r.status === 409) continue;
-    if (r.status !== 200) throw Error(r.body.error || ('Device returned ' + r.status));
-    return name;
-  }
-  throw Error('Too many pictures with this name; rename the file');
+  const r = await put(blob, base + '.jpg');
+  if (r.status !== 200) throw Error(r.body.error || ('Device returned ' + r.status));
+  return r.body.name || base + '.jpg';
 }
 
 $('#send').onclick = async () => {

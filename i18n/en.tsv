@@ -58,7 +58,7 @@
 确认清除进度？	Clear progress?
 # main/apps/app_book.c:755
 图书详情	Book details
-# main/apps/app_book.c:758 components/read_pico_transfer/read_pico_transfer.c:866
+# main/apps/app_book.c:758 components/read_pico_transfer/read_pico_transfer.c:874
 内置存储	Built-in storage
 # main/apps/app_book.c:758 main/apps/app_tr_card.c:156 main/apps/app_tr_card.c:289 main/apps/app_tr_settings.c:196 …
 TF 卡	SD card
@@ -2702,17 +2702,17 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 文件已保存，但旧阅读进度清理失败；请重试清理进度	File saved, but clearing old reading progress failed; try clearing progress again
 # components/read_pico_transfer/read_pico_transfer.c:842
 文件已保存，旧文件备份清理失败；备份已保留，请勿重复上传	File saved, but clearing the old file backup failed; backup kept, do not upload again
-# components/read_pico_transfer/read_pico_transfer.c:854 components/read_pico_transfer/read_pico_transfer.c:964 components/read_pico_transfer/read_pico_transfer.c:1025
+# components/read_pico_transfer/read_pico_transfer.c:862 components/read_pico_transfer/read_pico_transfer.c:995 components/read_pico_transfer/read_pico_transfer.c:1075
 {\"error\":\"请从设备显示的地址打开管理页面\"}	{\"error\":\"Open the manage page from the address shown on the device\"}
-# components/read_pico_transfer/read_pico_transfer.c:871
+# components/read_pico_transfer/read_pico_transfer.c:879
 {\"error\":\"图书不存在\"}	{\"error\":\"Book not found\"}
-# components/read_pico_transfer/read_pico_transfer.c:911
+# components/read_pico_transfer/read_pico_transfer.c:919
 {\"error\":\"正在上传或切换网络，请稍后重试\"}	{\"error\":\"Uploading or switching network, try again later\"}
-# components/read_pico_transfer/read_pico_transfer.c:968 components/read_pico_transfer/read_pico_transfer.c:1026
+# components/read_pico_transfer/read_pico_transfer.c:999 components/read_pico_transfer/read_pico_transfer.c:1076
 {\"error\":\"字体需要 TF 卡，请挂载后重新进入传书\"}	{\"error\":\"Fonts need an SD card. Insert it and reopen Transfer\"}
-# components/read_pico_transfer/read_pico_transfer.c:969
+# components/read_pico_transfer/read_pico_transfer.c:1000
 {\"error\":\"漫画需要 TF 卡，请挂载后重新进入传书\"}	{\"error\":\"Comics need an SD card. Insert it and reopen Transfer\"}
-# components/read_pico_transfer/read_pico_transfer.c:995
+# components/read_pico_transfer/read_pico_transfer.c:1045
 {\"error\":\"网络正在切换，请连接后重试\"}	{\"error\":\"Network is switching, reconnect and try again\"}
 # components/read_pico/include/read_pico_board.h:36
 小纸 Pico	Read Pico
@@ -2986,3 +2986,9 @@ WebDAV 的地址、用户名和密码很长，建议打开“手机网页填写�
 等待手机上传…	Waiting for the phone...
 # main/apps/app_tr_wall.c:314
 网页会把图片缩成屏幕大小的灰度图再传，可选铺满（裁边）或完整（留白）。传完点“完成”，在列表里点一张设为壁纸。离开这一页就停止。	The web page shrinks pictures to screen-size grayscale before sending, filled (cropped) or whole (with margins). Tap \"Done\" when finished, then pick one in the list. Leaving this page stops it.
+# components/read_pico_transfer/read_pico_transfer.c:1004
+{\"error\":\"文件名太长或含有设备不收的字符\"}	{\"error\":\"File name too long or has characters the device rejects\"}
+# components/read_pico_transfer/read_pico_transfer.c:1034
+{\"error\":\"TF 卡读写出错\"}	{\"error\":\"TF card read or write error\"}
+# components/read_pico_transfer/read_pico_transfer.c:1035
+{\"error\":\"同名的图太多，请改个文件名\"}	{\"error\":\"Too many pictures with this name; rename the file\"}

@@ -2,10 +2,10 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 锁屏书卡：画最近在读的书和进度；设了壁纸就画壁纸，底部留一条书名和电量（不显示进度）。
+ * 锁屏书卡：画最近在读的书和进度；设了壁纸就画壁纸，底部只留一条唤醒提示和电量（不显示书名和进度）。
  * 数据（包括壁纸缓存）在屏幕上电前准备好，上电后只画图，缩短屏幕供电时间。
  * Lock-screen book card: the book being read and its progress; with a wallpaper set, the wallpaper plus a bottom
- * strip with the book and battery (no progress). Data (including the wallpaper cache) is prepared before the panel
+ * strip with only the wake hint and battery (no book or progress). Data (including the wallpaper cache) is prepared before the panel
  * powers on, so the rails are up only for drawing.
  */
 
@@ -191,23 +191,19 @@ static void wake_hint(char* line, size_t cap) {
     else snprintf(line, cap, "%s", how);
 }
 
-// 壁纸铺满，底部白条写在读的书和电量，不写读书进度（用户要求，1.2.7）。/ Full wallpaper with a white bottom strip
-// for the book and battery, without reading progress (user request, 1.2.7).
+// 壁纸铺满，底部白条只写唤醒提示和电量：不写读书进度（1.2.7）也不写书名（1.2.9），都是用户要求。/ Full
+// wallpaper with a white bottom strip holding only the wake hint and battery: no reading progress (1.2.7) and no book
+// title (1.2.9), both by user request.
 static void draw_wallpaper(uint8_t* fb) {
     book_screen_draw(fb, s_wall);
     heap_caps_free(s_wall);
     s_wall = NULL;
     // 白条高度和字号随显示大小放大，从屏幕底往上量。/ The strip height and text scale with the display size, measured
     // up from the screen bottom.
-    const int top = TR_H - (s_card.ok ? TR_S(160) : TR_S(96));
+    const int top = TR_H - TR_S(96);
     epd_fill_rect((EpdRect){0, top, TR_W, TR_H - top}, UI_GRAY_WHITE, fb);
     tr_hline(fb, top, 0, TR_W, false);
     char line[160];
-    if (s_card.ok) {
-        snprintf(line, sizeof(line), "%s", s_card.title);
-        tr_fit(line, TR_S(32), TR_W - 2 * TR_MARGIN);
-        tr_text(fb, TR_MARGIN, top + TR_S(20), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, true);
-    }
     wake_hint(line, sizeof(line));
     tr_text_dim(fb, TR_W / 2, TR_H - TR_S(66), TR_S(26), line, EPD_DRAW_ALIGN_CENTER);
 }

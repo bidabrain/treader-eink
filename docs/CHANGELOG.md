@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.9
+
+- 锁屏用壁纸时，底部白条连书名也不写了，只留唤醒提示和电量。
+  With a lock wallpaper, the bottom strip drops the book title too, keeping only the wake hint and battery.
+- 修正手机上传壁纸时某张图一传就“网络中断”：同名（手机相册里常有好几张都叫 image.jpg）或文件名太长时，设备拒收会直接断开连接。现在同名由设备自动加 -2、-3 存下，文件名在手机上按字节截短，真有问题时网页会写出原因。
+  Fixed a wallpaper upload failing with "connection lost" every time: a clashing name (phone galleries often hand over several image.jpg) or an over-long name made the device refuse by dropping the connection. The device now saves clashing names as -2, -3, the phone shortens names by bytes, and real problems show their reason on the page.
+
 ## 2026-11-25 · Treader 1.2.8
 
 - 设置 › 内容来源 › 小红书 / 微博 / X 新增“往后翻接着拉”（三处是同一个开关，默认关）。开着时，小红书关注、微博关注、X 正在关注和为你推荐翻完刷新拿到的那批，会继续向服务器要更早的，一批是“每次拉取”的条数，直到和卡上以前的缓存接上，两次刷新之间漏掉的帖子就补上了；卡上缓存也翻完时还能接着往后要，直到服务器没有更早的。拉到后自动翻到下一页；还能再拉时页码写成“3 / 5+”。没网或服务器出错时提示一下，接着显示卡上缓存。开着时列表最多 300 条（关着仍是 100 条）。需要 rednote 0.3.5、weibo 0.1.7、x 0.1.6 或更新的服务器。

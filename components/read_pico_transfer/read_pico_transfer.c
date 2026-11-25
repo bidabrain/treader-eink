@@ -847,6 +847,14 @@ static esp_err_t file_response(httpd_req_t *req, file_result_t result, bool dele
     if (result.status != 200) return respond_error(req, result.status);
     set_error(ESP_OK);
     httpd_resp_set_type(req, "application/json");
+    // 壁纸模式回实际存的文件名（同名时自动改过）。名字里不会有引号和反斜杠，上传时已拒收。/ Wallpaper mode returns
+    // the name actually saved (renamed on a clash). Names carry no quotes or backslashes; uploads reject them.
+    if (s_images && !deletion) {
+        const char *base = strrchr(path, '/');
+        char json[160];
+        snprintf(json, sizeof(json), "{\"ok\":true,\"name\":\"%s\"}", base ? base + 1 : path);
+        return httpd_resp_sendstr(req, json);
+    }
     return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
@@ -960,6 +968,29 @@ static int cleanup_comics(unsigned *removed, unsigned *restored) {
     return result;
 }
 
+// 壁纸模式拒收前先把图收完丢掉，再正常回错误：直接断开时手机还在发图，网页只看到“网络中断”，不知道原因。
+// 图片不超过单文件上限，15 秒内收不完才断开。
+// In wallpaper mode, read and discard the picture before answering an error normally: closing at once while the
+// phone is still sending leaves the page with only "connection lost" and no reason. Pictures stay within the file
+// limit; only a body not read within 15 seconds still closes.
+static esp_err_t images_reject(httpd_req_t *req, int code, const char *body) {
+    size_t left = req->content_len;
+    const int64_t deadline = esp_timer_get_time() + 15000000;
+    if (s_buffer && (!s_cfg.file_limit || left <= s_cfg.file_limit)) {
+        while (left && esp_timer_get_time() < deadline) {
+            const int got = httpd_req_recv(req, (char *)s_buffer, left < 16384 ? left : 16384);
+            if (got == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            if (got <= 0) break;
+            left -= (size_t)got;
+        }
+    }
+    if (left) return respond_error(req, code);
+    ESP_LOGW("transfer", "image rejected status=%d", code);
+    httpd_resp_set_status(req, code == 409 ? "409 Conflict" : code == 507 ? "507 Insufficient Storage" : "400 Bad Request");
+    httpd_resp_set_type(req, "application/json; charset=utf-8");
+    return httpd_resp_sendstr(req, body);
+}
+
 static esp_err_t upload_handler(httpd_req_t *req) {
     if (!management_request(req)) return wifi_response(req, "403 Forbidden", "{\"error\":\"请从设备显示的地址打开管理页面\"}");
     char query[512], encoded[361], name[121], path[288], part[296], replace[8], series[65] = "", dir[240];
@@ -970,7 +1001,7 @@ static esp_err_t upload_handler(httpd_req_t *req) {
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
         httpd_query_key_value(query, "name", encoded, sizeof(encoded)) != ESP_OK ||
         !(font ? decode_font_name(encoded, name) : comic ? decode_comic_name(encoded, name) : decode_name(encoded, name)))
-        return respond_error(req, 400);
+        return s_images ? images_reject(req, 400, "{\"error\":\"文件名太长或含有设备不收的字符\"}") : respond_error(req, 400);
     snprintf(dir, sizeof(dir), "%s", font ? s_font_root : comic ? s_comic_root : s_root);
     if (comic && httpd_query_key_value(query, "series", encoded, sizeof(encoded)) == ESP_OK) {
         if (!decode_series(encoded, series)) return respond_error(req, 400);
@@ -983,6 +1014,25 @@ static esp_err_t upload_handler(httpd_req_t *req) {
         }
     }
     int resolved = resolve_mutation_path(dir, name, path, sizeof(path));
+    // 壁纸模式同名不拒收：自动改成 名字-2、-3…（手机相册里常有好几张都叫 image.jpg）。/ Wallpaper mode never
+    // refuses a clashing name: it becomes name-2, -3… (phone galleries often hand over several image.jpg).
+    if (s_images && !resolved) {
+        const char *dot = strrchr(name, '.');
+        const int stem = (int)(dot - name);
+        char ext[8], cand[sizeof(name)];
+        snprintf(ext, sizeof(ext), "%s", dot);
+        struct stat st;
+        for (int n = 2; !resolved && !stat(path, &st); n++) {
+            if (n > 99 || snprintf(cand, sizeof(cand), "%.*s-%d%s", stem, name, n, ext) >= (int)sizeof(cand)) {
+                resolved = 409;
+                break;
+            }
+            resolved = resolve_mutation_path(dir, cand, path, sizeof(path));
+            if (!resolved) memcpy(name, cand, sizeof(name));
+        }
+    }
+    if (resolved && s_images) return images_reject(req, resolved, resolved == 507 ? "{\"error\":\"TF 卡读写出错\"}"
+                                                                 : "{\"error\":\"同名的图太多，请改个文件名\"}");
     // 没传成就把刚建的空系列文件夹删掉（不空时 rmdir 不会删）。/ On failure drop a just-created empty series folder
     // (rmdir leaves non-empty ones alone).
     if (resolved) { if (series[0]) rmdir(dir); return respond_error(req, resolved); }

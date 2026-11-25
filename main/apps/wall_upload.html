@@ -55,13 +55,19 @@ fetch('/info', {cache: 'no-store'}).then((r) => r.json()).then((d) => {
 }).catch(() => { $('#space').textContent = '读不到设备信息，请确认手机连着设备显示的网络后刷新。'; });
 $('#files').onchange = () => { $('#send').disabled = busy || !$('#files').files.length; };
 
-// 设备不收的字符换成下划线，去掉扩展名，最多 60 个字符。/ Replace characters the device rejects, drop the extension,
-// keep at most 60 characters.
+// 设备不收的字符换成下划线，去掉扩展名。/ Replace characters the device rejects and drop the extension.
 function baseName(name) {
   let b = name.replace(/\.[^.]*$/, '').replace(/[\/\\:*?"<>|\x00-\x1f\x7f]/g, '_').replace(/\.\.+/g, '.');
   b = b.replace(/^[.\s]+|\s+$/g, '');
-  b = Array.from(b).slice(0, 60).join('');
-  return b || 'wallpaper';
+  // 按 UTF-8 字节截：设备文件名最多 120 字节，还要留出 -99.jpg。/ Cut by UTF-8 bytes: device names hold 120 bytes,
+  // with room left for -99.jpg.
+  const enc = new TextEncoder();
+  let out = '';
+  for (const ch of b) {
+    if (enc.encode(out + ch).length > 96) break;
+    out += ch;
+  }
+  return out || 'wallpaper';
 }
 
 async function load(file) {
@@ -107,16 +113,12 @@ function put(blob, name) {
   });
 }
 
-// 同名就加 -2、-3…，不覆盖已有的壁纸。/ On a clash add -2, -3…, never overwriting an existing wallpaper.
+// 同名时设备自己改成 -2、-3…，回实际存的名字。/ On a clash the device itself renames to -2, -3… and returns the
+// name it saved.
 async function send(blob, base) {
-  for (let n = 1; n <= 30; n++) {
-    const name = base + (n > 1 ? '-' + n : '') + '.jpg';
-    const r = await put(blob, name);
-    if (r.status === 409) continue;
-    if (r.status !== 200) throw Error(r.body.error || ('设备返回 ' + r.status));
-    return name;
-  }
-  throw Error('同名的图太多了，请改个文件名');
+  const r = await put(blob, base + '.jpg');
+  if (r.status !== 200) throw Error(r.body.error || ('设备返回 ' + r.status));
+  return r.body.name || base + '.jpg';
 }
 
 $('#send').onclick = async () => {
