@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · rednote 服务器 0.3.4、weibo 服务器 0.1.6、x 服务器 0.1.5
+
+- 新增设备接口 `POST /api/device/v1/imgs`：一次请求取回多张列表小图（缩略图、方形小图、推荐封面），按请求顺序拼在一起返回，没有的图长度为 0。设备逐张取时每张都要等一个来回（经 Cloudflare 隧道实测每张 1～3.6 秒），一页十几张就是十几个来回；配合之后的固件改成一批一个来回。旧固件和安卓 App 不受影响，照旧逐张取。
+  New device endpoint `POST /api/device/v1/imgs` returns several list images (thumbnails, square images, recommendation covers) in one request, concatenated in request order with length 0 for missing ones. One by one, every image costs a round trip (1 to 3.6 s each through the Cloudflare tunnel in testing), a dozen or more per page; with the upcoming firmware a batch costs one. Older firmware and the Android apps are unaffected and keep fetching one by one.
+
 ## 2026-11-25 · Treader 1.2.4
 
 - 锁屏时，书城或书库里的番茄书下载、漫画“检查更新”的下载不再被打断：不管设置里选的是浅睡、软睡还是关机，锁屏画面照常显示（触摸停掉，口袋里不误触），设备不睡、不关机，留着继续下，下完才按设置去睡或关机。按电源键就醒来，下载还在跑，要取消在页面上取消。下载 3 分钟没有进展、已经留了 90 分钟、或电池电压低于 3500 mV 时不再留着，先停掉下载再睡。其他后台联网任务锁屏时照旧取消。

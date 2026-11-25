@@ -103,6 +103,7 @@ docker compose up -d
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
 | `GET /api/device/v1/img/{id}/s{k}.jpg` | 第 k 张原图（从 1 开始）的方形小图，240×240 灰度，列表和宫格用 |
 | `GET /api/device/v1/img/{id}/thumb.jpg` | 封面：宽 300，保留原图比例（高宽比夹在 3:4～4:3，即 `ratio`） |
+| `POST /api/device/v1/imgs` | 一次取多张列表小图（设备用，0.1.6 起）：请求体 `{"paths": [...]}`，每项是相对 `/api/device/v1/` 的图片地址（`img/{id}/thumb.jpg`、`img/{id}/s{k}.jpg`），最多 40 项；回 `application/octet-stream`，按请求顺序每张是 4 字节大端长度加 JPEG，服务器上没有的长度为 0。不等还在做的图 |
 
 ## 日常维护
 

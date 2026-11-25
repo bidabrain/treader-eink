@@ -137,6 +137,7 @@ docker compose up -d
 | `GET /api/device/v1/note/{id}/more_comments?start=1` | 加载更多评论：`start=1` 让服务器现拉这篇最多 60 条（浏览器往下翻，约 20～60 秒，算一次按需请求，受推荐次数和每日总数限制）。之后不带 `start` 反复问，每次最多等 20 秒：还在拉返回 `{"loading": true}`，拉完返回和 `note/{id}` 一样的内容。分开问是为了不碰 Cloudflare 约 100 秒的超时。没有这篇的令牌（服务器升级前拉的、之后也没在博主主页上再出现）返回 409 |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 第 n 页图（从 1 开始），灰度基线 JPEG，不超过 648×1000 |
 | `GET /api/device/v1/img/{id}/thumb.jpg` | 封面：宽 300，保留原图比例（高宽比夹在 3:4～4:3，即接口里的 `ratio`）。带 `?wait=0` 时这篇的图还在做也不等，直接 404（设备拉列表缩略图用）；不带时最多等 40 秒 |
+| `POST /api/device/v1/imgs` | 一次取多张列表小图（设备用，0.3.4 起）：请求体 `{"paths": [...]}`，每项是相对 `/api/device/v1/` 的图片地址（`img/{id}/thumb.jpg`、`rec/cover/{id}.jpg`），最多 40 项；回 `application/octet-stream`，按请求顺序每张是 4 字节大端长度加 JPEG，服务器上没有的长度为 0。不等还在做的图 |
 
 ## 日常维护
 

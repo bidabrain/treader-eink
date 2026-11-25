@@ -522,6 +522,47 @@ async def device_img(request: Request, pid: str, name: str):
     return _image(pid, name)
 
 
+# 一次取多张列表小图（设备用，省掉逐张的往返）：请求体 {"paths": [...]}，每项是相对 /api/device/v1/ 的图片地址
+# （img/<id>/thumb.jpg、img/<id>/s<k>.jpg / img/<id>/thumb.jpg, img/<id>/s<k>.jpg）；回一串 [4 字节大端长度][JPEG]，顺序和请求一样，没有的图长度为 0。不等还在做的图。
+# Several list images at once (the device, saving a round trip per image): body {"paths": [...]} with image paths
+# under /api/device/v1/ (img/<id>/thumb.jpg、img/<id>/s<k>.jpg / img/<id>/thumb.jpg, img/<id>/s<k>.jpg); the reply is a run of [4-byte big-endian length][JPEG] in request order, length 0
+# for images not there. Images still being made are not waited for.
+BATCH_MAX = 40
+_BATCH_RULES = [
+    (re.compile(r"^img/(\d{4,20})/((?:thumb|s\d{1,2})\.jpg)$"), lambda m: images.note_dir(m[1]) / m[2]),
+]
+
+
+def _batch_file(rel: str) -> Path | None:
+    for rule, where in _BATCH_RULES:
+        m = rule.match(rel)
+        if m:
+            return where(m)
+    return None
+
+
+def _batch_read(paths: list[str]) -> bytes:
+    out = bytearray()
+    for rel in paths:
+        f = _batch_file(rel) if isinstance(rel, str) else None
+        data = f.read_bytes() if f is not None and f.is_file() else b""
+        out += len(data).to_bytes(4, "big") + data
+    return bytes(out)
+
+
+@app.post("/api/device/v1/imgs")
+async def device_imgs(request: Request):
+    _device(request)
+    try:
+        body = await request.json()
+    except ValueError:
+        body = None
+    paths = body.get("paths") if isinstance(body, dict) else None
+    if not isinstance(paths, list) or len(paths) > BATCH_MAX:
+        raise HTTPException(400, f"paths 要是不超过 {BATCH_MAX} 项的列表")
+    return Response(await asyncio.to_thread(_batch_read, paths), media_type="application/octet-stream")
+
+
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}

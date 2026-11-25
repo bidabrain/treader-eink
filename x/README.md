@@ -83,3 +83,4 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | `GET /api/device/v1/post/{id}` | 全文；引用推文放在 `rt_user` 和 `rt_text` |
 | `GET /api/device/v1/post/{id}/comments` | 回复。第一次请求时用浏览器打开这条推文去取，之后走缓存 |
 | `GET /api/device/v1/img/{id}/{n}.jpg` | 图片：`thumb.jpg` 是封面，`s<k>.jpg` 是方形小图 |
+| `POST /api/device/v1/imgs` | 一次取多张列表小图（设备用，0.1.5 起）：请求体 `{"paths": [...]}`，每项是相对 `/api/device/v1/` 的图片地址（`img/{id}/thumb.jpg`、`img/{id}/s{k}.jpg`），最多 40 项；回 `application/octet-stream`，按请求顺序每张是 4 字节大端长度加 JPEG，服务器上没有的长度为 0。不等还在做的图 |
