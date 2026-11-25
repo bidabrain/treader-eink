@@ -131,6 +131,13 @@ static void copy_str(cJSON* to, const char* key, const cJSON* from, const char* 
     } else cJSON_AddStringToObject(to, key, "");
 }
 
+// 封面高宽比（服务器夹在 3:4～4:3）；老服务器没有就不写，页面按 4:3 竖图算。/ Cover height/width (the server
+// clamps it to 3:4..4:3); older servers send none and the page assumes a 4:3 portrait.
+static void copy_ratio(cJSON* to, const cJSON* from) {
+    const cJSON* v = cJSON_GetObjectItemCaseSensitive(from, "ratio");
+    if (cJSON_IsNumber(v) && v->valuedouble > 0) cJSON_AddNumberToObject(to, "ratio", v->valuedouble);
+}
+
 static int json_int(const cJSON* o, const char* key) {
     const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, key);
     return cJSON_IsNumber(v) ? v->valueint : 0;
@@ -212,6 +219,8 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const tomato_red_req_t
             cJSON_AddNumberToObject(x, "images", json_int(n, "images"));
             const cJSON* tv = cJSON_GetObjectItemCaseSensitive(n, "time");
             cJSON_AddNumberToObject(x, "time", cJSON_IsNumber(tv) ? tv->valuedouble : 0);
+            copy_str(x, "comments", n, "comments");
+            copy_ratio(x, n);
             // 新到的标“新”；以前看过的保持。/ New arrivals are unseen; earlier seen marks stay.
             bool seen = !old;   // 第一次取到的都算看过，不满屏“新” / A first fetch marks all as seen
             const cJSON* o;
@@ -293,6 +302,7 @@ static esp_err_t run_rec(const tomato_red_config_t* cfg, bool refresh, const vol
         copy_str(x, "title", n, "title");
         copy_str(x, "author", n, "author");
         copy_str(x, "likes", n, "likes");
+        copy_ratio(x, n);
         cJSON_AddBoolToObject(x, "thumb", cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(n, "thumb")));
         cJSON_AddItemToArray(items, x);
         count++;

@@ -1,4 +1,4 @@
-<!-- en of main/apps/server_form.html sha256:1e43d6d0261f9c92358a60aac2beb18d260bde3b2898112f618dd71fd2dbce5b -->
+<!-- en of main/apps/server_form.html sha256:16320878f0d49363ccaeb9f3e4e9bfa346c3675feaf1cbc54cae87c658eb44eb -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -64,7 +64,12 @@ fetch('/form').then((r) => r.json()).then((d) => {
   saved = d.saved || '';
   hasToken = !!d.has_token;
   if (hasToken) $('#tokenHint').textContent = d.secret_kept || 'A token is already saved and is not shown; leave this blank to keep it.';
-}).catch(() => {});
+}).catch(() => {
+  // Without the device's texts, do not let the defaults mislead.
+  $('#out').hidden = false;
+  $('#out').innerHTML = '<span class="err">Could not read the settings from the device. Reload the page and try again.</span>';
+  $('#go').disabled = true;
+});
 $('#f').onsubmit = async (e) => {
   e.preventDefault();
   const url = $('#url').value.trim();

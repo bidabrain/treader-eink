@@ -42,6 +42,10 @@ static void item(int i, const char* title, const char* author, const char* likes
     snprintf(x->title, sizeof(x->title), "%s", title);
     snprintf(x->author, sizeof(x->author), "%s", author);
     snprintf(x->likes, sizeof(x->likes), "%s", likes);
+    snprintf(x->comments, sizeof(x->comments), "%d", 30 + i);
+    x->time = 1767000000 - i * 3600;
+    // 比例轮换：竖图、方图、横图。/ Ratios rotate: portrait, square, landscape.
+    x->ratio = i % 3 == 0 ? 4.0f / 3 : i % 3 == 1 ? 1.0f : 0.75f;
     x->images = 3;
     x->seen = seen;
 }
@@ -99,6 +103,7 @@ void hr_scenes(void) {
         item(i, i % 2 ? "短标题" : "一个特别特别长的笔记标题，需要换两行显示还放不下的那种标题文字",
              i % 3 ? "博主" : "一个名字非常非常非常长的博主", i % 2 ? "12" : "1.2万", i % 3 != 0);
     s_item_count = 7;
+    layout_list();
     shot(&ctx, "list_p1", true);
     s_list_page = list_pages() - 1;
     shot(&ctx, "list_last", true);

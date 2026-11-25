@@ -90,7 +90,7 @@ TF 卡	SD card
 要输入汉字就把键盘切到“全拼”	To type Chinese, switch the keyboard to “Pinyin”
 # main/apps/app_book.c:802
 %s %u 本图书？	%s %u books?
-# main/apps/app_book.c:802 main/apps/app_comic.c:1205 main/apps/app_comic.c:1218 main/apps/app_tr_auth.c:786 …
+# main/apps/app_book.c:802 main/apps/app_comic.c:1238 main/apps/app_comic.c:1251 main/apps/app_tr_auth.c:786 …
 删除	Delete
 # main/apps/app_book.c:802
 清除进度：	Clear progress for
@@ -146,7 +146,7 @@ TF 卡	SD card
 已选	Selected
 # main/apps/app_book.c:1117
 已删	Deleted
-# main/apps/app_book.c:1130 main/apps/app_book.c:1242 main/apps/tr_lock.c:210 main/ui/tr_ui.c:791
+# main/apps/app_book.c:1130 main/apps/app_book.c:1242 main/ui/tr_ui.c:791
 读完	Finished
 # main/apps/app_book.c:1130 main/apps/app_book.c:1242
 未读	Unread
@@ -164,11 +164,11 @@ TF 卡	SD card
 按书名	By title
 # (unused)
 番茄 %d 本有更新 ›	Tomato: %d books updated ›
-# main/apps/app_book.c:1167 main/apps/app_comic.c:561 main/apps/app_tr_all.c:70 main/apps/app_tr_all.c:147 …
+# main/apps/app_book.c:1167 main/apps/app_comic.c:568 main/apps/app_tr_all.c:70 main/apps/app_tr_all.c:147 …
 全部	All
 # (unused)
 其他书	Other books
-# main/apps/app_book.c:1168 main/apps/app_comic.c:557 main/apps/app_comic.c:559
+# main/apps/app_book.c:1168 main/apps/app_comic.c:564 main/apps/app_comic.c:566
 按最近	Recent
 # main/apps/app_book.c:1169
 管理	Manage
@@ -264,7 +264,7 @@ TF 卡不可用，请重新挂载后打开	SD card unavailable; remount and open
 内置余	Built-in free
 # main/apps/app_book.c:1699 main/apps/app_book.c:1764
 TF余	SD free
-# main/apps/app_book.c:1747 main/apps/app_tr_auth.c:683 main/apps/app_tr_auth.c:1147 main/apps/app_tr_settings.c:710 …
+# main/apps/app_book.c:1747 main/apps/app_tr_auth.c:683 main/apps/app_tr_auth.c:1147 main/apps/app_tr_settings.c:714 …
 没有 TF 卡	No SD card
 # main/apps/app_book.c:1747
 存储不可用，请检查 TF 卡	Storage unavailable; check the SD card
@@ -304,161 +304,161 @@ TF 卡已移除	SD card removed
 字体重排失败，请重新打开图书	Font relayout failed; reopen the book
 # main/apps/app_book.c:2710
 TF 卡上的 TXT 与 EPUB	TXT and EPUB on the SD card
-# main/apps/app_comic.c:553
+# main/apps/app_comic.c:560
 我的漫画	My comics
-# main/apps/app_comic.c:553 main/apps/app_comic.c:1121 main/apps/app_comic.c:1780 main/apps/app_tr_settings.c:115 …
+# main/apps/app_comic.c:560 main/apps/app_comic.c:1154 main/apps/app_comic.c:1813 main/apps/app_tr_settings.c:115 …
 漫画	Comics
-# main/apps/app_comic.c:555 main/apps/app_comic.c:1333
+# main/apps/app_comic.c:562 main/apps/app_comic.c:1366
 发现	Discover
-# main/apps/app_comic.c:557
+# main/apps/app_comic.c:564
 %d 部 · %s	%d titles · %s
-# main/apps/app_comic.c:557 main/apps/app_comic.c:559
+# main/apps/app_comic.c:564 main/apps/app_comic.c:566
 按名字	By name
-# main/apps/app_book.c:1167 main/apps/app_comic.c:561
+# main/apps/app_book.c:1167 main/apps/app_comic.c:568
 本地	Local
-# main/apps/app_comic.c:573
+# main/apps/app_comic.c:580
 更新中 %d/%d	Updating %d/%d
-# main/apps/app_comic.c:574
+# main/apps/app_comic.c:581
 更新中…	Updating…
-# main/apps/app_book.c:1097 main/apps/app_comic.c:576 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:583 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新	Check for updates
-# main/apps/app_comic.c:591
+# main/apps/app_comic.c:598
 还没有漫画。设置 → Wi-Fi 与传书，用手机网页上传 CBZ；也可以用读卡器把 CBZ 放进 TF 卡的 comics 文件夹，一部漫画的多话放在同一个子文件夹里。	No comics yet. In Settings → Wi-Fi & transfer, upload CBZ files from a phone browser, or use a card reader to put CBZ files in the comics folder on the SD card, keeping all episodes of a series in one subfolder.
-# main/apps/app_comic.c:605
+# main/apps/app_comic.c:612
 继续看	Continue
-# main/apps/app_comic.c:607
+# main/apps/app_comic.c:614
 接着看 →	Resume →
-# main/apps/app_comic.c:641
+# main/apps/app_comic.c:648
 %u 话 · %u 话新	%u ep. · %u new
-# main/apps/app_comic.c:644
-下载中…	Downloading…
-# main/apps/app_comic.c:644
-还没下载	Not downloaded
-# main/apps/app_comic.c:646
-%u 话 · 看完	%u ep. · Finished
-# main/apps/app_comic.c:647
-%u 话 · 看完 %u	%u ep. · Finished %u
-# main/apps/app_comic.c:648
-%u 话 · %s	%u ep. · %s
-# main/apps/app_comic.c:648
-在看	Reading
-# main/apps/app_comic.c:648 main/apps/app_comic.c:808
-未看	Unread
-# main/apps/app_comic.c:650
-单本 · 看完	Single · Finished
 # main/apps/app_comic.c:651
+下载中…	Downloading…
+# main/apps/app_comic.c:651
+还没下载	Not downloaded
+# main/apps/app_comic.c:653
+%u 话 · 看完	%u ep. · Finished
+# main/apps/app_comic.c:654
+%u 话 · 看完 %u	%u ep. · Finished %u
+# main/apps/app_comic.c:655
+%u 话 · %s	%u ep. · %s
+# main/apps/app_comic.c:655
+在看	Reading
+# main/apps/app_comic.c:655 main/apps/app_comic.c:815
+未看	Unread
+# main/apps/app_comic.c:657
+单本 · 看完	Single · Finished
+# main/apps/app_comic.c:658
 单本 · %u%%	Single · %u%%
-# main/apps/app_comic.c:652
+# main/apps/app_comic.c:659
 单本 · 未看	Single · Unread
-# main/apps/app_comic.c:679
+# main/apps/app_comic.c:686
 共 %d 话 · 看完 %d 话	%d episodes · %d finished
-# main/apps/app_comic.c:764
+# main/apps/app_comic.c:771
 %d 话	%d ep.
-# main/apps/app_comic.c:781
+# main/apps/app_comic.c:788
  第 %u 页	 page %u
-# main/apps/app_comic.c:783
+# main/apps/app_comic.c:790
 接着看：	Resume: 
-# main/apps/app_comic.c:789
+# main/apps/app_comic.c:796
 翻页：从右往左	Page turn: right to left
-# main/apps/app_comic.c:789
+# main/apps/app_comic.c:796
 翻页：从左往右	Page turn: left to right
-# main/apps/app_comic.c:792
+# main/apps/app_comic.c:799
 继续看 	Continue 
-# main/apps/app_comic.c:809
+# main/apps/app_comic.c:816
 看完	Finished
-# main/apps/app_comic.c:810
+# main/apps/app_comic.c:817
 在看 	Reading 
-# main/apps/app_comic.c:925
+# main/apps/app_comic.c:958
 打不开这个 CBZ（文件损坏或不是 ZIP）	Can't open this CBZ (damaged or not a ZIP)
-# main/apps/app_comic.c:949
+# main/apps/app_comic.c:982
 这个 CBZ 里没有能显示的图片（支持 JPEG / PNG）	No displayable images in this CBZ (JPEG / PNG supported)
-# main/apps/app_comic.c:1008
+# main/apps/app_comic.c:1041
 找不到上次看的那一话	Can't find the last episode you read
-# main/apps/app_comic.c:1053
+# main/apps/app_comic.c:1086
 已经是最后一页	This is the last page
-# main/apps/app_comic.c:1057
+# main/apps/app_comic.c:1090
 已经是第一页	This is the first page
-# main/apps/app_comic.c:1068
+# main/apps/app_comic.c:1101
 这一页设备解不了（渐进式 JPEG 太大，或格式不支持）。用传书网页重新上传这部漫画会自动转换。左右翻页继续。	The device can't decode this page (progressive JPEG too large, or unsupported format). Re-upload this comic through the transfer web page to convert it automatically. Turn pages to continue.
-# main/apps/app_comic.c:1085
+# main/apps/app_comic.c:1118
 ‹ 漫画	‹ Comics
-# main/apps/app_comic.c:1097
-第 %d / %d 页	Page %d / %d
-# main/apps/app_comic.c:1100
-第 %d / %d 话	Ep. %d / %d
-# main/apps/app_comic.c:1112
-话列表	Episodes
-# main/apps/app_comic.c:1112
-详情	Details
-# main/apps/app_comic.c:1117
-右→左	R→L
-# main/apps/app_comic.c:1117
-左→右	L→R
-# main/apps/app_comic.c:1129
-‹ 上一话	‹ Prev ep.
 # main/apps/app_comic.c:1130
+第 %d / %d 页	Page %d / %d
+# main/apps/app_comic.c:1133
+第 %d / %d 话	Ep. %d / %d
+# main/apps/app_comic.c:1145
+话列表	Episodes
+# main/apps/app_comic.c:1145
+详情	Details
+# main/apps/app_comic.c:1150
+右→左	R→L
+# main/apps/app_comic.c:1150
+左→右	L→R
+# main/apps/app_comic.c:1162
+‹ 上一话	‹ Prev ep.
+# main/apps/app_comic.c:1163
 下一话 ›	Next ep. ›
-# main/apps/app_comic.c:1157
+# main/apps/app_comic.c:1190
 系列 · %d 话	Series · %d ep.
-# main/apps/app_comic.c:1158
+# main/apps/app_comic.c:1191
 WEBTOON 订阅 · 下载到第 %d 话	WEBTOON subscription · downloaded to ep. %d
-# main/apps/app_comic.c:1164
+# main/apps/app_comic.c:1197
 已看完	Finished
-# main/apps/app_comic.c:1165
+# main/apps/app_comic.c:1198
 看到第 %u / %u 页	At page %u / %u
-# main/apps/app_comic.c:1184 main/apps/app_comic.c:1211
+# main/apps/app_comic.c:1217 main/apps/app_comic.c:1244
 系列详情	Series details
 # (unused)
 正在下载 %d / %d 话…	Downloading ep. %d / %d…
-# main/apps/app_comic.c:1195 main/apps/app_tr_wt.c:671
+# main/apps/app_comic.c:1228 main/apps/app_tr_wt.c:671
 正在检查更新…	Checking for updates…
-# main/apps/app_comic.c:1198
+# main/apps/app_comic.c:1231
 取消订阅只删订阅标记，下载好的话留着。	Unsubscribing removes only the subscription marker; downloaded episodes stay.
-# main/apps/app_comic.c:1201
+# main/apps/app_comic.c:1234
 检查这部的更新	Check this title for updates
-# main/apps/app_comic.c:1202
-补全缺的话	Fill missing episodes
-# main/apps/app_comic.c:1203 main/apps/app_comic.c:1217
-清除这部的全部进度	Clear all progress for this title
-# main/apps/app_comic.c:1204
-再点取消订阅	Tap again to unsubscribe
-# main/apps/app_comic.c:1204 main/apps/app_tr_wt.c:684
-取消订阅	Unsubscribe
-# main/apps/app_comic.c:1205
-再点确认删除	Tap again to delete
-# main/apps/app_comic.c:1211
-漫画详情	Comic details
-# main/apps/app_comic.c:1216
-删除会删掉这个文件夹里的全部 CBZ。	Delete removes every CBZ in this folder.
-# main/apps/app_comic.c:1216
-删除只删这一个 CBZ 文件。	Delete removes only this CBZ file.
-# main/apps/app_comic.c:1217
-清除进度	Clear progress
-# main/apps/app_comic.c:1218
-再点一次确认删除	Tap once more to delete
 # main/apps/app_comic.c:1235
+补全缺的话	Fill missing episodes
+# main/apps/app_comic.c:1236 main/apps/app_comic.c:1250
+清除这部的全部进度	Clear all progress for this title
+# main/apps/app_comic.c:1237
+再点取消订阅	Tap again to unsubscribe
+# main/apps/app_comic.c:1237 main/apps/app_tr_wt.c:684
+取消订阅	Unsubscribe
+# main/apps/app_comic.c:1238
+再点确认删除	Tap again to delete
+# main/apps/app_comic.c:1244
+漫画详情	Comic details
+# main/apps/app_comic.c:1249
+删除会删掉这个文件夹里的全部 CBZ。	Delete removes every CBZ in this folder.
+# main/apps/app_comic.c:1249
+删除只删这一个 CBZ 文件。	Delete removes only this CBZ file.
+# main/apps/app_comic.c:1250
+清除进度	Clear progress
+# main/apps/app_comic.c:1251
+再点一次确认删除	Tap once more to delete
+# main/apps/app_comic.c:1268
 后台正忙，稍后再点一次	Busy in the background; tap again shortly
-# main/apps/app_comic.c:1248
+# main/apps/app_comic.c:1281
 无法开始检查更新	Can't start checking for updates
-# main/apps/app_comic.c:1263
+# main/apps/app_comic.c:1296
 已取消订阅	Unsubscribed
-# main/apps/app_comic.c:1263
+# main/apps/app_comic.c:1296
 取消订阅没有完成，检查 TF 卡	Unsubscribe didn't finish; check the SD card
-# main/apps/app_comic.c:1281
+# main/apps/app_comic.c:1314
 进度已清除	Progress cleared
-# main/apps/app_comic.c:1281
+# main/apps/app_comic.c:1314
 保存失败，检查 TF 卡	Save failed; check the SD card
-# main/apps/app_comic.c:1297 main/apps/app_tr_auth.c:396 main/apps/app_tr_auth.c:1050 main/apps/app_tr_wall.c:202
+# main/apps/app_comic.c:1330 main/apps/app_tr_auth.c:396 main/apps/app_tr_auth.c:1050 main/apps/app_tr_wall.c:202
 已删除	Deleted
-# main/apps/app_comic.c:1297
+# main/apps/app_comic.c:1330
 删除没有完成，检查 TF 卡	Delete didn't finish; check the SD card
-# main/apps/app_comic.c:1474
+# main/apps/app_comic.c:1507
 已经是第一话	This is the first episode
-# main/apps/app_comic.c:1474
+# main/apps/app_comic.c:1507
 已经是最后一话	This is the last episode
-# main/apps/app_comic.c:1602
+# main/apps/app_comic.c:1635
 已到最后一页，自动翻页停了	Last page reached; auto turn stopped
-# main/apps/app_comic.c:1781
+# main/apps/app_comic.c:1814
 TF 卡上的 CBZ	CBZ on the SD card
 # main/apps/app_font_pick.c:29 main/apps/app_tr_settings.c:141
 字体	Font
@@ -466,7 +466,7 @@ TF 卡上的 CBZ	CBZ on the SD card
 当前：%s	Current: %s
 # main/apps/app_font_pick.c:84 main/apps/app_font_pick.c:197 main/apps/app_tr_settings.c:339
 内置字体	Built-in font
-# main/apps/app_font_pick.c:190 main/apps/app_font_pick.c:198 main/apps/app_tr_settings.c:739
+# main/apps/app_font_pick.c:190 main/apps/app_font_pick.c:198 main/apps/app_tr_settings.c:743
 内置	Built-in
 # main/apps/app_font_pick.c:259
 TF 卡和内置字体	SD card and built-in fonts
@@ -528,7 +528,7 @@ PMU 版本	PMU version
 设备功能自检	Device self-test
 # main/apps/app_selftest.c:50 main/factory/pmu_selftest.c:379
 通过	Pass
-# main/apps/app_selftest.c:51 main/apps/app_tr_settings.c:2070
+# main/apps/app_selftest.c:51 main/apps/app_tr_settings.c:2074
 失败	Failed
 # main/apps/app_selftest.c:79
 通过 %u　失败 %u　待测 %u	Pass %u  Fail %u  Pending %u
@@ -636,7 +636,7 @@ CW32 无应答	CW32 not responding
 第 %d 个账号%s	Account %d: %s
 # main/apps/app_tr_auth.c:263
 设备上没有这个账号	This account isn't on the device
-# main/apps/app_tr_auth.c:282 main/apps/app_tr_auth.c:292 main/apps/app_tr_settings.c:1610
+# main/apps/app_tr_auth.c:282 main/apps/app_tr_auth.c:292 main/apps/app_tr_settings.c:1614
 保存失败	Save failed
 # main/apps/app_book.c:2052 main/apps/app_tr_auth.c:332 main/apps/app_tr_auth.c:1015 main/apps/app_tr_settings.c:596 …
 正在停下后台加载，请再点一次	Stopping background loading; tap again
@@ -710,7 +710,7 @@ CW32 无应答	CW32 not responding
 已解锁 · %d 个账号	Unlocked · %d accounts
 # (unused)
 还没设置口令	No passphrase set
-# main/apps/app_tr_auth.c:682 main/apps/app_tr_settings.c:708
+# main/apps/app_tr_auth.c:682 main/apps/app_tr_settings.c:712
 已上锁	Locked
 # main/apps/app_tr_auth.c:683
 需要清空后重新设置	Clear and set up again
@@ -764,7 +764,7 @@ TF 卡上没有验证器文件。换回原来的卡就能继续用；或者清�
 确认清空	Clear
 # main/apps/app_tr_auth.c:796
 网页发来 %d 个账号：	%d accounts from the web page: 
-# main/apps/app_tr_auth.c:800 main/apps/app_tr_hupu.c:1031 main/apps/app_tr_settings.c:729
+# main/apps/app_tr_auth.c:800 main/apps/app_tr_hupu.c:1031 main/apps/app_tr_settings.c:733
 、	, 
 # main/apps/app_tr_auth.c:802
  等	 and more
@@ -902,7 +902,7 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 无法开始加载	Could not start loading
 # main/apps/app_tr_hupu.c:392 main/apps/app_tr_weibo.c:404 main/apps/app_tr_wt.c:404 main/apps/app_tr_x.c:430 …
 后台正在下载或同步，完成后自动开始	Downloading or syncing in the background. Starts when done
-# main/apps/app_comic.c:540 main/apps/app_tr_hupu.c:417 main/apps/app_tr_store.c:292 main/apps/app_tr_tomato.c:261 …
+# main/apps/app_comic.c:547 main/apps/app_tr_hupu.c:417 main/apps/app_tr_store.c:292 main/apps/app_tr_tomato.c:261 …
 正在连接 Wi-Fi…	Connecting to Wi-Fi…
 # main/apps/app_tr_hupu.c:503
 %s%s%s 回复	%s%s%s replies
@@ -916,13 +916,13 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 保存关注失败，检查 TF 卡	Could not save follows. Check the SD card
 # main/apps/app_tr_hupu.c:871 main/book/html_text.c:291
 [图片]	[Image]
-# main/apps/app_tr_hupu.c:958 main/apps/app_tr_hupu.c:1436 main/apps/app_tr_hupu.c:1950 main/apps/app_tr_settings.c:1114 …
+# main/apps/app_tr_hupu.c:958 main/apps/app_tr_hupu.c:1436 main/apps/app_tr_hupu.c:1950 main/apps/app_tr_settings.c:1118 …
 虎扑	Hupu
 # main/apps/app_tr_hupu.c:967 main/apps/app_tr_hupu.c:969 main/apps/app_tr_hupu.c:1279 main/apps/app_tr_store.c:322 …
 刷新	Refresh
-# main/apps/app_tr_hupu.c:971 main/apps/app_tr_xhs.c:597
+# main/apps/app_tr_hupu.c:971 main/apps/app_tr_xhs.c:671
 推荐	For you
-# main/apps/app_tr_hupu.c:971 main/apps/app_tr_weibo.c:853 main/apps/app_tr_xhs.c:597 components/tomato/tomato_weibo.c:221
+# main/apps/app_tr_hupu.c:971 main/apps/app_tr_weibo.c:853 main/apps/app_tr_xhs.c:671 components/tomato/tomato_weibo.c:228
 关注	Following
 # main/apps/app_tr_hupu.c:971
 比分	Scores
@@ -1008,13 +1008,13 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 没有更多了	No more
 # main/apps/app_tr_hupu.c:1284
 这个专区还没有缓存，联网后点“刷新”。	This board is not cached yet. Go online and tap Refresh.
-# main/apps/app_tr_hupu.c:1299 main/apps/app_tr_wall.c:165 main/apps/app_tr_xhs.c:755 main/apps/app_usb.c:287
+# main/apps/app_tr_hupu.c:1299 main/apps/app_tr_wall.c:165 main/apps/app_tr_xhs.c:872 main/apps/app_usb.c:287
 返回	Back
 # main/apps/app_tr_hupu.c:1304
 亮了 %d	Top %d
 # main/apps/app_tr_hupu.c:1305
 回复 %d	Replies %d
-# main/apps/app_tr_hupu.c:1306 main/apps/app_tr_weibo.c:1084 main/apps/app_tr_x.c:1129 main/apps/app_tr_xhs.c:761
+# main/apps/app_tr_hupu.c:1306 main/apps/app_tr_weibo.c:1084 main/apps/app_tr_x.c:1129 main/apps/app_tr_xhs.c:878
 正文	Post
 # main/apps/app_tr_hupu.c:1316
 %s · %s · %d 回复	%s · %s · %d replies
@@ -1028,7 +1028,7 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 亮 %d	+%d
 # main/apps/app_tr_hupu.c:1360
 引用 %s	Quote: %s
-# main/apps/app_tr_hupu.c:1365 main/apps/app_tr_weibo.c:1173 main/apps/app_tr_x.c:1218 main/apps/app_tr_xhs.c:831
+# main/apps/app_tr_hupu.c:1365 main/apps/app_tr_weibo.c:1173 main/apps/app_tr_x.c:1218 main/apps/app_tr_xhs.c:948
 （空）	(empty)
 # main/apps/app_tr_hupu.c:1373 main/apps/app_tr_x.c:1199
 还没有回复	No replies yet
@@ -1040,9 +1040,9 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 正在加载帖子…	Loading post…
 # main/apps/app_tr_hupu.c:1391
 帖子还没有缓存，联网后再打开。	Post not cached yet. Open it again when online.
-# main/apps/app_tr_hupu.c:1401 main/apps/app_tr_weibo.c:1078 main/apps/app_tr_x.c:1123 main/apps/app_tr_xhs.c:747
+# main/apps/app_tr_hupu.c:1401 main/apps/app_tr_weibo.c:1078 main/apps/app_tr_x.c:1123 main/apps/app_tr_xhs.c:864
 ‹ 返回	‹ Back
-# main/apps/app_tr_hupu.c:1419 main/apps/app_tr_weibo.c:1046 main/apps/app_tr_x.c:1091 main/apps/app_tr_xhs.c:722
+# main/apps/app_tr_hupu.c:1419 main/apps/app_tr_weibo.c:1046 main/apps/app_tr_x.c:1091 main/apps/app_tr_xhs.c:839
 正在处理图片…	Processing image…
 # main/apps/app_tr_hupu.c:1419
 图片还没下载	Image not downloaded yet
@@ -1058,7 +1058,7 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 比赛结束后才有评分	Ratings come after the game ends
 # main/apps/app_tr_hupu.c:1951
 推荐、关注、比分（只读）	For you, Following, Scores (read-only)
-# main/apps/app_tr_settings.c:108 main/apps/app_tr_xhs.c:582 main/apps/app_tr_xhs.c:850 main/apps/app_tr_xhs.c:1037 …
+# main/apps/app_tr_settings.c:108 main/apps/app_tr_xhs.c:656 main/apps/app_tr_xhs.c:967 main/apps/app_tr_xhs.c:1160 …
 小红书	RedNote
 # main/apps/app_tr_settings.c:110
 篇	posts
@@ -1072,7 +1072,7 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 显示大小	Display size
 # main/apps/app_tr_settings.c:142 main/apps/app_tr_wall.c:118 main/apps/app_tr_wall.c:321
 锁屏壁纸	Lock screen wallpaper
-# main/apps/app_tr_settings.c:143 main/apps/app_tr_settings.c:1420
+# main/apps/app_tr_settings.c:143 main/apps/app_tr_settings.c:1424
 翻页区域	Page turn zones
 # main/apps/app_tr_settings.c:149
 左右	Left/right
@@ -1106,7 +1106,7 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 简体显示	Simplified Chinese
 # main/apps/app_tr_settings.c:177
 每次最多下载	Max per download
-# main/apps/app_tr_settings.c:182 main/apps/app_tr_settings.c:1115
+# main/apps/app_tr_settings.c:182 main/apps/app_tr_settings.c:1119
 显示图片	Show images
 # main/apps/app_tr_settings.c:188
 立即同步	Sync now
@@ -1116,15 +1116,15 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 自动锁屏	Auto lock
 # main/apps/app_tr_settings.c:193
 锁屏密码	Lock PIN
-# main/apps/app_tr_settings.c:194 main/apps/app_tr_settings.c:1373
+# main/apps/app_tr_settings.c:194 main/apps/app_tr_settings.c:1377
 时间与时区	Time & time zone
-# main/apps/app_tr_settings.c:196 main/apps/app_tr_settings.c:1297
+# main/apps/app_tr_settings.c:196 main/apps/app_tr_settings.c:1301
 关于 Treader	About Treader
 # main/apps/app_tr_settings.c:199
 自动校时	Auto time sync
-# main/apps/app_tr_settings.c:200 main/apps/app_tr_settings.c:1434
+# main/apps/app_tr_settings.c:200 main/apps/app_tr_settings.c:1438
 时区	Time zone
-# main/apps/app_tr_settings.c:201 main/apps/app_tr_settings.c:1453
+# main/apps/app_tr_settings.c:201 main/apps/app_tr_settings.c:1457
 手动设置时间	Set time manually
 # main/apps/app_tr_settings.c:234
 番茄服务器地址	Tomato server address
@@ -1158,9 +1158,9 @@ WebDAV 密码	WebDAV password
 书卡样式	Book card style
 # main/apps/app_tr_settings.c:351
 可用 %.1f GB	%.1f GB free
-# main/apps/app_tr_settings.c:352 main/apps/app_tr_settings.c:711
+# main/apps/app_tr_settings.c:352 main/apps/app_tr_settings.c:715
 需要处理	Needs attention
-# main/apps/app_tr_settings.c:368 main/apps/app_tr_settings.c:1102
+# main/apps/app_tr_settings.c:368 main/apps/app_tr_settings.c:1106
 内置服务器	Built-in server
 # main/apps/app_tr_settings.c:371
 默认榜单	Default charts
@@ -1202,215 +1202,215 @@ WebDAV 密码	WebDAV password
 {\"error\":\"保存失败\"}	{\"error\":\"Save failed\"}
 # main/apps/app_book.c:2053 main/apps/app_tr_settings.c:597 main/apps/app_tr_store.c:555 main/apps/app_tr_tomato.c:551
 后台正在下载或同步，完成后再试	Downloading or syncing in the background. Try again when done
-# main/apps/app_tr_settings.c:632
+# main/apps/app_tr_settings.c:636
 打不开网页服务（%s）	Could not start web service (%s)
-# main/apps/app_tr_settings.c:709
+# main/apps/app_tr_settings.c:713
 已解锁	Unlocked
-# main/apps/app_tr_settings.c:721
+# main/apps/app_tr_settings.c:725
 显示大小 %s · %.60s · 锁屏壁纸 %.50s	Display size %s · %.60s · Wallpaper %.50s
-# main/apps/app_tr_settings.c:727
+# main/apps/app_tr_settings.c:731
 底部：	Bottom bar: 
-# main/apps/app_tr_settings.c:738
+# main/apps/app_tr_settings.c:742
 番茄%s · 小红书%s · 微博%s · X%s · 漫画%s · 验证器%s	Tomato %s · RedNote %s · Weibo %s · X %s · Comics %s · Authenticator %s
-# main/apps/app_tr_settings.c:739 main/apps/app_tr_settings.c:739 main/apps/app_tr_settings.c:740 main/apps/app_tr_settings.c:740 …
+# main/apps/app_tr_settings.c:743 main/apps/app_tr_settings.c:743 main/apps/app_tr_settings.c:744 main/apps/app_tr_settings.c:744 …
 已设置	Set
-# main/apps/app_tr_settings.c:743
-WebDAV 未设置	WebDAV not set
-# main/apps/app_tr_settings.c:746
-自动锁屏 %s%s · TF 卡%s	Auto lock %s%s · SD card %s
 # main/apps/app_tr_settings.c:747
+WebDAV 未设置	WebDAV not set
+# main/apps/app_tr_settings.c:750
+自动锁屏 %s%s · TF 卡%s	Auto lock %s%s · SD card %s
+# main/apps/app_tr_settings.c:751
  · 有密码	 · PIN on
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1522
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:1526
 显示与阅读	Display & reading
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1054
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:1058
 底部标签	Bottom bar
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:792 main/apps/app_transfer.c:590 main/apps/app_transfer.c:832
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:796 main/apps/app_transfer.c:590 main/apps/app_transfer.c:832
 传书	Transfer
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1099
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:1103
 内容来源	Content sources
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1539
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:1543
 同步	Sync
-# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1551
+# main/apps/app_tr_settings.c:758 main/apps/app_tr_settings.c:1555
 电源与设备	Power & device
-# main/apps/app_tr_settings.c:757 main/apps/app_tr_settings.c:2083 main/ui/tr_ui.c:501
+# main/apps/app_tr_settings.c:761 main/apps/app_tr_settings.c:2087 main/ui/tr_ui.c:501
 设置	Settings
-# main/apps/app_tr_settings.c:795
+# main/apps/app_tr_settings.c:799
 手机或电脑浏览器上传%s%s	Upload from a phone or computer browser%s%s
-# main/apps/app_tr_settings.c:796
-Wi-Fi 传书	Wi-Fi transfer
-# main/apps/app_tr_settings.c:797 main/apps/app_usb.c:184 main/apps/app_usb.c:445
-USB 传书	USB transfer
-# main/apps/app_tr_settings.c:798
-后台正在下载或同步，完成后再用	Downloading or syncing in the background. Use it when done
-# main/apps/app_tr_settings.c:798
-连电脑当 U 盘，拷大文件更方便	Acts as a USB drive on a computer, easier for big files
 # main/apps/app_tr_settings.c:800
+Wi-Fi 传书	Wi-Fi transfer
+# main/apps/app_tr_settings.c:801 main/apps/app_usb.c:184 main/apps/app_usb.c:445
+USB 传书	USB transfer
+# main/apps/app_tr_settings.c:802
+后台正在下载或同步，完成后再用	Downloading or syncing in the background. Use it when done
+# main/apps/app_tr_settings.c:802
+连电脑当 U 盘，拷大文件更方便	Acts as a USB drive on a computer, easier for big files
+# main/apps/app_tr_settings.c:804
 Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。	Wi-Fi transfer keeps the device usable while it runs and accepts only books, fonts and comics. USB transfer manages the whole card, but the device pauses during transfer and restarts when done.
-# main/apps/app_tr_settings.c:861
+# main/apps/app_tr_settings.c:865
 正在打开网页服务…	Starting web service…
-# main/apps/app_tr_settings.c:867
+# main/apps/app_tr_settings.c:871
 手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：	Join the same Wi-Fi (%s) on your phone, then scan or open in a browser:
-# main/apps/app_tr_settings.c:868
+# main/apps/app_tr_settings.c:872
 扫码连上设备热点 %s（口令 %s），再在浏览器打开：	Scan to join hotspot %s (password %s), then open in a browser:
-# main/apps/app_tr_settings.c:882
-等待网页提交…	Waiting for the web page…
 # main/apps/app_tr_settings.c:886
+等待网页提交…	Waiting for the web page…
+# main/apps/app_tr_settings.c:890
 设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。	No Wi-Fi saved on the device, so it runs its own hotspot; after submitting, it must reconnect to your home network to test. Turn the switch off or leave this page to stop.
-# main/apps/app_tr_settings.c:888
+# main/apps/app_tr_settings.c:892
 提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。	Submitting saves and tests the connection. Turn the switch off or leave this page to stop; the web page then stops working.
-# main/apps/app_tr_settings.c:997 main/apps/app_tr_settings.c:1048
+# main/apps/app_tr_settings.c:1001 main/apps/app_tr_settings.c:1052
 移出	Remove
-# main/apps/app_tr_settings.c:1006 main/apps/app_tr_settings.c:1048
+# main/apps/app_tr_settings.c:1010 main/apps/app_tr_settings.c:1052
 放到底部	Add to bar
-# main/apps/app_tr_settings.c:1009 main/apps/app_tr_settings.c:1048 main/apps/app_transfer.c:283
+# main/apps/app_tr_settings.c:1013 main/apps/app_tr_settings.c:1052 main/apps/app_transfer.c:283
 隐藏	Hide
-# main/apps/app_tr_settings.c:1016 main/apps/app_tr_settings.c:1048 main/apps/app_transfer.c:283
+# main/apps/app_tr_settings.c:1020 main/apps/app_tr_settings.c:1052 main/apps/app_transfer.c:283
 显示	Show
-# main/apps/app_tr_settings.c:1057
+# main/apps/app_tr_settings.c:1061
 底部放 %d 个，最后一格固定是“全部”	%d in the bar; the last slot is always All
-# main/apps/app_tr_settings.c:1063
+# main/apps/app_tr_settings.c:1067
 放在底部（按顺序）	In the bar (in order)
-# main/apps/app_tr_settings.c:1064
+# main/apps/app_tr_settings.c:1068
 只在“全部”里	Only in All
-# main/apps/app_tr_settings.c:1066
+# main/apps/app_tr_settings.c:1070
 已隐藏（“全部”里也不显示）	Hidden (not in All either)
-# main/apps/app_tr_settings.c:1067 main/apps/app_tr_settings.c:1087
+# main/apps/app_tr_settings.c:1071 main/apps/app_tr_settings.c:1091
 这一档在“全部”里	In All at this size
-# main/apps/app_tr_settings.c:1083
+# main/apps/app_tr_settings.c:1087
 固定第一格（主页）	Fixed first slot (home)
-# main/apps/app_tr_settings.c:1102
+# main/apps/app_tr_settings.c:1106
 %.150s · 书城榜单	%.150s · Store charts
-# main/apps/app_tr_settings.c:1102
+# main/apps/app_tr_settings.c:1106
 番茄服务器未设置	Tomato server not set
-# main/apps/app_tr_settings.c:436 main/apps/app_tr_settings.c:1105 main/apps/app_tr_settings.c:1527
+# main/apps/app_tr_settings.c:436 main/apps/app_tr_settings.c:1109 main/apps/app_tr_settings.c:1531
 番茄小说	Tomato Novels
-# main/apps/app_tr_settings.c:1110
+# main/apps/app_tr_settings.c:1114
 %s 服务器 · %.150s	%s server · %.150s
-# main/apps/app_tr_settings.c:1115
+# main/apps/app_tr_settings.c:1119
 只看文字（图片已关）	Text only (images off)
 # (unused)
 %d 个账号 · 口令与自动上锁	%d accounts · Passphrase and auto lock
 # (unused)
 %s · 口令与自动上锁	%s · Passphrase and auto lock
-# main/apps/app_tr_settings.c:1141
+# main/apps/app_tr_settings.c:1145
 默认只看文字：帖子里的图写成“[图片]”，列表不带缩略图，不下载也不解码图片。打开后才加载图片，设备负担会大很多。	Text only by default: post images show as [Image] and nothing is downloaded. Images make the device work much harder.
-# main/apps/app_tr_settings.c:1151
-打开虎扑图片？	Turn on Hupu images?
-# main/apps/app_tr_settings.c:1153
-加载图片会大大增加设备的负担（下载、解码都占内存和时间），可能让设备变慢甚至卡死。卡住时长按电源键重启，再到这里关掉。	Loading images greatly increases the load on the device (downloading and decoding take memory and time) and may slow it down or freeze it. If it freezes, hold the power key to restart, then turn this off here.
 # main/apps/app_tr_settings.c:1155
+打开虎扑图片？	Turn on Hupu images?
+# main/apps/app_tr_settings.c:1157
+加载图片会大大增加设备的负担（下载、解码都占内存和时间），可能让设备变慢甚至卡死。卡住时长按电源键重启，再到这里关掉。	Loading images greatly increases the load on the device (downloading and decoding take memory and time) and may slow it down or freeze it. If it freezes, hold the power key to restart, then turn this off here.
+# main/apps/app_tr_settings.c:1159
 打开	Turn on
-# main/apps/app_tr_settings.c:1165
+# main/apps/app_tr_settings.c:1169
 已打开虎扑图片	Hupu images on
-# main/apps/app_tr_settings.c:1180
+# main/apps/app_tr_settings.c:1184
 地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。	The address and token are on the Devices & internet page of the %s panel. The token is long; turn on Fill in on phone and paste it on your phone.
-# main/apps/app_tr_settings.c:1196
+# main/apps/app_tr_settings.c:1200
 语言版本、简体显示：点一下切换，下次刷新发现页时生效。每次最多下载：一次“检查更新”最多下几话，5、10、20、50 轮换。	Language, Simplified Chinese: tap to switch; applies on the next Discover refresh. Max per download: how many episodes one Check for updates fetches, cycling 5, 10, 20, 50.
 # (unused)
 列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。	List size: cycles 100, 200, 300; applies on the next list refresh. More items means more thumbnails stored on the SD card and a slower first refresh.
-# main/apps/app_tr_settings.c:1243
-%s 面板“设备与外网”里的地址，如 %s	Address from Devices & internet in the %s panel, e.g. %s
 # main/apps/app_tr_settings.c:1247
+%s 面板“设备与外网”里的地址，如 %s	Address from Devices & internet in the %s panel, e.g. %s
+# main/apps/app_tr_settings.c:1251
 留空使用内置服务器；自建的填 http://地址:端口	Leave empty for the built-in server; for your own, enter http://host:port
-# main/apps/app_tr_settings.c:1265
-MindReset Read Pico 示例固件 · Apache-2.0	MindReset Read Pico sample firmware · Apache-2.0
-# main/apps/app_tr_settings.c:1266
-epdiy 墨水屏驱动 · LGPL-3.0	epdiy e-paper driver · LGPL-3.0
-# main/apps/app_tr_settings.c:1267
-XH View OS 拼音引擎 · Apache-2.0	XH View OS Pinyin engine · Apache-2.0
-# main/apps/app_tr_settings.c:1268
-jieba、pypinyin 词库数据 · MIT	jieba, pypinyin dictionary data · MIT
 # main/apps/app_tr_settings.c:1269
-寒蝉端黑体 · SIL OFL 1.1	Chill Duan Hei font · SIL OFL 1.1
+MindReset Read Pico 示例固件 · Apache-2.0	MindReset Read Pico sample firmware · Apache-2.0
 # main/apps/app_tr_settings.c:1270
-stb_truetype、stb_image、TJpgDec、cJSON	stb_truetype, stb_image, TJpgDec, cJSON
+epdiy 墨水屏驱动 · LGPL-3.0	epdiy e-paper driver · LGPL-3.0
 # main/apps/app_tr_settings.c:1271
+XH View OS 拼音引擎 · Apache-2.0	XH View OS Pinyin engine · Apache-2.0
+# main/apps/app_tr_settings.c:1272
+jieba、pypinyin 词库数据 · MIT	jieba, pypinyin dictionary data · MIT
+# main/apps/app_tr_settings.c:1273
+寒蝉端黑体 · SIL OFL 1.1	Chill Duan Hei font · SIL OFL 1.1
+# main/apps/app_tr_settings.c:1274
+stb_truetype、stb_image、TJpgDec、cJSON	stb_truetype, stb_image, TJpgDec, cJSON
+# main/apps/app_tr_settings.c:1275
 Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
-# main/apps/app_tr_settings.c:1283
+# main/apps/app_tr_settings.c:1287
 开源致谢	Open source credits
-# main/apps/app_tr_settings.c:1291
+# main/apps/app_tr_settings.c:1295
 非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。	Unofficial firmware, not affiliated with MindReset or Fanqie Novels. Each component is used under its own license; see the project repository.
-# main/apps/app_tr_settings.c:1307
+# main/apps/app_tr_settings.c:1311
 小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步	Read Pico reading firmware · Library, Tomato Novels, WebDAV sync
-# main/apps/app_tr_settings.c:1308
-%.20s · TF 卡升级 ›	%.20s · Update from SD card ›
-# main/apps/app_tr_settings.c:1309
-版本	Version
 # main/apps/app_tr_settings.c:1312
+%.20s · TF 卡升级 ›	%.20s · Update from SD card ›
+# main/apps/app_tr_settings.c:1313
+版本	Version
+# main/apps/app_tr_settings.c:1316
 构建时间	Build time
-# main/apps/app_tr_settings.c:1314
-项目主页	Project page
 # main/apps/app_tr_settings.c:1318
-设备信息	Device info
-# main/apps/app_tr_settings.c:1319
-电量、存储、芯片 ›	Battery, storage, chips ›
-# main/apps/app_tr_settings.c:1321
-设备自检	Self-test
+项目主页	Project page
 # main/apps/app_tr_settings.c:1322
+设备信息	Device info
+# main/apps/app_tr_settings.c:1323
+电量、存储、芯片 ›	Battery, storage, chips ›
+# main/apps/app_tr_settings.c:1325
+设备自检	Self-test
+# main/apps/app_tr_settings.c:1326
 屏幕、触摸、电源 ›	Screen, touch, power ›
-# main/apps/app_tr_settings.c:1377
+# main/apps/app_tr_settings.c:1381
 自动校时开着时，设备每次联网（番茄、小红书、传书等）都会顺便对一次时，按上面的时区显示。关掉后只用手动设置的时间。时间存在电源芯片的时钟里，断电也继续走。	With auto time sync on, the device syncs the time whenever it goes online (Tomato, RedNote, transfers and so on) and shows it in the time zone above. With it off, only the manually set time is used. The time is kept in the power chip's clock and keeps running without power.
-# main/apps/app_tr_settings.c:1427 main/apps/app_tr_wt.c:713
+# main/apps/app_tr_settings.c:1431 main/apps/app_tr_wt.c:713
 当前	Current
-# main/apps/app_tr_settings.c:1444
+# main/apps/app_tr_settings.c:1448
  · 当前	 · current
-# main/apps/app_tr_settings.c:1454
+# main/apps/app_tr_settings.c:1458
 年	Year
-# main/apps/app_tr_settings.c:1454
+# main/apps/app_tr_settings.c:1458
 月	Month
-# main/apps/app_tr_settings.c:1454
+# main/apps/app_tr_settings.c:1458
 日	Day
-# main/apps/app_tr_settings.c:1454
+# main/apps/app_tr_settings.c:1458
 时	Hour
-# main/apps/app_tr_settings.c:1454
+# main/apps/app_tr_settings.c:1458
 分	Min
-# main/apps/app_tr_settings.c:1470
+# main/apps/app_tr_settings.c:1474
 按%s %s的本地时间填写，保存后立刻生效。	Enter the local time for %s %s. It takes effect on save.
-# main/apps/app_tr_settings.c:1492
+# main/apps/app_tr_settings.c:1496
 时间已设置	Time set
-# main/apps/app_tr_settings.c:1492
+# main/apps/app_tr_settings.c:1496
 这个时间不对，没有保存	That time is invalid, not saved
-# main/apps/app_tr_settings.c:1589
+# main/apps/app_tr_settings.c:1593
 地址要以 http:// 或 https:// 开头	Address must start with http:// or https://
-# main/apps/app_tr_settings.c:1610
+# main/apps/app_tr_settings.c:1614
 已保存	Saved
-# main/apps/app_tr_settings.c:1744
+# main/apps/app_tr_settings.c:1748
 底部满了，先移出一个	The bar is full, remove one first
-# main/apps/app_tr_settings.c:1781
+# main/apps/app_tr_settings.c:1785
 关闭锁屏密码	Turn off Lock PIN
-# main/apps/app_tr_settings.c:1781
+# main/apps/app_tr_settings.c:1785
 输入当前密码	Enter current PIN
-# main/apps/app_tr_settings.c:1786
+# main/apps/app_tr_settings.c:1790
 密码不对，没有关闭	Wrong PIN, not turned off
-# main/apps/app_tr_settings.c:1787
+# main/apps/app_tr_settings.c:1791
 已关闭锁屏密码	Lock PIN turned off
-# main/apps/app_tr_settings.c:1788
+# main/apps/app_tr_settings.c:1792
 关闭失败，再试一次	Couldn't turn off, try again
-# main/apps/app_tr_settings.c:1791 main/apps/app_tr_settings.c:1794
+# main/apps/app_tr_settings.c:1795 main/apps/app_tr_settings.c:1798
 设置锁屏密码	Set Lock PIN
-# main/apps/app_tr_auth.c:981 main/apps/app_tr_settings.c:1791
+# main/apps/app_tr_auth.c:981 main/apps/app_tr_settings.c:1795
 输入 4 位数字	Enter 4 digits
-# main/apps/app_tr_auth.c:982 main/apps/app_tr_auth.c:985 main/apps/app_tr_settings.c:1794
+# main/apps/app_tr_auth.c:982 main/apps/app_tr_auth.c:985 main/apps/app_tr_settings.c:1798
 再输一次确认	Enter again to confirm
-# main/apps/app_tr_settings.c:1797
+# main/apps/app_tr_settings.c:1801
 已开启：开机和解锁都要输密码	On: PIN needed at power-on and unlock
-# main/apps/app_tr_settings.c:1797
+# main/apps/app_tr_settings.c:1801
 保存失败，再试一次	Couldn't save, try again
-# main/apps/app_tr_settings.c:1799
+# main/apps/app_tr_settings.c:1803
 两次不一样，没有设置	PINs don't match, not set
-# main/apps/app_tr_settings.c:1832
+# main/apps/app_tr_settings.c:1836
 下次联网时自动对时	Syncs time next time it goes online
-# main/apps/app_tr_settings.c:1832
+# main/apps/app_tr_settings.c:1836
 已关闭自动校时	Auto time sync turned off
-# main/apps/app_tr_settings.c:1845
+# main/apps/app_tr_settings.c:1849
 已关闭虎扑图片	Hupu images turned off
-# main/apps/app_tr_settings.c:1853
+# main/apps/app_tr_settings.c:1857
 先关掉自动校时	Turn off auto time sync first
-# main/apps/app_tr_settings.c:1964
+# main/apps/app_tr_settings.c:1968
 时区已改为%s	Time zone changed to %s
-# main/apps/app_tr_settings.c:2042
+# main/apps/app_tr_settings.c:2046
 已收到网页填写的设置	Received settings from the web page
-# main/apps/app_tr_settings.c:2084
+# main/apps/app_tr_settings.c:2088
 显示、标签、Wi-Fi、内容来源、同步与设备	Display, tabs, Wi-Fi, content sources, sync and device
 # main/apps/app_tr_store.c:242
 正在下载，完成后再刷新	Downloading, refresh when done
@@ -1702,15 +1702,15 @@ TF 卡 wallpapers 文件夹里的图片	Images in the wallpapers folder on the S
 原微博	Original post
 # main/apps/app_tr_weibo.c:763
 @%.60s：	@%.60s: 
-# main/apps/app_tr_weibo.c:853 main/apps/app_tr_weibo.c:1002 components/tomato/tomato_weibo.c:221
+# main/apps/app_tr_weibo.c:853 main/apps/app_tr_weibo.c:1002 components/tomato/tomato_weibo.c:228
 热门	Hot
 # main/apps/app_tr_weibo.c:863
 微	W
 # main/apps/app_tr_weibo.c:882 main/apps/app_tr_weibo.c:1164
 微博用户	Weibo user
-# main/apps/app_tr_weibo.c:990 main/apps/app_tr_wt.c:540 main/apps/app_tr_x.c:1035 main/apps/app_tr_xhs.c:640
+# main/apps/app_tr_weibo.c:990 main/apps/app_tr_wt.c:540 main/apps/app_tr_x.c:1035 main/apps/app_tr_xhs.c:757
 去设置	Go to Settings
-# main/apps/app_tr_weibo.c:996 main/apps/app_tr_wt.c:573 main/apps/app_tr_x.c:1041 main/apps/app_tr_xhs.c:647
+# main/apps/app_tr_weibo.c:996 main/apps/app_tr_wt.c:573 main/apps/app_tr_x.c:1041 main/apps/app_tr_xhs.c:764
 正在加载…	Loading…
 # main/apps/app_tr_weibo.c:1002 main/apps/app_tr_x.c:1047
 %s · %d 条%s%s	%s · %d posts%s%s
@@ -1724,21 +1724,21 @@ TF 卡 wallpapers 文件夹里的图片	Images in the wallpapers folder on the S
 还没有缓存。点右上角“刷新”，从服务器取热门微博。	No cache yet. Tap Refresh at top right to get hot posts from the server.
 # main/apps/app_tr_weibo.c:1027 main/apps/app_tr_x.c:1072
 没能打开这条	Couldn't open this post
-# main/apps/app_tr_weibo.c:1029 main/apps/app_tr_x.c:1074 main/apps/app_tr_xhs.c:687 main/apps/app_tr_xhs.c:705
+# main/apps/app_tr_weibo.c:1029 main/apps/app_tr_x.c:1074 main/apps/app_tr_xhs.c:804 main/apps/app_tr_xhs.c:822
 点任意处关闭	Tap anywhere to close
 # main/apps/app_tr_weibo.c:1032
 正在加载这条微博…	Loading this post…
 # main/apps/app_tr_weibo.c:1033 main/apps/app_tr_x.c:1078
 从服务器取全文和图片	Getting full text and images from the server
-# main/apps/app_tr_weibo.c:1034 main/apps/app_tr_x.c:1079 main/apps/app_tr_xhs.c:692 main/apps/app_tr_xhs.c:710
+# main/apps/app_tr_weibo.c:1034 main/apps/app_tr_x.c:1079 main/apps/app_tr_xhs.c:809 main/apps/app_tr_xhs.c:827
 点框外取消	Tap outside to cancel
-# main/apps/app_tr_weibo.c:1046 main/apps/app_tr_x.c:1091 main/apps/app_tr_xhs.c:722
+# main/apps/app_tr_weibo.c:1046 main/apps/app_tr_x.c:1091 main/apps/app_tr_xhs.c:839
 这张图打不开	Can't open this image
 # main/apps/app_tr_weibo.c:1071 main/apps/app_tr_x.c:1116
 ‹ 正文	‹ Post
 # main/apps/app_tr_weibo.c:1073
 评论 ›	Comments ›
-# main/apps/app_tr_weibo.c:1081 main/apps/app_tr_x.c:1126 main/apps/app_tr_xhs.c:759
+# main/apps/app_tr_weibo.c:1081 main/apps/app_tr_x.c:1126 main/apps/app_tr_xhs.c:876
 图片 %d	Images %d
 # main/apps/app_tr_weibo.c:1083
 评论 %s	Replies %s
@@ -1816,7 +1816,7 @@ TF 卡 wallpapers 文件夹里的图片	Images in the wallpapers folder on the S
 订阅后在后台下载，下载好的在我的漫画里看	Subscribing downloads in the background; read downloads in My comics
 # main/apps/app_tr_wt.c:683
 去我的漫画	Go to My comics
-# main/apps/app_comic.c:569 main/apps/app_tr_wt.c:684
+# main/apps/app_comic.c:576 main/apps/app_tr_wt.c:684
 再点取消	Tap again to cancel
 # main/apps/app_tr_wt.c:686
 从第 1 话	From ep. 1
@@ -1846,9 +1846,9 @@ WEBTOON 排行、类型、搜索与订阅（经自建 webtoon 服务器）	WEBTO
 原推文	Original post
 # main/apps/app_tr_x.c:794
 引用 @%s：	Quoting @%s: 
-# main/apps/app_tr_x.c:884 main/apps/app_tr_x.c:1047 components/tomato/tomato_x.c:274
+# main/apps/app_tr_x.c:884 main/apps/app_tr_x.c:1047 components/tomato/tomato_x.c:281
 为你推荐	For you
-# main/apps/app_tr_x.c:884 main/apps/app_tr_x.c:1047 components/tomato/tomato_x.c:274
+# main/apps/app_tr_x.c:884 main/apps/app_tr_x.c:1047 components/tomato/tomato_x.c:281
 正在关注	Following
 # main/apps/app_tr_x.c:895 main/apps/app_tr_x.c:896
 正在关注（已关）	Following (off)
@@ -1884,71 +1884,71 @@ X 用户	X user
 回复没取到	Couldn't fetch replies
 # main/apps/app_tr_x.c:1778
 为你推荐、正在关注（经自建 x 服务器，只读）	For you, Following (via self-hosted x server, read-only)
-# main/apps/app_tr_xhs.c:73
+# main/apps/app_tr_xhs.c:82
 还没连接 rednote 服务器。先在电脑或 NAS 上部署 rednote（见项目 rednote/ 目录），	Not connected to a rednote server. Deploy rednote on a computer or NAS first (see the rednote/ folder in the project),
-# main/apps/app_tr_xhs.c:74
+# main/apps/app_tr_xhs.c:83
 再到“设置 › 内容来源”填服务器地址和设备令牌。	then enter the server address and device token in Settings › Content sources.
-# main/apps/app_tr_xhs.c:506 main/apps/app_tr_xhs.c:629
+# main/apps/app_tr_xhs.c:400 main/apps/app_tr_xhs.c:580
 （无标题）	(untitled)
-# main/apps/app_tr_xhs.c:591
+# main/apps/app_tr_xhs.c:665
 刷新推荐	Refresh For you
-# main/apps/app_tr_xhs.c:620
+# (unused)
 新	New
-# main/apps/app_tr_xhs.c:627
+# main/apps/app_tr_xhs.c:729
 已下载	Downloaded
-# main/apps/app_tr_xhs.c:630 main/apps/app_tr_xhs.c:778
+# main/apps/app_tr_xhs.c:895
  · 赞 	 · likes 
-# main/apps/app_tr_xhs.c:646
+# main/apps/app_tr_xhs.c:763
 正在下载封面…	Downloading covers…
-# main/apps/app_tr_xhs.c:647
+# main/apps/app_tr_xhs.c:764
 服务器正在读小红书首页…	Server is reading the RedNote home feed…
-# main/apps/app_tr_xhs.c:651
+# main/apps/app_tr_xhs.c:768
 关注的博主 · %d 篇	Followed creators · %d notes
-# main/apps/app_tr_xhs.c:660
+# main/apps/app_tr_xhs.c:777
 首页推荐%s · 今天还能拉 %d 次	Home feed%s · %d pulls left today
-# main/apps/app_tr_xhs.c:661
+# main/apps/app_tr_xhs.c:778
 首页推荐%s	Home feed%s
-# main/apps/app_tr_xhs.c:668
-还没有缓存。联网后点右上角“刷新”，从服务器取关注博主的笔记；之后不联网也能看。	No cache yet. Go online and tap Refresh at top right to get notes from creators you follow; then they work offline.
-# main/apps/app_tr_xhs.c:669
-还没有推荐。点右上角“刷新推荐”，服务器会去读一次小红书首页（只留图文）。	No recommendations yet. Tap Refresh For you at top right; the server reads the RedNote home feed once (image posts only).
-# main/apps/app_tr_xhs.c:685
-没能打开这篇	Couldn't open this note
-# main/apps/app_tr_xhs.c:690
-正在拉取这篇笔记…	Fetching this note…
-# main/apps/app_tr_xhs.c:691
-服务器要打开小红书，约 10～20 秒	The server opens RedNote, about 10-20 s
-# main/apps/app_tr_xhs.c:703
-没能加载更多评论	Couldn't load more comments
-# main/apps/app_tr_xhs.c:704
-稍后再试	Try again later
-# main/apps/app_tr_xhs.c:708
-正在加载更多评论…	Loading more comments…
-# main/apps/app_tr_xhs.c:709
-服务器要打开小红书往下翻，约 20～60 秒	The server opens RedNote and scrolls, about 20-60 s
-# main/apps/app_tr_xhs.c:749
-正文 ›	Post ›
-# main/apps/app_tr_xhs.c:760
-评论 %d	Comments %d
-# main/apps/app_tr_xhs.c:779
- · 评论 	 · comments 
 # main/apps/app_tr_xhs.c:785
+还没有缓存。联网后点右上角“刷新”，从服务器取关注博主的笔记；之后不联网也能看。	No cache yet. Go online and tap Refresh at top right to get notes from creators you follow; then they work offline.
+# main/apps/app_tr_xhs.c:786
+还没有推荐。点右上角“刷新推荐”，服务器会去读一次小红书首页（只留图文）。	No recommendations yet. Tap Refresh For you at top right; the server reads the RedNote home feed once (image posts only).
+# main/apps/app_tr_xhs.c:802
+没能打开这篇	Couldn't open this note
+# main/apps/app_tr_xhs.c:807
+正在拉取这篇笔记…	Fetching this note…
+# main/apps/app_tr_xhs.c:808
+服务器要打开小红书，约 10～20 秒	The server opens RedNote, about 10-20 s
+# main/apps/app_tr_xhs.c:820
+没能加载更多评论	Couldn't load more comments
+# main/apps/app_tr_xhs.c:821
+稍后再试	Try again later
+# main/apps/app_tr_xhs.c:825
+正在加载更多评论…	Loading more comments…
+# main/apps/app_tr_xhs.c:826
+服务器要打开小红书往下翻，约 20～60 秒	The server opens RedNote and scrolls, about 20-60 s
+# main/apps/app_tr_xhs.c:866
+正文 ›	Post ›
+# main/apps/app_tr_xhs.c:877
+评论 %d	Comments %d
+# main/apps/app_tr_xhs.c:735 main/apps/app_tr_xhs.c:896
+ · 评论 	 · comments 
+# main/apps/app_tr_xhs.c:902
 这篇没有文字。	This note has no text.
-# main/apps/app_tr_xhs.c:806 main/apps/app_tr_xhs.c:809
+# main/apps/app_tr_xhs.c:923 main/apps/app_tr_xhs.c:926
 加载更多评论	Load more comments
-# main/apps/app_tr_xhs.c:817
+# main/apps/app_tr_xhs.c:934
 服务器没有存这篇的评论	The server didn't save comments for this note
-# main/apps/app_tr_xhs.c:824
+# main/apps/app_tr_xhs.c:723 main/apps/app_tr_xhs.c:941
 小红书用户	RedNote user
-# main/apps/app_tr_xhs.c:828
+# main/apps/app_tr_xhs.c:945
 赞 %s	Likes %s
-# main/apps/app_tr_xhs.c:851
+# main/apps/app_tr_xhs.c:968
 内存不足，打不开小红书页。	Out of memory, can't open RedNote.
-# main/apps/app_tr_xhs.c:1160
+# main/apps/app_tr_xhs.c:1281
 笔记读不出来，检查 TF 卡	Can't read the note, check the SD card
-# main/apps/app_tr_xhs.c:1172
+# main/apps/app_tr_xhs.c:1293
 笔记存不下来，检查 TF 卡	Can't save the note, check the SD card
-# main/apps/app_tr_xhs.c:1338
+# main/apps/app_tr_xhs.c:1457
 关注、推荐（经自建 rednote 服务器，只读）	Following, For you (via self-hosted rednote server, read-only)
 # main/apps/app_transfer.c:198
 遗忘已保存网络？	Forget saved network?
@@ -2172,19 +2172,19 @@ TF 卡正忙，稍后再试。	SD card busy, try again later.
 TF 卡当 U 盘连电脑	Use SD card as a USB drive
 # main/apps/tr_lock.c:88
 未知作者	Unknown author
-# main/apps/tr_lock.c:211
+# (unused)
 已读 %u%%	%u%% read
 # (unused)
 按电源键或拿起设备继续 · 电量 %d%%	Press power or pick up to continue · Battery %d%%
 # main/apps/tr_lock.c:189
 按电源键或拿起设备继续	Press power or pick up to continue
-# main/apps/tr_lock.c:229
+# main/apps/tr_lock.c:225
 正在读	Reading
-# main/apps/tr_lock.c:242
+# main/apps/tr_lock.c:238
 %s读完	%sFinished
-# main/apps/tr_lock.c:243
+# main/apps/tr_lock.c:239
 %s已读 %u%%	%s%u%% read
-# main/apps/tr_lock.c:257
+# main/apps/tr_lock.c:253
 慢一点，读几页。	Slow down, read a few pages.
 # main/apps/tr_pin.c:186
 已锁定	Locked
@@ -2384,15 +2384,15 @@ I2C 中断	I2C interrupt
 没有拼音词库：把 ime/pinyin-v1.bin 放进 TF 卡	No pinyin dictionary: put ime/pinyin-v1.bin on the SD card
 # main/ui/ui_kit.c:1160
 滚滚长江东逝水	The quick brown fox
-# components/tomato/tomato_http.c:233
+# components/tomato/tomato_http.c:257
 域名解析失败	DNS lookup failed
-# components/tomato/tomato_http.c:235
+# components/tomato/tomato_http.c:259
 HTTPS 握手失败	HTTPS handshake failed
-# components/tomato/tomato_http.c:236
+# components/tomato/tomato_http.c:260
 连接服务器超时	Server connection timed out
-# components/tomato/tomato_http.c:237
+# components/tomato/tomato_http.c:261
 连不上服务器 errno %d	Can't reach server, errno %d
-# components/tomato/tomato_http.c:238
+# components/tomato/tomato_http.c:262
 服务器响应超时	Server response timed out
 # components/tomato/tomato_hupu.c:209 components/tomato/tomato_hupu.c:209
 [图]	[Image]
@@ -2416,7 +2416,7 @@ HTTPS 握手失败	HTTPS handshake failed
 帖子不存在或页面结构变了	Post not found or page layout changed
 # components/tomato/tomato_hupu.c:626
 [这是一张嵌入卡片，请在虎扑 App 查看]	[Embedded card, view in the Hupu app]
-# components/tomato/tomato_hupu.c:762 components/tomato/tomato_hupu.c:992 components/tomato/tomato_rednote.c:267 components/tomato/tomato_rednote.c:321 …
+# components/tomato/tomato_hupu.c:762 components/tomato/tomato_hupu.c:992 components/tomato/tomato_rednote.c:276 components/tomato/tomato_rednote.c:336 …
 已取消	Canceled
 # components/tomato/tomato_hupu.c:763
 内存不足，先退出正在读的书再试	Low memory, close the open book and retry
@@ -2468,35 +2468,35 @@ TF 卡空间不足，还需要 %.1f MB	Not enough SD card space, need %.1f MB mo
 下载好了但改名失败，检查 TF 卡	Downloaded but rename failed, check SD card
 # components/tomato/tomato_ota.c:352
 下载完成，校验通过	Download complete, verified
-# components/tomato/tomato_rednote.c:242 components/tomato/tomato_rednote.c:303 components/tomato/tomato_rednote.c:383 components/tomato/tomato_selfhost.c:249 …
+# components/tomato/tomato_rednote.c:246 components/tomato/tomato_rednote.c:313 components/tomato/tomato_rednote.c:399 components/tomato/tomato_selfhost.c:254 …
 写不进 TF 卡	Can't write to SD card
-# components/tomato/tomato_rednote.c:269
+# components/tomato/tomato_rednote.c:278
 关注 %d 篇	Following: %d posts
-# components/tomato/tomato_rednote.c:322
+# components/tomato/tomato_rednote.c:337
 推荐 %d 篇	For you: %d posts
-# components/tomato/tomato_rednote.c:332
+# components/tomato/tomato_rednote.c:348
 笔记编号不对	Invalid note ID
-# components/tomato/tomato_rednote.c:413 components/tomato/tomato_weibo.c:297 components/tomato/tomato_x.c:350
+# components/tomato/tomato_rednote.c:438 components/tomato/tomato_weibo.c:313 components/tomato/tomato_x.c:366
 %d 张图没下载成功	%d images failed to download
-# components/tomato/tomato_rednote.c:426
+# components/tomato/tomato_rednote.c:451
 正常 · 关注 %d+ 篇	OK · Following %d+ posts
-# components/tomato/tomato_rednote.c:426
+# components/tomato/tomato_rednote.c:451
 正常 · 关注 %d 篇	OK · Following %d posts
-# components/tomato/tomato_rednote.c:433
+# components/tomato/tomato_rednote.c:458
 还没设置 rednote 服务器	No rednote server set
-# components/tomato/tomato_selfhost.c:120
+# components/tomato/tomato_selfhost.c:122
 设备令牌不对	Wrong device token
-# components/tomato/tomato_selfhost.c:121
+# components/tomato/tomato_selfhost.c:123
 服务器返回 HTTP %d	Server returned HTTP %d
-# components/tomato/tomato_selfhost.c:137 components/tomato/tomato_selfhost.c:233
+# components/tomato/tomato_selfhost.c:142 components/tomato/tomato_selfhost.c:238
 服务器地址格式不对	Invalid server address
-# components/tomato/tomato_selfhost.c:185
+# components/tomato/tomato_selfhost.c:190
 连不上 %s 服务器（%s）	Can't reach %s server (%s)
-# components/tomato/tomato_selfhost.c:215 components/tomato/tomato_selfhost.c:288
+# components/tomato/tomato_selfhost.c:220 components/tomato/tomato_selfhost.c:293
 服务器返回的内容看不懂	Can't understand server response
-# components/tomato/tomato_selfhost.c:270
+# components/tomato/tomato_selfhost.c:275
 下载失败（%s）	Download failed (%s)
-# components/tomato/tomato_selfhost.c:308
+# components/tomato/tomato_selfhost.c:313
 服务器处理太久了，稍后再试	Server took too long, try later
 # components/tomato/tomato_sync.c:134
 %.56s（%.36s）	%.56s (%.36s)
@@ -2558,7 +2558,7 @@ TF 卡空间不足，还需要 %.1f MB	Not enough SD card space, need %.1f MB mo
 Wi-Fi 连接失败	Wi-Fi connection failed
 # components/tomato/tomato_sync.c:952 components/tomato/tomato_sync.c:970 components/tomato/tomato_sync.c:978 components/tomato/tomato_sync.c:986 …
 正在加载	Loading
-# main/apps/app_comic.c:537 components/tomato/tomato_sync.c:994
+# main/apps/app_comic.c:544 components/tomato/tomato_sync.c:994
 正在检查更新	Checking for updates
 # components/tomato/tomato_sync.c:1002
 正在检查	Checking
@@ -2622,41 +2622,41 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 还没设置漫画服务器	No comic server set
 # components/tomato/tomato_webtoon.c:758
 作品编号不对	Invalid title ID
-# components/tomato/tomato_weibo.c:221 components/tomato/tomato_x.c:274
+# components/tomato/tomato_weibo.c:228 components/tomato/tomato_x.c:281
 %s %d 条	%s %d posts
-# components/tomato/tomato_weibo.c:231 components/tomato/tomato_weibo.c:308
+# components/tomato/tomato_weibo.c:238 components/tomato/tomato_weibo.c:324
 微博编号不对	Invalid Weibo ID
-# components/tomato/tomato_weibo.c:344
+# components/tomato/tomato_weibo.c:360
 正常 · 关注 %d+ 条	OK · Following %d+ posts
-# components/tomato/tomato_weibo.c:344
+# components/tomato/tomato_weibo.c:360
 正常 · 关注 %d 条	OK · Following %d posts
-# components/tomato/tomato_weibo.c:351
+# components/tomato/tomato_weibo.c:367
 还没设置 weibo 服务器	No weibo server set
-# components/tomato/tomato_x.c:121
+# components/tomato/tomato_x.c:122
 %s%s 转推	%s%s reposted
-# components/tomato/tomato_x.c:123
+# components/tomato/tomato_x.c:124
 %s回复 @%s	%sReplying to @%s
-# components/tomato/tomato_x.c:125
+# components/tomato/tomato_x.c:126
 %s视频	%sVideo
-# components/tomato/tomato_x.c:190
+# components/tomato/tomato_x.c:191
 服务器关了正在关注	Server turned off Following
-# components/tomato/tomato_x.c:284 components/tomato/tomato_x.c:364
+# components/tomato/tomato_x.c:291 components/tomato/tomato_x.c:380
 推文编号不对	Invalid post ID
-# components/tomato/tomato_x.c:371
+# components/tomato/tomato_x.c:387
 服务器正在取回复	Server is fetching replies
-# components/tomato/tomato_x.c:409
+# components/tomato/tomato_x.c:425
 服务器上的 X 需要重新登录	X on the server needs to sign in again
-# components/tomato/tomato_x.c:410
+# components/tomato/tomato_x.c:426
 服务器上的 X 需要验证账号	X on the server needs account verification
-# components/tomato/tomato_x.c:428
+# components/tomato/tomato_x.c:444
 已连上 · %s	Connected · %s
-# components/tomato/tomato_x.c:429
+# components/tomato/tomato_x.c:445
 正常 · 推荐 %d+ 条%s	OK · For you %d+ posts%s
-# components/tomato/tomato_x.c:429
+# components/tomato/tomato_x.c:445
 正常 · 推荐 %d 条%s	OK · For you %d posts%s
-# components/tomato/tomato_x.c:430
+# components/tomato/tomato_x.c:446
  · 正在关注已关	 · Following off
-# components/tomato/tomato_x.c:437
+# components/tomato/tomato_x.c:453
 还没设置 x 服务器	No x server set
 # components/read_pico_transfer/read_pico_transfer.c:611
 {\"error\":\"字体校验失败，需要完整的 TrueType TTF（不支持 OTF/CFF、TTC 或 WOFF）\"}	{\"error\":\"Font check failed. A complete TrueType TTF is needed (no OTF/CFF, TTC or WOFF)\"}
@@ -2718,13 +2718,13 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 小纸 Pico	Read Pico
 # main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:396
 关闭@@main/apps/app_tr_settings.c	Off
-# main/apps/app_book.c:1097 main/apps/app_comic.c:576 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:583 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新@@main/apps/app_tr_tomato.c	Updates
-# main/apps/app_book.c:2047 main/apps/app_comic.c:567
+# main/apps/app_book.c:2047 main/apps/app_comic.c:574
 正在取消…	Cancelling…
-# main/apps/app_comic.c:569 main/apps/app_tr_wt.c:684
+# main/apps/app_comic.c:576 main/apps/app_tr_wt.c:684
 再点取消@@main/apps/app_comic.c	Cancel?
-# main/apps/app_book.c:1097 main/apps/app_comic.c:576 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:583 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新@@main/apps/app_comic.c	Update
 # main/apps/app_tr_settings.c:144
 翻页刷新	Page refresh
@@ -2732,15 +2732,15 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 快速	Fast
 # main/apps/app_tr_hupu.c:961 main/apps/app_tr_wt.c:529
 加载中 · 取消	Loading · Cancel
-# main/apps/app_tr_settings.c:733
+# main/apps/app_tr_settings.c:737
 已保存：%s · 只能保存一个	Saved: %s · only one kept
-# main/apps/app_tr_settings.c:734
+# main/apps/app_tr_settings.c:738
 未保存网络 · 只能保存一个	No network saved · only one kept
-# main/apps/app_tr_settings.c:736
+# main/apps/app_tr_settings.c:740
 Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
-# main/apps/app_tr_settings.c:860
+# main/apps/app_tr_settings.c:864
 连不上 Wi-Fi。检查设置 › Wi-Fi 里保存的网络，或关掉开关再试。	Can't join Wi-Fi. Check the saved network in Settings › Wi-Fi, or turn the switch off and retry.
-# main/apps/app_tr_weibo.c:844 main/apps/app_tr_x.c:875 main/apps/app_tr_xhs.c:587
+# main/apps/app_tr_weibo.c:844 main/apps/app_tr_x.c:875 main/apps/app_tr_xhs.c:661
 拉取中 · 取消	Fetching · Cancel
 # main/apps/app_transfer.c:209
 只能保存一个 2.4 GHz 网络，连新网络会替换它	Only one 2.4 GHz network is kept; a new one replaces it
@@ -2770,7 +2770,7 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 已保存。回到设备上就能用番茄小说和书城了。	Saved. Tomato and the bookstore are ready on the device.
 # main/apps/app_tr_settings.c:463 main/apps/app_tr_settings.c:525
 {\"error\":\"密码太长\"}	{\"error\":\"Password too long\"}
-# main/apps/app_tr_settings.c:887
+# main/apps/app_tr_settings.c:891
 提交后自动保存。关掉开关或离开这一页就停止，网页随之失效。	Submitting saves it. Turn the switch off or leave this page to stop; the web page then stops working.
 # main/apps/app_tr_settings.c:145
 文字深浅	Text darkness
@@ -2818,11 +2818,11 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 按电源键继续	Press power to continue
 # main/apps/tr_lock.c:190
 %s · 电量 %d%%	%s · Battery %d%%
-# main/apps/app_tr_weibo.c:1057 main/apps/app_tr_x.c:1102 main/apps/app_tr_xhs.c:733
+# main/apps/app_tr_weibo.c:1057 main/apps/app_tr_x.c:1102 main/apps/app_tr_xhs.c:850
 图片没下载成功	Image not downloaded
-# main/apps/app_tr_weibo.c:1064 main/apps/app_tr_x.c:1109 main/apps/app_tr_xhs.c:740
+# main/apps/app_tr_weibo.c:1064 main/apps/app_tr_x.c:1109 main/apps/app_tr_xhs.c:857
 点这里重试	Tap here to retry
-# components/tomato/tomato_rednote.c:412 components/tomato/tomato_weibo.c:296 components/tomato/tomato_x.c:349
+# components/tomato/tomato_rednote.c:437 components/tomato/tomato_weibo.c:312 components/tomato/tomato_x.c:365
 连不上服务器，图片没下载完	Can't reach the server; images incomplete
 # main/apps/app_book.c:517 main/apps/app_book.c:519
 最后一章	Last
@@ -2830,23 +2830,23 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 第一章	First
 # (unused)
 列表条数：20、30、50 轮换，下次刷新列表时生效。刷新只先下前两页的缩略图，翻到后面的页再补。	List size: 20, 30 or 50, from the next refresh. Thumbnails load for the first two pages; later pages fill in as you go.
-# components/tomato/tomato_rednote.c:198 components/tomato/tomato_webtoon.c:360 components/tomato/tomato_weibo.c:132 components/tomato/tomato_x.c:179
+# components/tomato/tomato_rednote.c:200 components/tomato/tomato_webtoon.c:360 components/tomato/tomato_weibo.c:133 components/tomato/tomato_x.c:180
 列表还没取过	List not fetched yet
 # main/apps/app_tr_settings.c:183
 关注每个专区	Pages per zone
 # main/apps/app_tr_settings.c:385
 %d 页 ›	%d pg ›
-# main/apps/app_tr_settings.c:1144
+# main/apps/app_tr_settings.c:1148
 关注每个专区：刷新关注时每个专区取几页，1、2、3 轮换。页数越多列表越长，刷新也越慢。	Pages per zone: how many pages each followed zone loads on refresh, 1, 2 or 3. More pages mean a longer list and a slower refresh.
-# main/apps/app_comic.c:527
+# main/apps/app_comic.c:534
 更新完成	Update done
-# main/apps/app_comic.c:528
-点一下收起	Tap to close
 # main/apps/app_comic.c:535
+点一下收起	Tap to close
+# main/apps/app_comic.c:542
 下载第 %d / %d 话	Episode %d / %d
-# main/apps/app_comic.c:540
+# main/apps/app_comic.c:547
 正在开始…	Starting…
-# main/apps/app_comic.c:1193
+# main/apps/app_comic.c:1226
 第 %d / %d 话：%.80s	Ep %d / %d: %.80s
 # components/tomato/tomato_webtoon.c:527
 %.40s 第 %d 话 · 问服务器	%.40s ep %d · asking server
@@ -2866,7 +2866,7 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 连不上服务器，%d 秒后再试	Server unreachable, retrying in %d s
 # main/apps/app_tr_settings.c:166
 每次拉取	Fetch size
-# main/apps/app_tr_settings.c:1197
+# main/apps/app_tr_settings.c:1201
 每次拉取：20、30、50 轮换，下次刷新生效。关注列表会保留以前缓存的条目（最多 100 条），新拉的排前面；缩略图先下前两页，翻到再补。	Fetch size: 20, 30 or 50, from the next refresh. Following keeps earlier cached entries (up to 100) with new ones first; thumbnails load for two pages, the rest as you go.
 # main/app/tr_auth.c:128
 PIN 要正好 4 位数字	The PIN must be exactly 4 digits
@@ -2926,9 +2926,9 @@ PIN 已修改	PIN changed
 输入当前 PIN	Enter the current PIN
 # main/apps/app_tr_auth.c:984
 输入新的 4 位 PIN	Enter the new 4-digit PIN
-# main/apps/app_tr_settings.c:1117
+# main/apps/app_tr_settings.c:1121
 %d 个账号 · PIN 与自动上锁	%d accounts · PIN and auto-lock
-# main/apps/app_tr_settings.c:1118
+# main/apps/app_tr_settings.c:1122
 %s · PIN 与自动上锁	%s · PIN and auto-lock
 # main/apps/app_tr_settings.c:493
 WebDAV 用来同步阅读进度和番茄书架。地址是同步文件夹的完整地址，要事先建好。	WebDAV syncs reading progress and the Tomato shelf. The address is the full address of the sync folder, which must exist already.
@@ -2944,5 +2944,11 @@ WebDAV 用来同步阅读进度和番茄书架。地址是同步文件夹的完�
 已保存。回到设备上点“立即同步”试试。	Saved. Go back to the device and tap Sync now.
 # main/apps/app_tr_settings.c:523
 {\"error\":\"用户名太长\"}	{\"error\":\"User name too long\"}
-# main/apps/app_tr_settings.c:1548
+# main/apps/app_tr_settings.c:1552
 WebDAV 的地址、用户名和密码很长，建议打开“手机网页填写”，在手机上粘贴。坚果云的密码要用“应用密码”。	WebDAV addresses, user names and passwords are long: turn on Fill in on phone and paste them on your phone. Jianguoyun needs an app password.
+# main/apps/app_tr_xhs.c:695
+红	R
+# main/apps/app_tr_xhs.c:728
+%d 张图	%d pics
+# main/apps/app_tr_xhs.c:735
+赞 %s%s%s	Likes %s%s%s

@@ -2,10 +2,13 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 小红书标签页（只读）：顶部分段 关注 / 推荐；点开笔记先一屏一张看图，再看正文和评论。数据来自用户自建的 rednote
+ * 小红书标签页（只读）：顶部分段 关注 / 推荐；列表照微博标签一行一篇，每页两篇（左边大封面，右边头像、作者和时间、
+ * 标题、赞和评论），左右三成点按翻页；点开笔记先一屏一张看图，再看正文和评论。数据来自用户自建的 rednote
  * 服务器，由 components/tomato 的后台任务取到 TF 卡 rednote/，本页只读缓存；缩略图和大图的缩放抖动交给 hupu_img。
  *
- * English: the Xiaohongshu tab (read only): Following / Recommended segments; a note opens on its images, one per
+ * English: the Xiaohongshu tab (read only): Following / Recommended segments; like the Weibo tab the list shows one
+ * note per row, two per page (a large cover on the left; avatar, author and time, title, likes and comments on the
+ * right), with the outer 30% on each side turning pages; a note opens on its images, one per
  * screen, then text and comments. Data comes from the user's own rednote server; the components/tomato task stores it
  * under rednote/ on the TF card and this page reads only that cache; hupu_img scales and dithers thumbnails and images.
  *
@@ -15,6 +18,11 @@
  * never refreshes. Only the recommendations Refresh makes the server read Xiaohongshu; its quota and spacing belong to
  * the server panel. Without a server the page only offers "Set up". Large buffers are allocated on entry and freed on
  * exit. No likes, no comments.
+ * Treader 修订（1.2.7，用户要求）：列表从两列封面网格改成和微博、X 一样的一行一篇（每页两篇、突出封面），好用同样的左右点按翻页；刷新
+ * 拉到新列表后停在原来那页，回第一页用双击分段（微博、X 同样）。
+ * Treader revision (1.2.7, user request): the list changed from a two-column cover grid to one note per row like
+ * Weibo and X (two per page, cover first), so the same left / right tap zones turn pages; a refresh keeps the current page and a double tap on the
+ * segment goes to the first (Weibo and X likewise).
  */
 
 #include <stdio.h>
@@ -49,22 +57,23 @@
 
 // 列表 / Lists
 #define LIST_MAX TOMATO_LIST_CAP
-#define LIST_TOP TR_S(284)
+#define LIST_TOP TR_S(288)
 #define PAGER_Y (TR_TABS_Y - TR_S(58))
-// 两列卡片。一页几行按翻页钮上面剩下的高度定：两行时封面还有 180 像素高就放两行（正常、大），否则一行（特大），
-// 封面填满一行但不超过 3:4。卡片和翻页钮之间留一段，免得圆钮压住最后一行的作者和点赞。
-// Two-column cards. Rows per page follow the height above the pager: two rows while a cover keeps 180 px (normal,
-// large), otherwise one row (largest) whose cover fills it, up to 3:4. A gap above the pager keeps its round buttons
-// off the last row's author and likes.
-#define COLS 2
-#define LIST_H (PAGER_Y - TR_S(24) - LIST_TOP)
-#define CARD_TEXT_H TR_S(114)   // 封面下面的标题两行和作者 / Two title lines and the author under the cover
-#define ROWS (LIST_H / 2 - CARD_TEXT_H >= 180 ? 2 : 1)
-#define PER_PAGE (ROWS * COLS)
-#define CELL_GAP TR_S(20)
-#define CELL_W ((TR_W - 2 * TR_MARGIN - CELL_GAP) / COLS)
-#define CELL_H (LIST_H / ROWS)
-#define COVER_H (CELL_H - CARD_TEXT_H < CELL_W * 4 / 3 ? CELL_H - CARD_TEXT_H : CELL_W * 4 / 3)
+// 一条一张卡片（照微博标签的一行一条），每页固定两篇：左边大封面占满一行的高，右边头像、作者和时间、标题、赞和评论。
+// One card per note (one per row like the Weibo tab), two per page: a large cover filling the row height on the left;
+// avatar, author and time, title, likes and comments on the right.
+#define LIST_BOTTOM (TR_TABS_Y - TR_S(64))
+#define PER_PAGE 2
+#define ROW_H ((LIST_BOTTOM - LIST_TOP) / PER_PAGE)
+#define AVATAR TR_S(60)
+#define CARD_PX TR_S(30)
+#define CARD_LH TR_S(42)
+#define CARD_LINES_MAX 6
+#define COVER_MAX_W (CW * 48 / 100)   // 横图封面最宽到这里，右边文字才放得下 / Landscape covers stop here so the text fits
+#define COVER_GAP TR_S(22)
+#define FOOT_H TR_S(44)
+#define CARD_GAP TR_S(16)
+#define HEAD_H TR_S(72)     // 头像和作者两行 / Avatar with the author's two lines
 #define STATUS_Y TR_S(240)
 #define REFRESH_RECT (EpdRect){TR_W - TR_MARGIN - TR_S(240), TR_S(70), TR_S(240), TR_S(80)}
 #define EMPTY_PX TR_S(30)
@@ -108,8 +117,15 @@ typedef struct {
     char title[160];
     char author[48];
     char likes[16];
+    char comments[16];
+    double time;            // 秒或毫秒，推荐没有 / Seconds or milliseconds; none for recommendations
+    float ratio;            // 封面高宽比 / Cover height/width
     int16_t images;
     bool seen;
+    // 排版结果：标题行数、封面大小、卡片高。/ Layout: title lines, cover size, card height.
+    int8_t lines;
+    int16_t mw, mh;
+    int16_t height;
 } item_t;
 
 typedef struct {
@@ -142,6 +158,7 @@ static bool s_step_loaded;
 // 刷新只先下前几页的缩略图，翻到的页再补；进页后成功刷新过才自动补，免得没网时一翻页就去连 Wi-Fi。
 // A refresh fetches thumbnails for the first pages only and the pages being viewed fill in later; that happens only
 // after a successful refresh in this visit, so paging offline never tries to join Wi-Fi.
+#define THUMB_FIRST 6
 #define THUMB_PAGES 2
 static bool s_lazy_ok;
 static int s_thumbs_tried = -1;   // 这一页已经补过一次（失败了也不再反复试）/ This page was already filled once
@@ -154,6 +171,8 @@ static bool s_has_pending;
 static item_t* s_items;
 static int s_item_count;
 static int s_list_page;
+static uint16_t s_page_first[LIST_MAX + 1];   // 每页第一条 / First item of each page
+static int s_list_page_count;
 static long s_rec_time;
 static int s_rec_left = -1;
 
@@ -366,7 +385,54 @@ static const char* loading_text(const char* what) {
 
 /* ---- 列表数据 / List data ---- */
 
-static int list_pages(void) { return s_item_count ? (s_item_count + PER_PAGE - 1) / PER_PAGE : 1; }
+static int list_pages(void) { return s_list_page_count ? s_list_page_count : 1; }
+
+// 有几行（最多 max）。/ How many lines (at most max).
+static int count_lines(const char* text, int px, int w, int max) {
+    int n = 0;
+    for (const char* p = text; *p && n < max; n++) {
+        p += tr_line_bytes(p, px, w);
+        if (*p == '\n') p++;
+    }
+    return n;
+}
+
+static const char* card_title(const item_t* x) { return x->title[0] ? x->title : "（无标题）"; }
+
+// 封面按高宽比放进 wmax×hmax。/ Fit the cover into wmax x hmax by its aspect ratio.
+static void cover_fit(const item_t* x, int wmax, int hmax, int* w, int* h) {
+    *h = hmax;
+    *w = (int)(hmax / x->ratio);
+    if (*w > wmax) { *w = wmax; *h = (int)(wmax * x->ratio); }
+}
+
+// 右边文字的起点和宽度（跟着封面宽）。/ Left edge and width of the text on the right (following the cover width).
+static int text_x(const item_t* x) { return TR_MARGIN + x->mw + COVER_GAP; }
+static int text_w(const item_t* x) { return CW - x->mw - COVER_GAP; }
+
+// 封面尽量占满一行的高，标题用完封面旁边剩下的行。/ The cover fills as much of the row height as it can and the title
+// takes the lines left beside it.
+static void card_layout(item_t* x) {
+    int w, h;
+    cover_fit(x, COVER_MAX_W, ROW_H - CARD_GAP, &w, &h);
+    x->mw = (int16_t)w;
+    x->mh = (int16_t)h;
+    int room = (ROW_H - CARD_GAP - HEAD_H - TR_S(10) - FOOT_H) / CARD_LH;
+    if (room > CARD_LINES_MAX) room = CARD_LINES_MAX;
+    if (room < 1) room = 1;
+    x->lines = (int8_t)count_lines(card_title(x), CARD_PX, text_w(x), room);
+    x->height = (int16_t)ROW_H;
+}
+
+static void layout_list(void) {
+    s_list_page_count = (s_item_count + PER_PAGE - 1) / PER_PAGE;
+    for (int i = 0; i < s_item_count; i++) card_layout(&s_items[i]);
+    for (int p = 0; p <= s_list_page_count; p++)
+        s_page_first[p] = (uint16_t)(p * PER_PAGE < s_item_count ? p * PER_PAGE : s_item_count);
+    // 空列表也把第一页的结尾写成 0，点空白处才不会打开看不见的旧笔记。/ An empty list also ends page one at 0, so a
+    // tap on blank space never opens an invisible old note.
+    if (s_list_page_count == 0) s_page_first[1] = 0;
+}
 
 static void load_list(void) {
     s_item_count = 0;
@@ -385,11 +451,19 @@ static void load_list(void) {
         str(x->title, sizeof(x->title), it, "title");
         str(x->author, sizeof(x->author), it, "author");
         str(x->likes, sizeof(x->likes), it, "likes");
+        str(x->comments, sizeof(x->comments), it, "comments");
+        const cJSON* tv = cJSON_GetObjectItemCaseSensitive(it, "time");
+        x->time = cJSON_IsNumber(tv) ? tv->valuedouble : 0;
+        // 老缓存没有比例：按 4:3 竖图。/ Older caches have no ratio: assume a 4:3 portrait.
+        const cJSON* rv = cJSON_GetObjectItemCaseSensitive(it, "ratio");
+        x->ratio = cJSON_IsNumber(rv) && rv->valuedouble >= 0.5 && rv->valuedouble <= 2.0 ? (float)rv->valuedouble
+                                                                                            : 4.0f / 3;
         x->images = (int16_t)num(it, "images");
         x->seen = s_seg == SEG_REC || cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(it, "seen"));
         s_item_count++;
     }
     cJSON_Delete(root);
+    layout_list();
     if (s_list_page >= list_pages()) s_list_page = list_pages() - 1;
 }
 
@@ -598,38 +672,81 @@ static void draw_header(uint8_t* fb) {
     tr_segment(fb, TR_SEGMENT_RECT, SEG, 2, (int)s_seg);
 }
 
-// 两列封面卡片：封面（铺满裁切）、标题两行、作者 · 赞；没看过的封面左上角黑底“新”，推荐里下好的右下角“已下载”。
-// Two-column cover cards: cover (fill-cropped), two-line title, author · likes; unseen notes get a black "new" tag
-// at the cover's top-left, and downloaded recommendations a "downloaded" tag at its bottom-right.
+// 今天的写时分，别的写月日。/ Today shows hours and minutes; other days show month and day.
+static void fmt_time(char* out, size_t cap, double t) {
+    out[0] = 0;
+    if (t < 1e9) return;
+    // 服务器给的是毫秒或秒，都能认。/ The server gives milliseconds or seconds; accept both.
+    const time_t when = (time_t)(t > 1e11 ? t / 1000 : t);
+    struct tm tm, now_tm;
+    localtime_r(&when, &tm);
+    const time_t now = time(NULL);
+    localtime_r(&now, &now_tm);
+    if (now > 1735689600 && tm.tm_year == now_tm.tm_year && tm.tm_yday == now_tm.tm_yday)
+        snprintf(out, cap, "%02d:%02d", tm.tm_hour % 100, tm.tm_min % 100);
+    else snprintf(out, cap, "%02d-%02d", (tm.tm_mon + 1) % 100, tm.tm_mday % 100);
+}
+
+// 头像：浅灰实心圆里写作者名字的第一个字（这页只用整页刷新）。/ Avatar: the author's first character on a filled
+// light gray circle (this page refreshes whole pages only).
+static void draw_avatar(uint8_t* fb, int x, int y, int d, const char* name) {
+    const int cx = x + d / 2, cy = y + d / 2;
+    epd_fill_circle(cx, cy, d / 2, TR_GRAY_SELECTED, fb);
+    char first[8] = "红";
+    if (name && name[0]) {
+        const unsigned char c = (unsigned char)name[0];
+        const size_t n = c < 0x80 ? 1 : c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        if (strlen(name) >= n) { memcpy(first, name, n); first[n] = 0; }
+    }
+    const int px = d * 28 / 60;
+    tr_text_on(fb, cx, cy - px / 2 - TR_S(3), px, first, EPD_DRAW_ALIGN_CENTER, true, UI_GRAY_BLACK, TR_GRAY_SELECTED);
+}
+
+// 一张卡片：左边封面（铺满裁切，还没到画浅灰圆角块）；右边头像（没看过的右上角黑点）、粗体作者、下一行时间和图数
+// （推荐里下好的写“已下载”），标题，赞和评论贴着封面底边。
+// One card: the cover on the left (fill-cropped; a light gray block until it arrives); on the right the avatar (a black
+// dot at its top-right when unseen), bold author, then time and image count ("downloaded" for cached
+// recommendations), the title, and likes and comments level with the cover's bottom.
+static void draw_card(uint8_t* fb, const item_t* x, int y) {
+    char thumb[96];
+    thumb_path(x, thumb, sizeof(thumb));
+    const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, x->mw, x->mh) : NULL;
+    if (px) hupu_img_draw(fb, TR_MARGIN, y, x->mw, x->mh, px, true);
+    else ui_fill_round_rect(fb, (EpdRect){TR_MARGIN, y, x->mw, x->mh}, TR_S(12), TR_GRAY_SURFACE);
+    const int tx = text_x(x), tw = text_w(x);
+    draw_avatar(fb, tx, y, AVATAR, x->author);
+    if (!x->seen) {
+        epd_fill_circle(tx + AVATAR - TR_S(6), y + TR_S(6), TR_S(10), UI_GRAY_WHITE, fb);
+        epd_fill_circle(tx + AVATAR - TR_S(6), y + TR_S(6), TR_S(7), UI_GRAY_BLACK, fb);
+    }
+    char line[200], when[16];
+    snprintf(line, sizeof(line), "%s", x->author[0] ? x->author : "小红书用户");
+    tr_fit(line, TR_S(30), tw - TR_S(78));
+    tr_text(fb, tx + TR_S(78), y + TR_S(2), TR_S(30), line, EPD_DRAW_ALIGN_LEFT, true);
+    fmt_time(when, sizeof(when), x->time);
+    char pics[24] = "";
+    if (x->images > 0) snprintf(pics, sizeof(pics), "%d 张图", x->images);
+    const char* got = s_seg == SEG_REC && note_cached(x->id) ? "已下载" : "";
+    snprintf(line, sizeof(line), "%s%s%s%s%s", when, when[0] && pics[0] ? " · " : "", pics,
+             (when[0] || pics[0]) && got[0] ? " · " : "", got);
+    tr_fit(line, TR_S(22), tw - TR_S(78));
+    tr_text_dim(fb, tx + TR_S(78), y + TR_S(40), TR_S(22), line, EPD_DRAW_ALIGN_LEFT);
+    if (x->lines) tr_wrap(fb, tx, y + HEAD_H, tw, CARD_PX, CARD_LH, card_title(x), x->lines);
+    snprintf(line, sizeof(line), "赞 %s%s%s", x->likes[0] ? x->likes : "0", x->comments[0] ? " · 评论 " : "",
+             x->comments);
+    tr_fit(line, TR_S(24), tw);
+    int fy = y + x->mh - FOOT_H;
+    const int below = y + HEAD_H + x->lines * CARD_LH + TR_S(10);
+    if (fy < below) fy = below;
+    tr_text_dim(fb, tx, fy + (FOOT_H - TR_S(24)) / 2 - TR_S(2), TR_S(24), line, EPD_DRAW_ALIGN_LEFT);
+}
+
 static void draw_cards(uint8_t* fb) {
-    char line[200];
-    for (int k = 0; k < PER_PAGE; k++) {
-        const int i = s_list_page * PER_PAGE + k;
-        if (i >= s_item_count) break;
-        const item_t* x = &s_items[i];
-        const int cx = TR_MARGIN + (k % COLS) * (CELL_W + CELL_GAP);
-        const int cy = LIST_TOP + (k / COLS) * CELL_H;
-        char thumb[96];
-        thumb_path(x, thumb, sizeof(thumb));
-        const uint8_t* px = exists(thumb) ? hupu_img_get(thumb, CELL_W, COVER_H) : NULL;
-        if (px) hupu_img_draw(fb, cx, cy, CELL_W, COVER_H, px, true);
-        // 封面还没到：浅灰圆角块（小红书只用整页刷新）。/ Cover not here yet: a light gray block (whole-page refresh only).
-        else ui_fill_round_rect(fb, (EpdRect){cx, cy, CELL_W, COVER_H}, TR_S(12), TR_GRAY_SURFACE);
-        if (!x->seen) {
-            ui_fill_round_rect(fb, (EpdRect){cx + TR_S(10), cy + TR_S(10), TR_S(48), TR_S(34)}, TR_S(17), UI_GRAY_BLACK);
-            tr_text_inv(fb, cx + TR_S(34), cy + TR_S(13), TR_S(22), "新", EPD_DRAW_ALIGN_CENTER, true);
-        }
-        if (s_seg == SEG_REC && note_cached(x->id)) {
-            const EpdRect r = {cx + CELL_W - TR_S(98), cy + COVER_H - TR_S(44), TR_S(88), TR_S(34)};
-            ui_fill_round_rect(fb, r, TR_S(17), UI_GRAY_WHITE);
-            ui_draw_round_rect(fb, r, TR_S(17), TR_GRAY_OUTLINE);
-            ui_draw_round_rect(fb, ui_inset_rect(r, 1), TR_S(17) - 1, TR_GRAY_OUTLINE);
-            tr_text(fb, r.x + r.width / 2, r.y + TR_S(4), TR_S(20), "已下载", EPD_DRAW_ALIGN_CENTER, true);
-        }
-        tr_wrap(fb, cx, cy + COVER_H + TR_S(10), CELL_W, TR_S(26), TR_S(34), x->title[0] ? x->title : "（无标题）", 2);
-        snprintf(line, sizeof(line), "%s%s%s", x->author, x->likes[0] ? " · 赞 " : "", x->likes);
-        tr_fit(line, TR_S(22), CELL_W);
-        tr_text_dim(fb, cx, cy + COVER_H + TR_S(84), TR_S(22), line, EPD_DRAW_ALIGN_LEFT);
+    int y = LIST_TOP;
+    for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
+        draw_card(fb, &s_items[i], y);
+        y += s_items[i].height;
+        if (i + 1 < s_page_first[s_list_page + 1]) tr_hline(fb, y - CARD_GAP / 2 - 1, TR_MARGIN, CW, true);
     }
 }
 
@@ -878,7 +995,7 @@ static app_redraw_t show_seg(seg_t seg) {
 
 static app_redraw_t refresh(void) {
     if (s_seg == SEG_FOLLOW) {
-        const tomato_red_req_t req = {.job = TOMATO_RED_FEED, .thumbs_count = THUMB_PAGES * PER_PAGE};
+        const tomato_red_req_t req = {.job = TOMATO_RED_FEED, .thumbs_count = THUMB_FIRST};
         queue_req(&req);
     }
     else start_job(TOMATO_RED_REC, NULL, false, true, false);
@@ -1024,11 +1141,17 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
-    if (y < LIST_TOP || y >= LIST_TOP + (PER_PAGE / COLS) * CELL_H || x < TR_MARGIN || x >= TR_W - TR_MARGIN)
-        return APP_REDRAW_NONE;
-    const int col = (x - TR_MARGIN) >= CELL_W + CELL_GAP / 2 ? 1 : 0;
-    const int i = s_list_page * PER_PAGE + ((y - LIST_TOP) / CELL_H) * COLS + col;
-    return i < s_item_count ? open_item(i) : APP_REDRAW_NONE;
+    if (y < LIST_TOP || y >= LIST_BOTTOM) return APP_REDRAW_NONE;
+    // 列表区像书页一样分左中右：左右各三成翻页，中间打开点到的那条。/ The list splits like a book page: the outer 30%
+    // on each side turns the page, the middle opens the note under the finger.
+    if (x < TR_W * 3 / 10) return turn(-1);
+    if (x >= TR_W * 7 / 10) return turn(1);
+    int cy = LIST_TOP;
+    for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
+        if (y < cy + s_items[i].height) return open_item(i);
+        cy += s_items[i].height;
+    }
+    return APP_REDRAW_NONE;
 }
 
 static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
@@ -1118,12 +1241,10 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 static void queue_visible_images(void) {
     if (s_view == V_LIST) {
-        for (int k = 0; k < PER_PAGE; k++) {
-            const int i = s_list_page * PER_PAGE + k;
-            if (i >= s_item_count) break;
+        for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
             char thumb[96];
             thumb_path(&s_items[i], thumb, sizeof(thumb));
-            if (exists(thumb)) hupu_img_get(thumb, CELL_W, COVER_H);
+            if (exists(thumb)) hupu_img_get(thumb, s_items[i].mw, s_items[i].mh);
         }
     } else if (s_view == V_IMAGE && s_note_loaded) {
         // 当前一张和下一张（预取）。/ The current image and the next one (prefetch).
@@ -1187,12 +1308,11 @@ static app_redraw_t job_done(bool ok) {
 // thumbnails for it and the next page in the background (never taking the worker from another page's job).
 static app_redraw_t fill_thumbs(void) {
     if (!s_lazy_ok || s_view != V_LIST || s_seg != SEG_FOLLOW || s_has_pending || tomato_sync_busy() ||
-        s_thumbs_tried == s_list_page)
+        s_thumbs_tried == s_list_page || s_list_page >= s_list_page_count)
         return APP_REDRAW_NONE;
     s_thumbs_tried = s_list_page;
-    const int a = s_list_page * PER_PAGE;
-    const int b = (s_list_page + THUMB_PAGES) * PER_PAGE < s_item_count ? (s_list_page + THUMB_PAGES) * PER_PAGE
-                                                                       : s_item_count;
+    const int last = s_list_page + THUMB_PAGES < s_list_page_count ? s_list_page + THUMB_PAGES : s_list_page_count;
+    const int a = s_page_first[s_list_page], b = s_page_first[last];
     for (int i = a; i < b; i++) {
         char path[96];
         thumb_path(&s_items[i], path, sizeof(path));
@@ -1237,8 +1357,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (busy && !s_step_loaded && s_status.current >= 1 && s_status.phase != TOMATO_FAILED) {
         s_step_loaded = true;
         if (s_job.job != TOMATO_RED_NOTE) {
+            // 留在原来那页，回第一页用双击分段。/ Stay on the current page; a double tap on the segment goes to the first.
             if (s_view == V_LIST && (s_job.job == TOMATO_RED_FEED) == (s_seg == SEG_FOLLOW)) {
-                s_list_page = 0;
                 load_list();
                 return APP_REDRAW_PAGE;
             }
@@ -1258,8 +1378,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     // without waiting for the hundreds after it; hupu_img_tick redraws once decoding is done.
     if (busy && s_view == V_LIST && s_job.job != TOMATO_RED_NOTE &&
         (s_job.job == TOMATO_RED_FEED) == (s_seg == SEG_FOLLOW) && s_thumbs_page != s_list_page) {
-        const int end = (s_list_page + 1) * PER_PAGE < s_item_count ? (s_list_page + 1) * PER_PAGE : s_item_count;
-        if (s_status.current >= 1 + end) {
+        if (s_status.current >= 1 + s_page_first[s_list_page + 1]) {
             s_thumbs_page = s_list_page;
             queue_visible_images();
         }

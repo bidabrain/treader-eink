@@ -2,10 +2,10 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 锁屏书卡：画最近在读的书和进度；设了壁纸就画壁纸，底部留一条书名、进度和电量。
+ * 锁屏书卡：画最近在读的书和进度；设了壁纸就画壁纸，底部留一条书名和电量（不显示进度）。
  * 数据（包括壁纸缓存）在屏幕上电前准备好，上电后只画图，缩短屏幕供电时间。
  * Lock-screen book card: the book being read and its progress; with a wallpaper set, the wallpaper plus a bottom
- * strip with the book, progress and battery. Data (including the wallpaper cache) is prepared before the panel
+ * strip with the book and battery (no progress). Data (including the wallpaper cache) is prepared before the panel
  * powers on, so the rails are up only for drawing.
  */
 
@@ -191,7 +191,8 @@ static void wake_hint(char* line, size_t cap) {
     else snprintf(line, cap, "%s", how);
 }
 
-// 壁纸铺满，底部白条写在读的书和电量。/ Full wallpaper with a white bottom strip for the book and battery.
+// 壁纸铺满，底部白条写在读的书和电量，不写读书进度（用户要求，1.2.7）。/ Full wallpaper with a white bottom strip
+// for the book and battery, without reading progress (user request, 1.2.7).
 static void draw_wallpaper(uint8_t* fb) {
     book_screen_draw(fb, s_wall);
     heap_caps_free(s_wall);
@@ -204,13 +205,8 @@ static void draw_wallpaper(uint8_t* fb) {
     char line[160];
     if (s_card.ok) {
         snprintf(line, sizeof(line), "%s", s_card.title);
-        tr_fit(line, TR_S(32), TR_W - 2 * TR_MARGIN - TR_S(150));
+        tr_fit(line, TR_S(32), TR_W - 2 * TR_MARGIN);
         tr_text(fb, TR_MARGIN, top + TR_S(20), TR_S(32), line, EPD_DRAW_ALIGN_LEFT, true);
-        if (s_card.has_progress) {
-            if (s_card.pct >= 100) snprintf(line, sizeof(line), "读完");
-            else snprintf(line, sizeof(line), "已读 %u%%", s_card.pct);
-            tr_text(fb, TR_W - TR_MARGIN, top + TR_S(22), TR_S(28), line, EPD_DRAW_ALIGN_RIGHT, false);
-        }
     }
     wake_hint(line, sizeof(line));
     tr_text_dim(fb, TR_W / 2, TR_H - TR_S(66), TR_S(26), line, EPD_DRAW_ALIGN_CENTER);

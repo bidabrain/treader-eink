@@ -68,6 +68,9 @@ static void item(int i, const char* id, const char* title, const char* author, c
     snprintf(x->title, sizeof(x->title), "%s", title);
     snprintf(x->author, sizeof(x->author), "%s", author);
     snprintf(x->likes, sizeof(x->likes), "%s", likes);
+    snprintf(x->comments, sizeof(x->comments), "%d", 12 + i * 7);
+    x->time = 1767000000 - i * 5400;
+    x->ratio = i % 3 == 1 ? 1.0f : 4.0f / 3;
     x->images = 4;
     x->seen = seen;
     char path[96];
@@ -114,6 +117,7 @@ static void fill_follow(void) {
     }
     s_item_count = 16;
     s_list_page = 0;
+    layout_list();
 }
 
 static void fill_rec(void) {
@@ -140,6 +144,7 @@ static void fill_rec(void) {
     downloaded("r2");
     s_item_count = 12;
     s_list_page = 0;
+    layout_list();
 }
 
 static const char* BODY =

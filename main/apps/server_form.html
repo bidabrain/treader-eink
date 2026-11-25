@@ -63,7 +63,12 @@ fetch('/form').then((r) => r.json()).then((d) => {
   saved = d.saved || '';
   hasToken = !!d.has_token;
   if (hasToken) $('#tokenHint').textContent = d.secret_kept || '已经填过令牌，不显示原值；留空表示不改。';
-}).catch(() => {});
+}).catch(() => {
+  // 读不到就别让人照着默认文案填错地方。/ Without the device's texts, do not let the defaults mislead.
+  $('#out').hidden = false;
+  $('#out').innerHTML = '<span class="err">读不到设备上的设置，请刷新网页再试。</span>';
+  $('#go').disabled = true;
+});
 $('#f').onsubmit = async (e) => {
   e.preventDefault();
   const url = $('#url').value.trim();

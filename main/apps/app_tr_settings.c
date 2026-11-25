@@ -621,6 +621,10 @@ static void web_start(void) {
         .form_html = server_form_start,
         .form_html_len = (size_t)(server_form_end - server_form_start - 1),
         .form_cb = web_form,
+        // WebDAV 的说明加地址和用户名接近 900 字节，默认 512 会截断，网页解析失败就只剩默认的服务器文案。
+        // WebDAV texts plus address and user name come near 900 bytes; the default 512 truncates them and the page,
+        // failing to parse, falls back to its generic server texts.
+        .form_reply_max = 1536,
     };
     s_web_srv = s_srv;   // 回调在 HTTP 任务里读它，开着期间不变 / Read by the HTTP task; fixed while serving
     s_web_tomato = s_page == P_SRC_TOMATO;

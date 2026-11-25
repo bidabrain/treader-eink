@@ -1585,8 +1585,8 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (busy && !s_step_loaded && s_status.current >= 1 && s_status.phase != TOMATO_FAILED) {
         s_step_loaded = true;
         if (s_job.job == TOMATO_WB_FEED) {
+            // 留在原来那页，回第一页用双击分段。/ Stay on the current page; a double tap on the segment goes to the first.
             if (s_view == V_LIST && s_job.hot == (s_seg == SEG_HOT)) {
-                s_list_page = 0;
                 load_list();
                 return APP_REDRAW_PAGE;
             }

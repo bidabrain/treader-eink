@@ -191,7 +191,7 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
             snprintf(msg, cap, "服务器关了正在关注");
             return ESP_OK;
         }
-        cJSON* old = following ? tomato_cache_read_json(file) : NULL;
+        cJSON* old = tomato_cache_read_json(file);
         const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
         out = cJSON_CreateObject();
         copy_num(out, root, "now");
@@ -228,9 +228,9 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
             cJSON_AddItemToArray(items, x);
             count++;
         }
-        // 正在关注：保留以前缓存的条目，新拉的排在前面；为你推荐每次整个替换。/ Following keeps earlier cached entries
-        // behind the fresh ones; For You is replaced whole each time.
-        if (following) count = tomato_list_merge_old(items, old_items, POST_KEEP > tomato_x_list_limit() ? POST_KEEP : tomato_x_list_limit());
+        // 两段都保留以前缓存的条目，新拉的排在前面（为你推荐也是，1.2.7 用户要求）。/ Both segments keep earlier
+        // cached entries behind the fresh ones (For You too since 1.2.7, by user request).
+        count = tomato_list_merge_old(items, old_items, POST_KEEP > tomato_x_list_limit() ? POST_KEEP : tomato_x_list_limit());
         cJSON_Delete(root);
         cJSON_Delete(old);
         mkdirs();

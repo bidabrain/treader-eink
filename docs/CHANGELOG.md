@@ -3,6 +3,19 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.7
+
+- 小红书列表改成和微博、X 一样一行一篇：左边大封面（按原图比例），右边头像、作者、时间和图数、标题、赞和评论；每页固定两篇，三档显示大小都一样。列表区左右各三成点一下翻页，中间打开。封面比例和评论数来自服务器已有的数据，升级后点一次“刷新”就有；老缓存先按竖图显示。
+  The Xiaohongshu list is now one note per row like Weibo and X: a large cover on the left (in its original proportions) with the avatar, author, time and image count, title, likes and comments on the right; two per page at every display size. The outer 30% on each side of the list turns the page and the middle opens. Cover ratios and comment counts come from data the server already has, so one Refresh after upgrading fills them in; older caches show portrait covers until then.
+- 小红书、微博、X 点“刷新”拿到新列表后停在原来那一页，不再跳回第一页；要看最新的，双击顶部当前分段。
+  Refreshing Xiaohongshu, Weibo or X now keeps the current page instead of jumping back to the first; double-tap the current segment at the top for the newest.
+- X 的“为你推荐”刷新后也接上以前缓存的推文（和正在关注一样，最多 100 条），不再每次整个替换；为你推荐仍不标“新”。
+  X For You now keeps earlier cached posts behind the fresh ones after a refresh (like Following, up to 100) instead of being replaced whole; For You still carries no "new" marks.
+- 锁屏用壁纸时，底部白条只写书名和电量，不再显示读书进度。
+  With a lock wallpaper, the bottom strip shows only the book title and battery, no longer the reading progress.
+- 修正设置 → 同步的“手机网页填写”扫码后打开的是小红书那套表单（地址示例、“设备令牌”），填不了 WebDAV：设备回给网页的设置内容超过 512 字节被截断，网页读不出来就停在默认文案。现在回复上限放大，WebDAV 正确显示目录地址、用户名和密码三栏；以后网页读不到设备设置会直接提示刷新，不再显示默认文案。番茄小说页填了长地址时也有同样问题，一并修好。
+  Fixed Settings > Sync "Fill in on phone" opening the Xiaohongshu form (its address example and "device token") instead of WebDAV: the settings the device sent the page exceeded 512 bytes and were cut, so the page fell back to its default texts. The reply limit is larger now and the page shows the WebDAV directory address, user name and password; if the page ever cannot read the device's settings it says to reload instead of showing defaults. The Tomato page had the same problem with long addresses and is fixed too.
+
 ## 2026-11-25 · Treader 1.2.6
 
 - 小红书、微博、X 联网下载改成两条连接同时下：列表缩略图每批分成两半各走一条，帖子和笔记的大图两张一对同时取。一条连接卡住时另一条照样在收；两条各自留着复用，不会每次重新握手。
