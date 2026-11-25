@@ -29,6 +29,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "freertos/idf_additions.h"
 #include "nvs.h"
 #include "tomato_internal.h"
 
@@ -377,8 +379,9 @@ static void batch_mark_missing(const tomato_srv_t* srv) {
 // The reply is a run of [4-byte big-endian length][JPEG] in request order; length 0 means the server has none. When
 // it breaks midway, the complete images are kept and the rest asked for again on a fresh connection; a round that
 // gains nothing ends it until next time.
-static esp_err_t batch_fetch(tomato_srv_batch_t* b, int n) {
-    int first = 0, got = 0, rounds = 0;
+// 取 [lo, hi) 这几张。/ Fetch entries [lo, hi).
+static esp_err_t batch_fetch(tomato_srv_batch_t* b, int lo, int n) {
+    int first = lo, got = 0, rounds = 0;
     bool gained = true;
     esp_err_t err = ESP_OK;
     while (first < n && gained && !(b->cancel && *b->cancel)) {
@@ -389,7 +392,7 @@ static esp_err_t batch_fetch(tomato_srv_batch_t* b, int n) {
         char* body = arr ? cJSON_PrintUnformatted(root) : NULL;
         cJSON_Delete(root);
         if (!body) return ESP_ERR_NO_MEM;
-        if (rounds++) ESP_LOGW(TAG, "batch retry (%d of %d images left)", n - first, n);
+        if (rounds++) ESP_LOGW(TAG, "batch retry (%d of %d images left)", n - first, n - lo);
         uint8_t* buf = NULL;
         size_t len = 0;
         char ignore[64];
@@ -421,7 +424,7 @@ static esp_err_t batch_fetch(tomato_srv_batch_t* b, int n) {
         gained = first > before || rounds == 1;
         if (err != ESP_FAIL) break;
     }
-    ESP_LOGI(TAG, "batch %d/%d images in %d rounds", got, n, rounds);
+    ESP_LOGI(TAG, "batch %d/%d images in %d rounds", got, n - lo, rounds);
     return err;
 }
 
@@ -441,6 +444,97 @@ bool tomato_srv_batch_add(tomato_srv_batch_t* b, const char* rel, const char* de
     return true;
 }
 
+/* ---- 两条连接 / Two connections ---- */
+
+// 辅助任务用第二条连接，和当前任务同时取：一批小图的另一半，或者下一张大图。一条断流时另一条照样在收。辅助任务常驻
+// （栈在 PSRAM），第二条连接和第一条一样留着复用。
+// The helper task fetches on the second connection while the current task works: the other half of a batch, or the
+// next full image. One stalled connection does not hold up the other. The helper stays resident (stack in PSRAM) and
+// its connection is kept for reuse like the first.
+#define HELPER_STACK 12288
+
+static TaskHandle_t s_helper;
+static SemaphoreHandle_t s_helper_done;
+static void (*s_helper_fn)(void*);
+static void* s_helper_arg;
+
+static void helper_task(void* arg) {
+    (void)arg;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        s_helper_fn(s_helper_arg);
+        xSemaphoreGive(s_helper_done);
+    }
+}
+
+// 交给辅助任务开始做；起不来返回 false，调用方自己做。做完用 helper_wait 等。/ Hand fn to the helper; false when it
+// cannot start, and the caller does the work itself. Wait for it with helper_wait.
+static bool helper_start(void (*fn)(void*), void* arg) {
+    if (!s_helper) {
+        if (!s_helper_done && !(s_helper_done = xSemaphoreCreateBinary())) return false;
+        if (xTaskCreatePinnedToCoreWithCaps(helper_task, "srv_img2", HELPER_STACK, NULL, 4, &s_helper, tskNO_AFFINITY,
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) != pdPASS) {
+            s_helper = NULL;
+            return false;
+        }
+        tomato_http_bind_second(s_helper);
+    }
+    s_helper_fn = fn;
+    s_helper_arg = arg;
+    xTaskNotifyGive(s_helper);
+    return true;
+}
+
+static void helper_wait(void) { xSemaphoreTake(s_helper_done, portMAX_DELAY); }
+
+typedef struct {
+    tomato_srv_batch_t* b;
+    int lo, hi;
+    esp_err_t err;
+} half_job_t;
+
+static void half_job(void* arg) {
+    half_job_t* j = arg;
+    j->err = batch_fetch(j->b, j->lo, j->hi);
+}
+
+// 两条连接各取一半；辅助任务起不来就一条连接取全部。/ Each connection fetches half; without the helper one
+// connection fetches all.
+static esp_err_t batch_fetch_both(tomato_srv_batch_t* b, int n) {
+    const int half = (n + 1) / 2;
+    half_job_t j = {.b = b, .lo = half, .hi = n, .err = ESP_OK};
+    if (n < 2 || !helper_start(half_job, &j)) return batch_fetch(b, 0, n);
+    esp_err_t err = batch_fetch(b, 0, half);
+    helper_wait();
+    return j.err == ESP_ERR_NOT_FOUND ? ESP_ERR_NOT_FOUND : err;
+}
+
+typedef struct {
+    const tomato_srv_t* srv;
+    const char* path;
+    const char* dest;
+    int timeout_ms;
+    const volatile bool* cancel;
+    esp_err_t err;
+} image_job_t;
+
+static void image_job(void* arg) {
+    image_job_t* j = arg;
+    j->err = tomato_srv_image(j->srv, j->path, j->dest, j->timeout_ms, j->cancel);
+}
+
+void tomato_srv_image_pair(const tomato_srv_t* srv, const char* path_a, const char* dest_a, const char* path_b,
+                           const char* dest_b, int timeout_ms, const volatile bool* cancel, esp_err_t* err_a,
+                           esp_err_t* err_b) {
+    image_job_t j = {.srv = srv, .path = path_b, .dest = dest_b, .timeout_ms = timeout_ms, .cancel = cancel,
+                     .err = ESP_ERR_INVALID_ARG};
+    const bool both = path_b && helper_start(image_job, &j);
+    *err_a = tomato_srv_image(srv, path_a, dest_a, timeout_ms, cancel);
+    if (both) helper_wait();
+    else if (path_b) image_job(&j);
+    if (err_b) *err_b = j.err;
+}
+
 void tomato_srv_batch_flush(tomato_srv_batch_t* b) {
     const int n = b->n;
     b->n = 0;
@@ -448,11 +542,12 @@ void tomato_srv_batch_flush(tomato_srv_batch_t* b) {
     if (!batch_known_missing(b->srv)) {
         // 404 是旧服务器没有这个接口；别的错误（断网、超时）这一批就算了，下次再补。/ A 404 is an older server without
         // the endpoint; any other error (network, timeout) gives up on this batch until next time.
-        if (batch_fetch(b, n) != ESP_ERR_NOT_FOUND) return;
+        if (batch_fetch_both(b, n) != ESP_ERR_NOT_FOUND) return;
         batch_mark_missing(b->srv);
     }
     char path[112];
     for (int i = 0; i < n && !(b->cancel && *b->cancel); i++) {
+        if (tomato_file_exists(b->dest[i])) continue;
         snprintf(path, sizeof(path), "/api/device/v1/%s%s", b->rel[i], b->query);
         tomato_srv_image(b->srv, path, b->dest[i], IMG_TIMEOUT_MS, b->cancel);
     }

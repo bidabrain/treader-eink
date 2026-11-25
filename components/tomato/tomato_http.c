@@ -22,6 +22,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_tls_errors.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 #include "tomato_internal.h"
 
@@ -43,49 +45,60 @@ void tomato_http_clear_detail(void) { s_detail[0] = 0; }
 const char* tomato_http_detail(void) { return s_detail; }
 void tomato_http_set_detail(const char* text) { snprintf(s_detail, sizeof(s_detail), "%s", text ? text : ""); }
 
-// 最近一次连接失败的底层原因（esp-tls 错误码），由 tomato_http_open 记下。/ The last connect failure's esp-tls code.
-static esp_err_t s_tls_err;
+/* ---- 连接复用 / Connection reuse ---- */
 
-/* ---- 请求耗时 / Request timing ---- */
+// 每条连接留一个句柄：同步任务（以及其他所有任务）用第 0 条，成批取图的辅助任务用第 1 条，两条各自复用、互不干扰。
+// 一批封面原来每张都要握手，现在同一个服务器每条连接只握手一次。
+// One kept handle per connection: the sync task (and every other task) uses connection 0, the image batch helper
+// uses connection 1, and each reuses its own without touching the other. A batch of covers used to pay a handshake per
+// image; now one server costs one handshake per connection.
+#define HDR_MAX 4
+#define CONN_N 2
 
-// 每个请求在日志里记一行：总耗时、建连（TCP+TLS）、等响应头，方便查网络慢在哪。/ Each request logs one line: total
-// time, open (TCP+TLS) and header wait, to show where a slow network spends its time.
-static int64_t s_open_ms;     // 建连（TCP+TLS）用时，复用为 0 / Open (TCP+TLS) time, 0 when reused
-static int64_t s_wait_ms;     // 发出请求到收到响应头 / From request sent to headers in
-static const char* s_kind = "new";
+typedef struct {
+    esp_http_client_handle_t keep;
+    char keep_origin[160];
+    char hdr[HDR_MAX][24];   // 本连接上设过的头，复用前清掉 / Headers set on this client, cleared on reuse
+    int hdr_n;
+    bool reused;             // 当前请求走的是复用来的连接 / The current request runs on a reused connection
+    // 留着的句柄连接还开着；断网后关了连接，句柄和 TLS 会话还在。/ The kept handle's connection is open; after the
+    // network drops the connection is closed but the handle and its TLS session stay.
+    bool keep_live;
+    // 最近一次连接失败的底层原因（esp-tls 错误码），由 tomato_http_open 记下。/ The last connect failure's esp-tls code.
+    esp_err_t tls_err;
+    // 每个请求在日志里记一行：总耗时、建连（TCP+TLS）、等响应头，方便查网络慢在哪。/ Each request logs one line: total
+    // time, open (TCP+TLS) and header wait, to show where a slow network spends its time.
+    int64_t t0;              // 请求起点 / Request start
+    int64_t open_ms;         // 建连（TCP+TLS）用时，复用为 0 / Open (TCP+TLS) time, 0 when reused
+    int64_t wait_ms;         // 发出请求到收到响应头 / From request sent to headers in
+    const char* kind;
+} conn_t;
+
+static conn_t s_conn[CONN_N];
+static TaskHandle_t s_second_task;
+
+void tomato_http_bind_second(TaskHandle_t task) { s_second_task = task; }
+
+static conn_t* conn(void) {
+    return s_second_task && xTaskGetCurrentTaskHandle() == s_second_task ? &s_conn[1] : &s_conn[0];
+}
 
 // 打开连接；域名解析失败就换公共 DNS 再试一次。/ Open the connection; on a DNS failure retry once with public DNS.
 esp_err_t tomato_http_open(esp_http_client_handle_t c, int len) {
-    s_tls_err = ESP_OK;
+    conn_t* k = conn();
+    k->tls_err = ESP_OK;
     const int64_t t0 = esp_timer_get_time();
     esp_err_t err = esp_http_client_open(c, len);
-    s_open_ms = (esp_timer_get_time() - t0) / 1000;
+    k->open_ms = (esp_timer_get_time() - t0) / 1000;
     if (err == ESP_OK) return ESP_OK;
     int code = 0, flags = 0;
-    s_tls_err = esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
-    if (s_tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME && tomato_net_use_public_dns()) {
+    k->tls_err = esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
+    if (k->tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME && tomato_net_use_public_dns()) {
         err = esp_http_client_open(c, len);
-        s_tls_err = err == ESP_OK ? ESP_OK : esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
+        k->tls_err = err == ESP_OK ? ESP_OK : esp_http_client_get_and_clear_last_tls_error(c, &code, &flags);
     }
     return err;
 }
-
-/* ---- 连接复用 / Connection reuse ---- */
-
-// 后台同步一次只跑一个任务，所以只留一个连接。一批封面原来每张都要握手，现在同一个服务器只握手一次。
-// The sync task runs one job at a time, so one kept connection is enough. A batch of covers used to pay a handshake
-// per image; now one server costs one handshake.
-#define HDR_MAX 4
-static esp_http_client_handle_t s_keep;
-static char s_keep_origin[160];
-static char s_hdr[HDR_MAX][24];  // 本连接上设过的头，复用前清掉 / Headers set on this client, cleared on reuse
-static int s_hdr_n;
-static bool s_reused;            // 当前请求走的是复用来的连接 / The current request runs on a reused connection
-// 留着的句柄连接还开着；断网后关了连接，句柄和 TLS 会话还在。/ The kept handle's connection is open; after the network
-// drops the connection is closed but the handle and its TLS session stay.
-static bool s_keep_live;
-// 每个请求的起点（算总耗时）。/ Each request's start, for its total time.
-static int64_t s_t0;
 
 // 来源：协议://主机:端口，没写端口就补默认的（esp_http_client_get_url 总带端口，两边要一样）。
 // Origin: scheme://host:port, adding the default port when absent (esp_http_client_get_url always has one).
@@ -100,48 +113,55 @@ static void origin_of(const char* url, char* out, size_t cap) {
     snprintf(out, cap, "%.*s://%.*s%s", (int)(p - url), url, (int)n, host, has_port ? "" : https ? ":443" : ":80");
 }
 
-static void forget_headers(esp_http_client_handle_t c) {
-    for (int i = 0; i < s_hdr_n; i++) esp_http_client_delete_header(c, s_hdr[i]);
-    s_hdr_n = 0;
+static void forget_headers(conn_t* k, esp_http_client_handle_t c) {
+    for (int i = 0; i < k->hdr_n; i++) esp_http_client_delete_header(c, k->hdr[i]);
+    k->hdr_n = 0;
+}
+
+static void drop_conn(conn_t* k) {
+    if (!k->keep) return;
+    esp_http_client_close(k->keep);
+    esp_http_client_cleanup(k->keep);
+    k->keep = NULL;
+    k->keep_live = false;
+    k->keep_origin[0] = 0;
 }
 
 void tomato_http_drop(void) {
-    if (!s_keep) return;
-    esp_http_client_close(s_keep);
-    esp_http_client_cleanup(s_keep);
-    s_keep = NULL;
-    s_keep_live = false;
-    s_keep_origin[0] = 0;
+    for (int i = 0; i < CONN_N; i++) drop_conn(&s_conn[i]);
 }
 
 void tomato_http_suspend(void) {
-    if (!s_keep) return;
-    esp_http_client_close(s_keep);
-    s_keep_live = false;
+    for (int i = 0; i < CONN_N; i++) {
+        if (!s_conn[i].keep) continue;
+        esp_http_client_close(s_conn[i].keep);
+        s_conn[i].keep_live = false;
+    }
 }
 
 esp_http_client_handle_t tomato_http_take(const char* url, int timeout_ms, esp_http_client_method_t method,
                                           int tx_size) {
-    char origin[sizeof(s_keep_origin)];
+    conn_t* k = conn();
+    char origin[sizeof(k->keep_origin)];
     origin_of(url, origin, sizeof(origin));
-    s_reused = false;
-    s_t0 = esp_timer_get_time();
-    if (s_keep && !strcasecmp(origin, s_keep_origin) && esp_http_client_set_url(s_keep, url) == ESP_OK) {
-        esp_http_client_handle_t c = s_keep;
-        s_keep = NULL;
-        forget_headers(c);
+    k->reused = false;
+    k->t0 = esp_timer_get_time();
+    if (k->keep && !strcasecmp(origin, k->keep_origin) && esp_http_client_set_url(k->keep, url) == ESP_OK) {
+        esp_http_client_handle_t c = k->keep;
+        k->keep = NULL;
+        forget_headers(k, c);
         esp_http_client_set_method(c, method);
         esp_http_client_set_timeout_ms(c, timeout_ms);
         // 连接还开着才算复用；断网关掉的要重连，但能用保存的 TLS 会话。/ Only a live connection counts as reused; one
         // closed by a network drop reconnects, but with the saved TLS session.
-        s_reused = s_keep_live;
-        s_kind = s_keep_live ? "reused" : "resumed";
-        s_keep_live = false;
+        k->reused = k->keep_live;
+        k->kind = k->keep_live ? "reused" : "resumed";
+        k->keep_live = false;
         return c;
     }
-    tomato_http_drop();
-    s_hdr_n = 0;
-    s_kind = "new";
+    drop_conn(k);
+    k->hdr_n = 0;
+    k->kind = "new";
     esp_http_client_config_t hc = {
         .url = url,
         .timeout_ms = timeout_ms,
@@ -159,12 +179,14 @@ esp_http_client_handle_t tomato_http_take(const char* url, int timeout_ms, esp_h
 }
 
 void tomato_http_header(esp_http_client_handle_t c, const char* name, const char* value) {
+    conn_t* k = conn();
     if (esp_http_client_set_header(c, name, value) != ESP_OK) return;
-    for (int i = 0; i < s_hdr_n; i++) if (!strcasecmp(s_hdr[i], name)) return;
-    if (s_hdr_n < HDR_MAX && strlen(name) < sizeof(s_hdr[0])) snprintf(s_hdr[s_hdr_n++], sizeof(s_hdr[0]), "%s", name);
+    for (int i = 0; i < k->hdr_n; i++) if (!strcasecmp(k->hdr[i], name)) return;
+    if (k->hdr_n < HDR_MAX && strlen(name) < sizeof(k->hdr[0])) snprintf(k->hdr[k->hdr_n++], sizeof(k->hdr[0]), "%s", name);
 }
 
 esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int body_len, int64_t* length, int* status) {
+    conn_t* k = conn();
     *length = -1;
     *status = 0;
     for (int attempt = 0; attempt < 2; attempt++) {
@@ -176,11 +198,11 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
             const int64_t tw = esp_timer_get_time();
             *length = esp_http_client_fetch_headers(c);
             *status = esp_http_client_get_status_code(c);
-            s_wait_ms = (esp_timer_get_time() - tw) / 1000;
+            k->wait_ms = (esp_timer_get_time() - tw) / 1000;
             // 失败时返回负数；0 是长度未知（分块）。/ Negative on failure; 0 means unknown length (chunked).
             if (*length >= 0 && *status > 0) {
                 if (*length == 0) *length = -1;
-                s_reused = false;
+                k->reused = false;
                 return ESP_OK;
             }
             err = ESP_FAIL;
@@ -193,8 +215,8 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
         // 新连接建不起来（Wi-Fi 刚连上、信号弱时常见）也再试一次；服务器真的不通就是多等一轮。
         // A new connection that never opens (common right after Wi-Fi joins on a weak signal) gets one more try too;
         // an unreachable server only costs one more round.
-        if (!connect_failed && (!s_reused || esp_timer_get_time() - t0 > 2000 * 1000)) return err;
-        s_reused = false;
+        if (!connect_failed && (!k->reused || esp_timer_get_time() - t0 > 2000 * 1000)) return err;
+        k->reused = false;
         esp_http_client_close(c);
     }
     return ESP_FAIL;
@@ -202,16 +224,17 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
 
 void tomato_http_give(esp_http_client_handle_t c, bool done) {
     if (!c) return;
-    s_reused = false;
+    conn_t* k = conn();
+    k->reused = false;
     char url[384];
     if (esp_http_client_get_url(c, url, sizeof(url)) != ESP_OK) url[0] = 0;
     const char* path = strstr(url, "://");
     path = path ? strchr(path + 3, '/') : NULL;
-    // 总耗时、建连、等响应头、状态码和路径。/ Total, open, header wait, status and path.
-    ESP_LOGI(TAG, "req %s %lld ms (open %lld, wait %lld) http=%d %s %s", done ? "ok" : "fail",
-             (long long)((esp_timer_get_time() - s_t0) / 1000), (long long)s_open_ms, (long long)s_wait_ms,
-             esp_http_client_get_status_code(c), s_kind, path ? path : "");
-    s_open_ms = s_wait_ms = 0;
+    // 总耗时、建连、等响应头、状态码、哪条连接和路径。/ Total, open, header wait, status, which connection and path.
+    ESP_LOGI(TAG, "req %s %lld ms (open %lld, wait %lld) http=%d %s#%d %s", done ? "ok" : "fail",
+             (long long)((esp_timer_get_time() - k->t0) / 1000), (long long)k->open_ms, (long long)k->wait_ms,
+             esp_http_client_get_status_code(c), k->kind ? k->kind : "new", (int)(k - s_conn), path ? path : "");
+    k->open_ms = k->wait_ms = 0;
     const bool keep = done && esp_http_client_is_complete_data_received(c) &&
                       esp_http_client_is_persistent_connection(c);
     if (!keep) esp_http_client_close(c);
@@ -221,19 +244,20 @@ void tomato_http_give(esp_http_client_handle_t c, bool done) {
     }
     // 连接坏了也留着句柄：TLS 会话还在，下一个请求重连时走简化握手。/ Keep the handle even when the connection broke:
     // its TLS session survives, so the next request reconnects with the short handshake.
-    tomato_http_drop();
-    s_keep = c;
-    s_keep_live = keep;
-    origin_of(url, s_keep_origin, sizeof(s_keep_origin));
+    drop_conn(k);
+    k->keep = c;
+    k->keep_live = keep;
+    origin_of(url, k->keep_origin, sizeof(k->keep_origin));
 }
 
 static void note(esp_err_t err, int status, esp_http_client_handle_t c) {
     if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) return;
+    const esp_err_t tls_err = conn()->tls_err;
     if (status && (status < 200 || status >= 300)) snprintf(s_detail, sizeof(s_detail), "HTTP %d", status);
-    else if (s_tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME) snprintf(s_detail, sizeof(s_detail), "域名解析失败");
-    else if (s_tls_err == ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED || s_tls_err == ESP_ERR_MBEDTLS_X509_CRT_PARSE_FAILED)
+    else if (tls_err == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME) snprintf(s_detail, sizeof(s_detail), "域名解析失败");
+    else if (tls_err == ESP_ERR_MBEDTLS_SSL_HANDSHAKE_FAILED || tls_err == ESP_ERR_MBEDTLS_X509_CRT_PARSE_FAILED)
         snprintf(s_detail, sizeof(s_detail), "HTTPS 握手失败");
-    else if (s_tls_err == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT) snprintf(s_detail, sizeof(s_detail), "连接服务器超时");
+    else if (tls_err == ESP_ERR_ESP_TLS_CONNECTION_TIMEOUT) snprintf(s_detail, sizeof(s_detail), "连接服务器超时");
     else if (err == ESP_ERR_HTTP_CONNECT) snprintf(s_detail, sizeof(s_detail), "连不上服务器 errno %d", c ? esp_http_client_get_errno(c) : 0);
     else if (err == ESP_ERR_HTTP_EAGAIN) snprintf(s_detail, sizeof(s_detail), "服务器响应超时");
     else snprintf(s_detail, sizeof(s_detail), "%.40s", esp_err_to_name(err));

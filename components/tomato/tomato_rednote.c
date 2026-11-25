@@ -115,12 +115,6 @@ static esp_err_t red_poll(const tomato_red_config_t* cfg, const char* first, con
     return tomato_srv_poll(&srv, first, again, key, LIVE_TIMEOUT_MS, LIVE_MAX_MS, cancel, out, msg, cap);
 }
 
-static esp_err_t fetch_image(const tomato_red_config_t* cfg, const char* path, const char* dest,
-                             const volatile bool* cancel) {
-    const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
-    return tomato_srv_image(&srv, path, dest, TIMEOUT_MS, cancel);
-}
-
 static void mkdirs(void) {
     mkdir(TOMATO_RED_DIR, 0775);
     mkdir(TOMATO_RED_DIR "/n", 0775);
@@ -339,6 +333,7 @@ static esp_err_t run_rec(const tomato_red_config_t* cfg, bool refresh, const vol
 static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t* r, const volatile bool* cancel,
                           tomato_hupu_progress_t progress, char* msg, size_t cap) {
     char sid[32], dir[64], file[96], path[112];
+    const tomato_srv_t srv = {.cfg = cfg, .header = "x-rednote-token", .name = "rednote"};
     safe_id(r->id, sid, sizeof(sid));
     if (!sid[0]) { snprintf(msg, cap, "笔记编号不对"); return ESP_ERR_INVALID_ARG; }
     tomato_red_note_dir(sid, dir, sizeof(dir));
@@ -401,17 +396,26 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
     for (;;) {
         failed = 0;
         int done = 0;
-        for (int k = 1; k <= images && !*cancel && !down; k++) {
-            char dest[96];
-            tomato_red_img_path(sid, k, dest, sizeof(dest));
-            if (!exists(dest)) {
-                snprintf(path, sizeof(path), r->rec ? "/api/device/v1/img/%s/%d.jpg?wait=0" : "/api/device/v1/img/%s/%d.jpg",
-                         sid, k);
-                const esp_err_t err = fetch_image(cfg, path, dest, cancel);
-                if (err != ESP_OK) failed++;
-                if (err == ESP_ERR_HTTP_CONNECT) down = true;
+        // 缺的两张一对，两条连接同时取。/ Missing images go in pairs, both connections at once.
+        for (int k = 1; k <= images && !*cancel && !down;) {
+            char paths[2][112], dests[2][96];
+            int m = 0;
+            for (; k <= images && m < 2; k++) {
+                tomato_red_img_path(sid, k, dests[m], sizeof(dests[m]));
+                if (exists(dests[m])) { done++; continue; }
+                snprintf(paths[m], sizeof(paths[m]),
+                         r->rec ? "/api/device/v1/img/%s/%d.jpg?wait=0" : "/api/device/v1/img/%s/%d.jpg", sid, k);
+                m++;
             }
-            if (exists(dest) && ++done > shown) progress(1 + (shown = done), images + 1);
+            esp_err_t e[2] = {ESP_OK, ESP_OK};
+            if (m) tomato_srv_image_pair(&srv, paths[0], dests[0], m > 1 ? paths[1] : NULL, dests[1], TIMEOUT_MS,
+                                         cancel, &e[0], &e[1]);
+            for (int j = 0; j < m; j++) {
+                if (e[j] != ESP_OK) failed++;
+                if (e[j] == ESP_ERR_HTTP_CONNECT) down = true;
+                if (exists(dests[j])) done++;
+            }
+            if (done > shown) progress(1 + (shown = done), images + 1);
         }
         // 关注的笔记服务器早就做完了，缺的就是没有，不再等。/ Following notes were finished long ago on the server;
         // a missing one is simply absent, so do not wait.

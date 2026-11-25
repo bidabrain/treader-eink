@@ -340,16 +340,25 @@ static esp_err_t run_post(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
     }
     progress(1, images + 1);
     int failed = 0;
-    for (int k = 1; k <= images && !*cancel && !down; k++) {
-        char dest[96];
-        tomato_x_img_path(sid, k, dest, sizeof(dest));
-        if (!tomato_file_exists(dest)) {
-            snprintf(path, sizeof(path), "/api/device/v1/img/%s/%d.jpg", sid, k);
-            const esp_err_t err = tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
-            if (err != ESP_OK) failed++;
-            if (err == ESP_ERR_HTTP_CONNECT) down = true;
+    // 缺的大图两张一对，两条连接同时取；进度按看过的序号报。/ Missing full images go in pairs, both connections at
+    // once; progress reports by position checked.
+    for (int k = 1; k <= images && !*cancel && !down;) {
+        char paths[2][112], dests[2][96];
+        int m = 0;
+        for (; k <= images && m < 2; k++) {
+            tomato_x_img_path(sid, k, dests[m], sizeof(dests[m]));
+            if (tomato_file_exists(dests[m])) continue;
+            snprintf(paths[m], sizeof(paths[m]), "/api/device/v1/img/%s/%d.jpg", sid, k);
+            m++;
         }
-        progress(1 + k, images + 1);
+        esp_err_t e[2] = {ESP_OK, ESP_OK};
+        if (m) tomato_srv_image_pair(srv, paths[0], dests[0], m > 1 ? paths[1] : NULL, dests[1], TIMEOUT_MS, cancel,
+                                     &e[0], &e[1]);
+        for (int j = 0; j < m; j++) {
+            if (e[j] != ESP_OK) failed++;
+            if (e[j] == ESP_ERR_HTTP_CONNECT) down = true;
+        }
+        progress(k, images + 1);
     }
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     prune_posts(sid);

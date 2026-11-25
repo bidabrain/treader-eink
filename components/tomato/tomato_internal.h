@@ -14,6 +14,8 @@
 #include "cJSON.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "tomato.h"
 
 #define TOMATO_REMOVED_MAX 64
@@ -36,13 +38,14 @@ bool tomato_net_use_public_dns(void);
 /// 打开 HTTP 连接；域名解析失败时换公共 DNS 再试一次，失败原因留给提示用。
 /// Open an HTTP connection, retrying once with public DNS on a lookup failure; the cause is kept for messages.
 esp_err_t tomato_http_open(esp_http_client_handle_t c, int len);
-/// 断网时关掉留着的连接，但留下 TLS 会话给下次重连。/ On network down close the kept connection but keep its TLS
-/// session for the next reconnect.
+/// 断网时关掉留着的连接（两条都关），但留下 TLS 会话给下次重连。/ On network down close the kept connections (both)
+/// but keep their TLS sessions for the next reconnect.
 void tomato_http_suspend(void);
 /// 取一个连到 url 的 client：和上一个请求同一来源（协议、主机、端口）且连接还开着就复用，省掉一次握手；否则新建。
-/// 只在同步任务里用。头只能用 tomato_http_header 设，复用时会清掉上一个请求的头。
+/// 只在同步任务和成批取图的辅助任务里用（各用各的连接）。头只能用 tomato_http_header 设，复用时会清掉上一个请求的头。
 /// Take a client for url: reuse the kept one when the previous request had the same origin (scheme, host, port) and
-/// its connection is still open, saving a handshake; otherwise create one. Sync task only. Set headers only through
+/// its connection is still open, saving a handshake; otherwise create one. Sync task and image batch helper only (each
+/// on its own connection). Set headers only through
 /// tomato_http_header so a reused client drops the previous request's headers.
 esp_http_client_handle_t tomato_http_take(const char* url, int timeout_ms, esp_http_client_method_t method,
                                           int tx_size);
@@ -55,8 +58,12 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
 /// 用完交回：响应完整收完且服务器允许保持连接时留着给下一个请求，否则关掉。/ Give a client back: kept for the next
 /// request when the reply was read in full and the server allows keep-alive, otherwise closed.
 void tomato_http_give(esp_http_client_handle_t c, bool done);
-/// 关掉留着的连接；断网前调用。/ Close the kept connection; call before going offline.
+/// 关掉留着的连接（两条都关）；断网前调用。/ Close the kept connections (both); call before going offline.
 void tomato_http_drop(void);
+/// 指定用第二条连接的任务（成批取图的辅助任务）；其他任务都用第一条。take、header、begin、give 和 open 按调用它们的
+/// 任务选连接。/ Name the task that uses the second connection (the image batch helper); every other task uses the
+/// first. take, header, begin, give and open pick the connection by the calling task.
+void tomato_http_bind_second(TaskHandle_t task);
 
 /// 百分号编码。keep_slash 用于 /download/ 路径。/ Percent-encode; keep_slash for /download/ paths.
 void tomato_url_escape(const char* in, char* out, size_t cap, bool keep_slash);
@@ -208,6 +215,12 @@ void tomato_srv_batch_begin(tomato_srv_batch_t* b, const tomato_srv_t* srv, cons
 bool tomato_srv_batch_add(tomato_srv_batch_t* b, const char* rel, const char* dest);
 /// 取回攒着的。失败的图跳过，等下次再补。/ Fetch what is queued. Failed images are skipped until next time.
 void tomato_srv_batch_flush(tomato_srv_batch_t* b);
+/// 两张大图同时取：a 用当前任务的连接，b 交给辅助任务用第二条连接；path_b 为 NULL 时只取 a。两张都结束才返回。
+/// 只在同步任务里用。/ Fetch two full images at once: a on the current task's connection, b on the helper's second
+/// connection; only a when path_b is NULL. Returns once both are done. Sync task only.
+void tomato_srv_image_pair(const tomato_srv_t* srv, const char* path_a, const char* dest_a, const char* path_b,
+                           const char* dest_b, int timeout_ms, const volatile bool* cancel, esp_err_t* err_a,
+                           esp_err_t* err_b);
 /// 编号只留字母和数字，免得拼进路径时出现 ../。/ Keep only letters and digits from ids used in paths.
 void tomato_safe_id(const char* in, char* out, size_t cap);
 bool tomato_file_exists(const char* path);

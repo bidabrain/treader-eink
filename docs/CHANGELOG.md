@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.6
+
+- 小红书、微博、X 联网下载改成两条连接同时下：列表缩略图每批分成两半各走一条，帖子和笔记的大图两张一对同时取。一条连接卡住时另一条照样在收；两条各自留着复用，不会每次重新握手。
+  Xiaohongshu, Weibo and X now download over two connections at once: each batch of list thumbnails is split between them, and post and note images are fetched two at a time. One stalled connection no longer holds up the other, and each keeps its connection for reuse instead of handshaking every time.
+
 ## 2026-11-25 · Treader 1.2.5
 
 - 小红书、微博、X 的列表缩略图（还有小红书推荐的封面）改成成批下载：缺的图每 18 张用一个请求取回，不再一张一张各等一个来回（经 Cloudflare 隧道实测每张 1～3.6 秒）。一批传到一半断了，已经收全的图先存下，剩下的换新连接再要；一轮一张都没多收到就停下，翻到这页时再补。需要 rednote 0.3.4、weibo 0.1.6、x 0.1.5 或更新的服务器；旧服务器自动退回逐张取。
