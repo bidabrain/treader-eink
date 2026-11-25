@@ -27,6 +27,7 @@
 #include "read_pico_pmu_protocol.h"
 #include "sc7a20h_lab.h"
 #include "settings.h"
+#include "tomato.h"
 #include "tr_auth.h"
 #include "ui_kit.h"
 
@@ -411,9 +412,11 @@ esp_err_t app_enter_host_sleep(app_sleep_mode_t mode) {
     return err;
 }
 
-void enter_lock_and_sleep(
-    EpdiyHighlevelState* hl, int64_t* ignore_until_ms, sc7a20h_handle_t acc
-) {
+// 锁屏画面已经画好（下载在跑时先画了一遍），enter_lock_and_sleep 就不再重画。/ The lock face is already up (drawn when
+// a download kept the lock awake), so enter_lock_and_sleep does not redraw it.
+static bool s_face_shown;
+
+static void lock_face_show(EpdiyHighlevelState* hl) {
     // 乐曲的 32 kHz 采样中断和线圈电流会干扰锁屏整屏刷新，先停再上屏轨。
     // The score's 32 kHz sample ISR and coil current disturb the lock-face full refresh; stop it before the rails come up.
     if (read_pico_buzzer_score_busy()) (void)read_pico_buzzer_score_stop();
@@ -431,6 +434,79 @@ void enter_lock_and_sleep(
     epd_hl_update_screen_from_white(hl, MODE_GC16, 25);
 
     app_lock_wait_key_idle(800);
+    s_face_shown = true;
+}
+
+// 回到主循环前的收尾：参考帧和屏幕都归零，回到主循环后由当前页自己画一遍，不必知道是哪一页。
+// Wrap-up before the main loop resumes: zero the reference frame and the panel; the current page redraws after the loop
+// resumes, without knowing which page it is.
+static void lock_face_leave(EpdiyHighlevelState* hl, int64_t* ignore_until_ms) {
+    read_pico_pmu_drain_events();
+    epd_poweron();
+    epd_clear();
+    epd_hl_set_all_white(hl);
+    read_pico_pmu_drain_events();
+    if (ignore_until_ms) {
+        *ignore_until_ms = esp_timer_get_time() / 1000 + APP_LOCK_IGNORE_BOOT_MS;
+    }
+    s_face_shown = false;
+    ESP_LOGI(TAG, "unlocked");
+}
+
+// 画面留着、屏轨断电，主机不睡；每 200 毫秒看一次电源键和下载有没有往前走。返回 true 是按了电源键。
+// The picture stays with the panel rails off and the host awake; every 200 ms look at the power key and at whether the
+// download moves. True means the power key was pressed.
+static bool hold_for_download(EpdiyHighlevelState* hl, int64_t* ignore_until_ms) {
+    epd_poweroff();
+    const int64_t t0 = esp_timer_get_time() / 1000;
+    int64_t moved = t0;
+    uint32_t stamp = tomato_sync_stamp();
+    const char* why = NULL;
+    ESP_LOGI(TAG, "lock held while a download runs");
+    while (tomato_sync_downloading()) {
+        if (read_pico_pmu_take_key_short()) {
+            lock_face_leave(hl, ignore_until_ms);
+            return true;
+        }
+        const int64_t now = esp_timer_get_time() / 1000;
+        const uint32_t s = tomato_sync_stamp();
+        if (s != stamp) {
+            stamp = s;
+            moved = now;
+        }
+        const pmu_snapshot_t* p = read_pico_pmu_get();
+        if (now - moved > APP_LOCK_HOLD_STALL_MS) why = "no progress";
+        else if (now - t0 > APP_LOCK_HOLD_MAX_MS) why = "time limit";
+        else if (p && p->battery_mv && p->battery_mv < APP_LOCK_HOLD_MIN_MV) why = "low battery";
+        if (why) break;
+        vTaskDelay(pdMS_TO_TICKS(APP_LOCK_POLL_MS));
+    }
+    if (why) {
+        ESP_LOGW(TAG, "hold ended (%s), stopping the download", why);
+        (void)tomato_sync_stop(8000);
+    } else {
+        ESP_LOGI(TAG, "hold ended, download finished");
+    }
+    // 屏轨回到“刚画完锁屏”的状态，后面的睡眠路径照常先断它。/ Put the rails back to "lock face just drawn"; the sleep
+    // path that follows drops them as usual.
+    epd_poweron();
+    return false;
+}
+
+bool app_lock_hold(EpdiyHighlevelState* hl, int64_t* ignore_until_ms) {
+    lock_face_show(hl);
+    return hold_for_download(hl, ignore_until_ms);
+}
+
+void enter_lock_and_sleep(
+    EpdiyHighlevelState* hl, int64_t* ignore_until_ms, sc7a20h_handle_t acc
+) {
+    if (!s_face_shown) lock_face_show(hl);
+    s_face_shown = false;
+    // 下载在跑（比如从密码关回到锁屏睡眠时）：先留着继续下，下完才睡；按了电源键就当醒来。
+    // A download is running (say, returning from the PIN gate to the locked sleep): keep downloading first and sleep
+    // afterwards; the power key counts as a wake.
+    if (tomato_sync_downloading() && hold_for_download(hl, ignore_until_ms)) return;
     app_sleep_mode_t mode = app_settings_sleep_mode();
     ESP_LOGI(TAG, "lock %s", app_sleep_mode_name(mode));
 
@@ -442,15 +518,5 @@ void enter_lock_and_sleep(
     epd_poweroff();
     app_light_sleep_wait(acc);
 
-    // 参考帧和屏幕都归零，回到主循环后由当前页自己画一遍，不必知道是哪一页。
-    // Zero the reference frame and the panel; the current page redraws after the loop resumes, without knowing which page it is.
-    read_pico_pmu_drain_events();
-    epd_poweron();
-    epd_clear();
-    epd_hl_set_all_white(hl);
-    read_pico_pmu_drain_events();
-    if (ignore_until_ms) {
-        *ignore_until_ms = esp_timer_get_time() / 1000 + APP_LOCK_IGNORE_BOOT_MS;
-    }
-    ESP_LOGI(TAG, "unlocked");
+    lock_face_leave(hl, ignore_until_ms);
 }

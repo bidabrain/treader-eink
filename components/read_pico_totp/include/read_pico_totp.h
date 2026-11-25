@@ -29,7 +29,9 @@ extern "C" {
 #define TOTP_KEY_LEN 32
 #define TOTP_SALT_LEN 16
 #define TOTP_DEV_SECRET_LEN 32
-#define TOTP_MIN_ITERS 100000u
+#define TOTP_MIN_ITERS 100000u   ///< 字母数字口令（旧版）用的下限 / Floor used by the old alphanumeric passphrase
+#define TOTP_PIN_ITERS 10000u    ///< 4 位 PIN 用的次数，设备上解锁约 1 秒 / Count for the 4-digit PIN, about 1 s to unlock on the device
+#define TOTP_FLOOR_ITERS 1000u   ///< 库接受的最少迭代次数 / Fewest iterations the library accepts
 
 /// 返回码。/ Return codes.
 typedef enum {
@@ -124,7 +126,8 @@ void totp_vault_remove(const char* path);
 /// 文件在不在（正式文件或 .bak）。/ Whether the file (or .bak) exists.
 bool totp_vault_exists(const char* path);
 
-/// 新钥匙：随机盐，迭代次数用 iters。/ New key material: random salt with the given iterations.
+/// 新钥匙：随机盐，迭代次数用 iters（低于 TOTP_FLOOR_ITERS 按它算）。/ New key material: random salt with the given
+/// iterations (raised to TOTP_FLOOR_ITERS when lower).
 totp_err_t totp_key_new(const char* pass, const uint8_t dev[TOTP_DEV_SECRET_LEN], uint32_t iters, totp_key_t* k);
 /// 量一下 n 次 PBKDF2 要多少微秒，用来定迭代次数。now_us 给时钟。/ Time n PBKDF2 iterations in microseconds to pick the
 /// iteration count; now_us supplies the clock.

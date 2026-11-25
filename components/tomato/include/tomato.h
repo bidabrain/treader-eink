@@ -601,6 +601,13 @@ esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap);
 /// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
 typedef bool (*tomato_open_check_t)(const char* path);
 void tomato_sync_set_open_check(tomato_open_check_t check);
+/// 书城或书库里的番茄书下载、番茄书更新下载、漫画更新下载正在跑（还没被取消）。锁屏时据此留着继续下，不睡也不关机。
+/// A bookstore download, a Tomato update download or a comic update download is running and not cancelled. The lock uses
+/// it to keep downloading instead of sleeping or powering off.
+bool tomato_sync_downloading(void);
+/// 下载有没有往前走的戳：进度、步骤、已收字节变了它就变，一直不变就是卡住了。/ A stamp of download progress: it
+/// changes whenever progress, step or bytes received change, so one that stays put means a stall.
+uint32_t tomato_sync_stamp(void);
 /// 取消并等待后台任务结束，最多 timeout_ms，停了再断开任务后还留着的 Wi-Fi；锁屏前调用。返回是否已停。
 /// Cancel and wait up to timeout_ms for the task to end, then drop any Wi-Fi lingering after it; call before a lock.
 /// Returns whether it stopped.

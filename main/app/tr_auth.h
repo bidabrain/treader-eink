@@ -8,9 +8,14 @@
  * the TF card at treader/totp/vault.bin; once unlocked the key and table sit in internal RAM only and are zeroed on
  * lock. Call from the main loop task only, except tr_auth_lock().
  *
- * 冻结：不动 eFuse，不用 flash / NVS 加密；口令只在设备屏幕上输；没有找回口令的办法，忘了只能清空。
- * Frozen: no eFuse, no flash or NVS encryption; the passphrase is typed on the device only; there is no recovery, a
- * forgotten passphrase means clearing.
+ * 冻结：不动 eFuse，不用 flash / NVS 加密；PIN 只在设备屏幕上输；没有找回 PIN 的办法，忘了只能清空。1.2.4 起新设的是 4 位 PIN
+ * （迭代 1 万次，解锁约 1 秒），旧的字母数字口令仍能解锁，换成 PIN 后旧口令就解不开了。4 位只有 1 万种：防得住在设备上随手试
+ * （输错 4 次后要等，次数记在 NVS），防不住同时拿到 TF 卡和设备闪存的人。
+ * Frozen: no eFuse, no flash or NVS encryption; the PIN is typed on the device only; there is no recovery, a forgotten
+ * PIN means clearing. From 1.2.4 a new secret is a 4-digit PIN (10,000 rounds, about 1 s to unlock); an old
+ * alphanumeric passphrase still unlocks and stops working once changed to a PIN. Four digits are only 10,000
+ * combinations: this stops casual tries on the device (a wait after four misses, the count kept in NVS) but not
+ * someone holding both the TF card and the device's flash.
  */
 #pragma once
 
@@ -20,8 +25,9 @@
 #include "read_pico_totp.h"
 
 #define TR_AUTH_PATH "/sdcard/treader/totp/vault.bin"
-#define TR_AUTH_PASS_MIN 8
-#define TR_AUTH_PASS_MAX 64
+#define TR_AUTH_PIN_LEN 4      ///< PIN 的位数 / Digits in the PIN
+#define TR_AUTH_PASS_MIN 8     ///< 旧版字母数字口令的长度范围，只用于解锁旧的验证器 / Length range of the old alphanumeric
+#define TR_AUTH_PASS_MAX 64    ///<   passphrase, used only to unlock an old vault
 #define TR_AUTH_FREE_TRIES 4   ///< 不用等的输错次数 / Wrong tries allowed without waiting
 
 /// 当前状态。/ Current state.
@@ -41,21 +47,26 @@ typedef enum {
 } tr_auth_auto_t;
 
 tr_auth_state_t tr_auth_state(void);
-/// 口令是否合格：8～64 字节，字母和数字都有；不合格时 why 写原因。/ Whether a passphrase qualifies (8-64 bytes with
-/// letters and digits); why gets the reason otherwise.
+/// 新口令是否合格：正好 4 位数字（PIN）；不合格时 why 写原因。旧的字母数字口令只能用来解锁，不能再设。/ Whether a new
+/// secret qualifies: exactly four digits (a PIN); why gets the reason otherwise. An old alphanumeric passphrase can
+/// only unlock, not be set again.
 bool tr_auth_pass_ok(const char* pass, const char** why);
+/// 这份验证器用的是 PIN（真）还是旧的字母数字口令（假）；界面据此选数字键盘还是屏幕键盘。/ Whether this vault uses a
+/// PIN (true) or the old alphanumeric passphrase (false); the UI picks the keypad or the keyboard from it.
+bool tr_auth_pin_mode(void);
 /// 还要等几秒才能再输口令（0 = 不用等）。/ Seconds to wait before another try (0 = none).
 int tr_auth_wait_s(void);
 /// 连续输错次数。/ Consecutive wrong tries.
 int tr_auth_fails(void);
 
-/// 第一次设置：生成设备随机数、量迭代次数、写空文件并解锁。/ First setup: create the device secret, time the
-/// iterations, write an empty file and unlock.
+/// 第一次设置：生成设备随机数、写空文件并解锁；pass 是 4 位 PIN。/ First setup: create the device secret, write an empty
+/// file and unlock; pass is the 4-digit PIN.
 totp_err_t tr_auth_setup(const char* pass);
 /// 解锁；输错会计数。/ Unlock; wrong tries are counted.
 totp_err_t tr_auth_unlock(const char* pass);
-/// 改口令：旧口令对了才换，换后旧口令什么都解不开。/ Change the passphrase; only with the right old one, after which the
-/// old one opens nothing.
+/// 改成新 PIN：旧口令或旧 PIN 对了才换，换后旧的什么都解不开；旧的字母数字口令就是这样换成 PIN 的。/ Change to a new PIN;
+/// only with the right old passphrase or PIN, after which the old one opens nothing; this is how an old alphanumeric
+/// passphrase becomes a PIN.
 totp_err_t tr_auth_change(const char* old_pass, const char* new_pass);
 /// 上锁：钥匙和账号表清零释放。任何任务都可以调用。/ Lock: zero and free the key and table. Any task may call it.
 void tr_auth_lock(void);

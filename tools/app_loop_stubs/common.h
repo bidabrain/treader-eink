@@ -66,6 +66,8 @@ esp_err_t read_pico_sd_remount(void);
 bool tomato_sync_busy(void);
 void tomato_sync_cancel(void);
 bool tomato_sync_stop(int timeout_ms);
+bool tomato_sync_downloading(void);
+bool app_lock_hold(EpdiyHighlevelState*, int64_t*);
 void tr_pin_gate(EpdiyHighlevelState* hl, cst836u_handle_t tp, sc7a20h_handle_t acc, int64_t* ignore_until_ms);
 void tr_update_boot_cleanup(void);
 bool ttf_font_sd_suspended(void);

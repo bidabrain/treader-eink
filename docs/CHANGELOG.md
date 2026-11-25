@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.4
+
+- 锁屏时，书城或书库里的番茄书下载、漫画“检查更新”的下载不再被打断：不管设置里选的是浅睡、软睡还是关机，锁屏画面照常显示（触摸停掉，口袋里不误触），设备不睡、不关机，留着继续下，下完才按设置去睡或关机。按电源键就醒来，下载还在跑，要取消在页面上取消。下载 3 分钟没有进展、已经留了 90 分钟、或电池电压低于 3500 mV 时不再留着，先停掉下载再睡。其他后台联网任务锁屏时照旧取消。
+  Locking no longer interrupts a bookstore or library Tomato download or a comic update download: whatever sleep mode is set (light, soft or off), the lock face shows as usual (touch is parked, so no pocket taps) but the device neither sleeps nor powers off and keeps downloading, then sleeps or powers off per the setting once it finishes. The power key wakes it with the download still running; cancel from the page. It stops holding when a download makes no progress for 3 minutes, after 90 minutes, or when the battery voltage drops below 3500 mV, and stops the download before sleeping. Other background network jobs are still cancelled at lock.
+- 设置 → 同步新增“手机网页填写”：WebDAV 的地址、用户名和密码在手机网页上粘贴提交，和小红书、微博那页一样；密码留空表示不改，保存后设备自动收到。网页多了“用户名”一栏。
+  Settings > Sync gains "Fill in on phone": paste the WebDAV address, user name and password on a phone web page, like the Xiaohongshu and Weibo pages; a blank password keeps the old one, and the device picks up the save by itself. The page gains a "User name" field.
+- 验证器的口令换成 4 位数字 PIN，用和锁屏密码同款的整屏数字键盘，设置、解锁、修改都一样；解锁从约 9 秒降到约 1 秒，不再触发看门狗告警。以前设的字母数字口令仍能解锁，在设置 → 内容来源 → 验证器的“修改 PIN”（旧的显示“换成 PIN”）里换成 PIN，换了以后旧口令就解不开了。输错 4 次后要等的限制照旧。注意：4 位数字只有 1 万种，防得住别人拿起设备随手试，防不住同时拿到 TF 卡和设备、专门破解的人。
+  The authenticator's passphrase is now a 4-digit PIN on the same full-screen keypad as the lock PIN, for setting, unlocking and changing alike; unlocking drops from about 9 s to about 1 s and no longer trips the watchdog. A passphrase set earlier still unlocks, and is switched to a PIN with "Change PIN" (shown as "Switch to PIN" for the old one) under Settings > Content sources > Authenticator, after which the old passphrase opens nothing. The wait after four wrong tries is unchanged. Note: four digits are only 10,000 combinations, which stops someone picking up the device and trying but not a determined attacker holding both the TF card and the device.
+
 ## 2026-11-25 · Treader 1.2.3
 
 - 联网更快更稳：任务做完 Wi-Fi 先留 20 秒，切帖子、翻页补图直接用，不再每次重新连网握手（实测每次多 15 秒以上）；同一服务器重连走 TLS 简化握手，椭圆曲线运算加速；开 TCP 选择性确认，丢包后只补缺的。锁屏、传书前照样先断开 Wi-Fi。

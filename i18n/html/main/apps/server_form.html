@@ -1,4 +1,4 @@
-<!-- en of main/apps/server_form.html sha256:5c2918b5ba1ee5a638e6c62b08a00fc3de488c7b17c400b06d277c27939823ca -->
+<!-- en of main/apps/server_form.html sha256:1e43d6d0261f9c92358a60aac2beb18d260bde3b2898112f618dd71fd2dbce5b -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -23,9 +23,13 @@
   <h1>Read Pico · <span id="name">Server</span> settings</h1>
   <p class="hint" id="hint">Find the address and token in the <span id="panel">server</span> panel → Devices &amp; internet; copy them and paste them here.</p>
   <form id="f">
-    <h2>Server address</h2>
+    <h2 id="urlLabel">Server address</h2>
     <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:8091" required maxlength="150">
-    <p class="hint">If you use a tunnel to reach it from outside, enter https://your-domain</p>
+    <p class="hint" id="urlHint">If you use a tunnel to reach it from outside, enter https://your-domain</p>
+    <div id="userBox" hidden>
+      <h2 id="userLabel">User name</h2>
+      <input id="user" type="text" autocomplete="off" maxlength="60" placeholder="User name">
+    </div>
     <h2 id="secret">Device token</h2>
     <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="Paste the device token">
     <p class="hint" id="tokenHint">Paste the device token shown in the panel.</p>
@@ -44,6 +48,15 @@ fetch('/form').then((r) => r.json()).then((d) => {
   if (d.example) $('#url').placeholder = d.example;
   if (d.url) $('#url').value = d.url;
   if (d.hint) $('#hint').textContent = d.hint;
+  // The device may replace the address title and note, and ask for a user name too (WebDAV).
+  if (d.url_label) $('#urlLabel').textContent = d.url_label;
+  if (d.url_hint) $('#urlHint').textContent = d.url_hint;
+  if (d.user_label) {
+    $('#userBox').hidden = false;
+    $('#userLabel').textContent = d.user_label;
+    if (d.user_ph) $('#user').placeholder = d.user_ph;
+    if (d.user) $('#user').value = d.user;
+  }
   if (d.secret) $('#secret').textContent = d.secret;
   if (d.secret_ph) $('#token').placeholder = d.secret_ph;
   if (d.secret_hint) $('#tokenHint').textContent = d.secret_hint;
@@ -63,7 +76,9 @@ $('#f').onsubmit = async (e) => {
   $('#go').disabled = true;
   out.textContent = 'Saving…';
   try {
-    const r = await fetch('/form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, token }) });
+    const payload = { url, token };
+    if (!$('#userBox').hidden) payload.user = $('#user').value.trim();
+    const r = await fetch('/form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
     $('#token').value = '';

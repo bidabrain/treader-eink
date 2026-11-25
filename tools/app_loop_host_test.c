@@ -16,7 +16,7 @@ typedef struct { int x, y, count, error; } sample_t;
 static sample_t samples[32];
 static int sample_count, step, ticks, enters, exits, touch_calls, keys[3], events[8];
 static int fulls, mode, tick_consumed[32];
-static int long_keys, locks, on_locks;
+static int long_keys, locks, on_locks, holds, stops;
 static app_redraw_t long_key(app_ctx_t* c, int k) { assert(k==UI_KEY_1); ++long_keys; c->request_menu=true; return APP_REDRAW_NONE; }
 static app_redraw_t response;
 static bool request_on_touch, request_on_tick, menu_on_tick, menu_on_touch, cancel_clobber;
@@ -26,7 +26,7 @@ static app_desc_t first, second, all_page;
 static int all_enters, all_exits;
 static const app_desc_t* all_from;
 static bool all_returns;
-static bool full_tick, lock_due, font_due, powers_down;
+static bool full_tick, lock_due, font_due, powers_down, downloading, hold_woke;
 static int64_t time_offset, time_step;
 static bool media_test, sd_font, saved_sd_font;
 static bool mounted_steps[32];
@@ -78,7 +78,11 @@ void book_cover_release(void) {}
 void pinyin_ime_unload(void) {}
 bool tomato_sync_busy(void) {return false;}
 void tomato_sync_cancel(void) {}
-bool tomato_sync_stop(int t) {(void)t;return true;}
+bool tomato_sync_stop(int t) {(void)t;stops++;return true;}
+bool tomato_sync_downloading(void) {return downloading;}
+// 留着下载的锁屏替身：woke 时按电源键返回真；否则下载做完返回假。/ The lock-while-downloading stand-in: true when woken by
+// the power key, false once the download finishes.
+bool app_lock_hold(EpdiyHighlevelState*h,int64_t*t) {(void)h;(void)t;holds++;lock_due=false;time_offset+=1000000;if(!hold_woke)downloading=false;return hold_woke;}
 void tr_pin_gate(EpdiyHighlevelState* h, cst836u_handle_t tp, sc7a20h_handle_t a, int64_t* i) {(void)h;(void)tp;(void)a;(void)i;}
 void tr_update_boot_cleanup(void) {}
 void tr_time_restore(void) {}
@@ -124,7 +128,7 @@ static app_redraw_t tick(app_ctx_t*c) {
 static void reset(void) {
     media_test=sd_font=saved_sd_font=false;media_lost=builtin_opens=font_opens=probes=0;loss_step=-1;
     memset(mounted_steps,0,sizeof(mounted_steps));
-    long_keys=locks=on_locks=0;
+    long_keys=locks=on_locks=holds=stops=0;downloading=hold_woke=false;
     home_on_tick=start_second=false;home_enters=home_renders=0;rendered_leaf=-1;
     full_tick=lock_due=font_due=powers_down=false;time_offset=0;time_step=10000;
     memset(samples,0,sizeof(samples));memset(keys,0,sizeof(keys));memset(events,0,sizeof(events));memset(tick_consumed,0,sizeof(tick_consumed));
@@ -245,6 +249,16 @@ int main(void) {
     reset();first.on_lock=lock_hook;powers_down=true;time_step=1000000;lock_due=true;
     add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
     assert(locks==1&&on_locks==1&&exits==1&&enters==2);++n;
+    // 下载在跑、关机模式：先留着下，下完才停后台、收尾、去睡。/ A download is running in power-off mode: hold first, and
+    // only after it ends stop the worker, wind down and sleep.
+    reset();first.on_lock=lock_hook;powers_down=true;downloading=true;time_step=1000000;lock_due=true;
+    add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
+    assert(holds==1&&locks==1&&on_locks==1&&exits==1&&enters==2&&stops==1);++n;
+    // 下载在跑时按了电源键：当作醒来，后台不停、页面不退出、也不去睡。/ The power key during the hold counts as a wake:
+    // the worker keeps going, the page does not exit and the device does not sleep.
+    reset();first.on_lock=lock_hook;powers_down=true;downloading=true;hold_woke=true;time_step=1000000;lock_due=true;
+    add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
+    assert(holds==1&&locks==0&&on_locks==1&&exits==0&&enters==1&&stops==0&&downloading);++n;
     printf("app_loop: %d scheduler scenarios passed\n", n);
     return 0;
 }

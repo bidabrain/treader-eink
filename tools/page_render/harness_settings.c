@@ -170,6 +170,11 @@ void hr_scenes(void) {
     page(P_SRC_TOMATO, "web_tomato");
     s_web_tomato = false;
 #endif
+    // WebDAV 的网页填写在同步页。/ The WebDAV web form lives on the sync page.
+    s_web_status.mode = READ_PICO_TRANSFER_MODE_STA;
+    s_web_dav = true;
+    page(P_SYNC, "web_dav");
+    s_web_dav = false;
     s_web_on = false;
     hr_allow_fit();
     page(P_SYNC, "sync");

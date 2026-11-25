@@ -296,23 +296,34 @@ static void lock_and_resume(
     // 要断主机电时先让页面收尾（停网络、关传感器、存进度）；只有下电失败才会回到这里重新进页。
     // Before the host loses power let the page wind down (network, sensors, progress); re-enter only if power-down failed.
     const bool powers_down = app_lock_powers_down();
-    // Treader：每次锁屏都先停掉后台同步（浅睡也是）：断电会写到一半，浅睡时 Wi-Fi 还开着会睡死，按电源键醒不过来。
-    // 传书页的服务也开着 Wi-Fi，浅睡前同样让它收掉，醒来再进页。
-    // Treader: stop background sync before every lock, light sleep included: power-down would cut a write, and light
-    // sleep with Wi-Fi still up can hang so the power key no longer wakes it. The transfer page's service also holds
-    // Wi-Fi, so it winds down before light sleep too and re-enters on wake.
-    if (tomato_sync_busy()) ESP_LOGI(TAG, "lock: stopping background sync");
-    if (!tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at lock");
     const bool winds_down = powers_down || current->blocks_idle_sleep;
-    if (winds_down && current->on_exit != NULL) current->on_exit(ctx);
-    enter_lock_and_sleep(ctx->hl, &s_lock_ignore_until_ms, ctx->acc);
+    // Treader（1.2.4，用户要求）：书城或书库里的番茄书下载、漫画更新下载在跑时，不管设置里选的是浅睡、软睡还是关机，
+    // 锁屏画面照常显示，但不睡、不关机、不停后台，留着继续下；下完（或碰到太久没进展、超时、电量低的上限）才按设置去睡。
+    // 按电源键就醒来，页面还在，下载还在跑，要取消在页面上取消。
+    // Treader (1.2.4, user request): while a bookstore or library Tomato download or a comic update download runs, the
+    // lock face shows as usual whatever sleep mode is set (light, soft or off), but the device does not sleep, power
+    // off or stop the background job and keeps downloading; only when it finishes (or hits the no-progress, time or
+    // battery limit) does it sleep per the setting. The power key wakes it with the page still up and the download
+    // still running; cancel from the page.
+    const bool held = tomato_sync_downloading() && app_lock_hold(ctx->hl, &s_lock_ignore_until_ms);
+    if (!held) {
+        // Treader：每次锁屏都先停掉后台同步（浅睡也是）：断电会写到一半，浅睡时 Wi-Fi 还开着会睡死，按电源键醒不过来。
+        // 传书页的服务也开着 Wi-Fi，浅睡前同样让它收掉，醒来再进页。
+        // Treader: stop background sync before every lock, light sleep included: power-down would cut a write, and light
+        // sleep with Wi-Fi still up can hang so the power key no longer wakes it. The transfer page's service also holds
+        // Wi-Fi, so it winds down before light sleep too and re-enters on wake.
+        if (tomato_sync_busy()) ESP_LOGI(TAG, "lock: stopping background sync");
+        if (!tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at lock");
+        if (winds_down && current->on_exit != NULL) current->on_exit(ctx);
+        enter_lock_and_sleep(ctx->hl, &s_lock_ignore_until_ms, ctx->acc);
+    }
     // 开了锁屏密码：过关之前不回任何页面。/ With a lock PIN set, no page returns before the gate is passed.
     tr_pin_gate(ctx->hl, ctx->tp, ctx->acc, &s_lock_ignore_until_ms);
     // 锁屏期间可能换过卡（浅睡时检测脚的变化不会被看到）：先问一次卡，换过就按拔卡处理再重新挂载。
     // The card may have been swapped while locked (light sleep never sees the detect pin change): ask the card first;
     // a swap is handled like a removal and remounted.
     read_pico_sd_check();
-    if (winds_down && current->on_enter != NULL) current->on_enter(ctx);
+    if (!held && winds_down && current->on_enter != NULL) current->on_enter(ctx);
     ctx->now_ms = esp_timer_get_time() / 1000;
     poll_media(ctx, current, media_mounted, media_invalidated);
     *last_media_poll_ms = ctx->now_ms;

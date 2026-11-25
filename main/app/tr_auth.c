@@ -29,9 +29,8 @@
 #define KEY_DEV "dev"
 #define KEY_FAILS "fails"
 #define KEY_AUTO "auto"
+#define KEY_PIN "pin"           // 1 = 这份验证器用 4 位 PIN（没有这个键是旧的字母数字口令）/ 1 = this vault uses a 4-digit PIN (no key means the old alphanumeric passphrase)
 #define AWAY_US (5LL * 60 * 1000000)
-#define CAL_ITERS 10000u
-#define MAX_ITERS 1000000u
 
 static SemaphoreHandle_t s_mu;
 static StaticSemaphore_t s_mu_buf;
@@ -40,6 +39,7 @@ static totp_table_t* s_table;
 static int s_fails = -1;        // -1 = 还没读 NVS / Not read from NVS yet
 static int64_t s_until_us;      // 到这个时刻前不能再输 / No tries before this moment
 static int s_auto = -1;
+static int s_pin = -1;          // KEY_PIN 的缓存，-1 = 还没读 / Cache of KEY_PIN, -1 = not read yet
 static esp_timer_handle_t s_away;
 
 static void take(void) {
@@ -123,16 +123,22 @@ tr_auth_state_t tr_auth_state(void) {
 
 bool tr_auth_pass_ok(const char* pass, const char** why) {
     const size_t n = pass ? strlen(pass) : 0;
-    bool letter = false, digit = false;
-    for (size_t i = 0; i < n; i++) {
-        const unsigned char c = (unsigned char)pass[i];
-        letter |= (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-        digit |= c >= '0' && c <= '9';
-    }
-    const char* r = n < TR_AUTH_PASS_MIN ? "口令至少 8 位" : n > TR_AUTH_PASS_MAX ? "口令最多 64 位" :
-                    !letter || !digit ? "口令要同时有字母和数字" : NULL;
+    bool digits = n == TR_AUTH_PIN_LEN;
+    for (size_t i = 0; digits && i < n; i++) digits = pass[i] >= '0' && pass[i] <= '9';
+    const char* r = digits ? NULL : "PIN 要正好 4 位数字";
     if (why) *why = r;
     return r == NULL;
+}
+
+bool tr_auth_pin_mode(void) {
+    if (s_pin < 0) s_pin = get_u8(KEY_PIN, 0) == 1;
+    return s_pin == 1;
+}
+
+// 设置或改口令成功后记下这份验证器用 PIN。/ After a successful setup or change, note that this vault uses a PIN.
+static void mark_pin(void) {
+    put_u8(KEY_PIN, 1);
+    s_pin = 1;
 }
 
 int tr_auth_wait_s(void) {
@@ -182,17 +188,6 @@ static void make_dirs(void) {
     mkdir("/sdcard/treader/totp", 0755);
 }
 
-// 按这台设备的速度定迭代次数：解锁约 1 秒。/ Pick iterations for about one second on this device.
-static uint32_t pick_iters(void) {
-    const int64_t us = totp_pbkdf2_time(CAL_ITERS, esp_timer_get_time);
-    if (us <= 0) return TOTP_MIN_ITERS;
-    uint64_t n = (uint64_t)CAL_ITERS * 1000000u / (uint64_t)us;
-    if (n < TOTP_MIN_ITERS) n = TOTP_MIN_ITERS;
-    if (n > MAX_ITERS) n = MAX_ITERS;
-    ESP_LOGI(TAG, "pbkdf2 %u iters in %lld us -> %u", (unsigned)CAL_ITERS, (long long)us, (unsigned)n);
-    return (uint32_t)n;
-}
-
 totp_err_t tr_auth_setup(const char* pass) {
     if (!tr_auth_pass_ok(pass, NULL)) return TOTP_ERR_ARG;
     if (tr_auth_state() != TR_AUTH_UNSET) return TOTP_ERR_ARG;
@@ -209,7 +204,9 @@ totp_err_t tr_auth_setup(const char* pass) {
         totp_wipe(dev, sizeof(dev));
         return TOTP_ERR_NOMEM;
     }
-    totp_err_t err = totp_key_new(pass, dev, pick_iters(), k);
+    // 4 位 PIN 的迭代次数固定，解锁约 1 秒（设备上算一次 1 万次约 0.9 秒）。/ A fixed count for the 4-digit PIN, about
+    // 1 s to unlock (10,000 rounds take about 0.9 s on the device).
+    totp_err_t err = totp_key_new(pass, dev, TOTP_PIN_ITERS, k);
     if (err == TOTP_OK) {
         t->next_id = 1;
         make_dirs();
@@ -234,6 +231,7 @@ totp_err_t tr_auth_setup(const char* pass) {
         return err;
     }
     set_fails(0);
+    mark_pin();
     install(k, t);
     return TOTP_OK;
 }
@@ -276,10 +274,13 @@ totp_err_t tr_auth_change(const char* old_pass, const char* new_pass) {
     if (err == TOTP_ERR_AUTH) set_fails(tr_auth_fails() + 1);
     if (err == TOTP_OK) {
         if (tr_auth_fails()) set_fails(0);
-        err = totp_key_new(new_pass, dev, pick_iters(), k);
+        err = totp_key_new(new_pass, dev, TOTP_PIN_ITERS, k);
     }
     if (err == TOTP_OK) err = totp_vault_save(TR_AUTH_PATH, k, t);
-    if (err == TOTP_OK) totp_vault_drop_backup(TR_AUTH_PATH);
+    if (err == TOTP_OK) {
+        totp_vault_drop_backup(TR_AUTH_PATH);
+        mark_pin();
+    }
     totp_wipe(dev, sizeof(dev));
     // 改之前开着就保持开着（换成新钥匙），否则保持上锁。/ Stay unlocked with the new key if it was open, else locked.
     if (err == TOTP_OK && was_open) install(k, t);
@@ -304,11 +305,13 @@ void tr_auth_wipe(void) {
     if (nvs_open(NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_erase_key(h, KEY_DEV);
         nvs_erase_key(h, KEY_FAILS);
+        nvs_erase_key(h, KEY_PIN);
         nvs_commit(h);
         nvs_close(h);
     }
     s_fails = 0;
     s_until_us = 0;
+    s_pin = 0;
 }
 
 totp_table_t* tr_auth_table(void) { return s_table; }

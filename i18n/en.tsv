@@ -4,13 +4,13 @@
 自动翻页	Auto turn
 # main/app/auto_turn.c:40
 %d 秒	%d s
-# main/app/auto_turn.c:41 main/apps/app_sleep.c:276 main/apps/app_sleep.c:278 main/apps/app_tr_settings.c:380
+# main/app/auto_turn.c:41 main/apps/app_sleep.c:276 main/apps/app_sleep.c:278 main/apps/app_tr_settings.c:383
 关	Off
-# main/app/tr_auth.c:132
+# (unused)
 口令至少 8 位	Passphrase: at least 8 characters
-# main/app/tr_auth.c:132 main/apps/app_tr_auth.c:807
+# main/apps/app_tr_auth.c:853
 口令最多 64 位	Passphrase: at most 64 characters
-# main/app/tr_auth.c:133
+# (unused)
 口令要同时有字母和数字	Passphrase needs letters and digits
 # main/apps/app_book.c:326
 行距	Line spacing
@@ -24,7 +24,7 @@
 下划线	Underline
 # main/apps/app_book.c:328
 紧凑	Compact
-# main/apps/app_book.c:328 main/apps/app_tr_settings.c:361
+# main/apps/app_book.c:328 main/apps/app_tr_settings.c:364
 标准	Standard
 # main/apps/app_book.c:328
 宽松	Relaxed
@@ -60,7 +60,7 @@
 图书详情	Book details
 # main/apps/app_book.c:758 components/read_pico_transfer/read_pico_transfer.c:860
 内置存储	Built-in storage
-# main/apps/app_book.c:758 main/apps/app_tr_card.c:156 main/apps/app_tr_card.c:289 main/apps/app_tr_settings.c:194 …
+# main/apps/app_book.c:758 main/apps/app_tr_card.c:156 main/apps/app_tr_card.c:289 main/apps/app_tr_settings.c:195 …
 TF 卡	SD card
 # main/apps/app_book.c:761
 阅读进度 %u%%	Progress %u%%
@@ -70,13 +70,13 @@ TF 卡	SD card
 删除后文件无法恢复	Deleted files cannot be recovered
 # main/apps/app_book.c:768
 仅清阅读进度，保留图书文件	Clears progress only; the book file stays
-# main/apps/app_book.c:769 main/apps/app_book.c:805 main/apps/app_tr_auth.c:428 main/apps/app_tr_card.c:143 …
+# main/apps/app_book.c:769 main/apps/app_book.c:805 main/apps/app_tr_auth.c:439 main/apps/app_tr_card.c:143 …
 取消	Cancel
 # main/apps/app_book.c:770 main/apps/app_tr_wall.c:164
 确认删除	Delete
 # main/apps/app_book.c:770
 确认清除	Clear
-# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:393
+# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:396
 关闭	Close
 # main/apps/app_book.c:773
 重试清理	Retry cleanup
@@ -90,7 +90,7 @@ TF 卡	SD card
 要输入汉字就把键盘切到“全拼”	To type Chinese, switch the keyboard to “Pinyin”
 # main/apps/app_book.c:802
 %s %u 本图书？	%s %u books?
-# main/apps/app_book.c:802 main/apps/app_comic.c:1205 main/apps/app_comic.c:1218 main/apps/app_tr_auth.c:748 …
+# main/apps/app_book.c:802 main/apps/app_comic.c:1205 main/apps/app_comic.c:1218 main/apps/app_tr_auth.c:786 …
 删除	Delete
 # main/apps/app_book.c:802
 清除进度：	Clear progress for
@@ -264,7 +264,7 @@ TF 卡不可用，请重新挂载后打开	SD card unavailable; remount and open
 内置余	Built-in free
 # main/apps/app_book.c:1699 main/apps/app_book.c:1764
 TF余	SD free
-# main/apps/app_book.c:1747 main/apps/app_tr_auth.c:645 main/apps/app_tr_auth.c:1062 main/apps/app_tr_settings.c:638 …
+# main/apps/app_book.c:1747 main/apps/app_tr_auth.c:683 main/apps/app_tr_auth.c:1147 main/apps/app_tr_settings.c:710 …
 没有 TF 卡	No SD card
 # main/apps/app_book.c:1747
 存储不可用，请检查 TF 卡	Storage unavailable; check the SD card
@@ -448,7 +448,7 @@ WEBTOON 订阅 · 下载到第 %d 话	WEBTOON subscription · downloaded to ep. 
 进度已清除	Progress cleared
 # main/apps/app_comic.c:1281
 保存失败，检查 TF 卡	Save failed; check the SD card
-# main/apps/app_comic.c:1297 main/apps/app_tr_auth.c:385 main/apps/app_tr_auth.c:965 main/apps/app_tr_wall.c:202
+# main/apps/app_comic.c:1297 main/apps/app_tr_auth.c:396 main/apps/app_tr_auth.c:1050 main/apps/app_tr_wall.c:202
 已删除	Deleted
 # main/apps/app_comic.c:1297
 删除没有完成，检查 TF 卡	Delete didn't finish; check the SD card
@@ -464,9 +464,9 @@ TF 卡上的 CBZ	CBZ on the SD card
 字体	Font
 # main/apps/app_font_pick.c:84
 当前：%s	Current: %s
-# main/apps/app_font_pick.c:84 main/apps/app_font_pick.c:197 main/apps/app_tr_settings.c:336
+# main/apps/app_font_pick.c:84 main/apps/app_font_pick.c:197 main/apps/app_tr_settings.c:339
 内置字体	Built-in font
-# main/apps/app_font_pick.c:190 main/apps/app_font_pick.c:198 main/apps/app_tr_settings.c:667
+# main/apps/app_font_pick.c:190 main/apps/app_font_pick.c:198 main/apps/app_tr_settings.c:739
 内置	Built-in
 # main/apps/app_font_pick.c:259
 TF 卡和内置字体	SD card and built-in fonts
@@ -528,7 +528,7 @@ PMU 版本	PMU version
 设备功能自检	Device self-test
 # main/apps/app_selftest.c:50 main/factory/pmu_selftest.c:379
 通过	Pass
-# main/apps/app_selftest.c:51 main/apps/app_tr_settings.c:1987
+# main/apps/app_selftest.c:51 main/apps/app_tr_settings.c:2070
 失败	Failed
 # main/apps/app_selftest.c:79
 通过 %u　失败 %u　待测 %u	Pass %u  Fail %u  Pending %u
@@ -538,7 +538,7 @@ PMU 版本	PMU version
 命令	Commands
 # main/apps/app_selftest.c:97
 探测	Probe
-# main/apps/app_selftest.c:98 main/apps/app_tr_auth.c:751 main/ui/tr_kbd.c:112
+# main/apps/app_selftest.c:98 main/apps/app_tr_auth.c:789 main/ui/tr_kbd.c:112
 清空	Clear
 # main/apps/app_selftest.c:130
 探活与命令	Liveness and commands
@@ -600,7 +600,7 @@ CW32 无应答	CW32 not responding
 开机	Boot
 # main/apps/app_sleep.c:276
 已设	Set
-# main/apps/app_sleep.c:278 main/apps/app_tr_settings.c:380
+# main/apps/app_sleep.c:278 main/apps/app_tr_settings.c:383
 开	On
 # main/apps/app_sleep.c:282
 锁屏后	After lock
@@ -610,225 +610,225 @@ CW32 无应答	CW32 not responding
 底部放哪几个：设置 › 底部标签	Choose the bar items: Settings › Bottom tabs
 # main/apps/app_tr_all.c:148
 所有功能	All features
-# main/apps/app_tr_auth.c:143 main/apps/app_tr_auth.c:265
+# main/apps/app_tr_auth.c:154 main/apps/app_tr_auth.c:276
 名称不对	Bad name
-# main/apps/app_tr_auth.c:144
-发行方太长	Issuer too long
-# main/apps/app_tr_auth.c:149
-密钥不对	Bad secret
 # main/apps/app_tr_auth.c:155
+发行方太长	Issuer too long
+# main/apps/app_tr_auth.c:160
+密钥不对	Bad secret
+# main/apps/app_tr_auth.c:166
 算法、位数或周期不支持	Unsupported algorithm, digits or period
-# main/apps/app_tr_auth.c:191
+# main/apps/app_tr_auth.c:202
 {\"error\":\"列表太长\"}	{\"error\":\"List too long\"}
-# main/apps/app_tr_auth.c:211 main/apps/app_tr_auth.c:277 main/apps/app_tr_auth.c:285
+# main/apps/app_tr_auth.c:222 main/apps/app_tr_auth.c:288 main/apps/app_tr_auth.c:296
 请求不对	Bad request
-# main/apps/app_tr_auth.c:213
+# main/apps/app_tr_auth.c:224
 验证器已上锁，请在设备上解锁后再导入	Authenticator is locked; unlock it on the device, then import
-# main/apps/app_tr_auth.c:216
+# main/apps/app_tr_auth.c:227
 设备上还有一个请求等待确认	Another request is waiting for confirmation on the device
-# main/apps/app_tr_auth.c:220
-没有要导入的账号	No accounts to import
-# main/apps/app_tr_auth.c:221
-超过 100 个账号的上限	Over the 100-account limit
-# main/apps/app_tr_auth.c:224 main/apps/app_tr_auth.c:861 components/tomato/tomato_hupu.c:564 components/tomato/tomato_hupu.c:605 …
-内存不足	Out of memory
 # main/apps/app_tr_auth.c:231
+没有要导入的账号	No accounts to import
+# main/apps/app_tr_auth.c:232
+超过 100 个账号的上限	Over the 100-account limit
+# main/apps/app_tr_auth.c:235 main/apps/app_tr_auth.c:907 components/tomato/tomato_hupu.c:564 components/tomato/tomato_hupu.c:605 …
+内存不足	Out of memory
+# main/apps/app_tr_auth.c:242
 第 %d 个账号%s	Account %d: %s
-# main/apps/app_tr_auth.c:252
+# main/apps/app_tr_auth.c:263
 设备上没有这个账号	This account isn't on the device
-# main/apps/app_tr_auth.c:271 main/apps/app_tr_auth.c:281 main/apps/app_tr_settings.c:1527
+# main/apps/app_tr_auth.c:282 main/apps/app_tr_auth.c:292 main/apps/app_tr_settings.c:1610
 保存失败	Save failed
-# main/apps/app_book.c:2052 main/apps/app_tr_auth.c:321 main/apps/app_tr_auth.c:930 main/apps/app_tr_settings.c:530 …
+# main/apps/app_book.c:2052 main/apps/app_tr_auth.c:332 main/apps/app_tr_auth.c:1015 main/apps/app_tr_settings.c:596 …
 正在停下后台加载，请再点一次	Stopping background loading; tap again
-# main/apps/app_tr_auth.c:322
+# main/apps/app_tr_auth.c:333
 后台正在下载或同步，完成后再导入	Downloading or syncing in the background; import when done
-# main/apps/app_tr_auth.c:346
+# main/apps/app_tr_auth.c:357
 打不开设备热点（%s）	Can't start the device hotspot (%s)
-# main/apps/app_tr_auth.c:366
+# main/apps/app_tr_auth.c:377
 已在设备上取消	Cancelled on the device
-# main/apps/app_tr_auth.c:377 main/apps/app_tr_auth.c:385 components/tomato/tomato_hupu.c:458 components/tomato/tomato_hupu.c:650 …
+# main/apps/app_tr_auth.c:388 main/apps/app_tr_auth.c:396 components/tomato/tomato_hupu.c:458 components/tomato/tomato_hupu.c:650 …
 写入 TF 卡失败	Writing to SD card failed
-# main/apps/app_tr_auth.c:378
+# main/apps/app_tr_auth.c:389
 已导入 %d 个，%d 个已经有了	Imported %d, %d already present
-# main/apps/app_tr_auth.c:379
+# main/apps/app_tr_auth.c:390
 已导入 %d 个账号	Imported %d accounts
-# main/apps/app_tr_auth.c:454 main/apps/app_tr_auth.c:712
+# main/apps/app_tr_auth.c:465 main/apps/app_tr_auth.c:750
 正在连 Wi-Fi 校时…	Connecting to Wi-Fi to set the time…
-# main/apps/app_tr_auth.c:455
+# main/apps/app_tr_auth.c:466
 时间可能差约 %d 秒，点这里连 Wi-Fi 校时	Clock may be off by about %d s; tap to sync over Wi-Fi
-# main/apps/app_tr_auth.c:474
+# main/apps/app_tr_auth.c:485
 可能不准	May be off
-# main/apps/app_tr_auth.c:478 main/apps/app_tr_auth.c:540
+# main/apps/app_tr_auth.c:489 main/apps/app_tr_auth.c:551
 下一个 %s	Next %s
-# main/apps/app_tr_auth.c:492
+# main/apps/app_tr_auth.c:503
 还没有账号。点右上角“导入”，手机连上设备热点后，在网页里粘贴链接或选 Google Authenticator 导出二维码的照片。	No accounts yet. Tap “Import” at the top right, connect your phone to the device hotspot, then paste a link in the web page or pick a photo of a Google Authenticator export QR code.
-# main/apps/app_tr_auth.c:502 main/apps/app_tr_auth.c:561 main/apps/app_tr_auth.c:562 main/apps/app_tr_auth.c:636 …
+# main/apps/app_tr_auth.c:513 main/apps/app_tr_auth.c:603 main/apps/app_tr_auth.c:604 main/apps/app_tr_auth.c:674 …
 验证器	Authenticator
-# main/apps/app_tr_auth.c:535
+# main/apps/app_tr_auth.c:546
 还剩 %d 秒	%d s left
-# main/apps/app_tr_auth.c:544
-时间可能不准，验证码可能用不了	Clock may be off; codes may not work
-# main/apps/app_tr_auth.c:551
-输入验证器口令	Enter Authenticator passphrase
-# main/apps/app_tr_auth.c:552
-设置验证器口令	Set Authenticator passphrase
-# main/apps/app_tr_auth.c:553
-再输一次口令	Enter the passphrase again
-# main/apps/app_tr_auth.c:554
-输入原来的口令	Enter the current passphrase
 # main/apps/app_tr_auth.c:555
+时间可能不准，验证码可能用不了	Clock may be off; codes may not work
+# main/apps/app_tr_auth.c:570
+输入验证器口令	Enter Authenticator passphrase
+# (unused)
+设置验证器口令	Set Authenticator passphrase
+# (unused)
+再输一次口令	Enter the passphrase again
+# main/apps/app_tr_auth.c:573
+输入原来的口令	Enter the current passphrase
+# (unused)
 输入新口令	Enter a new passphrase
-# main/apps/app_tr_auth.c:556
+# (unused)
 再输一次新口令	Enter the new passphrase again
-# main/apps/app_tr_auth.c:583
+# main/apps/app_tr_auth.c:588
 正在解锁…	Unlocking…
-# main/apps/app_tr_auth.c:583
+# main/apps/app_tr_auth.c:588
 正在设置…	Setting up…
-# main/apps/app_tr_auth.c:583
+# main/apps/app_tr_auth.c:588
 正在修改…	Changing…
-# main/apps/app_tr_auth.c:587
+# main/apps/app_tr_auth.c:592
 输错太多次，请等 %d 秒再试	Too many tries. Wait %d s and try again
-# main/apps/app_tr_auth.c:589
+# (unused)
 至少 8 位，字母和数字都要有。忘了口令只能清空验证器，再从手机重新导入。	At least 8 characters, with both letters and digits. If you forget the passphrase, you can only clear the Authenticator and import again from your phone.
-# main/apps/app_tr_auth.c:591
+# main/apps/app_tr_auth.c:596
 口令只在这台设备上输入，和开机密码无关。	The passphrase is entered only on this device and is separate from the lock PIN.
-# main/apps/app_tr_auth.c:600
+# main/apps/app_tr_auth.c:638
 导入账号	Import accounts
-# main/apps/app_tr_auth.c:605
-设备热点没有打开。	The device hotspot is not on.
-# main/apps/app_tr_auth.c:612
-手机扫码连上设备热点 %s，口令 %s	Scan to join hotspot %s, password %s
-# main/apps/app_tr_auth.c:615
-再在浏览器打开	then open in a browser
-# main/apps/app_tr_auth.c:626
-手机已连上，等网页提交…	Phone connected, waiting for the web page…
-# main/apps/app_tr_auth.c:626
-等手机连上…	Waiting for the phone…
-# main/apps/app_tr_auth.c:631
-网页里可以粘贴 otpauth 链接、选 Google Authenticator 导出二维码的照片，或手动填密钥。网页发来的账号要在这里点“导入”才会写入；密钥不会离开设备。离开这一页热点就关闭。	On the web page you can paste an otpauth link, pick a photo of a Google Authenticator export QR code, or enter a key by hand. Accounts sent from the web page are saved only after you tap Import here; keys never leave the device. The hotspot closes when you leave this page.
 # main/apps/app_tr_auth.c:643
-已解锁 · %d 个账号	Unlocked · %d accounts
-# main/apps/app_tr_auth.c:644 main/apps/app_tr_auth.c:1052
-还没设置口令	No passphrase set
-# main/apps/app_tr_auth.c:644 main/apps/app_tr_settings.c:636
-已上锁	Locked
-# main/apps/app_tr_auth.c:645
-需要清空后重新设置	Clear and set up again
-# main/apps/app_tr_auth.c:647
-修改口令	Change passphrase
-# main/apps/app_tr_auth.c:647
-自动上锁	Auto lock
-# main/apps/app_tr_auth.c:647
-清空验证器	Clear Authenticator
-# main/apps/app_tr_auth.c:651 main/apps/app_tr_settings.c:365 main/apps/app_tr_settings.c:371 main/apps/app_tr_settings.c:383 …
-未设置	Not set
-# main/apps/app_tr_auth.c:652
-离开 5 分钟后	5 min after leaving
-# main/apps/app_tr_auth.c:652
-锁屏或重启时	On lock or restart
-# main/apps/app_tr_auth.c:658
-验证器口令只管这一个功能，和开机密码分开。账号加密存在 TF 卡上，解锁要口令和这台设备一起，换卡或换设备都解不开。忘了口令没有找回办法，只能清空验证器，再从手机 Google Authenticator 重新导入。自动上锁点一下切换。	The Authenticator passphrase covers only this feature and is separate from the lock PIN. Accounts are stored encrypted on the SD card; unlocking needs the passphrase and this device, so another card or device cannot open them. A forgotten passphrase cannot be recovered: clear the Authenticator and import again from Google Authenticator on your phone. Tap Auto lock to switch it.
-# main/apps/app_tr_auth.c:666
-验证器的账号加密存在 TF 卡上。请插入 TF 卡。	Authenticator accounts are stored encrypted on the SD card. Insert an SD card.
-# main/apps/app_tr_auth.c:668
-设置口令	Set passphrase
+设备热点没有打开。	The device hotspot is not on.
+# main/apps/app_tr_auth.c:650
+手机扫码连上设备热点 %s，口令 %s	Scan to join hotspot %s, password %s
+# main/apps/app_tr_auth.c:653
+再在浏览器打开	then open in a browser
+# main/apps/app_tr_auth.c:664
+手机已连上，等网页提交…	Phone connected, waiting for the web page…
+# main/apps/app_tr_auth.c:664
+等手机连上…	Waiting for the phone…
 # main/apps/app_tr_auth.c:669
+网页里可以粘贴 otpauth 链接、选 Google Authenticator 导出二维码的照片，或手动填密钥。网页发来的账号要在这里点“导入”才会写入；密钥不会离开设备。离开这一页热点就关闭。	On the web page you can paste an otpauth link, pick a photo of a Google Authenticator export QR code, or enter a key by hand. Accounts sent from the web page are saved only after you tap Import here; keys never leave the device. The hotspot closes when you leave this page.
+# main/apps/app_tr_auth.c:681
+已解锁 · %d 个账号	Unlocked · %d accounts
+# (unused)
+还没设置口令	No passphrase set
+# main/apps/app_tr_auth.c:682 main/apps/app_tr_settings.c:708
+已上锁	Locked
+# main/apps/app_tr_auth.c:683
+需要清空后重新设置	Clear and set up again
+# (unused)
+修改口令	Change passphrase
+# main/apps/app_tr_auth.c:685
+自动上锁	Auto lock
+# main/apps/app_tr_auth.c:685
+清空验证器	Clear Authenticator
+# main/apps/app_tr_auth.c:689 main/apps/app_tr_settings.c:368 main/apps/app_tr_settings.c:374 main/apps/app_tr_settings.c:386 …
+未设置	Not set
+# main/apps/app_tr_auth.c:690
+离开 5 分钟后	5 min after leaving
+# main/apps/app_tr_auth.c:690
+锁屏或重启时	On lock or restart
+# (unused)
+验证器口令只管这一个功能，和开机密码分开。账号加密存在 TF 卡上，解锁要口令和这台设备一起，换卡或换设备都解不开。忘了口令没有找回办法，只能清空验证器，再从手机 Google Authenticator 重新导入。自动上锁点一下切换。	The Authenticator passphrase covers only this feature and is separate from the lock PIN. Accounts are stored encrypted on the SD card; unlocking needs the passphrase and this device, so another card or device cannot open them. A forgotten passphrase cannot be recovered: clear the Authenticator and import again from Google Authenticator on your phone. Tap Auto lock to switch it.
+# main/apps/app_tr_auth.c:704
+验证器的账号加密存在 TF 卡上。请插入 TF 卡。	Authenticator accounts are stored encrypted on the SD card. Insert an SD card.
+# (unused)
+设置口令	Set passphrase
+# (unused)
 在这台设备上离线显示两步验证码，和手机 Google Authenticator 算出的一样，不需要服务器。\n先设一个验证器口令（至少 8 位，字母和数字都有），再用设备热点从手机导入账号。手机上的 Google Authenticator 请一直保留作备份。	Shows two-step codes offline on this device, the same as Google Authenticator on your phone. No server needed.\nFirst set an Authenticator passphrase (at least 8 characters, with letters and digits), then import accounts from your phone over the device hotspot. Keep Google Authenticator on your phone as a backup.
-# main/apps/app_tr_auth.c:673 main/apps/app_tr_auth.c:787
+# main/apps/app_tr_auth.c:711 main/apps/app_tr_auth.c:833
 解锁	Unlock
-# main/apps/app_tr_auth.c:674
-验证器已上锁。	The Authenticator is locked.
-# main/apps/app_tr_auth.c:676 main/apps/app_tr_auth.c:679
-清空并重新设置	Clear and set up again
-# main/apps/app_tr_auth.c:677
-TF 卡上的验证器不是在这台设备上设置的（或者设备设置被重置过），解不开。可以清空后重新设置，再从手机重新导入。	The Authenticator on the SD card was not set up on this device (or the device settings were reset), so it cannot be opened. You can clear it, set it up again and import again from your phone.
-# main/apps/app_tr_auth.c:680
-TF 卡上没有验证器文件。换回原来的卡就能继续用；或者清空后重新设置，再从手机重新导入。	No Authenticator file on the SD card. Put the original card back to keep using it, or clear, set up again and import again from your phone.
 # main/apps/app_tr_auth.c:712
-设备时间还没校准，验证码会算错。点下面的按钮连 Wi-Fi 校时，或在“设置 › 电源与设备 › 时间与时区”里手动设置。	The device clock is not set, so codes will be wrong. Tap the button below to sync the time over Wi-Fi, or set it by hand in Settings › Power & device › Time & time zone.
-# main/apps/app_tr_auth.c:714
-连 Wi-Fi 校时	Sync time via Wi-Fi
-# main/apps/app_tr_auth.c:747
-删除“%s”？手机上的 Google Authenticator 不受影响。	Delete “%s”? Google Authenticator on your phone is not affected.
-# main/apps/app_tr_auth.c:748
-删除账号	Delete account
+验证器已上锁。	The Authenticator is locked.
+# main/apps/app_tr_auth.c:714 main/apps/app_tr_auth.c:717
+清空并重新设置	Clear and set up again
+# main/apps/app_tr_auth.c:715
+TF 卡上的验证器不是在这台设备上设置的（或者设备设置被重置过），解不开。可以清空后重新设置，再从手机重新导入。	The Authenticator on the SD card was not set up on this device (or the device settings were reset), so it cannot be opened. You can clear it, set it up again and import again from your phone.
+# main/apps/app_tr_auth.c:718
+TF 卡上没有验证器文件。换回原来的卡就能继续用；或者清空后重新设置，再从手机重新导入。	No Authenticator file on the SD card. Put the original card back to keep using it, or clear, set up again and import again from your phone.
 # main/apps/app_tr_auth.c:750
+设备时间还没校准，验证码会算错。点下面的按钮连 Wi-Fi 校时，或在“设置 › 电源与设备 › 时间与时区”里手动设置。	The device clock is not set, so codes will be wrong. Tap the button below to sync the time over Wi-Fi, or set it by hand in Settings › Power & device › Time & time zone.
+# main/apps/app_tr_auth.c:752
+连 Wi-Fi 校时	Sync time via Wi-Fi
+# main/apps/app_tr_auth.c:785
+删除“%s”？手机上的 Google Authenticator 不受影响。	Delete “%s”? Google Authenticator on your phone is not affected.
+# main/apps/app_tr_auth.c:786
+删除账号	Delete account
+# main/apps/app_tr_auth.c:788
 清空验证器？	Clear Authenticator?
-# main/apps/app_tr_auth.c:751
+# (unused)
 会删除 TF 卡上的加密文件和设备里配套的随机数，所有账号都没了。之后要重新设置口令，再从手机重新导入。	This deletes the encrypted file on the SD card and the matching random key on the device. All accounts will be gone. You will then need to set a new passphrase and import again from your phone.
-# main/apps/app_tr_auth.c:753
+# main/apps/app_tr_auth.c:791
 再确认一次	Confirm again
-# main/apps/app_tr_auth.c:753
+# main/apps/app_tr_auth.c:791
 清空以后无法恢复。确定清空验证器？	This cannot be undone. Clear the Authenticator?
-# main/apps/app_tr_auth.c:753
+# main/apps/app_tr_auth.c:791
 确认清空	Clear
-# main/apps/app_tr_auth.c:758
+# main/apps/app_tr_auth.c:796
 网页发来 %d 个账号：	%d accounts from the web page: 
-# main/apps/app_tr_auth.c:762 main/apps/app_tr_hupu.c:1031 main/apps/app_tr_settings.c:657
+# main/apps/app_tr_auth.c:800 main/apps/app_tr_hupu.c:1031 main/apps/app_tr_settings.c:729
 、	, 
-# main/apps/app_tr_auth.c:764
+# main/apps/app_tr_auth.c:802
  等	 and more
-# main/apps/app_tr_auth.c:770
+# main/apps/app_tr_auth.c:808
 网页要删除“%s”。手机上的 Google Authenticator 不受影响。	The web page wants to delete “%s”. Google Authenticator on your phone is not affected.
-# main/apps/app_tr_auth.c:774
+# main/apps/app_tr_auth.c:812
 导入账号？	Import accounts?
-# main/apps/app_tr_auth.c:774
+# main/apps/app_tr_auth.c:812
 删除账号？	Delete account?
-# main/apps/app_tr_auth.c:774
+# main/apps/app_tr_auth.c:812
 导入	Import
-# main/apps/app_tr_auth.c:787 main/apps/app_tr_settings.c:233 main/apps/app_tr_settings.c:235 main/apps/app_tr_settings.c:236
+# main/apps/app_tr_auth.c:833 main/apps/app_tr_settings.c:234 main/apps/app_tr_settings.c:236 main/apps/app_tr_settings.c:237
 下一步	Next
-# main/apps/app_tr_auth.c:787 main/ui/tr_kbd.c:122
+# main/apps/app_tr_auth.c:833 main/ui/tr_kbd.c:122
 确定	OK
-# main/apps/app_tr_auth.c:837
+# main/apps/app_tr_auth.c:883
 两次输入不一样，请重新输入	The entries do not match. Try again
-# main/apps/app_tr_auth.c:858
+# main/apps/app_tr_auth.c:904
 口令不对	Wrong passphrase
-# main/apps/app_tr_auth.c:859
+# main/apps/app_tr_auth.c:905
 TF 卡上没有验证器文件	No Authenticator file on the SD card
-# main/apps/app_tr_auth.c:860
+# main/apps/app_tr_auth.c:906
 验证器文件损坏	Authenticator file is damaged
-# main/apps/app_tr_auth.c:862
+# main/apps/app_tr_auth.c:908
 读写 TF 卡失败	SD card read/write failed
-# main/apps/app_tr_auth.c:863
+# main/apps/app_tr_auth.c:909
 出错了，请重试	Something went wrong. Try again
-# main/apps/app_tr_auth.c:886
+# main/apps/app_tr_auth.c:933
 口令不对，还能再试 %d 次	Wrong passphrase, %d tries left
-# main/apps/app_tr_auth.c:887
-口令不对，请等 %d 秒再试	Wrong passphrase. Wait %d s and try again
-# main/apps/app_tr_auth.c:899
-口令已设置	Passphrase set
-# main/apps/app_tr_auth.c:902
-设置失败：%s	Setup failed: %s
-# main/apps/app_tr_auth.c:910
-口令已修改	Passphrase changed
-# main/apps/app_tr_auth.c:915
-原来的口令不对，还能再试 %d 次	Wrong current passphrase, %d tries left
-# main/apps/app_tr_auth.c:916
-原来的口令不对，请等 %d 秒再试	Wrong current passphrase. Wait %d s and try again
-# main/apps/app_tr_auth.c:918
-修改失败：%s	Change failed: %s
-# main/apps/app_tr_auth.c:930
-后台正在联网，完成后再校时	Busy online in the background. Sync the time when it finishes
 # main/apps/app_tr_auth.c:934
+口令不对，请等 %d 秒再试	Wrong passphrase. Wait %d s and try again
+# (unused)
+口令已设置	Passphrase set
+# main/apps/app_tr_auth.c:949
+设置失败：%s	Setup failed: %s
+# (unused)
+口令已修改	Passphrase changed
+# main/apps/app_tr_auth.c:963
+原来的口令不对，还能再试 %d 次	Wrong current passphrase, %d tries left
+# main/apps/app_tr_auth.c:964
+原来的口令不对，请等 %d 秒再试	Wrong current passphrase. Wait %d s and try again
+# main/apps/app_tr_auth.c:966
+修改失败：%s	Change failed: %s
+# main/apps/app_tr_auth.c:1015
+后台正在联网，完成后再校时	Busy online in the background. Sync the time when it finishes
+# main/apps/app_tr_auth.c:1019
 现在不能校时，请稍后再试	Cannot sync the time now. Try again later
-# main/apps/app_tr_auth.c:965
+# main/apps/app_tr_auth.c:1050
 删除没能写进 TF 卡	Could not save the deletion to the SD card
-# main/apps/app_tr_auth.c:974
+# main/apps/app_tr_auth.c:1059
 验证器已清空	Authenticator cleared
-# main/apps/app_tr_auth.c:1062
+# main/apps/app_tr_auth.c:1147
 验证器是空的	The Authenticator is empty
-# main/apps/app_tr_auth.c:1170 components/tomato/tomato_sync.c:1031
+# main/apps/app_tr_auth.c:1262 components/tomato/tomato_sync.c:1031
 已校时	Time synced
-# main/apps/app_tr_auth.c:1170
+# main/apps/app_tr_auth.c:1262
 校时失败	Time sync failed
-# main/apps/app_tr_auth.c:1266
+# main/apps/app_tr_auth.c:1360
 离线两步验证码	Offline two-step codes
 # main/apps/app_tr_card.c:95
 正在检测…	Checking…
-# main/apps/app_tr_card.c:96 main/apps/app_tr_settings.c:349
+# main/apps/app_tr_card.c:96 main/apps/app_tr_settings.c:352
 没有插卡	No card
-# main/apps/app_tr_card.c:97 main/apps/app_tr_settings.c:359 main/settings.c:442
+# main/apps/app_tr_card.c:97 main/apps/app_tr_settings.c:362 main/settings.c:442
 正常	Normal
 # main/apps/app_tr_card.c:98
 无法读取，可能需要格式化	Unreadable, may need formatting
@@ -916,7 +916,7 @@ TF 卡上的所有文件都会被删除，无法恢复：书籍和阅读用的�
 保存关注失败，检查 TF 卡	Could not save follows. Check the SD card
 # main/apps/app_tr_hupu.c:871 main/book/html_text.c:291
 [图片]	[Image]
-# main/apps/app_tr_hupu.c:958 main/apps/app_tr_hupu.c:1436 main/apps/app_tr_hupu.c:1950 main/apps/app_tr_settings.c:1042 …
+# main/apps/app_tr_hupu.c:958 main/apps/app_tr_hupu.c:1436 main/apps/app_tr_hupu.c:1950 main/apps/app_tr_settings.c:1114 …
 虎扑	Hupu
 # main/apps/app_tr_hupu.c:967 main/apps/app_tr_hupu.c:969 main/apps/app_tr_hupu.c:1279 main/apps/app_tr_store.c:322 …
 刷新	Refresh
@@ -1072,7 +1072,7 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 显示大小	Display size
 # main/apps/app_tr_settings.c:142 main/apps/app_tr_wall.c:118 main/apps/app_tr_wall.c:321
 锁屏壁纸	Lock screen wallpaper
-# main/apps/app_tr_settings.c:143 main/apps/app_tr_settings.c:1348
+# main/apps/app_tr_settings.c:143 main/apps/app_tr_settings.c:1420
 翻页区域	Page turn zones
 # main/apps/app_tr_settings.c:149
 左右	Left/right
@@ -1090,11 +1090,11 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 番茄服务器	Tomato server
 # main/apps/app_tr_settings.c:159
 书城榜单	Store charts
-# main/apps/app_tr_settings.c:157 main/apps/app_tr_settings.c:162 main/apps/app_tr_settings.c:171
+# main/apps/app_tr_settings.c:157 main/apps/app_tr_settings.c:162 main/apps/app_tr_settings.c:171 main/apps/app_tr_settings.c:186
 手机网页填写	Fill in on phone
-# main/apps/app_tr_settings.c:163 main/apps/app_tr_settings.c:172 main/apps/app_tr_settings.c:241
+# main/apps/app_tr_settings.c:163 main/apps/app_tr_settings.c:172 main/apps/app_tr_settings.c:242
 服务器地址	Server address
-# main/apps/app_tr_settings.c:164 main/apps/app_tr_settings.c:173 main/apps/app_tr_settings.c:242
+# main/apps/app_tr_settings.c:164 main/apps/app_tr_settings.c:173 main/apps/app_tr_settings.c:243
 设备令牌	Device token
 # main/apps/app_tr_settings.c:165 main/apps/app_tr_settings.c:174 main/apps/app_transfer.c:212
 测试连接	Test connection
@@ -1106,311 +1106,311 @@ WEBTOON 发现与追更	WEBTOON discover and follow
 简体显示	Simplified Chinese
 # main/apps/app_tr_settings.c:177
 每次最多下载	Max per download
-# main/apps/app_tr_settings.c:182 main/apps/app_tr_settings.c:1043
+# main/apps/app_tr_settings.c:182 main/apps/app_tr_settings.c:1115
 显示图片	Show images
-# main/apps/app_tr_settings.c:187
+# main/apps/app_tr_settings.c:188
 立即同步	Sync now
-# main/apps/app_tr_settings.c:190
-睡眠与锁屏	Sleep & lock
 # main/apps/app_tr_settings.c:191
-自动锁屏	Auto lock
+睡眠与锁屏	Sleep & lock
 # main/apps/app_tr_settings.c:192
+自动锁屏	Auto lock
+# main/apps/app_tr_settings.c:193
 锁屏密码	Lock PIN
-# main/apps/app_tr_settings.c:193 main/apps/app_tr_settings.c:1301
+# main/apps/app_tr_settings.c:194 main/apps/app_tr_settings.c:1373
 时间与时区	Time & time zone
-# main/apps/app_tr_settings.c:195 main/apps/app_tr_settings.c:1225
+# main/apps/app_tr_settings.c:196 main/apps/app_tr_settings.c:1297
 关于 Treader	About Treader
-# main/apps/app_tr_settings.c:198
+# main/apps/app_tr_settings.c:199
 自动校时	Auto time sync
-# main/apps/app_tr_settings.c:199 main/apps/app_tr_settings.c:1362
+# main/apps/app_tr_settings.c:200 main/apps/app_tr_settings.c:1434
 时区	Time zone
-# main/apps/app_tr_settings.c:200 main/apps/app_tr_settings.c:1381
+# main/apps/app_tr_settings.c:201 main/apps/app_tr_settings.c:1453
 手动设置时间	Set time manually
-# main/apps/app_tr_settings.c:233
+# main/apps/app_tr_settings.c:234
 番茄服务器地址	Tomato server address
-# main/apps/app_tr_settings.c:233
+# main/apps/app_tr_settings.c:234
 例如 http://192.168.1.10:18423	e.g. http://192.168.1.10:18423
-# main/apps/app_tr_settings.c:234
+# main/apps/app_tr_settings.c:235
 番茄服务器密码	Tomato server password
-# main/apps/app_tr_settings.c:234
+# main/apps/app_tr_settings.c:235
 服务器没有设置密码就留空	Leave empty if the server has no password
-# main/apps/app_tr_settings.c:234 main/apps/app_tr_settings.c:237 main/apps/app_tr_settings.c:238 main/apps/app_tr_settings.c:241 …
+# main/apps/app_tr_settings.c:235 main/apps/app_tr_settings.c:238 main/apps/app_tr_settings.c:239 main/apps/app_tr_settings.c:242 …
 保存	Save
-# main/apps/app_tr_settings.c:235
+# main/apps/app_tr_settings.c:236 main/apps/app_tr_settings.c:494
 WebDAV 目录地址	WebDAV folder URL
-# main/apps/app_tr_settings.c:235
+# main/apps/app_tr_settings.c:236
 例如 https://dav.jianguoyun.com/dav/treader	e.g. https://dav.jianguoyun.com/dav/treader
-# main/apps/app_tr_settings.c:236
+# main/apps/app_tr_settings.c:237
 WebDAV 用户名	WebDAV username
-# main/apps/app_tr_settings.c:236
+# main/apps/app_tr_settings.c:237 main/apps/app_tr_settings.c:497
 坚果云填登录邮箱	For Jianguoyun, use your sign-in email
-# main/apps/app_tr_settings.c:237
+# main/apps/app_tr_settings.c:238
 WebDAV 密码	WebDAV password
-# main/apps/app_tr_settings.c:237
+# main/apps/app_tr_settings.c:238
 坚果云填“应用密码”，不是登录密码	For Jianguoyun, use an app password, not the sign-in password
-# main/apps/app_tr_settings.c:238
+# main/apps/app_tr_settings.c:239
 书城榜单地址	Store charts URL
-# main/apps/app_tr_settings.c:238
+# main/apps/app_tr_settings.c:239
 留空使用默认榜单；填 FanqieRankTracker 网站地址	Leave empty for the default charts, or enter a FanqieRankTracker site URL
-# main/apps/app_tr_settings.c:242
+# main/apps/app_tr_settings.c:243
 令牌很长，建议用“手机网页填写”；留空表示不改	The token is long; Fill in on phone is easier. Leave empty to keep it
-# main/apps/app_tr_settings.c:342
+# main/apps/app_tr_settings.c:345
 书卡样式	Book card style
-# main/apps/app_tr_settings.c:348
+# main/apps/app_tr_settings.c:351
 可用 %.1f GB	%.1f GB free
-# main/apps/app_tr_settings.c:349 main/apps/app_tr_settings.c:639
+# main/apps/app_tr_settings.c:352 main/apps/app_tr_settings.c:711
 需要处理	Needs attention
-# main/apps/app_tr_settings.c:365 main/apps/app_tr_settings.c:1030
+# main/apps/app_tr_settings.c:368 main/apps/app_tr_settings.c:1102
 内置服务器	Built-in server
-# main/apps/app_tr_settings.c:368
+# main/apps/app_tr_settings.c:371
 默认榜单	Default charts
-# main/apps/app_tr_settings.c:372
+# main/apps/app_tr_settings.c:375
 已填写	Filled in
-# main/apps/app_tr_settings.c:372
+# main/apps/app_tr_settings.c:375
 未填写	Empty
-# main/apps/app_tr_settings.c:374
+# main/apps/app_tr_settings.c:377
 测试中…	Testing…
-# main/apps/app_tr_settings.c:376
+# main/apps/app_tr_settings.c:379
 点一下测试 ›	Tap to test ›
-# main/apps/app_tr_settings.c:376
+# main/apps/app_tr_settings.c:379
 先填地址	Enter address first
-# main/apps/app_tr_settings.c:381
+# main/apps/app_tr_settings.c:384
 %d 话 ›	%d ep. ›
-# main/apps/app_tr_settings.c:387 components/tomato/tomato_sync.c:934
+# main/apps/app_tr_settings.c:390 components/tomato/tomato_sync.c:934
 连接 Wi-Fi	Connect Wi-Fi
-# main/apps/app_tr_settings.c:387
+# main/apps/app_tr_settings.c:390
 同步中	Syncing
-# main/apps/app_tr_settings.c:388
+# main/apps/app_tr_settings.c:391
 进度和番茄书架 ›	Progress and Tomato shelf ›
-# main/apps/app_tr_settings.c:388
+# main/apps/app_tr_settings.c:391
 先设置 WebDAV	Set up WebDAV first
-# main/apps/app_tr_settings.c:393
+# main/apps/app_tr_settings.c:396
 已开启	On
-# main/apps/app_tr_settings.c:409
+# main/apps/app_tr_settings.c:412
 关掉自动校时后可调	Turn off auto sync first
-# main/apps/app_tr_settings.c:410
+# main/apps/app_tr_settings.c:413
 未设置 ›	Not set ›
-# main/apps/app_tr_settings.c:419
+# main/apps/app_tr_settings.c:422
 版本、开源致谢 ›	Version, open source ›
-# main/apps/app_tr_settings.c:458 main/apps/app_tr_settings.c:504
+# main/apps/app_tr_settings.c:461 main/apps/app_tr_settings.c:521 main/apps/app_tr_settings.c:570
 {\"error\":\"地址要以 http:// 或 https:// 开头\"}	{\"error\":\"Address must start with http:// or https://\"}
-# main/apps/app_tr_settings.c:506
+# main/apps/app_tr_settings.c:572
 {\"error\":\"令牌太长\"}	{\"error\":\"Token is too long\"}
-# main/apps/app_tr_settings.c:508
+# main/apps/app_tr_settings.c:574
 {\"error\":\"请粘贴设备令牌\"}	{\"error\":\"Paste the device token\"}
-# main/apps/app_tr_settings.c:471 main/apps/app_tr_settings.c:517
+# main/apps/app_tr_settings.c:474 main/apps/app_tr_settings.c:536 main/apps/app_tr_settings.c:583
 {\"error\":\"保存失败\"}	{\"error\":\"Save failed\"}
-# main/apps/app_book.c:2053 main/apps/app_tr_settings.c:531 main/apps/app_tr_store.c:555 main/apps/app_tr_tomato.c:551
+# main/apps/app_book.c:2053 main/apps/app_tr_settings.c:597 main/apps/app_tr_store.c:555 main/apps/app_tr_tomato.c:551
 后台正在下载或同步，完成后再试	Downloading or syncing in the background. Try again when done
-# main/apps/app_tr_settings.c:560
+# main/apps/app_tr_settings.c:632
 打不开网页服务（%s）	Could not start web service (%s)
-# main/apps/app_tr_settings.c:637
+# main/apps/app_tr_settings.c:709
 已解锁	Unlocked
-# main/apps/app_tr_settings.c:649
+# main/apps/app_tr_settings.c:721
 显示大小 %s · %.60s · 锁屏壁纸 %.50s	Display size %s · %.60s · Wallpaper %.50s
-# main/apps/app_tr_settings.c:655
+# main/apps/app_tr_settings.c:727
 底部：	Bottom bar: 
-# main/apps/app_tr_settings.c:666
+# main/apps/app_tr_settings.c:738
 番茄%s · 小红书%s · 微博%s · X%s · 漫画%s · 验证器%s	Tomato %s · RedNote %s · Weibo %s · X %s · Comics %s · Authenticator %s
-# main/apps/app_tr_settings.c:667 main/apps/app_tr_settings.c:667 main/apps/app_tr_settings.c:668 main/apps/app_tr_settings.c:668 …
+# main/apps/app_tr_settings.c:739 main/apps/app_tr_settings.c:739 main/apps/app_tr_settings.c:740 main/apps/app_tr_settings.c:740 …
 已设置	Set
-# main/apps/app_tr_settings.c:671
+# main/apps/app_tr_settings.c:743
 WebDAV 未设置	WebDAV not set
-# main/apps/app_tr_settings.c:674
+# main/apps/app_tr_settings.c:746
 自动锁屏 %s%s · TF 卡%s	Auto lock %s%s · SD card %s
-# main/apps/app_tr_settings.c:675
+# main/apps/app_tr_settings.c:747
  · 有密码	 · PIN on
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:1450
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1522
 显示与阅读	Display & reading
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:982
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1054
 底部标签	Bottom bar
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:720 main/apps/app_transfer.c:590 main/apps/app_transfer.c:832
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:792 main/apps/app_transfer.c:590 main/apps/app_transfer.c:832
 传书	Transfer
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:1027
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1099
 内容来源	Content sources
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:1466
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1539
 同步	Sync
-# main/apps/app_tr_settings.c:682 main/apps/app_tr_settings.c:1468
+# main/apps/app_tr_settings.c:754 main/apps/app_tr_settings.c:1551
 电源与设备	Power & device
-# main/apps/app_tr_settings.c:685 main/apps/app_tr_settings.c:2000 main/ui/tr_ui.c:501
+# main/apps/app_tr_settings.c:757 main/apps/app_tr_settings.c:2083 main/ui/tr_ui.c:501
 设置	Settings
-# main/apps/app_tr_settings.c:723
-手机或电脑浏览器上传%s%s	Upload from a phone or computer browser%s%s
-# main/apps/app_tr_settings.c:724
-Wi-Fi 传书	Wi-Fi transfer
-# main/apps/app_tr_settings.c:725 main/apps/app_usb.c:184 main/apps/app_usb.c:445
-USB 传书	USB transfer
-# main/apps/app_tr_settings.c:726
-后台正在下载或同步，完成后再用	Downloading or syncing in the background. Use it when done
-# main/apps/app_tr_settings.c:726
-连电脑当 U 盘，拷大文件更方便	Acts as a USB drive on a computer, easier for big files
-# main/apps/app_tr_settings.c:728
-Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。	Wi-Fi transfer keeps the device usable while it runs and accepts only books, fonts and comics. USB transfer manages the whole card, but the device pauses during transfer and restarts when done.
-# main/apps/app_tr_settings.c:789
-正在打开网页服务…	Starting web service…
 # main/apps/app_tr_settings.c:795
-手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：	Join the same Wi-Fi (%s) on your phone, then scan or open in a browser:
+手机或电脑浏览器上传%s%s	Upload from a phone or computer browser%s%s
 # main/apps/app_tr_settings.c:796
+Wi-Fi 传书	Wi-Fi transfer
+# main/apps/app_tr_settings.c:797 main/apps/app_usb.c:184 main/apps/app_usb.c:445
+USB 传书	USB transfer
+# main/apps/app_tr_settings.c:798
+后台正在下载或同步，完成后再用	Downloading or syncing in the background. Use it when done
+# main/apps/app_tr_settings.c:798
+连电脑当 U 盘，拷大文件更方便	Acts as a USB drive on a computer, easier for big files
+# main/apps/app_tr_settings.c:800
+Wi-Fi 传书一边传一边能用设备，只收书、字体和漫画；USB 传书整张卡都能管理，但传输期间设备暂停，结束后重启恢复。	Wi-Fi transfer keeps the device usable while it runs and accepts only books, fonts and comics. USB transfer manages the whole card, but the device pauses during transfer and restarts when done.
+# main/apps/app_tr_settings.c:861
+正在打开网页服务…	Starting web service…
+# main/apps/app_tr_settings.c:867
+手机连上同一个 Wi-Fi（%s），扫码或在浏览器打开：	Join the same Wi-Fi (%s) on your phone, then scan or open in a browser:
+# main/apps/app_tr_settings.c:868
 扫码连上设备热点 %s（口令 %s），再在浏览器打开：	Scan to join hotspot %s (password %s), then open in a browser:
-# main/apps/app_tr_settings.c:810
+# main/apps/app_tr_settings.c:882
 等待网页提交…	Waiting for the web page…
-# main/apps/app_tr_settings.c:814
+# main/apps/app_tr_settings.c:886
 设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。	No Wi-Fi saved on the device, so it runs its own hotspot; after submitting, it must reconnect to your home network to test. Turn the switch off or leave this page to stop.
-# main/apps/app_tr_settings.c:816
+# main/apps/app_tr_settings.c:888
 提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。	Submitting saves and tests the connection. Turn the switch off or leave this page to stop; the web page then stops working.
-# main/apps/app_tr_settings.c:925 main/apps/app_tr_settings.c:976
+# main/apps/app_tr_settings.c:997 main/apps/app_tr_settings.c:1048
 移出	Remove
-# main/apps/app_tr_settings.c:934 main/apps/app_tr_settings.c:976
+# main/apps/app_tr_settings.c:1006 main/apps/app_tr_settings.c:1048
 放到底部	Add to bar
-# main/apps/app_tr_settings.c:937 main/apps/app_tr_settings.c:976 main/apps/app_transfer.c:283
+# main/apps/app_tr_settings.c:1009 main/apps/app_tr_settings.c:1048 main/apps/app_transfer.c:283
 隐藏	Hide
-# main/apps/app_tr_settings.c:944 main/apps/app_tr_settings.c:976 main/apps/app_transfer.c:283
+# main/apps/app_tr_settings.c:1016 main/apps/app_tr_settings.c:1048 main/apps/app_transfer.c:283
 显示	Show
-# main/apps/app_tr_settings.c:985
+# main/apps/app_tr_settings.c:1057
 底部放 %d 个，最后一格固定是“全部”	%d in the bar; the last slot is always All
-# main/apps/app_tr_settings.c:991
+# main/apps/app_tr_settings.c:1063
 放在底部（按顺序）	In the bar (in order)
-# main/apps/app_tr_settings.c:992
+# main/apps/app_tr_settings.c:1064
 只在“全部”里	Only in All
-# main/apps/app_tr_settings.c:994
+# main/apps/app_tr_settings.c:1066
 已隐藏（“全部”里也不显示）	Hidden (not in All either)
-# main/apps/app_tr_settings.c:995 main/apps/app_tr_settings.c:1015
+# main/apps/app_tr_settings.c:1067 main/apps/app_tr_settings.c:1087
 这一档在“全部”里	In All at this size
-# main/apps/app_tr_settings.c:1011
-固定第一格（主页）	Fixed first slot (home)
-# main/apps/app_tr_settings.c:1030
-%.150s · 书城榜单	%.150s · Store charts
-# main/apps/app_tr_settings.c:1030
-番茄服务器未设置	Tomato server not set
-# main/apps/app_tr_settings.c:433 main/apps/app_tr_settings.c:1033 main/apps/app_tr_settings.c:1455
-番茄小说	Tomato Novels
-# main/apps/app_tr_settings.c:1038
-%s 服务器 · %.150s	%s server · %.150s
-# main/apps/app_tr_settings.c:1043
-只看文字（图片已关）	Text only (images off)
-# main/apps/app_tr_settings.c:1045
-%d 个账号 · 口令与自动上锁	%d accounts · Passphrase and auto lock
-# main/apps/app_tr_settings.c:1046
-%s · 口令与自动上锁	%s · Passphrase and auto lock
-# main/apps/app_tr_settings.c:1069
-默认只看文字：帖子里的图写成“[图片]”，列表不带缩略图，不下载也不解码图片。打开后才加载图片，设备负担会大很多。	Text only by default: post images show as [Image] and nothing is downloaded. Images make the device work much harder.
-# main/apps/app_tr_settings.c:1079
-打开虎扑图片？	Turn on Hupu images?
-# main/apps/app_tr_settings.c:1081
-加载图片会大大增加设备的负担（下载、解码都占内存和时间），可能让设备变慢甚至卡死。卡住时长按电源键重启，再到这里关掉。	Loading images greatly increases the load on the device (downloading and decoding take memory and time) and may slow it down or freeze it. If it freezes, hold the power key to restart, then turn this off here.
 # main/apps/app_tr_settings.c:1083
+固定第一格（主页）	Fixed first slot (home)
+# main/apps/app_tr_settings.c:1102
+%.150s · 书城榜单	%.150s · Store charts
+# main/apps/app_tr_settings.c:1102
+番茄服务器未设置	Tomato server not set
+# main/apps/app_tr_settings.c:436 main/apps/app_tr_settings.c:1105 main/apps/app_tr_settings.c:1527
+番茄小说	Tomato Novels
+# main/apps/app_tr_settings.c:1110
+%s 服务器 · %.150s	%s server · %.150s
+# main/apps/app_tr_settings.c:1115
+只看文字（图片已关）	Text only (images off)
+# (unused)
+%d 个账号 · 口令与自动上锁	%d accounts · Passphrase and auto lock
+# (unused)
+%s · 口令与自动上锁	%s · Passphrase and auto lock
+# main/apps/app_tr_settings.c:1141
+默认只看文字：帖子里的图写成“[图片]”，列表不带缩略图，不下载也不解码图片。打开后才加载图片，设备负担会大很多。	Text only by default: post images show as [Image] and nothing is downloaded. Images make the device work much harder.
+# main/apps/app_tr_settings.c:1151
+打开虎扑图片？	Turn on Hupu images?
+# main/apps/app_tr_settings.c:1153
+加载图片会大大增加设备的负担（下载、解码都占内存和时间），可能让设备变慢甚至卡死。卡住时长按电源键重启，再到这里关掉。	Loading images greatly increases the load on the device (downloading and decoding take memory and time) and may slow it down or freeze it. If it freezes, hold the power key to restart, then turn this off here.
+# main/apps/app_tr_settings.c:1155
 打开	Turn on
-# main/apps/app_tr_settings.c:1093
+# main/apps/app_tr_settings.c:1165
 已打开虎扑图片	Hupu images on
-# main/apps/app_tr_settings.c:1108
+# main/apps/app_tr_settings.c:1180
 地址和令牌在 %s 面板的“设备与外网”页。令牌很长，建议打开“手机网页填写”，在手机上粘贴。	The address and token are on the Devices & internet page of the %s panel. The token is long; turn on Fill in on phone and paste it on your phone.
-# main/apps/app_tr_settings.c:1124
+# main/apps/app_tr_settings.c:1196
 语言版本、简体显示：点一下切换，下次刷新发现页时生效。每次最多下载：一次“检查更新”最多下几话，5、10、20、50 轮换。	Language, Simplified Chinese: tap to switch; applies on the next Discover refresh. Max per download: how many episodes one Check for updates fetches, cycling 5, 10, 20, 50.
 # (unused)
 列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。	List size: cycles 100, 200, 300; applies on the next list refresh. More items means more thumbnails stored on the SD card and a slower first refresh.
-# main/apps/app_tr_settings.c:1171
+# main/apps/app_tr_settings.c:1243
 %s 面板“设备与外网”里的地址，如 %s	Address from Devices & internet in the %s panel, e.g. %s
-# main/apps/app_tr_settings.c:1175
-留空使用内置服务器；自建的填 http://地址:端口	Leave empty for the built-in server; for your own, enter http://host:port
-# main/apps/app_tr_settings.c:1193
-MindReset Read Pico 示例固件 · Apache-2.0	MindReset Read Pico sample firmware · Apache-2.0
-# main/apps/app_tr_settings.c:1194
-epdiy 墨水屏驱动 · LGPL-3.0	epdiy e-paper driver · LGPL-3.0
-# main/apps/app_tr_settings.c:1195
-XH View OS 拼音引擎 · Apache-2.0	XH View OS Pinyin engine · Apache-2.0
-# main/apps/app_tr_settings.c:1196
-jieba、pypinyin 词库数据 · MIT	jieba, pypinyin dictionary data · MIT
-# main/apps/app_tr_settings.c:1197
-寒蝉端黑体 · SIL OFL 1.1	Chill Duan Hei font · SIL OFL 1.1
-# main/apps/app_tr_settings.c:1198
-stb_truetype、stb_image、TJpgDec、cJSON	stb_truetype, stb_image, TJpgDec, cJSON
-# main/apps/app_tr_settings.c:1199
-Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
-# main/apps/app_tr_settings.c:1211
-开源致谢	Open source credits
-# main/apps/app_tr_settings.c:1219
-非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。	Unofficial firmware, not affiliated with MindReset or Fanqie Novels. Each component is used under its own license; see the project repository.
-# main/apps/app_tr_settings.c:1235
-小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步	Read Pico reading firmware · Library, Tomato Novels, WebDAV sync
-# main/apps/app_tr_settings.c:1236
-%.20s · TF 卡升级 ›	%.20s · Update from SD card ›
-# main/apps/app_tr_settings.c:1237
-版本	Version
-# main/apps/app_tr_settings.c:1240
-构建时间	Build time
-# main/apps/app_tr_settings.c:1242
-项目主页	Project page
-# main/apps/app_tr_settings.c:1246
-设备信息	Device info
 # main/apps/app_tr_settings.c:1247
+留空使用内置服务器；自建的填 http://地址:端口	Leave empty for the built-in server; for your own, enter http://host:port
+# main/apps/app_tr_settings.c:1265
+MindReset Read Pico 示例固件 · Apache-2.0	MindReset Read Pico sample firmware · Apache-2.0
+# main/apps/app_tr_settings.c:1266
+epdiy 墨水屏驱动 · LGPL-3.0	epdiy e-paper driver · LGPL-3.0
+# main/apps/app_tr_settings.c:1267
+XH View OS 拼音引擎 · Apache-2.0	XH View OS Pinyin engine · Apache-2.0
+# main/apps/app_tr_settings.c:1268
+jieba、pypinyin 词库数据 · MIT	jieba, pypinyin dictionary data · MIT
+# main/apps/app_tr_settings.c:1269
+寒蝉端黑体 · SIL OFL 1.1	Chill Duan Hei font · SIL OFL 1.1
+# main/apps/app_tr_settings.c:1270
+stb_truetype、stb_image、TJpgDec、cJSON	stb_truetype, stb_image, TJpgDec, cJSON
+# main/apps/app_tr_settings.c:1271
+Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
+# main/apps/app_tr_settings.c:1283
+开源致谢	Open source credits
+# main/apps/app_tr_settings.c:1291
+非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。	Unofficial firmware, not affiliated with MindReset or Fanqie Novels. Each component is used under its own license; see the project repository.
+# main/apps/app_tr_settings.c:1307
+小纸 Pico 阅读固件 · 书库、番茄小说、WebDAV 同步	Read Pico reading firmware · Library, Tomato Novels, WebDAV sync
+# main/apps/app_tr_settings.c:1308
+%.20s · TF 卡升级 ›	%.20s · Update from SD card ›
+# main/apps/app_tr_settings.c:1309
+版本	Version
+# main/apps/app_tr_settings.c:1312
+构建时间	Build time
+# main/apps/app_tr_settings.c:1314
+项目主页	Project page
+# main/apps/app_tr_settings.c:1318
+设备信息	Device info
+# main/apps/app_tr_settings.c:1319
 电量、存储、芯片 ›	Battery, storage, chips ›
-# main/apps/app_tr_settings.c:1249
+# main/apps/app_tr_settings.c:1321
 设备自检	Self-test
-# main/apps/app_tr_settings.c:1250
+# main/apps/app_tr_settings.c:1322
 屏幕、触摸、电源 ›	Screen, touch, power ›
-# main/apps/app_tr_settings.c:1305
+# main/apps/app_tr_settings.c:1377
 自动校时开着时，设备每次联网（番茄、小红书、传书等）都会顺便对一次时，按上面的时区显示。关掉后只用手动设置的时间。时间存在电源芯片的时钟里，断电也继续走。	With auto time sync on, the device syncs the time whenever it goes online (Tomato, RedNote, transfers and so on) and shows it in the time zone above. With it off, only the manually set time is used. The time is kept in the power chip's clock and keeps running without power.
-# main/apps/app_tr_settings.c:1355 main/apps/app_tr_wt.c:713
+# main/apps/app_tr_settings.c:1427 main/apps/app_tr_wt.c:713
 当前	Current
-# main/apps/app_tr_settings.c:1372
+# main/apps/app_tr_settings.c:1444
  · 当前	 · current
-# main/apps/app_tr_settings.c:1382
+# main/apps/app_tr_settings.c:1454
 年	Year
-# main/apps/app_tr_settings.c:1382
+# main/apps/app_tr_settings.c:1454
 月	Month
-# main/apps/app_tr_settings.c:1382
+# main/apps/app_tr_settings.c:1454
 日	Day
-# main/apps/app_tr_settings.c:1382
+# main/apps/app_tr_settings.c:1454
 时	Hour
-# main/apps/app_tr_settings.c:1382
+# main/apps/app_tr_settings.c:1454
 分	Min
-# main/apps/app_tr_settings.c:1398
+# main/apps/app_tr_settings.c:1470
 按%s %s的本地时间填写，保存后立刻生效。	Enter the local time for %s %s. It takes effect on save.
-# main/apps/app_tr_settings.c:1420
+# main/apps/app_tr_settings.c:1492
 时间已设置	Time set
-# main/apps/app_tr_settings.c:1420
+# main/apps/app_tr_settings.c:1492
 这个时间不对，没有保存	That time is invalid, not saved
-# main/apps/app_tr_settings.c:1506
+# main/apps/app_tr_settings.c:1589
 地址要以 http:// 或 https:// 开头	Address must start with http:// or https://
-# main/apps/app_tr_settings.c:1527
+# main/apps/app_tr_settings.c:1610
 已保存	Saved
-# main/apps/app_tr_settings.c:1661
+# main/apps/app_tr_settings.c:1744
 底部满了，先移出一个	The bar is full, remove one first
-# main/apps/app_tr_settings.c:1698
+# main/apps/app_tr_settings.c:1781
 关闭锁屏密码	Turn off Lock PIN
-# main/apps/app_tr_settings.c:1698
+# main/apps/app_tr_settings.c:1781
 输入当前密码	Enter current PIN
-# main/apps/app_tr_settings.c:1703
+# main/apps/app_tr_settings.c:1786
 密码不对，没有关闭	Wrong PIN, not turned off
-# main/apps/app_tr_settings.c:1704
+# main/apps/app_tr_settings.c:1787
 已关闭锁屏密码	Lock PIN turned off
-# main/apps/app_tr_settings.c:1705
+# main/apps/app_tr_settings.c:1788
 关闭失败，再试一次	Couldn't turn off, try again
-# main/apps/app_tr_settings.c:1708 main/apps/app_tr_settings.c:1711
+# main/apps/app_tr_settings.c:1791 main/apps/app_tr_settings.c:1794
 设置锁屏密码	Set Lock PIN
-# main/apps/app_tr_settings.c:1708
+# main/apps/app_tr_auth.c:981 main/apps/app_tr_settings.c:1791
 输入 4 位数字	Enter 4 digits
-# main/apps/app_tr_settings.c:1711
+# main/apps/app_tr_auth.c:982 main/apps/app_tr_auth.c:985 main/apps/app_tr_settings.c:1794
 再输一次确认	Enter again to confirm
-# main/apps/app_tr_settings.c:1714
+# main/apps/app_tr_settings.c:1797
 已开启：开机和解锁都要输密码	On: PIN needed at power-on and unlock
-# main/apps/app_tr_settings.c:1714
+# main/apps/app_tr_settings.c:1797
 保存失败，再试一次	Couldn't save, try again
-# main/apps/app_tr_settings.c:1716
+# main/apps/app_tr_settings.c:1799
 两次不一样，没有设置	PINs don't match, not set
-# main/apps/app_tr_settings.c:1749
+# main/apps/app_tr_settings.c:1832
 下次联网时自动对时	Syncs time next time it goes online
-# main/apps/app_tr_settings.c:1749
+# main/apps/app_tr_settings.c:1832
 已关闭自动校时	Auto time sync turned off
-# main/apps/app_tr_settings.c:1762
+# main/apps/app_tr_settings.c:1845
 已关闭虎扑图片	Hupu images turned off
-# main/apps/app_tr_settings.c:1770
+# main/apps/app_tr_settings.c:1853
 先关掉自动校时	Turn off auto time sync first
-# main/apps/app_tr_settings.c:1881
+# main/apps/app_tr_settings.c:1964
 时区已改为%s	Time zone changed to %s
-# main/apps/app_tr_settings.c:1959
+# main/apps/app_tr_settings.c:2042
 已收到网页填写的设置	Received settings from the web page
-# main/apps/app_tr_settings.c:2001
+# main/apps/app_tr_settings.c:2084
 显示、标签、Wi-Fi、内容来源、同步与设备	Display, tabs, Wi-Fi, content sources, sync and device
 # main/apps/app_tr_store.c:242
 正在下载，完成后再刷新	Downloading, refresh when done
@@ -1984,7 +1984,7 @@ X 用户	X user
 WiFi 密码	Wi-Fi password
 # main/apps/app_transfer.c:253
 输入完成后点连接，密码将保存在设备	Saved on the device after Connect
-# main/apps/app_transfer.c:261
+# main/apps/app_tr_settings.c:499 main/apps/app_transfer.c:261
 密码	Password
 # main/apps/app_transfer.c:261
 开放网络，无需密码	Open network, no password needed
@@ -2716,7 +2716,7 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 {\"error\":\"网络正在切换，请连接后重试\"}	{\"error\":\"Network is switching, reconnect and try again\"}
 # components/read_pico/include/read_pico_board.h:36
 小纸 Pico	Read Pico
-# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:393
+# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:396
 关闭@@main/apps/app_tr_settings.c	Off
 # main/apps/app_book.c:1097 main/apps/app_comic.c:576 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新@@main/apps/app_tr_tomato.c	Updates
@@ -2728,17 +2728,17 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 检查更新@@main/apps/app_comic.c	Update
 # main/apps/app_tr_settings.c:144
 翻页刷新	Page refresh
-# main/apps/app_tr_settings.c:359
+# main/apps/app_tr_settings.c:362
 快速	Fast
 # main/apps/app_tr_hupu.c:961 main/apps/app_tr_wt.c:529
 加载中 · 取消	Loading · Cancel
-# main/apps/app_tr_settings.c:661
+# main/apps/app_tr_settings.c:733
 已保存：%s · 只能保存一个	Saved: %s · only one kept
-# main/apps/app_tr_settings.c:662
+# main/apps/app_tr_settings.c:734
 未保存网络 · 只能保存一个	No network saved · only one kept
-# main/apps/app_tr_settings.c:664
+# main/apps/app_tr_settings.c:736
 Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
-# main/apps/app_tr_settings.c:788
+# main/apps/app_tr_settings.c:860
 连不上 Wi-Fi。检查设置 › Wi-Fi 里保存的网络，或关掉开关再试。	Can't join Wi-Fi. Check the saved network in Settings › Wi-Fi, or turn the switch off and retry.
 # main/apps/app_tr_weibo.c:844 main/apps/app_tr_x.c:875 main/apps/app_tr_xhs.c:587
 拉取中 · 取消	Fetching · Cancel
@@ -2756,27 +2756,27 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 连不上（%s）	Can't connect (%s)
 # main/apps/app_transfer.c:107
 正在连接…	Connecting…
-# main/apps/app_tr_settings.c:435
-地址和设备密码在番茄服务器面板 → 设备与外网，复制后粘贴到这里。	Find the address and device password in the Tomato server panel → Devices & internet; copy them and paste them here.
-# main/apps/app_tr_settings.c:436
-设备密码	Device password
-# main/apps/app_tr_settings.c:437
-粘贴设备密码	Paste the device password
 # main/apps/app_tr_settings.c:438
-面板上的设备密码；服务器没设密码就留空。	The device password shown in the panel; leave blank if the server has none.
+地址和设备密码在番茄服务器面板 → 设备与外网，复制后粘贴到这里。	Find the address and device password in the Tomato server panel → Devices & internet; copy them and paste them here.
 # main/apps/app_tr_settings.c:439
-已经填过密码，不显示原值；留空表示不改。	A password is already saved and is not shown; leave this blank to keep it.
+设备密码	Device password
 # main/apps/app_tr_settings.c:440
+粘贴设备密码	Paste the device password
+# main/apps/app_tr_settings.c:441
+面板上的设备密码；服务器没设密码就留空。	The device password shown in the panel; leave blank if the server has none.
+# main/apps/app_tr_settings.c:442 main/apps/app_tr_settings.c:502
+已经填过密码，不显示原值；留空表示不改。	A password is already saved and is not shown; leave this blank to keep it.
+# main/apps/app_tr_settings.c:443
 已保存。回到设备上就能用番茄小说和书城了。	Saved. Tomato and the bookstore are ready on the device.
-# main/apps/app_tr_settings.c:460
+# main/apps/app_tr_settings.c:463 main/apps/app_tr_settings.c:525
 {\"error\":\"密码太长\"}	{\"error\":\"Password too long\"}
-# main/apps/app_tr_settings.c:815
+# main/apps/app_tr_settings.c:887
 提交后自动保存。关掉开关或离开这一页就停止，网页随之失效。	Submitting saves it. Turn the switch off or leave this page to stop; the web page then stops working.
 # main/apps/app_tr_settings.c:145
 文字深浅	Text darkness
-# main/apps/app_tr_settings.c:361
+# main/apps/app_tr_settings.c:364
 深	Dark
-# main/apps/app_tr_settings.c:361
+# main/apps/app_tr_settings.c:364
 更深	Darker
 # main/apps/app_book.c:766
 后台正在检查更新	Checking for updates
@@ -2834,9 +2834,9 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 列表还没取过	List not fetched yet
 # main/apps/app_tr_settings.c:183
 关注每个专区	Pages per zone
-# main/apps/app_tr_settings.c:382
+# main/apps/app_tr_settings.c:385
 %d 页 ›	%d pg ›
-# main/apps/app_tr_settings.c:1072
+# main/apps/app_tr_settings.c:1144
 关注每个专区：刷新关注时每个专区取几页，1、2、3 轮换。页数越多列表越长，刷新也越慢。	Pages per zone: how many pages each followed zone loads on refresh, 1, 2 or 3. More pages mean a longer list and a slower refresh.
 # main/apps/app_comic.c:527
 更新完成	Update done
@@ -2866,5 +2866,83 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 连不上服务器，%d 秒后再试	Server unreachable, retrying in %d s
 # main/apps/app_tr_settings.c:166
 每次拉取	Fetch size
-# main/apps/app_tr_settings.c:1125
+# main/apps/app_tr_settings.c:1197
 每次拉取：20、30、50 轮换，下次刷新生效。关注列表会保留以前缓存的条目（最多 100 条），新拉的排前面；缩略图先下前两页，翻到再补。	Fetch size: 20, 30 or 50, from the next refresh. Following keeps earlier cached entries (up to 100) with new ones first; thumbnails load for two pages, the rest as you go.
+# main/app/tr_auth.c:128
+PIN 要正好 4 位数字	The PIN must be exactly 4 digits
+# main/apps/app_tr_auth.c:570
+输入验证器 PIN	Enter authenticator PIN
+# main/apps/app_tr_auth.c:571 main/apps/app_tr_auth.c:981 main/apps/app_tr_auth.c:982
+设置验证器 PIN	Set authenticator PIN
+# main/apps/app_tr_auth.c:572
+再输一次 PIN	Enter the PIN again
+# main/apps/app_tr_auth.c:573
+输入原来的 PIN	Enter the old PIN
+# main/apps/app_tr_auth.c:574
+输入新 PIN	Enter the new PIN
+# main/apps/app_tr_auth.c:575
+再输一次新 PIN	Enter the new PIN again
+# main/apps/app_tr_auth.c:594
+4 位数字。忘了 PIN 只能清空验证器，再从手机重新导入。	4 digits. A forgotten PIN means clearing the authenticator and importing again from your phone.
+# main/apps/app_tr_auth.c:596
+PIN 只在这台设备上输入，和锁屏密码无关。	The PIN is entered on this device only and is separate from the lock PIN.
+# main/apps/app_tr_auth.c:612
+输入 PIN	Enter PIN
+# main/apps/app_tr_auth.c:682 main/apps/app_tr_auth.c:1137
+还没设置 PIN	No PIN set
+# main/apps/app_tr_auth.c:685
+修改 PIN	Change PIN
+# main/apps/app_tr_auth.c:689
+换成 PIN ›	Switch to PIN ›
+# main/apps/app_tr_auth.c:696
+验证器 PIN 只管这一个功能，和锁屏密码分开。账号加密存在 TF 卡上，解锁要 PIN 和这台设备一起，换卡或换设备都解不开。忘了 PIN 没有找回办法，只能清空验证器，再从手机 Google Authenticator 重新导入。4 位数字只有 1 万种，防得住别人随手试，防不住专门破解的人。自动上锁点一下切换。	The PIN only covers this feature and is separate from the lock PIN. Accounts are encrypted on the TF card, and unlocking needs the PIN together with this device, so another card or device cannot open them. A forgotten PIN cannot be recovered: clear the authenticator and import again from Google Authenticator on your phone. Four digits are only 10,000 combinations: this stops casual tries but not a determined attacker. Tap Auto-lock to switch.
+# main/apps/app_tr_auth.c:706
+设置 PIN	Set PIN
+# main/apps/app_tr_auth.c:707
+在这台设备上离线显示两步验证码，和手机 Google Authenticator 算出的一样，不需要服务器。\n先设一个验证器 PIN（4 位数字），再用设备热点从手机导入账号。手机上的 Google Authenticator 请一直保留作备份。	Shows two-step codes offline on this device, the same as Google Authenticator on your phone, no server needed.\nSet an authenticator PIN (4 digits) first, then import accounts from your phone over the device hotspot. Keep Google Authenticator on your phone as a backup.
+# main/apps/app_tr_auth.c:789
+会删除 TF 卡上的加密文件和设备里配套的随机数，所有账号都没了。之后要重新设置 PIN，再从手机重新导入。	This deletes the encrypted file on the TF card and the matching random value in the device. All accounts are gone. Set a PIN again afterwards and import from your phone again.
+# main/apps/app_tr_auth.c:904
+PIN 不对	Wrong PIN
+# main/apps/app_tr_auth.c:933
+PIN 不对，还能再试 %d 次	Wrong PIN, %d tries left
+# main/apps/app_tr_auth.c:934
+PIN 不对，请等 %d 秒再试	Wrong PIN, wait %d s
+# main/apps/app_tr_auth.c:946
+PIN 已设置	PIN set
+# main/apps/app_tr_auth.c:957
+PIN 已修改	PIN changed
+# main/apps/app_tr_auth.c:963
+原来的 PIN 不对，还能再试 %d 次	Old PIN wrong, %d tries left
+# main/apps/app_tr_auth.c:964
+原来的 PIN 不对，请等 %d 秒再试	Old PIN wrong, wait %d s
+# main/apps/app_tr_auth.c:977
+解锁验证器	Unlock authenticator
+# main/apps/app_tr_auth.c:978
+输入 4 位 PIN	Enter the 4-digit PIN
+# main/apps/app_tr_auth.c:983 main/apps/app_tr_auth.c:984 main/apps/app_tr_auth.c:985
+修改验证器 PIN	Change authenticator PIN
+# main/apps/app_tr_auth.c:983
+输入当前 PIN	Enter the current PIN
+# main/apps/app_tr_auth.c:984
+输入新的 4 位 PIN	Enter the new 4-digit PIN
+# main/apps/app_tr_settings.c:1117
+%d 个账号 · PIN 与自动上锁	%d accounts · PIN and auto-lock
+# main/apps/app_tr_settings.c:1118
+%s · PIN 与自动上锁	%s · PIN and auto-lock
+# main/apps/app_tr_settings.c:493
+WebDAV 用来同步阅读进度和番茄书架。地址是同步文件夹的完整地址，要事先建好。	WebDAV syncs reading progress and the Tomato shelf. The address is the full address of the sync folder, which must exist already.
+# main/apps/app_tr_settings.c:495
+坚果云是 https://dav.jianguoyun.com/dav/文件夹名	For Jianguoyun use https://dav.jianguoyun.com/dav/folder-name
+# main/apps/app_tr_settings.c:496
+用户名	User name
+# main/apps/app_tr_settings.c:500
+粘贴密码	Paste the password
+# main/apps/app_tr_settings.c:501
+坚果云填“应用密码”，不是登录密码。服务器不要密码就留空。	For Jianguoyun use an app password, not the login password. Leave it blank if the server needs none.
+# main/apps/app_tr_settings.c:503
+已保存。回到设备上点“立即同步”试试。	Saved. Go back to the device and tap Sync now.
+# main/apps/app_tr_settings.c:523
+{\"error\":\"用户名太长\"}	{\"error\":\"User name too long\"}
+# main/apps/app_tr_settings.c:1548
+WebDAV 的地址、用户名和密码很长，建议打开“手机网页填写”，在手机上粘贴。坚果云的密码要用“应用密码”。	WebDAV addresses, user names and passwords are long: turn on Fill in on phone and paste them on your phone. Jianguoyun needs an app password.

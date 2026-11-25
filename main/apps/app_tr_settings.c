@@ -183,8 +183,9 @@ static const row_t HUPU_ROWS[] = {
     {R_HPAGES, NULL, "关注每个专区", 262},
 };
 static const row_t SYNC_ROWS[] = {
-    {R_DAV, NULL, "WebDAV", 190},
-    {R_DAV_SYNC, NULL, "立即同步", 262},
+    {R_WEB, NULL, "手机网页填写", 190},
+    {R_DAV, NULL, "WebDAV", 274},
+    {R_DAV_SYNC, NULL, "立即同步", 346},
 };
 static const row_t POWER_ROWS[] = {
     {R_SLEEP, NULL, "睡眠与锁屏", 190},
@@ -266,9 +267,11 @@ static uint32_t s_web_revision;
 // 网页填写的是番茄（地址和设备密码）而不是 SERVERS 里的服务器。/ The web form serves Tomato (address and device
 // password) rather than a server from SERVERS.
 static bool s_web_tomato;
+static bool s_web_dav;   // 网页填的是 WebDAV（同步页）/ The web form fills WebDAV (the sync page)
 // 番茄配置没有修改计数：网页每保存一次在 HTTP 任务里加一，主任务看它变没变。/ Tomato config has no revision: the
 // HTTP task bumps this on every web save and the main task watches it.
 static volatile uint32_t s_web_tomato_rev;
+static volatile uint32_t s_web_dav_rev;
 static read_pico_transfer_status_t s_web_status;
 static char s_web_note[96];
 
@@ -477,7 +480,70 @@ static int web_form_tomato(const char* body, size_t len, char* reply, size_t cap
     return status;
 }
 
+// WebDAV：地址、用户名、密码三项。GET 返回地址和用户名、“有没有密码”；POST 保存。密码从不返回，留空表示不改。
+// WebDAV: address, user name and password. GET returns the address, the user name and whether a password exists; POST
+// saves. The password never goes out, and a blank one keeps the old.
+static int web_form_dav(const char* body, size_t len, char* reply, size_t cap) {
+    tomato_webdav_config_t cur = {0};
+    const bool has = tomato_webdav_config_load(&cur) == ESP_OK;
+    if (!body) {
+        cJSON* j = cJSON_CreateObject();
+        cJSON_AddStringToObject(j, "name", "WebDAV");
+        cJSON_AddStringToObject(j, "example", "https://dav.jianguoyun.com/dav/treader");
+        cJSON_AddStringToObject(j, "hint", "WebDAV 用来同步阅读进度和番茄书架。地址是同步文件夹的完整地址，要事先建好。");
+        cJSON_AddStringToObject(j, "url_label", "WebDAV 目录地址");
+        cJSON_AddStringToObject(j, "url_hint", "坚果云是 https://dav.jianguoyun.com/dav/文件夹名");
+        cJSON_AddStringToObject(j, "user_label", "用户名");
+        cJSON_AddStringToObject(j, "user_ph", "坚果云填登录邮箱");
+        cJSON_AddStringToObject(j, "user", has ? cur.user : "");
+        cJSON_AddStringToObject(j, "secret", "密码");
+        cJSON_AddStringToObject(j, "secret_ph", "粘贴密码");
+        cJSON_AddStringToObject(j, "secret_hint", "坚果云填“应用密码”，不是登录密码。服务器不要密码就留空。");
+        cJSON_AddStringToObject(j, "secret_kept", "已经填过密码，不显示原值；留空表示不改。");
+        cJSON_AddStringToObject(j, "saved", "已保存。回到设备上点“立即同步”试试。");
+        cJSON_AddBoolToObject(j, "optional", true);
+        cJSON_AddStringToObject(j, "url", has ? cur.url : "");
+        cJSON_AddBoolToObject(j, "has_token", has && cur.password[0] != 0);
+        memset(&cur, 0, sizeof(cur));
+        char* text = cJSON_PrintUnformatted(j);
+        cJSON_Delete(j);
+        snprintf(reply, cap, "%s", text ? text : "{}");
+        cJSON_free(text);
+        return 200;
+    }
+    cJSON* j = cJSON_ParseWithLength(body, len);
+    const cJSON* url = cJSON_GetObjectItemCaseSensitive(j, "url");
+    const cJSON* user = cJSON_GetObjectItemCaseSensitive(j, "user");
+    const cJSON* pass = cJSON_GetObjectItemCaseSensitive(j, "token");
+    int status = 400;
+    if (!cJSON_IsString(url) || (strncmp(url->valuestring, "http://", 7) && strncmp(url->valuestring, "https://", 8)) ||
+        strlen(url->valuestring) >= sizeof(cur.url) - 1) {
+        snprintf(reply, cap, "{\"error\":\"地址要以 http:// 或 https:// 开头\"}");
+    } else if (cJSON_IsString(user) && strlen(user->valuestring) >= sizeof(cur.user) - 1) {
+        snprintf(reply, cap, "{\"error\":\"用户名太长\"}");
+    } else if (cJSON_IsString(pass) && strlen(pass->valuestring) >= sizeof(cur.password) - 1) {
+        snprintf(reply, cap, "{\"error\":\"密码太长\"}");
+    } else {
+        tomato_webdav_config_t next = {0};
+        snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
+        snprintf(next.user, sizeof(next.user), "%s", cJSON_IsString(user) ? user->valuestring : "");
+        // 密码留空：沿用旧的。/ A blank password keeps the old one.
+        snprintf(next.password, sizeof(next.password), "%s",
+                 cJSON_IsString(pass) && pass->valuestring[0] ? pass->valuestring : has ? cur.password : "");
+        const esp_err_t err = tomato_webdav_config_save(&next);
+        memset(&next, 0, sizeof(next));
+        status = err == ESP_OK ? 200 : 500;
+        snprintf(reply, cap, err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存失败\"}");
+        if (err == ESP_OK) s_web_dav_rev++;
+    }
+    if (cJSON_IsString(pass)) memset(pass->valuestring, 0, strlen(pass->valuestring));
+    cJSON_Delete(j);
+    memset(&cur, 0, sizeof(cur));
+    return status;
+}
+
 static int web_form(const char* body, size_t len, char* reply, size_t cap) {
+    if (s_web_dav) return web_form_dav(body, len, reply, cap);
     if (s_web_tomato) return web_form_tomato(body, len, reply, cap);
     tomato_srv_config_t cur;
     const bool has = SERVERS[s_web_srv].load(&cur) == ESP_OK;
@@ -540,6 +606,11 @@ static void web_stop(void) {
     app_loop_hold_awake(false);
 }
 
+// 当前网页填写对应的那份设置的修订号。/ The revision of the settings the web form is filling.
+static uint32_t web_rev(void) {
+    return s_web_dav ? s_web_dav_rev : s_web_tomato ? s_web_tomato_rev : SERVERS[s_web_srv].revision();
+}
+
 static void web_start(void) {
     if (!make_room()) return;
     bool configured = false;
@@ -553,6 +624,7 @@ static void web_start(void) {
     };
     s_web_srv = s_srv;   // 回调在 HTTP 任务里读它，开着期间不变 / Read by the HTTP task; fixed while serving
     s_web_tomato = s_page == P_SRC_TOMATO;
+    s_web_dav = s_page == P_SYNC;
     // 后台任务做完还留着的 Wi-Fi 先断开，热点才开得起来。/ Drop Wi-Fi lingering after a background job so the hotspot can start.
     tomato_net_idle_off();
     const esp_err_t err = read_pico_transfer_start(&cfg);
@@ -561,7 +633,7 @@ static void web_start(void) {
         return;
     }
     s_web_on = true;
-    s_web_revision = s_web_tomato ? s_web_tomato_rev : SERVERS[s_web_srv].revision();
+    s_web_revision = web_rev();
     s_web_note[0] = 0;
     memset(&s_web_status, 0, sizeof(s_web_status));
     read_pico_transfer_get_status(&s_web_status);
@@ -812,7 +884,7 @@ static void draw_web_box(uint8_t* fb) {
     const int n = tr_wrap(fb, bx + pad, sep + TR_S(72), bw - 2 * pad, TR_S(24), TR_S(36),
                           s_web_status.mode == READ_PICO_TRANSFER_MODE_AP
                               ? "设备没有保存 Wi-Fi，开的是自己的热点；提交后要连回家里网络才能测试。关掉开关或离开这一页就停止。"
-                              : s_web_tomato ? "提交后自动保存。关掉开关或离开这一页就停止，网页随之失效。"
+                              : s_web_tomato || s_web_dav ? "提交后自动保存。关掉开关或离开这一页就停止，网页随之失效。"
                                              : "提交后自动保存并测试连接。关掉开关或离开这一页就停止，网页随之失效。",
                           more ? more : 3);
     // 框高：正常档固定 480；放大后包住实际内容。/ Box height: 480 at normal size; larger sizes wrap the content.
@@ -1042,8 +1114,8 @@ static void draw_sources(uint8_t* fb) {
     draw_cat(fb, CAT_TOP + SRC_HUPU * h, h, TR_ICON_BALL, "虎扑",
              app_settings_hupu_images() ? "显示图片" : "只看文字（图片已关）", false);
     const int n = tr_auth_count();
-    if (n >= 0) snprintf(sum, sizeof(sum), "%d 个账号 · 口令与自动上锁", n);
-    else snprintf(sum, sizeof(sum), "%s · 口令与自动上锁", auth_state_text());
+    if (n >= 0) snprintf(sum, sizeof(sum), "%d 个账号 · PIN 与自动上锁", n);
+    else snprintf(sum, sizeof(sum), "%s · PIN 与自动上锁", auth_state_text());
     draw_cat(fb, CAT_TOP + SRC_AUTH * h, h, TR_ICON_KEY, "验证器", sum, true);
 }
 
@@ -1463,7 +1535,18 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         break;
     case P_SRC_SERVER: draw_server(fb); break;
     case P_SRC_HUPU: draw_hupu(fb); break;
-    case P_SYNC: draw_back_title(fb, "同步"); draw_message(fb); draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS)); break;
+    case P_SYNC:
+        draw_back_title(fb, "同步");
+        draw_message(fb);
+        if (s_web_on) {
+            draw_rows(fb, SYNC_ROWS, 1);
+            draw_web_box(fb);
+            break;
+        }
+        draw_rows(fb, SYNC_ROWS, COUNT(SYNC_ROWS));
+        tr_wrap(fb, TR_MARGIN, TR_S(454), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+                "WebDAV 的地址、用户名和密码很长，建议打开“手机网页填写”，在手机上粘贴。坚果云的密码要用“应用密码”。", 3);
+        break;
     case P_POWER:
         draw_back_title(fb, "电源与设备");
         draw_message(fb);
@@ -1575,7 +1658,7 @@ static app_redraw_t open_page(page_t p) {
 static app_redraw_t go_back(void) {
     s_message[0] = 0;
     s_hupu_ask = false;
-    if (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO) web_stop();
+    if (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO || s_page == P_SYNC) web_stop();
     s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
              s_page == P_TURN ? P_DISPLAY :
              s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU ? P_SOURCES : P_HOME;
@@ -1853,7 +1936,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         break;
     case P_TRANSFER: return touch_transfer(ctx, y);
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
-    case P_SYNC: id = row_hit(SYNC_ROWS, COUNT(SYNC_ROWS), y); break;
+    case P_SYNC: id = row_hit(SYNC_ROWS, s_web_on ? 1 : COUNT(SYNC_ROWS), y); break;
     case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
     case P_TIME: id = row_hit(TIME_ROWS, COUNT(TIME_ROWS), y); break;
     case P_TSET: return touch_tset(x, y);
@@ -1936,7 +2019,7 @@ static void page_on_exit(app_ctx_t* ctx) {
 
 static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
-    if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, TR_S(SYNC_ROWS[1].y), TR_W, ROW_H};
+    if (s_edit == E_NONE && s_page == P_SYNC) return (EpdRect){0, TR_S(SYNC_ROWS[2].y), TR_W, ROW_H};
     if (s_edit == E_NONE && s_page == P_SRC_SERVER) return (EpdRect){0, TR_S(SERVER_ROWS[3].y), TR_W, ROW_H};
     return (EpdRect){0, TR_S(160), TR_W, TR_H - TR_S(160)};
 }
@@ -1950,15 +2033,15 @@ static app_redraw_t tick_web(void) {
     const bool net_changed = next.network_ready != s_web_status.network_ready || strcmp(next.url, s_web_status.url) ||
                              next.state != s_web_status.state;
     s_web_status = next;
-    if ((s_web_tomato ? s_web_tomato_rev : SERVERS[s_web_srv].revision()) != s_web_revision) {
+    if (web_rev() != s_web_revision) {
         if (!read_pico_transfer_try_stop_if_idle()) return APP_REDRAW_NONE;
         s_web_on = false;
         ui_wifi_qr_clear();
         app_loop_hold_awake(false);
         load();
         snprintf(s_message, sizeof(s_message), "已收到网页填写的设置");
-        // 番茄没有测试连接这一行，存好就行。/ Tomato has no connection-test row; saving is enough.
-        if (!s_web_tomato) start_test(s_web_srv);
+        // 番茄和 WebDAV 没有测试连接这一行，存好就行。/ Tomato and WebDAV have no connection-test row; saving is enough.
+        if (!s_web_tomato && !s_web_dav) start_test(s_web_srv);
         return APP_REDRAW_PAGE;
     }
     if (net_changed) {
@@ -1976,7 +2059,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_poll_ms = ctx->now_ms;
     if (s_web_on) {
         const app_redraw_t r = tick_web();
-        return (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO) && s_edit == E_NONE ? r : APP_REDRAW_NONE;
+        return (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO || s_page == P_SYNC) && s_edit == E_NONE ? r : APP_REDRAW_NONE;
     }
     if (!s_syncing && !s_testing) return APP_REDRAW_NONE;
     tomato_status_t st;

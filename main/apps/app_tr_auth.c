@@ -2,14 +2,23 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 中文：“验证器”功能页。按 RFC 6238 离线显示两步验证码；口令在屏幕键盘上输；账号用设备热点上的网页导入（设备
- * 屏幕上确认后才写入）；长按删除；从“设置 › 内容来源 › 验证器”进来时画这一功能自己的设置（改口令、自动上锁、
+ * 中文：“验证器”功能页。按 RFC 6238 离线显示两步验证码；PIN（4 位数字）在整屏数字键盘上输，旧的字母数字口令仍用屏幕键盘
+ * 解锁；账号用设备热点上的网页导入（设备屏幕上确认后才写入）；长按删除；从“设置 › 内容来源 › 验证器”进来时画这一功能自己的设置（改 PIN、自动上锁、
  * 清空）。会话、加密文件和 NVS 在 tr_auth。
  *
- * English: the Authenticator feature page. Shows RFC 6238 codes offline; the passphrase is typed on the on-screen
- * keyboard; accounts are imported through a web page on the device hotspot (written only after confirming on the
- * device); a long press deletes; opened from Settings > Content sources > Authenticator it draws this feature's own
- * settings (change passphrase, auto-lock, clear). Session, encrypted file and NVS live in tr_auth.
+ * English: the Authenticator feature page. Shows RFC 6238 codes offline; the PIN (four digits) is typed on the
+ * full-screen number keypad, while an old alphanumeric passphrase still unlocks on the on-screen keyboard; accounts are
+ * imported through a web page on the device hotspot (written only after confirming on the device); a long press
+ * deletes; opened from Settings > Content sources > Authenticator it draws this feature's own settings (change PIN,
+ * auto-lock, clear). Session, encrypted file and NVS live in tr_auth.
+ *
+ * Treader 修订（1.2.4，用户要求）：口令换成 4 位数字 PIN，用和锁屏密码同款的整屏数字键盘；迭代次数固定 1 万次，解锁约 1 秒
+ * （原来最少 10 万次，约 9 秒，主线程长时间不让出还会触发看门狗告警）。旧的字母数字口令仍用屏幕键盘解锁，在设置里“换成 PIN”后
+ * 就解不开了。
+ * Treader revision (1.2.4, user request): the passphrase became a 4-digit PIN on the same full-screen keypad as the lock
+ * PIN; iterations are fixed at 10,000, about 1 s to unlock (it used to be at least 100,000, about 9 s, which also held
+ * the main task long enough to trip the watchdog). An old alphanumeric passphrase still unlocks on the keyboard and
+ * stops working once changed to a PIN in Settings.
  *
  * 冻结：验证码区只用黑白（会被 DU 局部刷新）；密钥不出设备，网页只拿到名称；导入和删除要在设备上确认；导入只开
  * 设备热点，不走已有 Wi-Fi；锁屏时由 sleep.c 上锁。
@@ -34,6 +43,7 @@
 #include "tomato.h"
 #include "tr_auth.h"
 #include "tr_kbd.h"
+#include "tr_pin.h"
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
@@ -87,6 +97,7 @@ static bool s_from_settings;     // 从设置进来 / Opened from Settings
 static bool s_open_settings;     // 下次进页打开设置视图 / Open the settings view on next entry
 static int64_t s_shown_slot = -1;   // 上次画的 5 秒格 / The 5-second slot last drawn
 static bool s_syncing;           // 正在校时 / Time sync running
+static bool s_pad_pending;       // 下一拍弹出数字键盘 / Open the number keypad on the next tick
 
 /* ---- 时间 / Time ---- */
 
@@ -546,14 +557,45 @@ static void draw_detail(uint8_t* fb) {
 
 /* ---- 其他视图 / Other views ---- */
 
+// 这一步用数字键盘（PIN）还是屏幕键盘（旧的字母数字口令）：新设的和新改的一律是 PIN，解锁和验证“原来的”看这份验证器
+// 用的是什么。/ Whether this step uses the number keypad (a PIN) or the on-screen keyboard (the old alphanumeric
+// passphrase): a new secret is always a PIN, while unlocking and checking the "old" one follow what the vault uses.
+static bool pad_mode(void) {
+    return s_pass == PM_SET1 || s_pass == PM_SET2 || s_pass == PM_NEW1 || s_pass == PM_NEW2 || tr_auth_pin_mode();
+}
+
 static const char* pass_title(void) {
+    const bool pin = pad_mode();
     switch (s_pass) {
-    case PM_UNLOCK: return "输入验证器口令";
-    case PM_SET1: return "设置验证器口令";
-    case PM_SET2: return "再输一次口令";
-    case PM_OLD: return "输入原来的口令";
-    case PM_NEW1: return "输入新口令";
-    default: return "再输一次新口令";
+    case PM_UNLOCK: return pin ? "输入验证器 PIN" : "输入验证器口令";
+    case PM_SET1: return "设置验证器 PIN";
+    case PM_SET2: return "再输一次 PIN";
+    case PM_OLD: return pin ? "输入原来的 PIN" : "输入原来的口令";
+    case PM_NEW1: return "输入新 PIN";
+    default: return "再输一次新 PIN";
+    }
+}
+
+// 数字键盘模式下，键盘弹出前后页面上的“输入 PIN”按钮。/ The "Enter PIN" button on the page around the keypad.
+#define PAD_BTN (EpdRect){TR_MARGIN, TR_S(440), TR_W - 2 * TR_MARGIN, TR_S(84)}
+
+// 页面下方的提示：正在做什么、上一步的结果、要等多久，或这一步的说明。/ The hint under the heading: what is running,
+// the last result, how long to wait, or what this step needs.
+static void pass_hint(char* hint, size_t cap) {
+    const int wait = tr_auth_wait_s();
+    const bool pin = pad_mode();
+    if (s_job != J_NONE) {
+        snprintf(hint, cap, "%s", s_job == J_UNLOCK ? "正在解锁…" : s_job == J_SETUP ? "正在设置…" : "正在修改…");
+    } else if (s_msg[0]) {
+        snprintf(hint, cap, "%s", s_msg);
+    } else if (wait > 0 && (s_pass == PM_UNLOCK || s_pass == PM_OLD)) {
+        snprintf(hint, cap, "输错太多次，请等 %d 秒再试", wait);
+    } else if (s_pass == PM_SET1 || s_pass == PM_NEW1) {
+        snprintf(hint, cap, "4 位数字。忘了 PIN 只能清空验证器，再从手机重新导入。");
+    } else if (s_pass == PM_UNLOCK) {
+        snprintf(hint, cap, "%s", pin ? "PIN 只在这台设备上输入，和锁屏密码无关。" : "口令只在这台设备上输入，和开机密码无关。");
+    } else {
+        hint[0] = 0;
     }
 }
 
@@ -561,6 +603,15 @@ static void draw_pass(uint8_t* fb) {
     if (s_pass == PM_UNLOCK && !s_from_settings) tr_title(fb, "验证器");
     else draw_back_title(fb, "验证器");
     tr_text(fb, TR_MARGIN, TR_S(176), TR_S(32), pass_title(), EPD_DRAW_ALIGN_LEFT, true);
+    if (pad_mode()) {
+        // 数字键盘整屏自己画；这一页只写提示，键盘没开着时放一个“输入 PIN”按钮。/ The keypad draws the whole screen
+        // itself; this page only shows the hint, plus an "Enter PIN" button while the keypad is not up.
+        char note[200];
+        pass_hint(note, sizeof(note));
+        tr_wrap(fb, TR_MARGIN, TR_S(236), TR_W - 2 * TR_MARGIN, TR_S(26), TR_S(36), note, 4);
+        if (s_job == J_NONE && !s_pad_pending) tr_pill(fb, PAD_BTN, "输入 PIN", true, TR_S(32));
+        return;
+    }
     const int fy = TR_S(230), fh = TR_S(84);
     const EpdRect f = {TR_MARGIN, fy, TR_W - 2 * TR_MARGIN, fh};
     ui_draw_round_rect(fb, f, TR_S(14), TR_GRAY_OUTLINE);
@@ -578,20 +629,7 @@ static void draw_pass(uint8_t* fb) {
     epd_fill_rect((EpdRect){f.x + TR_S(22) + ttf_text_width_px(px, tail), f.y + TR_S(18), TR_S(3), TR_S(46)},
                   UI_GRAY_BLACK, fb);
     char hint[200];
-    const int wait = tr_auth_wait_s();
-    if (s_job != J_NONE) {
-        snprintf(hint, sizeof(hint), "%s", s_job == J_UNLOCK ? "正在解锁…" : s_job == J_SETUP ? "正在设置…" : "正在修改…");
-    } else if (s_msg[0]) {
-        snprintf(hint, sizeof(hint), "%s", s_msg);
-    } else if (wait > 0 && (s_pass == PM_UNLOCK || s_pass == PM_OLD)) {
-        snprintf(hint, sizeof(hint), "输错太多次，请等 %d 秒再试", wait);
-    } else if (s_pass == PM_SET1 || s_pass == PM_NEW1) {
-        snprintf(hint, sizeof(hint), "至少 8 位，字母和数字都要有。忘了口令只能清空验证器，再从手机重新导入。");
-    } else if (s_pass == PM_UNLOCK) {
-        snprintf(hint, sizeof(hint), "口令只在这台设备上输入，和开机密码无关。");
-    } else {
-        hint[0] = 0;
-    }
+    pass_hint(hint, sizeof(hint));
     tr_wrap(fb, TR_MARGIN, fy + fh + TR_S(18), TR_W - 2 * TR_MARGIN, TR_S(26), TR_S(36), hint, 3);
     tr_kbd_draw(fb, &s_kbd);
 }
@@ -641,21 +679,21 @@ static void draw_settings(uint8_t* fb) {
     char state[80];
     const int n = tr_auth_count();
     if (n >= 0) snprintf(state, sizeof(state), "已解锁 · %d 个账号", n);
-    else snprintf(state, sizeof(state), "%s", st == TR_AUTH_UNSET ? "还没设置口令" : st == TR_AUTH_LOCKED ? "已上锁" :
+    else snprintf(state, sizeof(state), "%s", st == TR_AUTH_UNSET ? "还没设置 PIN" : st == TR_AUTH_LOCKED ? "已上锁" :
                                               st == TR_AUTH_NOCARD ? "没有 TF 卡" : "需要清空后重新设置");
     tr_text_dim(fb, TR_MARGIN, TR_S(150), TR_S(26), state, EPD_DRAW_ALIGN_LEFT);
-    static const char* const LABELS[3] = {"修改口令", "自动上锁", "清空验证器"};
+    static const char* const LABELS[3] = {"修改 PIN", "自动上锁", "清空验证器"};
     for (int i = 0; i < 3; i++) {
         const int y = SET_TOP + i * SET_ROW_H;
         tr_text(fb, TR_MARGIN, y + (SET_ROW_H - TR_S(32)) / 2 - TR_S(2), TR_S(32), LABELS[i], EPD_DRAW_ALIGN_LEFT, false);
-        const char* v = i == 0 ? (st == TR_AUTH_LOCKED || st == TR_AUTH_OPEN ? "›" : "未设置")
+        const char* v = i == 0 ? (st == TR_AUTH_LOCKED || st == TR_AUTH_OPEN ? (tr_auth_pin_mode() ? "›" : "换成 PIN ›") : "未设置")
                       : i == 1 ? (tr_auth_auto_lock() == TR_AUTH_LOCK_AWAY ? "离开 5 分钟后" : "锁屏或重启时")
                                : "›";
         tr_text_dim(fb, TR_W - TR_MARGIN, y + (SET_ROW_H - TR_S(28)) / 2, TR_S(28), v, EPD_DRAW_ALIGN_RIGHT);
         if (i < 2) tr_hline(fb, y + SET_ROW_H - 2, TR_MARGIN, TR_W - 2 * TR_MARGIN, true);
     }
     tr_wrap(fb, TR_MARGIN, SET_TOP + 3 * SET_ROW_H + TR_S(30), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
-            "验证器口令只管这一个功能，和开机密码分开。账号加密存在 TF 卡上，解锁要口令和这台设备一起，换卡或换设备都解不开。忘了口令没有找回办法，只能清空验证器，再从手机 Google Authenticator 重新导入。自动上锁点一下切换。",
+            "验证器 PIN 只管这一个功能，和锁屏密码分开。账号加密存在 TF 卡上，解锁要 PIN 和这台设备一起，换卡或换设备都解不开。忘了 PIN 没有找回办法，只能清空验证器，再从手机 Google Authenticator 重新导入。4 位数字只有 1 万种，防得住别人随手试，防不住专门破解的人。自动上锁点一下切换。",
             8);
 }
 
@@ -665,9 +703,9 @@ static const char* main_text(tr_auth_state_t st, const char** btn) {
     switch (st) {
     case TR_AUTH_NOCARD: return "验证器的账号加密存在 TF 卡上。请插入 TF 卡。";
     case TR_AUTH_UNSET:
-        *btn = "设置口令";
+        *btn = "设置 PIN";
         return "在这台设备上离线显示两步验证码，和手机 Google Authenticator 算出的一样，不需要服务器。\n"
-               "先设一个验证器口令（至少 8 位，字母和数字都有），再用设备热点从手机导入账号。手机上的 Google "
+               "先设一个验证器 PIN（4 位数字），再用设备热点从手机导入账号。手机上的 Google "
                "Authenticator 请一直保留作备份。";
     case TR_AUTH_LOCKED:
         *btn = "解锁";
@@ -748,7 +786,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         draw_dialog(fb, "删除账号", text, "删除");
     } else if (s_dialog == D_WIPE1) {
         draw_dialog(fb, "清空验证器？",
-                    "会删除 TF 卡上的加密文件和设备里配套的随机数，所有账号都没了。之后要重新设置口令，再从手机重新导入。", "清空");
+                    "会删除 TF 卡上的加密文件和设备里配套的随机数，所有账号都没了。之后要重新设置 PIN，再从手机重新导入。", "清空");
     } else if (s_dialog == D_WIPE2) {
         draw_dialog(fb, "再确认一次", "清空以后无法恢复。确定清空验证器？", "确认清空");
     } else if (s_dialog == D_WEB) {
@@ -784,6 +822,14 @@ static void open_pass(pass_mode_t m, view_t back) {
     s_pass_back = back;
     s_view = V_PASS;
     s_msg[0] = 0;
+    if (pad_mode()) {
+        // 数字键盘下一拍弹出；还在等待时先不弹，提示写在页面上，等完了点“输入 PIN”。/ The keypad opens on the next
+        // tick; while a wait is on it stays closed, the hint shows on the page, and "Enter PIN" opens it afterwards.
+        totp_wipe(&s_kbd, sizeof(s_kbd));
+        s_pad_pending = !((m == PM_UNLOCK || m == PM_OLD) && tr_auth_wait_s() > 0);
+        return;
+    }
+    s_pad_pending = false;
     tr_kbd_open(&s_kbd, "", false, m == PM_SET1 || m == PM_OLD || m == PM_NEW1 ? "下一步" : m == PM_UNLOCK ? "解锁" : "确定");
 }
 
@@ -855,7 +901,7 @@ static app_redraw_t pass_submit(void) {
 
 static const char* err_text(totp_err_t e) {
     switch (e) {
-    case TOTP_ERR_AUTH: return "口令不对";
+    case TOTP_ERR_AUTH: return tr_auth_pin_mode() ? "PIN 不对" : "口令不对";
     case TOTP_ERR_NOENT: return "TF 卡上没有验证器文件";
     case TOTP_ERR_FORMAT: return "验证器文件损坏";
     case TOTP_ERR_NOMEM: return "内存不足";
@@ -883,8 +929,9 @@ static app_redraw_t run_job(void) {
         open_pass(m, back);
         if (e == TOTP_ERR_AUTH) {
             const int left = TR_AUTH_FREE_TRIES - tr_auth_fails();
-            if (left > 0) snprintf(s_msg, sizeof(s_msg), "口令不对，还能再试 %d 次", left);
-            else snprintf(s_msg, sizeof(s_msg), "口令不对，请等 %d 秒再试", tr_auth_wait_s());
+            const bool pin = tr_auth_pin_mode();
+            if (left > 0) snprintf(s_msg, sizeof(s_msg), pin ? "PIN 不对，还能再试 %d 次" : "口令不对，还能再试 %d 次", left);
+            else snprintf(s_msg, sizeof(s_msg), pin ? "PIN 不对，请等 %d 秒再试" : "口令不对，请等 %d 秒再试", tr_auth_wait_s());
         } else {
             snprintf(s_msg, sizeof(s_msg), "%s", err_text(e));
         }
@@ -896,7 +943,7 @@ static app_redraw_t run_job(void) {
         clear_entries();
         if (e == TOTP_OK) {
             s_view = V_MAIN;
-            snprintf(s_msg, sizeof(s_msg), "口令已设置");
+            snprintf(s_msg, sizeof(s_msg), "PIN 已设置");
         } else {
             open_pass(PM_SET1, s_pass_back);
             snprintf(s_msg, sizeof(s_msg), "设置失败：%s", err_text(e));
@@ -907,18 +954,56 @@ static app_redraw_t run_job(void) {
     clear_entries();
     if (e == TOTP_OK) {
         s_view = s_pass_back;
-        snprintf(s_msg, sizeof(s_msg), "口令已修改");
+        snprintf(s_msg, sizeof(s_msg), "PIN 已修改");
     } else {
         open_pass(PM_OLD, s_pass_back);
         if (e == TOTP_ERR_AUTH) {
             const int left = TR_AUTH_FREE_TRIES - tr_auth_fails();
-            if (left > 0) snprintf(s_msg, sizeof(s_msg), "原来的口令不对，还能再试 %d 次", left);
-            else snprintf(s_msg, sizeof(s_msg), "原来的口令不对，请等 %d 秒再试", tr_auth_wait_s());
+            const bool pin = tr_auth_pin_mode();
+            if (left > 0) snprintf(s_msg, sizeof(s_msg), pin ? "原来的 PIN 不对，还能再试 %d 次" : "原来的口令不对，还能再试 %d 次", left);
+            else snprintf(s_msg, sizeof(s_msg), pin ? "原来的 PIN 不对，请等 %d 秒再试" : "原来的口令不对，请等 %d 秒再试", tr_auth_wait_s());
         } else {
             snprintf(s_msg, sizeof(s_msg), "修改失败：%s", err_text(e));
         }
     }
     return APP_REDRAW_PAGE;
+}
+
+// 弹出数字键盘，输满 4 位就当作“提交”接着走口令流程。键盘整屏自己画、自己读触摸，阻塞到有结果。
+// Open the number keypad; four digits count as "submit" and carry on through the passphrase flow. The keypad draws
+// the whole screen and reads touch itself, blocking until it has a result.
+static app_redraw_t run_pad(app_ctx_t* ctx) {
+    s_pad_pending = false;
+    const char* title = "解锁验证器";
+    const char* hint = "输入 4 位 PIN";
+    switch (s_pass) {
+    case PM_UNLOCK: break;
+    case PM_SET1: title = "设置验证器 PIN"; hint = "输入 4 位数字"; break;
+    case PM_SET2: title = "设置验证器 PIN"; hint = "再输一次确认"; break;
+    case PM_OLD: title = "修改验证器 PIN"; hint = "输入当前 PIN"; break;
+    case PM_NEW1: title = "修改验证器 PIN"; hint = "输入新的 4 位 PIN"; break;
+    default: title = "修改验证器 PIN"; hint = "再输一次确认"; break;
+    }
+    if (s_msg[0]) hint = s_msg;   // 输错了或两次不一样：写在键盘上 / A wrong PIN or a mismatch shows on the keypad
+    char digits[5] = {0};
+    const tr_pin_result_t r = tr_pin_pad(ctx->hl, ctx->tp, title, hint, true, 60000, 0, digits);
+    s_msg[0] = 0;
+    if (r != TR_PIN_ENTERED) {
+        totp_wipe(digits, sizeof(digits));
+        // 解锁页自己没有返回键：取消后停在页面上，点“输入 PIN”再来；其他步骤回到来处。
+        // The unlock view has no back key: after a cancel it stays, and "Enter PIN" tries again; other steps go back.
+        if (s_pass == PM_UNLOCK && !s_from_settings) return APP_REDRAW_FULL;
+        clear_entries();
+        s_view = s_pass_back;
+        return APP_REDRAW_FULL;
+    }
+    snprintf(s_kbd.text, sizeof(s_kbd.text), "%s", digits);
+    totp_wipe(digits, sizeof(digits));
+    const app_redraw_t next = pass_submit();
+    totp_wipe(&s_kbd, sizeof(s_kbd));
+    // 紧接着又要输下一步（再输一次、重输）：不画中间那一页，下一拍直接弹键盘。/ When the next entry follows at once
+    // (enter again, retry), skip the page in between; the keypad opens on the next tick.
+    return s_pad_pending && s_job == J_NONE ? APP_REDRAW_NONE : next == APP_REDRAW_PAGE ? APP_REDRAW_FULL : next;
 }
 
 /* ---- 触摸 / Touch ---- */
@@ -1049,7 +1134,7 @@ static app_redraw_t tap_settings(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     switch ((y - SET_TOP) / SET_ROW_H) {
     case 0:
         if (st != TR_AUTH_LOCKED && st != TR_AUTH_OPEN) {
-            snprintf(s_msg, sizeof(s_msg), "还没设置口令");
+            snprintf(s_msg, sizeof(s_msg), "还没设置 PIN");
             return APP_REDRAW_PAGE;
         }
         open_pass(PM_OLD, V_SET);
@@ -1073,6 +1158,13 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
         if (ev->type != UI_GESTURE_PRESS) return APP_REDRAW_NONE;
         const bool back_ok = !(s_pass == PM_UNLOCK && !s_from_settings);
         if (back_ok && ui_rect_hit(BACK_RECT, ev->x0, ev->y0)) return pass_back();
+        if (pad_mode()) {
+            // 点“输入 PIN”再弹键盘；还在等待时只提示。/ "Enter PIN" opens the keypad again; while a wait is on it only says so.
+            if (s_pad_pending || !ui_rect_hit(PAD_BTN, ev->x0, ev->y0)) return APP_REDRAW_NONE;
+            if ((s_pass == PM_UNLOCK || s_pass == PM_OLD) && tr_auth_wait_s() > 0) return APP_REDRAW_PAGE;
+            s_pad_pending = true;
+            return APP_REDRAW_PAGE;
+        }
         const tr_kbd_result_t r = tr_kbd_touch(&s_kbd, ev->x0, ev->y0);
         if (r == TR_KBD_CHANGED) {
             s_msg[0] = 0;
@@ -1161,8 +1253,8 @@ static app_redraw_t tick_web(void) {
 }
 
 static app_redraw_t on_tick(app_ctx_t* ctx) {
-    (void)ctx;
     if (s_job != J_NONE) return run_job();
+    if (s_pad_pending && s_view == V_PASS) return run_pad(ctx);
     if (s_syncing && !tomato_sync_busy()) {
         tomato_status_t st;
         tomato_sync_get_status(&st);
@@ -1222,6 +1314,7 @@ static void on_enter(app_ctx_t* ctx) {
     s_open_settings = false;
     s_dialog = D_NONE;
     s_job = J_NONE;
+    s_pad_pending = false;
     s_msg[0] = 0;
     s_shown_slot = -1;
     s_detail = -1;
@@ -1236,6 +1329,7 @@ static void leave(void) {
     clear_entries();
     s_dialog = D_NONE;
     s_job = J_NONE;
+    s_pad_pending = false;
     s_view = V_MAIN;
 }
 

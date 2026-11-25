@@ -109,7 +109,7 @@ totp_err_t totp_key_new(const char* pass, const uint8_t dev[TOTP_DEV_SECRET_LEN]
     if (!k) return TOTP_ERR_ARG;
     memset(k, 0, sizeof(*k));
     if (!totp_random(k->salt, TOTP_SALT_LEN)) return TOTP_ERR_CRYPTO;
-    k->iters = iters < TOTP_MIN_ITERS ? TOTP_MIN_ITERS : iters;
+    k->iters = iters < TOTP_FLOOR_ITERS ? TOTP_FLOOR_ITERS : iters;
     return totp_vault_derive(pass, dev, k);
 }
 

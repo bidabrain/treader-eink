@@ -155,7 +155,10 @@ static void test_vault(void) {
     CHECK(totp_table_add(&t, &a, &dup));
 
     totp_key_t k, k2;
-    CHECK(totp_key_new("abc12345", dev, 1000, &k) == TOTP_OK && k.iters == TOTP_MIN_ITERS);
+    CHECK(totp_key_new("abc12345", dev, 10, &k) == TOTP_OK && k.iters == TOTP_FLOOR_ITERS);
+    // 4 位 PIN 用 TOTP_PIN_ITERS，不被抬高。/ A 4-digit PIN keeps TOTP_PIN_ITERS and is not raised.
+    totp_key_t kp;
+    CHECK(totp_key_new("1234", dev, TOTP_PIN_ITERS, &kp) == TOTP_OK && kp.iters == TOTP_PIN_ITERS);
     // 空表也能存。/ An empty table saves too.
     static totp_table_t empty;
     CHECK(totp_vault_save(path, &k, &empty) == TOTP_OK && exists(path));

@@ -21,11 +21,14 @@ static int s_err_s = 2, s_wait;
 static bool s_time = true;
 
 tr_auth_state_t tr_auth_state(void) { return s_state; }
+static bool s_pin_mode;   // 这份验证器用 PIN（数字键盘）还是旧口令（屏幕键盘）/ PIN (keypad) or old passphrase (keyboard)
+bool tr_auth_pin_mode(void) { return s_pin_mode; }
 totp_table_t* tr_auth_table(void) { return s_state == TR_AUTH_OPEN ? &s_tab : NULL; }
 int tr_auth_count(void) { return s_state == TR_AUTH_OPEN ? s_tab.count : -1; }
 int tr_auth_wait_s(void) { return s_wait; }
 int tr_auth_fails(void) { return 0; }
 tr_auth_auto_t tr_auth_auto_lock(void) { return TR_AUTH_LOCK_ON_SLEEP; }
+void totp_wipe(void* p, size_t n) { memset(p, 0, n); }
 bool tr_time_valid(void) { return s_time; }
 int tr_time_error_s(void) { return s_err_s; }
 bool tomato_sync_busy(void) { return false; }
@@ -112,7 +115,7 @@ void hr_scenes(void) {
     open_pass(PM_SET1, V_MAIN);
     snprintf(s_kbd.text, sizeof(s_kbd.text), "abc");
     shot("set1", false);
-    snprintf(s_msg, sizeof(s_msg), "口令要同时有字母和数字");
+    snprintf(s_msg, sizeof(s_msg), "PIN 要正好 4 位数字");
     shot("set1_bad", false);
 
     s_state = TR_AUTH_OPEN;
@@ -184,12 +187,41 @@ void hr_scenes(void) {
     s_from_settings = true;
     shot("settings", true);
     s_state = TR_AUTH_LOCKED;
-    snprintf(s_msg, sizeof(s_msg), "口令已修改");
+    snprintf(s_msg, sizeof(s_msg), "PIN 已修改");
     shot("settings_locked", true);
+    s_pin_mode = true;
+    shot("settings_locked_pin", true);
+    s_pin_mode = false;
     s_msg[0] = 0;
     open_pass(PM_OLD, V_SET);
     shot("old", false);
     open_pass(PM_NEW2, V_SET);
     snprintf(s_msg, sizeof(s_msg), "两次输入不一样，请重新输入");
     shot("new2", false);
+
+    // PIN 版：数字键盘整屏自己画，这一页只写提示和“输入 PIN”按钮。/ The PIN version: the keypad draws the whole screen
+    // itself, this page only shows the hint and the "Enter PIN" button.
+    s_pin_mode = true;
+    s_msg[0] = 0;
+    s_state = TR_AUTH_LOCKED;
+    open_pass(PM_UNLOCK, V_MAIN);
+    s_pad_pending = false;
+    shot("pin_unlock", false);
+    snprintf(s_msg, sizeof(s_msg), "PIN 不对，还能再试 2 次");
+    shot("pin_unlock_wrong", false);
+    s_msg[0] = 0;
+    s_wait = 120;
+    shot("pin_unlock_wait", false);
+    s_wait = 0;
+    s_job = J_UNLOCK;
+    shot("pin_unlock_busy", false);
+    s_job = J_NONE;
+    s_state = TR_AUTH_UNSET;
+    open_pass(PM_SET1, V_MAIN);
+    s_pad_pending = false;
+    shot("pin_set1", false);
+    open_pass(PM_OLD, V_SET);
+    s_pad_pending = false;
+    shot("pin_old", false);
+    s_pin_mode = false;
 }

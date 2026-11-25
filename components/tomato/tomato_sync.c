@@ -1126,6 +1126,21 @@ bool tomato_wt_updating(void) {
     return yes;
 }
 
+bool tomato_sync_downloading(void) {
+    portENTER_CRITICAL(&s_lock);
+    const bool yes = s_busy && !s_cancel &&
+                     (s_op == OP_DOWNLOAD || s_op == OP_UPDATE || (s_op == OP_WT && s_wt.job == TOMATO_WT_UPDATE));
+    portEXIT_CRITICAL(&s_lock);
+    return yes;
+}
+
+uint32_t tomato_sync_stamp(void) {
+    portENTER_CRITICAL(&s_lock);
+    const uint32_t revision = s_status.revision;
+    portEXIT_CRITICAL(&s_lock);
+    return revision * 2654435761u ^ s_bytes;
+}
+
 esp_err_t tomato_sync_start_wt(const tomato_wt_req_t* req) {
     if (!req) return ESP_ERR_INVALID_ARG;
     if (s_busy) return ESP_ERR_INVALID_STATE;
