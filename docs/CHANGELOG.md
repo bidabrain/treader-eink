@@ -3,6 +3,19 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.1
+
+- 锁屏底部按睡眠方式写怎么醒：关机模式写“长按电源键开机”（短按只亮红灯，原来一律写“按电源键或拿起设备继续”，看着像睡死了），软睡写“按电源键开机”，浅睡没开拿起唤醒时只写“按电源键继续”。
+  The lock screen's bottom line now says how to wake for the sleep mode: power-off reads "Hold power to turn on" (a short press only lights the red LED, and the old one-size "Press power or pick up to continue" made it look hung), soft sleep "Press power to turn on", and light sleep without pick-up wake just "Press power to continue".
+- 修正浅睡模式下按电源键锁屏后偶尔睡死（红灯亮、屏幕没反应，要长按关机）：后台还在联网（刚刷新或在下载）或在传书页时，浅睡前 Wi-Fi 没关。现在每次锁屏都先停掉后台联网和传书服务，和深睡一样。
+  Fixed occasional hangs after locking with the power key in light sleep mode (red light on, screen unresponsive, only a long press to power off helps): Wi-Fi stayed on into light sleep while a background job was still online (right after a refresh or during a download) or on the transfer page. Every lock now stops background networking and the transfer service first, as deep sleep does.
+- 书的目录右上角加“正序 / 倒序”按钮，点一下换顺序，停在在读这章所在的那页；本次开机内记住。
+  The book TOC gains an "Asc / Desc" button at the top right that flips the order and lands on the page with the chapter being read; it is remembered until restart.
+- 小红书、微博、X 帖子里的大图：连不上服务器时先再试一次，还连不上就停下，不再每张图各等一轮超时；没下载成功的图写“图片没下载成功”和原因，点这里重试（原来一直停在“图片还没下载”）。小红书推荐的笔记，服务器还在做的大图先跳过、隔两秒再来一轮（最多 90 秒），不再等 15 秒超时就算失败。
+  Full images in Xiaohongshu, Weibo and X posts: a connection that fails is tried once more, and if the server still cannot be reached the download stops instead of waiting out a timeout for every image; a missing image says "Image not downloaded" with the reason and offers a retry (it used to stay on "not downloaded yet"). For recommended Xiaohongshu notes, images the server is still making are skipped and fetched in another round two seconds later (up to 90 seconds) instead of failing after a 15-second timeout.
+- 微博、X 列表按屏幕剩下的空间排版：一页尽量多装一条，剩下的空白先把图片放回正常大小，再多显示几行正文，最后把图片放大，不再一条下面留一大片空白；三档显示大小都一样处理。列表区像看书一样分左中右：点左右两边翻页，点中间打开，底部翻页按钮还在。
+  Weibo and X lists now lay out to the space left on screen: a page fits one more post where it can, and the leftover space first brings images back to normal size, then shows more lines of text, then enlarges images, instead of leaving a large blank under a post; all three display sizes work the same way. The list area splits like a book page: tap the sides to turn pages and the middle to open; the bottom pager stays.
+
 ## 2026-11-25 · rednote 服务器 0.3.3
 
 - 缩略图接口加 `?wait=0`：这篇的图还在做时不等，直接说没有。配合 Treader 1.2.0，小红书拉列表不再被还没做好的缩略图卡住。

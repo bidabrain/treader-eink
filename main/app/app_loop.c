@@ -45,6 +45,7 @@
 #include "tr_nav.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -295,9 +296,15 @@ static void lock_and_resume(
     // 要断主机电时先让页面收尾（停网络、关传感器、存进度）；只有下电失败才会回到这里重新进页。
     // Before the host loses power let the page wind down (network, sensors, progress); re-enter only if power-down failed.
     const bool powers_down = app_lock_powers_down();
-    // Treader：要断电就先停掉后台同步，免得写到一半。/ Treader: stop background sync before cutting power mid-write.
-    if (powers_down && !tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at power-down");
-    if (powers_down && current->on_exit != NULL) current->on_exit(ctx);
+    // Treader：每次锁屏都先停掉后台同步（浅睡也是）：断电会写到一半，浅睡时 Wi-Fi 还开着会睡死，按电源键醒不过来。
+    // 传书页的服务也开着 Wi-Fi，浅睡前同样让它收掉，醒来再进页。
+    // Treader: stop background sync before every lock, light sleep included: power-down would cut a write, and light
+    // sleep with Wi-Fi still up can hang so the power key no longer wakes it. The transfer page's service also holds
+    // Wi-Fi, so it winds down before light sleep too and re-enters on wake.
+    if (tomato_sync_busy()) ESP_LOGI(TAG, "lock: stopping background sync");
+    if (!tomato_sync_stop(8000)) ESP_LOGW(TAG, "sync still running at lock");
+    const bool winds_down = powers_down || current->blocks_idle_sleep;
+    if (winds_down && current->on_exit != NULL) current->on_exit(ctx);
     enter_lock_and_sleep(ctx->hl, &s_lock_ignore_until_ms, ctx->acc);
     // 开了锁屏密码：过关之前不回任何页面。/ With a lock PIN set, no page returns before the gate is passed.
     tr_pin_gate(ctx->hl, ctx->tp, ctx->acc, &s_lock_ignore_until_ms);
@@ -305,7 +312,7 @@ static void lock_and_resume(
     // The card may have been swapped while locked (light sleep never sees the detect pin change): ask the card first;
     // a swap is handled like a removal and remounted.
     read_pico_sd_check();
-    if (powers_down && current->on_enter != NULL) current->on_enter(ctx);
+    if (winds_down && current->on_enter != NULL) current->on_enter(ctx);
     ctx->now_ms = esp_timer_get_time() / 1000;
     poll_media(ctx, current, media_mounted, media_invalidated);
     *last_media_poll_ms = ctx->now_ms;
@@ -378,7 +385,18 @@ void app_loop_run(const app_loop_config_t* config) {
     app_present(&ctx, current, APP_REDRAW_FULL);
     ESP_LOGI(TAG, "UI ready on %s", current->title);
 
+    int64_t alive_ms = 0;
     while (true) {
+        // 临时诊断：每 30 秒报一次还活着、在哪页、内存剩多少。设备卡住时日志停在哪里就知道卡在哪。
+        // Temporary diagnostics: every 30 s report alive, the page and free memory. When the device hangs, where the log
+        // stops shows where it got stuck.
+        const int64_t alive_now = esp_timer_get_time() / 1000;
+        if (alive_now - alive_ms >= 30000) {
+            alive_ms = alive_now;
+            ESP_LOGI(TAG, "alive %s int=%u psram=%u sync=%d", current->title,
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                     (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM), (int)tomato_sync_busy());
+        }
         // 设置页改了显示大小也在下一轮生效。/ A display-size change in settings applies from the next tick too.
         apply_scale(current);
         cst836u_touch_t touch = { 0 };

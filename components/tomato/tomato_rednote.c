@@ -28,6 +28,9 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs.h"
 #include "tomato_internal.h"
 
@@ -46,6 +49,11 @@
 // 每次请求的超时：新服务器马上回话；旧服务器不认 wait=0、还会照旧等着做完，留足时间。/ Per-request timeout: new
 // servers answer at once; old ones ignore wait=0 and still answer when done, so leave room.
 #define LIVE_TIMEOUT_MS 60000
+// 推荐笔记的图服务器在后台做：大图用 wait=0 不等，没做好的先跳过，隔一会儿再来一轮，最多等这么久。
+// Recommended notes' images are made in the background: full images use wait=0, unfinished ones are skipped and
+// another round follows a moment later, for at most this long.
+#define REC_IMG_MAX_MS 90000
+#define REC_IMG_GAP_MS 2000
 
 /* ---- 设置 / Settings ---- */
 
@@ -355,19 +363,34 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
         if (err != ESP_OK) { snprintf(msg, cap, "写不进 TF 卡"); return err; }
     }
     progress(1, images + 1);
-    int failed = 0;
-    for (int k = 1; k <= images && !*cancel; k++) {
-        char dest[96];
-        tomato_red_img_path(sid, k, dest, sizeof(dest));
-        if (!exists(dest)) {
-            snprintf(path, sizeof(path), "/api/device/v1/img/%s/%d.jpg", sid, k);
-            if (fetch_image(cfg, path, dest, cancel) != ESP_OK) failed++;
+    // 连不上服务器就不再一张张等超时。/ Once the server is unreachable, stop waiting out a timeout per image.
+    bool down = false;
+    int failed = 0, shown = 0;   // shown：已经报过的张数，进度不倒退 / Images reported, so progress never goes back
+    const int64_t start = esp_timer_get_time() / 1000;
+    for (;;) {
+        failed = 0;
+        int done = 0;
+        for (int k = 1; k <= images && !*cancel && !down; k++) {
+            char dest[96];
+            tomato_red_img_path(sid, k, dest, sizeof(dest));
+            if (!exists(dest)) {
+                snprintf(path, sizeof(path), r->rec ? "/api/device/v1/img/%s/%d.jpg?wait=0" : "/api/device/v1/img/%s/%d.jpg",
+                         sid, k);
+                const esp_err_t err = fetch_image(cfg, path, dest, cancel);
+                if (err != ESP_OK) failed++;
+                if (err == ESP_ERR_HTTP_CONNECT) down = true;
+            }
+            if (exists(dest) && ++done > shown) progress(1 + (shown = done), images + 1);
         }
-        progress(1 + k, images + 1);
+        // 关注的笔记服务器早就做完了，缺的就是没有，不再等。/ Following notes were finished long ago on the server;
+        // a missing one is simply absent, so do not wait.
+        if (!failed || down || *cancel || !r->rec || esp_timer_get_time() / 1000 - start > REC_IMG_MAX_MS) break;
+        for (int t = 0; t < REC_IMG_GAP_MS && !*cancel; t += 100) vTaskDelay(pdMS_TO_TICKS(100));
     }
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     prune_notes(sid);
-    if (failed) snprintf(msg, cap, "%d 张图没下载成功", failed);
+    if (down) snprintf(msg, cap, "连不上服务器，图片没下载完");
+    else if (failed) snprintf(msg, cap, "%d 张图没下载成功", failed);
     else msg[0] = 0;
     return ESP_OK;
 }

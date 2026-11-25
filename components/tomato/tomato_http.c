@@ -142,6 +142,7 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
     for (int attempt = 0; attempt < 2; attempt++) {
         const int64_t t0 = esp_timer_get_time();
         esp_err_t err = tomato_http_open(c, body_len);
+        const bool connect_failed = err != ESP_OK;
         if (err == ESP_OK && body_len && esp_http_client_write(c, body, body_len) != body_len) err = ESP_FAIL;
         if (err == ESP_OK) {
             *length = esp_http_client_fetch_headers(c);
@@ -159,7 +160,10 @@ esp_err_t tomato_http_begin(esp_http_client_handle_t c, const char* body, int bo
         // The server may have closed the idle connection: only a reused one is worth one reconnect. A closed one
         // reads its end at once; running into the timeout means the server is slow (say, Xiaohongshu images still
         // being made), and a reconnect would only wait another round and hold up a cancel just as long.
-        if (!s_reused || esp_timer_get_time() - t0 > 2000 * 1000) return err;
+        // 新连接建不起来（Wi-Fi 刚连上、信号弱时常见）也再试一次；服务器真的不通就是多等一轮。
+        // A new connection that never opens (common right after Wi-Fi joins on a weak signal) gets one more try too;
+        // an unreachable server only costs one more round.
+        if (!connect_failed && (!s_reused || esp_timer_get_time() - t0 > 2000 * 1000)) return err;
         s_reused = false;
         esp_http_client_close(c);
     }

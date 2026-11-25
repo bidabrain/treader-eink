@@ -187,6 +187,7 @@ static text_tab_t s_tab;
 static int s_page;
 static int s_image;                  // 从 0 开始 / 0-based
 static tr_wallsave_t s_ws;             // 看图时的存为壁纸工具条 / Save-as-wallpaper toolbar
+static bool s_note_rec;              // 打开的这篇来自推荐 / The open note came from recommendations
 static bool s_image_missing;         // 当前图还没下好，任务进行中要回头看 / Current image not downloaded yet
 
 /* ---- 内存 / Memory ---- */
@@ -709,8 +710,22 @@ static void draw_image(uint8_t* fb) {
     } else {
         const bool loading = job_running(TOMATO_RED_NOTE);
         s_image_missing = loading;
-        tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), loading ? loading_text("图片下载中…") : "图片还没下载",
-                EPD_DRAW_ALIGN_CENTER, false);
+        if (loading) {
+            tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), loading_text("图片下载中…"), EPD_DRAW_ALIGN_CENTER,
+                    false);
+        } else {
+            // 下载停了这张还没有：写原因，点中间重下。/ The download stopped without this image: say why; a tap in the
+            // middle downloads again.
+            const int cy = (TR_H - IMAGE_BAND) / 2;
+            tr_text(fb, TR_W / 2, cy - TR_S(50), TR_S(30), "图片没下载成功", EPD_DRAW_ALIGN_CENTER, true);
+            if (s_msg[0]) {
+                char why[96];
+                snprintf(why, sizeof(why), "%s", s_msg);
+                tr_fit(why, TR_S(26), TR_W - 2 * TR_MARGIN);
+                tr_text_dim(fb, TR_W / 2, cy + TR_S(4), TR_S(26), why, EPD_DRAW_ALIGN_CENTER);
+            }
+            tr_text_dim(fb, TR_W / 2, cy + (s_msg[0] ? TR_S(50) : TR_S(4)), TR_S(26), "点这里重试", EPD_DRAW_ALIGN_CENTER);
+        }
     }
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
@@ -856,6 +871,7 @@ static app_redraw_t refresh(void) {
 // 笔记已经在卡上：直接看；有图没下好就在后台补。/ A cached note opens at once; missing images fill in behind it.
 static app_redraw_t enter_note(const char* id, bool rec) {
     if (!load_note(id)) return APP_REDRAW_NONE;
+    s_note_rec = rec;
     s_wait = false;
     s_tab = T_BODY;
     s_page = 0;
@@ -1010,6 +1026,14 @@ static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_ws.shown && y >= TR_WALLSAVE_TOP) return APP_REDRAW_NONE;   // 工具条空白处 / Blank toolbar area
     if (x < TR_W * 3 / 10) return turn(-1);
     if (x >= TR_W * 7 / 10) return turn(1);
+    // 这张没下好：点中间重下缺的图，下载中点了不管。/ This image is missing: a tap in the middle fetches the
+    // missing images again, and does nothing while a download runs.
+    if (!exists(path)) {
+        if (job_running(TOMATO_RED_NOTE)) return APP_REDRAW_NONE;
+        s_msg[0] = 0;
+        start_job(TOMATO_RED_NOTE, s_id, s_note_rec, false, true);
+        return APP_REDRAW_PAGE;
+    }
     // 点中间开关存为壁纸工具条。/ A tap in the middle toggles the save-as-wallpaper toolbar.
     if (s_ws.shown) tr_wallsave_close(&s_ws);
     else tr_wallsave_open(&s_ws);

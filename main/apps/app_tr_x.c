@@ -22,6 +22,13 @@
  * schedule and the device takes only what the server has; only a post's first replies request makes the server ask X.
  * Without a server the page only offers "Set up". Large buffers are allocated on entry and freed on exit. No likes,
  * replies or reposts.
+ * Treader 修订（1.2.1，用户要求）：列表每页按紧凑高度分页（图片先按最小算），剩下的空白分回给本页卡片：先把图片放回
+ * 正常大小，再多显示正文和原文，最后放大图片，不再留大片空白。列表区像书页一样分左中右：左右各三成翻页，中间打开；
+ * 底部翻页按钮保留。
+ * Treader revision (1.2.1, user request): the list pages by compact card heights (images counted at their smallest)
+ * and hands each page's leftover space back to its cards: images back to normal size first, then more text and repost
+ * lines, then bigger images, so no large blank is left. The list area splits like a book page: the outer 30% on each
+ * side turns the page and the middle opens; the bottom pager stays.
  */
 
 #include <stdio.h>
@@ -64,13 +71,23 @@
 #define CARD_PX TR_S(30)
 #define CARD_LH TR_S(42)
 #define CARD_LINES 3
+#define CARD_LINES_MAX 10   // 页面有空时最多显示到这么多行 / At most this many lines when the page has room
 #define QUOTE_PX TR_S(26)
 #define QUOTE_LH TR_S(38)
 #define QUOTE_LINES 2
+#define QUOTE_LINES_MAX 5
 #define STRIP_GAP TR_S(11)
 #define STRIP_W ((CW - 2 * STRIP_GAP) / 3)
 #define STRIP_H TR_S(164)
 #define SINGLE_MAX TR_S(300)
+// 页面有空时单张图最多放大到这么大（缩略图只有 300 宽，再大就糊了）。/ With room on the page a single image grows to
+// at most this size (thumbnails are only 300 wide; larger turns blurry).
+#define SINGLE_BIG_W TR_S(420)
+#define SINGLE_BIG_H TR_S(480)
+// 分页时图片先按这么小算，好让一页多装一条；剩下的空白再把它们放回正常大小。/ Paging counts images this small so a
+// page holds one more post; the leftover space then brings them back to normal size.
+#define SINGLE_MIN_H TR_S(200)
+#define STRIP_MIN_H TR_S(120)
 #define FOOT_H TR_S(44)
 #define CARD_GAP TR_S(16)
 #define QUOTE_GRAY 0xE0
@@ -130,6 +147,12 @@ typedef struct {
     int16_t images;       // 大图页数 / Full-image pages
     int16_t pics;         // 有方形小图的原图张数（旧服务器为 0）/ Source images with squares (0 from older servers)
     int16_t height;       // 卡片高度 / Card height
+    // 卡片在它那一页上的样子（剩下的空白分给它以后）。/ The card's shape on its page, after it took its share of
+    // the leftover space.
+    int8_t lines, qlines; // 正文、转发原文显示几行 / Text and repost lines shown
+    int8_t media;         // 0 没图，1 一张放大，2 一排方形小图 / 0 none, 1 one enlarged, 2 a strip of squares
+    int16_t mw, mh;       // 图片区宽高 / Image area size
+    int16_t nw, nh;       // 图片的正常大小 / The images' normal size
     int32_t likes, comments, reposts;
     bool seen;
 } item_t;
@@ -462,11 +485,8 @@ static void card_quote(const item_t* x, char* out, size_t cap) {
 // 卡片里的图：0 没有，1 一张放大（w×h），2 一排方形小图。/ Card images: 0 none, 1 one enlarged (w x h), 2 a strip.
 // 卡片里图片以外的高度。/ Card height without the images.
 static int card_text_height(const item_t* x) {
-    char quote[320];
-    card_quote(x, quote, sizeof(quote));
-    int h = TR_S(80) + count_lines(card_text(x), CARD_PX, CW, CARD_LINES) * CARD_LH;
-    if (quote[0])
-        h += TR_S(12) + TR_S(20) + count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES) * QUOTE_LH;
+    int h = TR_S(80) + x->lines * CARD_LH;
+    if (x->qlines) h += TR_S(12) + TR_S(20) + x->qlines * QUOTE_LH;
     return h + TR_S(10) + FOOT_H + CARD_GAP;
 }
 
@@ -494,9 +514,68 @@ static int card_media(const item_t* x, int* w, int* h) {
     return kind;
 }
 
-static int card_height(const item_t* x) {
-    int w, mh;
-    return card_text_height(x) + (card_media(x, &w, &mh) ? TR_S(12) + mh : 0);
+static int card_height(const item_t* x) { return card_text_height(x) + (x->media ? TR_S(12) + x->mh : 0); }
+
+// 单张图按高宽比放进 wmax×hmax。/ Fit the single image into wmax x hmax by its aspect ratio.
+static void single_fit(const item_t* x, int wmax, int hmax, int* w, int* h) {
+    const float r = x->ratio > 0.5f && x->ratio < 2.0f ? x->ratio : 1.0f;
+    *h = hmax;
+    *w = (int)(hmax / r);
+    if (*w > wmax) { *w = wmax; *h = (int)(wmax * r); }
+}
+
+// 紧凑的样子，用来分页：正文 CARD_LINES 行、原文 QUOTE_LINES 行、图片最小。/ The compact shape used for paging:
+// CARD_LINES of text, QUOTE_LINES of repost, images at their smallest.
+static void card_base(item_t* x) {
+    char quote[320];
+    card_quote(x, quote, sizeof(quote));
+    x->lines = (int8_t)count_lines(card_text(x), CARD_PX, CW, CARD_LINES);
+    x->qlines = quote[0] ? (int8_t)count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES) : 0;
+    int w = 0, h = 0;
+    x->media = (int8_t)card_media(x, &w, &h);
+    x->nw = x->mw = (int16_t)w;
+    x->nh = x->mh = (int16_t)h;
+    if (x->media == 1 && h > SINGLE_MIN_H) {
+        single_fit(x, w, SINGLE_MIN_H, &w, &h);
+        x->mw = (int16_t)w;
+        x->mh = (int16_t)h;
+    } else if (x->media == 2 && h > STRIP_MIN_H) {
+        x->mh = (int16_t)STRIP_MIN_H;
+    }
+    x->height = (int16_t)card_height(x);
+}
+
+// 图片往 wmax×hmax 长，最多用掉 *left。/ Grow the images toward wmax x hmax, using at most *left.
+static void grow_media(item_t* x, int* left, int wmax, int hmax) {
+    if (*left <= 0) return;
+    int w = x->mw, h = x->mh + *left < hmax ? x->mh + *left : hmax;
+    if (x->media == 1) single_fit(x, wmax, h, &w, &h);
+    else if (x->media != 2) return;
+    if (h <= x->mh) return;
+    *left -= h - x->mh;
+    x->mw = (int16_t)w;
+    x->mh = (int16_t)h;
+}
+
+// 把最多 budget 的空白用在这张卡片上：先把图片放回正常大小，再多显示正文和原文，最后放大图片；返回用掉多少。
+// Spend up to budget of spare height on this card: images back to normal size first, then more text and repost
+// lines, then bigger images; returns what it used.
+static int card_grow(item_t* x, int budget) {
+    int left = budget;
+    grow_media(x, &left, x->nw, x->nh);
+    const int full = count_lines(card_text(x), CARD_PX, CW, CARD_LINES_MAX);
+    while (x->lines < full && left >= CARD_LH) { x->lines++; left -= CARD_LH; }
+    if (x->qlines) {
+        char quote[320];
+        card_quote(x, quote, sizeof(quote));
+        const int qfull = count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES_MAX);
+        while (x->qlines < qfull && left >= QUOTE_LH) { x->qlines++; left -= QUOTE_LH; }
+    }
+    // 一排小图最多长成正方形。/ The strip grows up to squares.
+    if (x->media == 1) grow_media(x, &left, SINGLE_BIG_W, SINGLE_BIG_H);
+    else grow_media(x, &left, CW, STRIP_W);
+    x->height = (int16_t)card_height(x);
+    return budget - left;
 }
 
 // 按卡片高度分页：放不下的整张挪到下一页。/ Page by card height: a card that does not fit moves to the next page.
@@ -504,7 +583,7 @@ static void layout_list(void) {
     s_list_page_count = 0;
     int y = LIST_BOTTOM;
     for (int i = 0; i < s_item_count; i++) {
-        s_items[i].height = (int16_t)card_height(&s_items[i]);
+        card_base(&s_items[i]);
         if (y + s_items[i].height > LIST_BOTTOM && y != LIST_TOP) {
             s_page_first[s_list_page_count++] = (uint16_t)i;
             y = LIST_TOP;
@@ -516,6 +595,15 @@ static void layout_list(void) {
     // An empty list also ends page one at 0; otherwise the previous list's end stays and a tap on blank space opens an
     // invisible old post.
     if (s_list_page_count == 0) s_page_first[1] = 0;
+    // 每页剩下的空白分给本页的卡片：先平分，谁用不完再按顺序给后面的。
+    // Each page's leftover space goes to its cards: an even share first, then whatever is unused, in order.
+    for (int p = 0; p < s_list_page_count; p++) {
+        const int a = s_page_first[p], b = s_page_first[p + 1];
+        int left = LIST_BOTTOM - LIST_TOP;
+        for (int i = a; i < b; i++) left -= s_items[i].height;
+        for (int i = a; i < b && left > 0; i++) left -= card_grow(&s_items[i], left / (b - i));
+        for (int i = a; i < b && left > 0; i++) left -= card_grow(&s_items[i], left);
+    }
 }
 
 static void load_list(void) {
@@ -878,20 +966,17 @@ static void draw_badge(uint8_t* fb, int right, int bottom, const char* text) {
 static void draw_card(uint8_t* fb, const item_t* x, int y) {
     draw_head(fb, y, x->user, x->time, x->source, false, !x->seen);
     int cy = y + TR_S(80);
-    const int lines = count_lines(card_text(x), CARD_PX, CW, CARD_LINES);
-    if (lines) tr_wrap(fb, TR_MARGIN, cy, CW, CARD_PX, CARD_LH, card_text(x), CARD_LINES);
-    cy += lines * CARD_LH;
+    if (x->lines) tr_wrap(fb, TR_MARGIN, cy, CW, CARD_PX, CARD_LH, card_text(x), x->lines);
+    cy += x->lines * CARD_LH;
     char quote[320];
     card_quote(x, quote, sizeof(quote));
-    if (quote[0]) {
-        const int ql = count_lines(quote, QUOTE_PX, CW - 2 * QUOTE_INSET, QUOTE_LINES);
-        const EpdRect box = {TR_MARGIN, cy + TR_S(12), CW, TR_S(20) + ql * QUOTE_LH};
+    if (quote[0] && x->qlines) {
+        const EpdRect box = {TR_MARGIN, cy + TR_S(12), CW, TR_S(20) + x->qlines * QUOTE_LH};
         ui_fill_round_rect(fb, box, TR_S(14), QUOTE_GRAY);
-        tr_wrap(fb, TR_MARGIN + QUOTE_INSET, box.y + TR_S(10), CW - 2 * QUOTE_INSET, QUOTE_PX, QUOTE_LH, quote, QUOTE_LINES);
+        tr_wrap(fb, TR_MARGIN + QUOTE_INSET, box.y + TR_S(10), CW - 2 * QUOTE_INSET, QUOTE_PX, QUOTE_LH, quote, x->qlines);
         cy = box.y + box.height;
     }
-    int mw, mh;
-    const int media = card_media(x, &mw, &mh);
+    const int media = x->media, mw = x->mw, mh = x->mh;
     char path[96];
     if (media == 1) {
         tomato_x_img_path(x->id, 0, path, sizeof(path));
@@ -987,8 +1072,22 @@ static void draw_image(uint8_t* fb) {
     } else {
         const bool loading = job_running(TOMATO_X_POST);
         s_image_missing = loading;
-        tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), loading ? loading_text("图片下载中…") : "图片还没下载",
-                EPD_DRAW_ALIGN_CENTER, false);
+        if (loading) {
+            tr_text(fb, TR_W / 2, (TR_H - IMAGE_BAND) / 2, TR_S(30), loading_text("图片下载中…"), EPD_DRAW_ALIGN_CENTER,
+                    false);
+        } else {
+            // 下载停了这张还没有：写原因，点中间重下。/ The download stopped without this image: say why; a tap in the
+            // middle downloads again.
+            const int cy = (TR_H - IMAGE_BAND) / 2;
+            tr_text(fb, TR_W / 2, cy - TR_S(50), TR_S(30), "图片没下载成功", EPD_DRAW_ALIGN_CENTER, true);
+            if (s_msg[0]) {
+                char why[96];
+                snprintf(why, sizeof(why), "%s", s_msg);
+                tr_fit(why, TR_S(26), TR_W - 2 * TR_MARGIN);
+                tr_text_dim(fb, TR_W / 2, cy + TR_S(4), TR_S(26), why, EPD_DRAW_ALIGN_CENTER);
+            }
+            tr_text_dim(fb, TR_W / 2, cy + (s_msg[0] ? TR_S(50) : TR_S(4)), TR_S(26), "点这里重试", EPD_DRAW_ALIGN_CENTER);
+        }
     }
     epd_fill_rect((EpdRect){0, TR_H - IMAGE_BAND, TR_W, IMAGE_BAND}, UI_GRAY_WHITE, fb);
     tr_hline(fb, TR_H - IMAGE_BAND, 0, TR_W, true);
@@ -1290,6 +1389,10 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
     if (y < LIST_TOP || y >= LIST_BOTTOM) return APP_REDRAW_NONE;
+    // 列表区像书页一样分左中右：左右各三成翻页，中间打开点到的那条。/ The list splits like a book page: the outer 30%
+    // on each side turns the page, the middle opens the post under the finger.
+    if (x < TR_W * 3 / 10) return turn(-1);
+    if (x >= TR_W * 7 / 10) return turn(1);
     int cy = LIST_TOP;
     for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
         if (y < cy + s_items[i].height) return open_item(i);
@@ -1311,6 +1414,14 @@ static app_redraw_t tap_image(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (s_ws.shown && y >= TR_WALLSAVE_TOP) return APP_REDRAW_NONE;   // 工具条空白处 / Blank toolbar area
     if (x < TR_W * 3 / 10) return turn(-1);
     if (x >= TR_W * 7 / 10) return turn(1);
+    // 这张没下好：点中间重下缺的图，下载中点了不管。/ This image is missing: a tap in the middle fetches the
+    // missing images again, and does nothing while a download runs.
+    if (!exists(path)) {
+        if (job_running(TOMATO_X_POST)) return APP_REDRAW_NONE;
+        s_msg[0] = 0;
+        start_job(TOMATO_X_POST, s_id, false, true);
+        return APP_REDRAW_PAGE;
+    }
     // 点中间开关存为壁纸工具条。/ A tap in the middle toggles the save-as-wallpaper toolbar.
     if (s_ws.shown) tr_wallsave_close(&s_ws);
     else tr_wallsave_open(&s_ws);
@@ -1372,8 +1483,7 @@ static void queue_visible_images(void) {
     if (s_view == V_LIST) {
         for (int i = s_page_first[s_list_page]; i < s_page_first[s_list_page + 1]; i++) {
             const item_t* x = &s_items[i];
-            int w, h;
-            const int media = card_media(x, &w, &h);
+            const int media = x->media, w = x->mw, h = x->mh;
             if (media == 1) {
                 tomato_x_img_path(x->id, 0, path, sizeof(path));
                 if (exists(path)) hupu_img_get(path, w, h);

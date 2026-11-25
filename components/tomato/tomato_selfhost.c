@@ -170,6 +170,9 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
         len += (size_t)n;
     }
     if (err == ESP_OK && !esp_http_client_is_complete_data_received(c)) err = ESP_FAIL;
+    // 读完了的错误回答（比如图还没做好的 404）不坏连接，留着下一次用。/ A fully read error answer (say, a 404 for an
+    // image not made yet) leaves the connection fine for the next request.
+    const bool read_ok = err == ESP_OK;
     if (err == ESP_OK && status != 200) {
         buf[len] = 0;
         err = status_error(status, buf, msg, cap);
@@ -177,7 +180,7 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
         if (tomato_http_detail()[0] == 0) tomato_http_set_detail(esp_err_to_name(err));
         snprintf(msg, cap, "连不上 %s 服务器（%s）", srv->name, tomato_http_detail());
     }
-    tomato_http_give(c, err == ESP_OK);
+    tomato_http_give(c, read_ok);
     if (err != ESP_OK) { heap_caps_free(buf); return err; }
     buf[len] = 0;
     *out = buf;

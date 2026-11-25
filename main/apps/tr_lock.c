@@ -21,6 +21,7 @@
 #include "esp_heap_caps.h"
 #include "nvs.h"
 #include "read_pico_pmu.h"
+#include "settings.h"
 #include "tomato.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
@@ -178,6 +179,18 @@ void tr_lock_prepare(void) {
     s_card.ok = true;
 }
 
+// 底部提示按睡眠方式说怎么醒：关机要长按开机，短按只亮灯，原来一律写“按电源键”会让人以为睡死了。
+// The bottom hint says how to wake for the sleep mode: power-off needs a long press and a short press only lights the
+// LED, so the old one-size "press the power key" made the device look hung.
+static void wake_hint(char* line, size_t cap) {
+    const app_sleep_mode_t mode = app_settings_sleep_mode();
+    const char* how = mode == APP_SLEEP_OFF ? "长按电源键开机"
+                    : mode == APP_SLEEP_DEEP ? "按电源键开机"
+                    : app_settings_pickup_wake() ? "按电源键或拿起设备继续" : "按电源键继续";
+    if (s_card.battery >= 0) snprintf(line, cap, "%s · 电量 %d%%", how, s_card.battery);
+    else snprintf(line, cap, "%s", how);
+}
+
 // 壁纸铺满，底部白条写在读的书和电量。/ Full wallpaper with a white bottom strip for the book and battery.
 static void draw_wallpaper(uint8_t* fb) {
     book_screen_draw(fb, s_wall);
@@ -199,8 +212,7 @@ static void draw_wallpaper(uint8_t* fb) {
             tr_text(fb, TR_W - TR_MARGIN, top + TR_S(22), TR_S(28), line, EPD_DRAW_ALIGN_RIGHT, false);
         }
     }
-    if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
-    else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
+    wake_hint(line, sizeof(line));
     tr_text_dim(fb, TR_W / 2, TR_H - TR_S(66), TR_S(26), line, EPD_DRAW_ALIGN_CENTER);
 }
 
@@ -243,8 +255,7 @@ bool tr_lock_draw(uint8_t* fb) {
     const int mid = (card_bottom + hint_y - TR_S(34)) / 2;
     if (motto_y > mid) motto_y = mid;
     tr_text(fb, TR_W / 2, motto_y, TR_S(34), "慢一点，读几页。", EPD_DRAW_ALIGN_CENTER, false);
-    if (s_card.battery >= 0) snprintf(line, sizeof(line), "按电源键或拿起设备继续 · 电量 %d%%", s_card.battery);
-    else snprintf(line, sizeof(line), "按电源键或拿起设备继续");
+    wake_hint(line, sizeof(line));
     tr_text_dim(fb, TR_W / 2, hint_y, TR_S(26), line, EPD_DRAW_ALIGN_CENTER);
 
     return true;

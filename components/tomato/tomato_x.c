@@ -302,27 +302,32 @@ static esp_err_t run_post(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
     }
     // 正文页下面那排方形小图先取（很小），再一张张取大图。/ Fetch the small squares for the post page first, then the
     // full images one by one.
+    // 连不上服务器就不再一张张等超时。/ Once the server is unreachable, stop waiting out a timeout per image.
+    bool down = false;
     for (int k = 1; k <= pics && k <= TOMATO_WB_POST_SQUARES && !*cancel; k++) {
         char dest[96];
         tomato_x_square_path(sid, k, dest, sizeof(dest));
         if (tomato_file_exists(dest)) continue;
         snprintf(path, sizeof(path), "/api/device/v1/img/%s/s%d.jpg", sid, k);
-        tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+        if (tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel) == ESP_ERR_HTTP_CONNECT) { down = true; break; }
     }
     progress(1, images + 1);
     int failed = 0;
-    for (int k = 1; k <= images && !*cancel; k++) {
+    for (int k = 1; k <= images && !*cancel && !down; k++) {
         char dest[96];
         tomato_x_img_path(sid, k, dest, sizeof(dest));
         if (!tomato_file_exists(dest)) {
             snprintf(path, sizeof(path), "/api/device/v1/img/%s/%d.jpg", sid, k);
-            if (tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel) != ESP_OK) failed++;
+            const esp_err_t err = tomato_srv_image(srv, path, dest, TIMEOUT_MS, cancel);
+            if (err != ESP_OK) failed++;
+            if (err == ESP_ERR_HTTP_CONNECT) down = true;
         }
         progress(1 + k, images + 1);
     }
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     prune_posts(sid);
-    if (failed) snprintf(msg, cap, "%d 张图没下载成功", failed);
+    if (down) snprintf(msg, cap, "连不上服务器，图片没下载完");
+    else if (failed) snprintf(msg, cap, "%d 张图没下载成功", failed);
     else msg[0] = 0;
     return ESP_OK;
 }

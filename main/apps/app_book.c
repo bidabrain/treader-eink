@@ -59,6 +59,9 @@
  * 长按和三键不变。
  * Treader revision (1.0.2, user request): the reader's tap zones are a setting: sides (default, the old behavior),
  * lower or anywhere; images, swipes, long press and the keys are unchanged.
+ * Treader 修订（1.2.1，用户要求）：目录右上角加“正序 / 倒序”，换顺序后停在在读章节那页；只记在内存里，本次开机有效。
+ * Treader revision (1.2.1, user request): the TOC gains "正序 / 倒序" at the top right; flipping lands on the page with
+ * the current chapter. Kept in memory only, for this boot.
  */
 #include <dirent.h>
 #include <errno.h>
@@ -123,6 +126,7 @@
 #define CONTROL_CARD 130
 #define CONTROL_TOMATO_HINT 117
 #define CONTROL_STORE 119
+#define CONTROL_TOC_SORT 131
 #define TOOL_PANEL_Y (UI_BAR_TOP - TR_S(416))   // 下面多了一行自动翻页 / One more row below for auto turn
 #define AUTO_ROW_Y (TOOL_PANEL_Y + TR_S(326))
 // 续读和批量确认弹窗的按钮行。/ Button row of the resume and batch-confirm dialogs.
@@ -155,6 +159,8 @@ static shelf_entry_t* s_shelf;
 static size_t s_shelf_capacity;
 static int s_count, s_visible_count, s_filter;
 static bool s_recent_sort;
+// 目录倒序显示（只在本次开机内记住）。/ TOC shown newest first (remembered for this boot only).
+static bool s_toc_desc;
 static shelf_entry_t s_managed;
 static bool s_delete_confirm, s_file_removed;
 static char s_shelf_warning[128], s_manage_message[128];
@@ -502,6 +508,15 @@ static int leaves(void) {
     int count = s_view == TOC ? (int)book_chapter_count() : s_visible_count;
     int rows = s_view == TOC ? BOOK_TOC_ROWS : BOOK_ROWS;
     return count ? 1 + (count - 1) / rows : 1;
+}
+// 目录第 i 行对应的章节，倒序时从最后一章数起。/ Chapter shown on TOC row i, counted from the last chapter when reversed.
+static int toc_chapter(int i) { return s_toc_desc ? (int)book_chapter_count() - 1 - i : i; }
+// 当前章节所在的目录页。/ TOC page holding the current chapter.
+static int toc_leaf(void) { return toc_chapter((int)s_chapter) / BOOK_TOC_ROWS; }
+// 目录右上角的排序按钮，写的是现在的顺序。/ The TOC sort button at the top right names the current order.
+static EpdRect toc_sort_rect(void) {
+    const int w = ttf_text_width_px(TR_S(30), "倒序") + TR_S(24);
+    return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN + 4 - w, TR_S(80), w, TR_S(72)};
 }
 
 // 截断必须停在UTF8字符边界。/ Truncation must stop at a UTF8 character boundary.
@@ -1246,6 +1261,10 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         ui_clear_page(fb);
         tr_status_bar(fb);
         tr_title(fb, "目录");
+        const EpdRect sort = toc_sort_rect();
+        if (s_pressed_control == CONTROL_TOC_SORT) ui_draw_selected_round_rect(fb, sort, UI_BTN_RADIUS);
+        tr_text(fb, sort.x + sort.width - TR_S(12), sort.y + TR_S(18), TR_S(30), s_toc_desc ? "倒序" : "正序",
+                EPD_DRAW_ALIGN_RIGHT, true);
         char head[128], page_no[32];
         snprintf(page_no, sizeof(page_no), " · %d / %d", ctx->leaf + 1, leaves());
         copy_text(head, sizeof(head), s_title);
@@ -1255,8 +1274,8 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         if (s_message[0]) tr_text(fb, UI_MARGIN, TR_S(220), TR_S(28), s_message, EPD_DRAW_ALIGN_LEFT, false);
         else {
             for (int row = 0; row < BOOK_TOC_ROWS; ++row) {
-                int i = ctx->leaf * BOOK_TOC_ROWS + row;
-                if (i >= (int)book_chapter_count()) break;
+                if (ctx->leaf * BOOK_TOC_ROWS + row >= (int)book_chapter_count()) break;
+                int i = toc_chapter(ctx->leaf * BOOK_TOC_ROWS + row);
                 EpdRect r = row_rect(row, true);
                 char name[128];
                 if (book_chapter_title(i, name, sizeof(name)) != ESP_OK) snprintf(name, sizeof(name), "第 %d 节", i + 1);
@@ -1830,7 +1849,7 @@ static app_redraw_t jump_chapter(app_ctx_t* ctx, int dir) {
     if (!s_text || !chapter_jump_ok(dir)) return APP_REDRAW_NONE;
     save_progress();
     if (!load_chapter(ctx, dir < 0 ? s_chapter - 1 : s_chapter + 1, 0, false)) {
-        if (s_view == READING) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? s_chapter / BOOK_TOC_ROWS : 0; }
+        if (s_view == READING) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? toc_leaf() : 0; }
         return APP_REDRAW_PAGE;
     }
     s_toolbar = false;
@@ -1860,7 +1879,7 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     else if (dir > 0 && s_chapter + 1 < book_chapter_count()) { save_progress(); changed = load_chapter(ctx, s_chapter + 1, 0, false); }
     else if (dir < 0 && s_chapter) { save_progress(); changed = load_chapter(ctx, s_chapter - 1, 0, true); }
     else return APP_REDRAW_NONE;
-    if (!changed) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? s_chapter / BOOK_TOC_ROWS : 0; return APP_REDRAW_PAGE; }
+    if (!changed) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? toc_leaf() : 0; return APP_REDRAW_PAGE; }
     s_toolbar = false;
     s_last_turn_ms = ctx->now_ms;
     s_auto_ms = ctx->now_ms;   // 不管怎么翻的，自动翻页都从这页重新计时 / Any turn restarts the auto countdown
@@ -2083,7 +2102,7 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         if (s_toolbar) {
             for (int i = 0; i < BOOK_TOOL_COUNT; ++i) if (ui_rect_hit(tool_rect(i), x, y)) {
                 invalidate_prep();
-                if (i == 0) { save_progress(); s_view = TOC; ctx->leaf = s_chapter / BOOK_TOC_ROWS; }
+                if (i == 0) { save_progress(); s_view = TOC; ctx->leaf = toc_leaf(); }
                 else if (i == 1 || i == 2) return resize_text(ctx, i == 1 ? -1 : 1);
                 else if (i == 3) { save_progress(); s_toolbar = false; ctx->request_menu = true; return APP_REDRAW_NONE; }
                 else if (i == 4) { s_typeset = true; return APP_REDRAW_PAGE; }
@@ -2194,6 +2213,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         if (s_view == SHELF && tr_nav_touch(ctx, x, y, TR_TAB_LIBRARY)) return APP_REDRAW_NONE;
     }
+    if (s_view == TOC && ui_rect_hit(toc_sort_rect(), x, y)) {
+        s_toc_desc = !s_toc_desc;
+        ctx->leaf = toc_leaf();
+        return APP_REDRAW_PAGE;
+    }
     int nav = nav_hit(x, y);
     if (nav == 0 || nav == 2) {
         int next = ctx->leaf + (nav == 0 ? -1 : 1);
@@ -2220,7 +2244,7 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         else if (s_view == TOC && i < book_chapter_count()) {
             save_progress();
-            if (load_chapter(ctx, i, 0, false)) { s_view = READING; s_toolbar = false; save_progress(); }
+            if (load_chapter(ctx, toc_chapter(i), 0, false)) { s_view = READING; s_toolbar = false; save_progress(); }
         }
         return APP_REDRAW_PAGE;
     }
@@ -2392,6 +2416,10 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         }
         return -1;
     }
+    if (s_view == TOC) {
+        *rect = toc_sort_rect();
+        if (ui_rect_hit(*rect, x, y)) return CONTROL_TOC_SORT;
+    }
     for (int i = 0; i < 3; ++i) {
         *rect = nav_rect(i);
         if (rect->width && ui_rect_hit(*rect, x, y)) return 100 + i;
@@ -2477,7 +2505,7 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) 
         if (s_view == READING && !s_toolbar && !s_clear_confirm && ui_rect_hit(body_rect(), ev->x0, ev->y0)) {
             save_progress();
             s_view = TOC;
-            ctx->leaf = s_chapter / BOOK_TOC_ROWS;
+            ctx->leaf = toc_leaf();
             return APP_REDRAW_PAGE;
         }
     }
