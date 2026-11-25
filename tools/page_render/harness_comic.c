@@ -35,7 +35,11 @@ static bool s_hr_updating;
 bool tomato_wt_updating(void) { return s_hr_updating; }
 void tomato_sync_get_status(tomato_status_t* out) {
     memset(out, 0, sizeof(*out));
-    if (s_hr_updating) { out->current = 2; out->total = 6; }
+    if (s_hr_updating) {
+        out->current = 2;
+        out->total = 6;
+        snprintf(out->step, sizeof(out->step), "一部名字特别特别长的漫画作品 第 125 话 · 服务器转换中 12/40");
+    }
 }
 #endif
 
@@ -170,6 +174,11 @@ void hr_scenes(void) {
     s_wt_confirm_cancel = false;
 #endif
     s_hr_updating = false;
+#ifndef HR_BASELINE
+    s_wt_result = true;   // 做完了，结果在状态卡片里 / Done, the result in the status card
+    shot("shelf_wt_result", true);
+    s_wt_result = false;
+#endif
     s_src = 0;
     s_message[0] = 0;
 

@@ -52,7 +52,7 @@
 #define LIST_MAX 200
 #define LIST_TOP TR_S(284)
 #define ZONE_LIST_TOP TR_S(248)
-#define ROW_H TR_S(148)
+#define ROW_H TR_S(148)        // 带缩略图的一行 / A row with a thumbnail
 #define PAGER_Y (TR_TABS_Y - TR_S(54))
 #define THUMB_W TR_S(150)
 #define THUMB_H TR_S(100)
@@ -111,6 +111,8 @@ typedef struct {
     char title[200];
     char meta[96];       // 列表第二行，读入时拼好 / Second line, built when loading
     char jpg[64];        // 缩略图本地文件，空表示没有 / Local thumbnail; empty when none
+    int16_t h;           // 这一行的高度 / This row's height
+    int8_t lines;        // 标题几行（1 或 2）/ Title lines (1 or 2)
 } item_t;
 
 typedef struct {
@@ -185,6 +187,12 @@ static bool s_step_loaded;
 
 // 列表 / List
 static item_t* s_items;
+// 每页第一条；按行高装页，没缩略图的行矮一些，一页能多放几条。/ First item of each page; pages fill by row height, and
+// rows without a thumbnail are shorter, so a page holds more.
+static uint16_t s_page_first[LIST_MAX + 1];
+static int s_page_count;
+static bool s_layout_dirty = true;
+static int s_layout_scale, s_layout_top;
 static int s_item_count;
 static int s_list_page;
 static bool s_list_end;              // 专区没有更多了 / Zone has no more pages
@@ -368,6 +376,8 @@ static bool ours_running(void) {
 
 static bool start_job(tomato_hupu_job_t job, const char* id, const char* key, int sort, bool more) {
     tomato_hupu_req_t req = {.job = job, .sort = sort, .more = more};
+    // 关注：每个专区取几页按设置。/ Following: pages per zone come from settings.
+    if (job == TOMATO_HUPU_FOLLOW) req.pages = app_settings_hupu_pages();
     if (id) snprintf(req.id, sizeof(req.id), "%s", id);
     if (key) snprintf(req.key, sizeof(req.key), "%s", key);
     if (tomato_sync_busy()) {
@@ -413,15 +423,67 @@ static const char* loading_text(const char* what) {
 // 列表顶部；专区帖子没有分段条，起得高一些。/ List top; zone posts have no segments and start higher.
 static int list_top(void) { return s_view == V_ZONE ? ZONE_LIST_TOP : LIST_TOP; }
 
-// 一页几行：首页留出分页条上方的空，专区还要留一行提示。100% 都是 5 行。
-// Rows per page: home leaves room above the pager; zones also keep a message line. Both are 5 at 100%.
-static int list_rows(void) {
-    const int bottom = PAGER_Y - (s_view == V_ZONE ? TR_S(52) : TR_S(16));
-    const int n = (bottom - list_top()) / ROW_H;
-    return n > 1 ? n : 1;
+// 列表底边：首页留出分页条上方的空，专区还要留一行提示。/ List bottom: home leaves room above the pager; zones also
+// keep a message line.
+static int list_bottom(void) { return PAGER_Y - (s_view == V_ZONE ? TR_S(52) : TR_S(16)); }
+
+static int title_width(const item_t* x) { return x->jpg[0] ? THUMB_X - TR_MARGIN - TR_S(20) : CW; }
+
+// 一行的高度：有缩略图按缩略图留，没有就按标题行数（一行标题的帖子矮一截）。
+// A row's height: thumbnail rows keep room for the image; others follow the title lines (one-line titles are shorter).
+static int row_height(item_t* x) {
+    const int w = title_width(x);
+    const char* p = x->title;
+    int n = 0;
+    while (*p && n < 2) {
+        p += tr_line_bytes(p, TR_S(30), w);
+        if (*p == '\n') p++;
+        n++;
+    }
+    x->lines = (int8_t)(n ? n : 1);
+    const int text = TR_S(62) + x->lines * TR_S(40);
+    return x->jpg[0] && text < ROW_H ? ROW_H : text;
 }
 
-static int list_pages(void) { return s_item_count ? (s_item_count + list_rows() - 1) / list_rows() : 1; }
+// 按行高分页；显示大小或列表变了才重排。/ Page by row height; re-run only when the display size or list changed.
+static void layout_rows(void) {
+    if (!s_layout_dirty && s_layout_scale == ui_scale_pct && s_layout_top == list_top()) return;
+    s_layout_dirty = false;
+    s_layout_scale = ui_scale_pct;
+    s_layout_top = list_top();
+    const int room = list_bottom() - list_top();
+    s_page_count = 0;
+    int y = room;
+    for (int i = 0; i < s_item_count; i++) {
+        s_items[i].h = (int16_t)row_height(&s_items[i]);
+        if (y + s_items[i].h > room && y != 0) {
+            s_page_first[s_page_count++] = (uint16_t)i;
+            y = 0;
+        }
+        y += s_items[i].h;
+    }
+    s_page_first[s_page_count] = (uint16_t)s_item_count;
+}
+
+static int list_pages(void) {
+    layout_rows();
+    return s_page_count ? s_page_count : 1;
+}
+
+// 第 page 页的第一条和末尾（不含）。/ First item and end (exclusive) of page `page`.
+static int page_first(int page) { layout_rows(); return page < s_page_count ? s_page_first[page] : s_item_count; }
+static int page_end(int page) { layout_rows(); return page < s_page_count ? s_page_first[page + 1] : s_item_count; }
+
+// 点到第几条，没点到返回 -1。/ The item under y, or -1.
+static int row_at(int top, int y) {
+    if (y < top) return -1;
+    int cy = top;
+    for (int i = page_first(s_list_page); i < page_end(s_list_page); i++) {
+        if (y < cy + s_items[i].h) return i;
+        cy += s_items[i].h;
+    }
+    return -1;
+}
 
 // 读推荐（home.json）或关注流（feed.json）。/ Load the feed (home.json) or following feed (feed.json).
 static void load_list_file(const char* path, bool with_thumbs) {
@@ -447,6 +509,7 @@ static void load_list_file(const char* path, bool with_thumbs) {
         s_item_count++;
     }
     cJSON_Delete(root);
+    s_layout_dirty = true;
     if (s_list_page >= list_pages()) s_list_page = list_pages() - 1;
 }
 
@@ -473,6 +536,7 @@ static void load_zone_list(void) {
         s_item_count++;
     }
     cJSON_Delete(root);
+    s_layout_dirty = true;
     if (s_list_page >= list_pages()) s_list_page = list_pages() - 1;
 }
 
@@ -861,17 +925,17 @@ static const block_t* image_at(int k) {
 
 static void draw_rows(uint8_t* fb, int top) {
     char line[160];
-    const int rows = list_rows();
-    for (int row = 0; row < rows; row++) {
-        const int i = s_list_page * rows + row;
-        if (i >= s_item_count) break;
+    int y = top;
+    for (int i = page_first(s_list_page); i < page_end(s_list_page); i++) {
         const item_t* x = &s_items[i];
-        const int y = top + row * ROW_H;
-        const int tw = x->jpg[0] ? THUMB_X - TR_MARGIN - TR_S(20) : CW;
+        const int tw = title_width(x);
         tr_wrap(fb, TR_MARGIN, y + TR_S(10), tw, TR_S(30), TR_S(40), x->title, 2);
         snprintf(line, sizeof(line), "%s", x->meta);
         tr_fit(line, TR_S(24), tw);
-        tr_text_dim(fb, TR_MARGIN, y + TR_S(100), TR_S(24), line, EPD_DRAW_ALIGN_LEFT);
+        // 来源行紧跟标题；有缩略图时不高于原来的位置。/ The meta line follows the title; with a thumbnail it keeps the
+        // old position.
+        tr_text_dim(fb, TR_MARGIN, y + (x->jpg[0] ? TR_S(100) : TR_S(20) + x->lines * TR_S(40)), TR_S(24), line,
+                    EPD_DRAW_ALIGN_LEFT);
         if (x->jpg[0]) {
             const uint8_t* px = hupu_img_get(x->jpg, THUMB_W, THUMB_H);
             if (px) hupu_img_draw(fb, THUMB_X, y + TR_S(18), THUMB_W, THUMB_H, px, true);
@@ -879,7 +943,8 @@ static void draw_rows(uint8_t* fb, int top) {
             // (Hupu refreshes whole pages only).
             else ui_fill_round_rect(fb, (EpdRect){THUMB_X, y + TR_S(18), THUMB_W, THUMB_H}, TR_S(12), TR_GRAY_SURFACE);
         }
-        tr_hline(fb, y + ROW_H - TR_S(6), TR_MARGIN, CW, true);
+        tr_hline(fb, y + x->h - TR_S(6), TR_MARGIN, CW, true);
+        y += x->h;
     }
 }
 
@@ -1569,11 +1634,8 @@ static app_redraw_t tap_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         if (s_follow_count && y >= STATUS_Y - TR_S(10) && y < STATUS_Y + TR_S(40) && x > TR_W - TR_MARGIN - TR_S(140))
             return open_zones();
     }
-    const int rows = list_rows();
-    if (y >= LIST_TOP && y < LIST_TOP + rows * ROW_H) {
-        const int i = s_list_page * rows + (y - LIST_TOP) / ROW_H;
-        if (i < s_item_count) return open_post(s_items[i].tid, V_HOME);
-    }
+    const int i = row_at(LIST_TOP, y);
+    if (i >= 0) return open_post(s_items[i].tid, V_HOME);
     return APP_REDRAW_NONE;
 }
 
@@ -1627,10 +1689,9 @@ static app_redraw_t tap_zone(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     const int pager = tr_pager_hit(PAGER_Y, x, y);
     if (pager) return turn(pager);
-    const int rows = list_rows();
-    if (s_list_page < list_pages() && y >= ZONE_LIST_TOP && y < ZONE_LIST_TOP + rows * ROW_H) {
-        const int i = s_list_page * rows + (y - ZONE_LIST_TOP) / ROW_H;
-        if (i < s_item_count) return open_post(s_items[i].tid, V_ZONE);
+    if (s_list_page < list_pages()) {
+        const int i = row_at(ZONE_LIST_TOP, y);
+        if (i >= 0) return open_post(s_items[i].tid, V_ZONE);
     }
     return APP_REDRAW_NONE;
 }
@@ -1747,11 +1808,8 @@ static app_redraw_t on_key(app_ctx_t* ctx, int key) {
 
 static void queue_visible_images(void) {
     if (s_view == V_HOME && s_seg == SEG_FEED) {
-        const int rows = list_rows();
-        for (int row = 0; row < rows; row++) {
-            const int i = s_list_page * rows + row;
-            if (i < s_item_count && s_items[i].jpg[0]) hupu_img_get(s_items[i].jpg, THUMB_W, THUMB_H);
-        }
+        for (int i = page_first(s_list_page); i < page_end(s_list_page); i++)
+            if (s_items[i].jpg[0]) hupu_img_get(s_items[i].jpg, THUMB_W, THUMB_H);
     } else if (s_view == V_POST && s_post_loaded && s_tab == T_BODY) {
         const int start = s_body_pages[s_page];
         const int end = s_page + 1 < s_body_page_count ? s_body_pages[s_page + 1] : s_line_count;

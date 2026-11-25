@@ -43,6 +43,7 @@
 #define NVS_KEY_DISPLAY "disp_size"   // 显示大小档位 / Display size level
 #define NVS_KEY_TIME_AUTO "time_auto"
 #define NVS_KEY_HUPU_IMG "hupu_img"   // 虎扑显示图片 / Hupu shows images
+#define NVS_KEY_HUPU_PAGES "hupu_pg"  // 虎扑关注每个专区取几页 / Pages per followed Hupu zone
 #define NVS_KEY_TURN_ZONE "turn_zone" // 看书时的翻页区域 / Reader tap zones
 #define NVS_KEY_TZ "tz"
 #define NVS_KEY_PIN_FAILS "pin_fails" // 连续输错次数 / Consecutive wrong PIN tries
@@ -75,6 +76,7 @@ static uint8_t s_display;
 static uint8_t s_pin_fails;
 static bool s_time_auto = true;
 static bool s_hupu_img;   // 默认不显示图片 / Images off by default
+static uint8_t s_hupu_pages = 1;
 static uint8_t s_turn_zone;   // 默认左右 / Left and right by default
 static uint8_t s_tz;
 static bool s_pin_on;
@@ -186,6 +188,9 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
     uint8_t hupu_img = 0;
     if (nvs_get_u8(h, NVS_KEY_HUPU_IMG, &hupu_img) == ESP_OK) s_hupu_img = hupu_img != 0;
+    uint8_t hupu_pages = 1;
+    if (nvs_get_u8(h, NVS_KEY_HUPU_PAGES, &hupu_pages) == ESP_OK && hupu_pages >= 1 && hupu_pages <= APP_HUPU_PAGES_MAX)
+        s_hupu_pages = hupu_pages;
     uint8_t turn_zone = 0;
     if (nvs_get_u8(h, NVS_KEY_TURN_ZONE, &turn_zone) == ESP_OK && turn_zone < APP_TURN_ZONES) s_turn_zone = turn_zone;
     if (nvs_get_u8(h, NVS_KEY_TZ, &tz) == ESP_OK && tz < app_settings_tz_count()) s_tz = tz;
@@ -546,6 +551,14 @@ void app_settings_set_hupu_images(bool on) {
     if (on == s_hupu_img) return;
     s_hupu_img = on;
     nvs_put_u8(NVS_KEY_HUPU_IMG, on ? 1 : 0);
+}
+
+uint8_t app_settings_hupu_pages(void) { return s_hupu_pages; }
+
+void app_settings_set_hupu_pages(uint8_t pages) {
+    if (pages < 1 || pages > APP_HUPU_PAGES_MAX || pages == s_hupu_pages) return;
+    s_hupu_pages = pages;
+    nvs_put_u8(NVS_KEY_HUPU_PAGES, pages);
 }
 
 uint8_t app_settings_turn_zone(void) { return s_turn_zone; }

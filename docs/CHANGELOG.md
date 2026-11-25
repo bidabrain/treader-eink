@@ -3,6 +3,27 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.3
+
+- 联网更快更稳：任务做完 Wi-Fi 先留 20 秒，切帖子、翻页补图直接用，不再每次重新连网握手（实测每次多 15 秒以上）；同一服务器重连走 TLS 简化握手，椭圆曲线运算加速；开 TCP 选择性确认，丢包后只补缺的。锁屏、传书前照样先断开 Wi-Fi。
+  Faster, steadier networking: Wi-Fi stays up for 20 seconds after a job, so switching posts or filling thumbnails reuses it instead of rejoining and redoing the handshake (measured at 15 s or more each time); reconnects to the same server take the short TLS handshake and elliptic-curve math is faster; TCP selective acknowledgements resend only what was lost. Wi-Fi is still dropped before a lock or transfer.
+- 帖子图片传到一半停住、或连接悄悄断了，自动换新连接重试一次，图片等待从 15 秒缩到 8 秒。
+  An image that stalls midway or whose connection died silently is retried once on a fresh connection, and image waits drop from 15 to 8 seconds.
+- 小红书、微博、X：设置里的“列表条数”改名“每次拉取”，选项改成 20 / 30 / 50，默认 20；刷新只先下前两页的缩略图，往后翻时自动补当前页和下一页，刷新几十秒就结束。
+  Xiaohongshu, Weibo and X: the "List size" setting is renamed "Fetch size" with options 20 / 30 / 50, 20 by default; a refresh fetches thumbnails for the first two pages only and the current and next page fill in as you go, so a refresh ends in seconds.
+- 小红书关注、微博关注、X 正在关注：刷新后保留以前缓存的条目，新拉的排在前面，列表最长 100 条（缓存上限也是 100）；超出的最老的条目掉出列表，缓存随即清理，所以列表和缓存都不会越积越多。推荐、热门、为你推荐仍每次整个替换。
+  Xiaohongshu Following, Weibo Following and X Following: a refresh keeps earlier cached entries behind the new ones, up to 100 in the list (the cache limit is also 100); the oldest fall off the end and are pruned, so neither the list nor the cache grows without bound. Recommendations, Hot and For You are still replaced whole.
+- 虎扑：设置里新增“关注每个专区”取 1 / 2 / 3 页；不开图片时列表按标题行数排，一页多放一两条，下面不再空一大块。
+  Hupu: a new "Pages per zone" setting (1 / 2 / 3) for the following feed; with images off, list rows follow the title length, so a page fits one or two more and no large blank is left.
+- 修正漫画发现里输入关键词后点键盘“搜索”键直接退到“全部”页、搜索提交不了：这个页面右下角有一块看不见的菜单把手点击区，正好压在“搜索”键上，现在让给页面。
+  Fixed the comic store's search keyboard: tapping its Go key jumped to the All page and the search never submitted, because an invisible menu-handle area in the bottom-right corner covered the key; it now yields to the page.
+- 漫画发现的封面也按页载入：刷新、切分类、搜索只先下前两页的封面，翻页时补当前页和下一页，不再一口气下完整个列表。
+  The comic store's covers load by page too: a refresh, category change or search fetches covers for the first two pages only, and paging fills the current and next page instead of downloading the whole list at once.
+- 漫画“检查更新”时，我的漫画顶部显示状态卡片：第几话、这一步在做什么（服务器转换中、排队、下载中、连不上等重试）和进度条，做完显示结果，点一下收起。
+  During a comic update, My comics shows a status card at the top: which episode, the step under way (converting on the server, queued, downloading, waiting to retry) and a progress bar, then the result, dismissed with a tap.
+- TF 卡文件包新增中日韩字体 Noto Sans CJK SC（可变 TTF，SIL OFL），在“字体”页选用后能显示日文和韩文。
+  The TF card pack adds the Noto Sans CJK SC font (variable TTF, SIL OFL); choose it on the Fonts page to show Japanese and Korean.
+
 ## 2026-11-25 · Treader 1.2.2
 
 - 书的目录右上角的“正序 / 倒序”换成跳转按钮：不在最后一页时写“最后一章”，点了翻到目录最后一页；在最后一页时写“第一章”，点了回到第一页。目录始终按正序排，只有一页时没有这个按钮。

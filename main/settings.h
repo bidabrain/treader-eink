@@ -120,6 +120,12 @@ void app_settings_set_time_auto(bool on);
 bool app_settings_hupu_images(void);
 void app_settings_set_hupu_images(bool on);
 
+/// 刷新虎扑关注时每个专区取几页（1～APP_HUPU_PAGES_MAX，默认 1）。/ Pages read per zone when refreshing the Hupu
+/// following feed (1 to APP_HUPU_PAGES_MAX, 1 by default).
+#define APP_HUPU_PAGES_MAX 3
+uint8_t app_settings_hupu_pages(void);
+void app_settings_set_hupu_pages(uint8_t pages);
+
 /// 看书时点屏幕的翻页区域。/ Where taps turn pages in the book reader.
 typedef enum {
     APP_TURN_SIDES = 0,   ///< 左右：左 3/10 上一页，中间工具条，右 3/10 下一页 / Left back, middle toolbar, right forward

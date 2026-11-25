@@ -26,9 +26,9 @@ esp_err_t read_pico_sd_get_info(read_pico_sd_info_t* info) {
 }
 esp_err_t tomato_store_url_load(char* out, size_t cap) { snprintf(out, cap, "https://rank.example.org"); return ESP_OK; }
 void tomato_sync_get_status(tomato_status_t* out) { memset(out, 0, sizeof(*out)); }
-int tomato_red_list_limit(void) { return 200; }
-int tomato_wb_list_limit(void) { return 100; }
-int tomato_x_list_limit(void) { return 300; }
+int tomato_red_list_limit(void) { return 50; }
+int tomato_wb_list_limit(void) { return 30; }
+int tomato_x_list_limit(void) { return 20; }
 int tomato_wt_lang(void) { return 0; }
 const char* tomato_wt_lang_name(int lang) { (void)lang; return "繁体中文"; }
 bool tomato_wt_simp(void) { return true; }

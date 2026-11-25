@@ -8,7 +8,7 @@ Copy **everything inside this folder** (not the `sdcard` folder itself) to the r
 TF 卡根目录/
 ├── books/          放 TXT、EPUB；番茄下载的书也存这里
 ├── comics/         放 CBZ 漫画；一部漫画的多话放进同一个子文件夹
-├── fonts/          中文字体 ChillDuanSansVF.ttf（必需，否则缺字）
+├── fonts/          中文字体 ChillDuanSansVF.ttf（必需，否则缺字）；NotoSansCJKsc-VF.ttf（可选，中日韩，要看日文、韩文时在设备“字体”页选用）
 ├── ime/            拼音词库 pinyin-v1.bin（输入中文必需）
 ├── wallpapers/     锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图
 ├── update/         TF 卡升级用，放编译出的 Read_Pico.bin 或 treader-full.bin
@@ -54,3 +54,16 @@ The font is licensed under OFL-1.1, not the repository's Apache-2.0 license. It 
 内置 `main/assets/builtin.ttf` 是此字体的界面子集，生成器将其字体名设为 `Read Pico UI`，保留原版权与许可字段，以区别于未修改的上游字体。
 
 The embedded `main/assets/builtin.ttf` is a UI subset. Its generator uses the font name `Read Pico UI` and preserves original copyright and license fields, distinguishing it from the unmodified upstream font.
+
+## 中日韩字体 Noto Sans CJK SC / CJK font Noto Sans CJK SC
+
+- 字体 / Font: Noto Sans CJK SC（可变 TTF，字重 100～900），覆盖简体中文、日文假名、韩文谚文和拉丁字母，用于看日文、韩文内容。设备“字体”页里选用；不选就仍用寒蝉端黑体。
+- 上游 / Upstream: [notofonts/noto-cjk](https://github.com/notofonts/noto-cjk)，`Sans/Variable/TTF/NotoSansCJKsc-VF.ttf`，Version 2.004。
+- 文件大小 / File size: 36,144,788 bytes.
+- SHA-256: `990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f`.
+- 随附字体逐字节保留上游原文件，未经子集化、重命名或修改；版权 © 2014-2021 Adobe（保留字体名 “Source”），SIL Open Font License 1.1 原文见 [fonts/OFL-NotoSansCJK.txt](fonts/OFL-NotoSansCJK.txt)。
+  The bundled font is byte-identical to the upstream original, without subsetting, renaming or modification. Copyright © 2014-2021 Adobe (Reserved Font Name "Source"); the SIL Open Font License 1.1 is in [fonts/OFL-NotoSansCJK.txt](fonts/OFL-NotoSansCJK.txt).
+- 这是简体中文（SC）版：日文假名和韩文谚文都有，但汉字按简体中文的字形画。要日文汉字的字形，换用同一项目的 `NotoSansCJKjp-VF.ttf`（大小相近，自行下载放进 `fonts/`）。
+  This is the Simplified Chinese (SC) build: Japanese kana and Korean Hangul are covered, but Han characters use Simplified Chinese forms. For Japanese kanji forms use the same project's `NotoSansCJKjp-VF.ttf` (similar size, download it into `fonts/` yourself).
+- 字体文件约 34 MB，TF 卡文件包因此变大；已经刷好的设备不用重刷，把这个文件复制到 TF 卡的 `fonts/` 就行。
+  The font is about 34 MB, so the TF card pack grows; devices already set up need no reflash, just copy this file into the card's `fonts/` folder.

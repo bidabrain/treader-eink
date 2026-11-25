@@ -227,6 +227,7 @@ typedef struct {
     int pending;              ///< 检查后有新章节的本数 / Books with new chapters after a check
     int hit_count;            ///< 搜索结果数 / Search result count
     uint32_t revision;        ///< 每次变化加一 / Bumped on every change
+    char step[96];            ///< 正在做的那一步（漫画下载用），可能为空 / The step under way (comic downloads); may be empty
 } tomato_status_t;
 
 /// 只检查不下载：向服务器取最新章节数，写进书架的 remote 字段。
@@ -270,6 +271,7 @@ typedef struct {
     char key[24];
     int sort;
     bool more;
+    uint8_t pages;      ///< 关注：每个专区取几页，0 当 1 / Following: pages per zone, 0 counts as 1
 } tomato_hupu_req_t;
 
 /// 在后台任务里跑一件虎扑的事；只读，不需要番茄服务器。/ Run one Hupu job on the sync task; read only, no Tomato server.
@@ -301,10 +303,14 @@ typedef struct {
 
 typedef tomato_srv_config_t tomato_red_config_t;
 
-/// 关注、热门列表一次取几条：100 / 200 / 300，默认 100。条数越多，TF 卡上的缩略图越多。
-/// Posts per following or hot list: 100 / 200 / 300, 100 by default. More posts keep more thumbnails on the TF card.
-#define TOMATO_LIST_LIMIT_MIN 100
-#define TOMATO_LIST_LIMIT_MAX 300
+/// 关注、热门列表一次取几条：20 / 30 / 50，默认 20（1.2.3 起，原来 100 / 200 / 300）。列表数组按 TOMATO_LIST_CAP 分配，
+/// 推荐列表的条数由服务器定，也装得下。
+/// Posts per following or hot list: 20 / 30 / 50, 20 by default (from 1.2.3; was 100 / 200 / 300). List arrays are sized
+/// by TOMATO_LIST_CAP, which also fits recommendation lists whose length the server decides.
+#define TOMATO_LIST_LIMIT_MIN 20
+#define TOMATO_LIST_LIMIT_MID 30
+#define TOMATO_LIST_LIMIT_MAX 50
+#define TOMATO_LIST_CAP 300
 int tomato_red_list_limit(void);
 esp_err_t tomato_red_list_limit_set(int n);
 
@@ -329,6 +335,9 @@ typedef struct {
     bool refresh;       ///< 推荐：让服务器重新读首页 / Recommendations: ask the server to re-read the home feed
     bool images_only;   ///< 笔记已缓存，只补缺的图 / Note cached; fetch missing images only
     bool more_comments; ///< 笔记：让服务器现拉更多评论（慢）/ Note: have the server fetch more comments now (slow)
+    bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
+    uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_red_req_t;
 
 esp_err_t tomato_sync_start_red(const tomato_red_req_t* req);
@@ -371,6 +380,9 @@ typedef struct {
     char id[24];
     bool hot;           ///< 列表：热门；否则关注 / List: hot; otherwise following
     bool images_only;   ///< 微博已缓存，只补缺的图 / Post cached; fetch missing images only
+    bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
+    uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_wb_req_t;
 
 esp_err_t tomato_sync_start_wb(const tomato_wb_req_t* req);
@@ -415,6 +427,9 @@ typedef struct {
     char id[28];
     bool following;     ///< 列表：正在关注；否则为你推荐 / List: Following; otherwise For You
     bool images_only;   ///< 推文已缓存，只补缺的图 / Post cached; fetch missing images only
+    bool thumbs_only;      ///< 列表：不重新取，只补卡上这份列表的缩略图 / List: no refetch, fill thumbnails of the list on the card
+    uint16_t thumbs_from;  ///< 列表：从第几条（从 0 起）开始下缩略图 / List: first item (from 0) to fetch thumbnails for
+    uint16_t thumbs_count; ///< 列表：下几条的缩略图，0 是全部 / List: how many items get thumbnails; 0 means all
 } tomato_x_req_t;
 
 esp_err_t tomato_sync_start_x(const tomato_x_req_t* req);
@@ -496,6 +511,9 @@ typedef struct {
     char q[64];           ///< 搜索词 / Search query
     char id[16];          ///< 详情、更新：作品编号 / Detail and update: title id
     bool fill;            ///< 更新：补全缺的话（包括更早的），而不是只下比 last 新的 / Update: fill every missing episode (earlier ones too), not only those after last
+    bool thumbs_only;     ///< 书城、搜索：不重新取列表，只补卡上这份列表的封面 / Store and search: no refetch, only fill covers of the list on the card
+    uint16_t thumbs_from; ///< 书城、搜索：从第几部（从 0 起）开始下封面 / Store and search: first title (from 0) to fetch covers for
+    uint16_t thumbs_count;///< 书城、搜索：下几部的封面，0 是全部 / Store and search: how many titles get covers; 0 means all
 } tomato_wt_req_t;
 
 esp_err_t tomato_sync_start_wt(const tomato_wt_req_t* req);
@@ -556,6 +574,10 @@ void tomato_sync_set_file_hook(tomato_file_hook_t hook);
 /// 联网时要不要顺便用 SNTP 对时（主程序按“自动校时”设置调用，默认要）。/ Whether going online also syncs time over SNTP
 /// (the app sets this from its "auto time" switch; on by default).
 void tomato_net_set_sntp(bool on);
+/// 后台任务做完后还留着的 Wi-Fi 立即断开；有任务正在跑时不动。传书页开热点或连网前调用。
+/// Drop Wi-Fi still lingering after a background job right away; leaves a running job alone. Called before the
+/// transfer page starts its own Wi-Fi.
+void tomato_net_idle_off(void);
 /// 系统时间是否已经对过（联网时用 SNTP 对时）。/ Whether system time has been set (SNTP while online).
 bool tomato_time_valid(void);
 /// 上次取走之后是否又用 SNTP 对过时（取走即清零）。主程序据此把时间写进 PMU 的 RTC。
@@ -579,8 +601,9 @@ esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap);
 /// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
 typedef bool (*tomato_open_check_t)(const char* path);
 void tomato_sync_set_open_check(tomato_open_check_t check);
-/// 取消并等待后台任务结束，最多 timeout_ms；锁屏断电前调用。返回是否已停。
-/// Cancel and wait up to timeout_ms for the task to end; call before a power-down lock. Returns whether it stopped.
+/// 取消并等待后台任务结束，最多 timeout_ms，停了再断开任务后还留着的 Wi-Fi；锁屏前调用。返回是否已停。
+/// Cancel and wait up to timeout_ms for the task to end, then drop any Wi-Fi lingering after it; call before a lock.
+/// Returns whether it stopped.
 bool tomato_sync_stop(int timeout_ms);
 /// 请求取消；任务在下一个安全点退出。/ Request cancel; the task exits at its next safe point.
 void tomato_sync_cancel(void);

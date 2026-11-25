@@ -20,8 +20,14 @@
 
 /// 用系统保存的 Wi-Fi 连网，等到拿到 IP 或超时。/ Join the saved Wi-Fi and wait for an IP or time out.
 esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel);
+/// 后台任务报告正在做的那一步（printf 格式），页面显示在状态里。/ The background job reports the step under way
+/// (printf format) for pages to show.
+void tomato_sync_step(const char* fmt, ...);
 /// 断网并释放全部 Wi-Fi 资源；可重复调用。/ Disconnect and release all Wi-Fi resources; repeatable.
 void tomato_net_down(void);
+/// 任务做完：Wi-Fi 再留一会儿给紧接着的任务，到时没人用再断。/ A job ended: keep Wi-Fi a little longer for the
+/// next job and drop it when unused.
+void tomato_net_linger(void);
 /// 已联网时跑一次 SNTP（不管自动校时开关），成功返回真。/ Run SNTP once while online (regardless of the auto-time
 /// switch); true on success.
 bool tomato_net_sync_time(int wait_ms);
@@ -30,6 +36,9 @@ bool tomato_net_use_public_dns(void);
 /// 打开 HTTP 连接；域名解析失败时换公共 DNS 再试一次，失败原因留给提示用。
 /// Open an HTTP connection, retrying once with public DNS on a lookup failure; the cause is kept for messages.
 esp_err_t tomato_http_open(esp_http_client_handle_t c, int len);
+/// 断网时关掉留着的连接，但留下 TLS 会话给下次重连。/ On network down close the kept connection but keep its TLS
+/// session for the next reconnect.
+void tomato_http_suspend(void);
 /// 取一个连到 url 的 client：和上一个请求同一来源（协议、主机、端口）且连接还开着就复用，省掉一次握手；否则新建。
 /// 只在同步任务里用。头只能用 tomato_http_header 设，复用时会清掉上一个请求的头。
 /// Take a client for url: reuse the kept one when the previous request had the same origin (scheme, host, port) and
@@ -115,7 +124,7 @@ esp_err_t tomato_hupu_post(const char* tid, bool images_only, const volatile boo
                            char* msg, size_t cap);
 esp_err_t tomato_hupu_zones(const volatile bool* cancel, char* msg, size_t cap);
 esp_err_t tomato_hupu_threads(const char* zone, int sort, bool more, const volatile bool* cancel, char* msg, size_t cap);
-esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
+esp_err_t tomato_hupu_follow(int pages, const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap);
 esp_err_t tomato_hupu_schedule(const char* league, const volatile bool* cancel, char* msg, size_t cap);
 esp_err_t tomato_hupu_rating(const char* type, const char* no, const volatile bool* cancel, char* msg, size_t cap);
 /// 小红书（rednote 服务器）任务，在同步任务里调用。/ Xiaohongshu (rednote server) job, run on the sync task.
@@ -186,6 +195,12 @@ cJSON* tomato_cache_read_json(const char* path);
 /// max_bytes 时从最旧的开始只删大图（留 .json 和缩略图）。keep 这一条两样都不动。
 /// Two caps on item folders under root (named by id): past keep_dirs, delete the oldest items absent from every list
 /// file; past max_bytes in total, strip full images from the oldest (keeping .json and thumbnails). keep is untouched.
+/// 刷新关注列表：把旧列表里没出现在新结果里的条目接在 items 后面，最多到 cap 条，返回总条数。新的在前，旧的保持
+/// 原来的顺序；掉出 cap 的就不在列表里了，缓存清理会把它们删掉，所以列表和缓存都不会越积越多。
+/// Refreshing a following list: append the old list's entries that the new result lacks after items, up to cap, and
+/// return the total. New ones come first and old ones keep their order; whatever falls past cap is no longer listed, so
+/// cache pruning removes it and neither the list nor the cache grows without bound.
+int tomato_list_merge_old(cJSON* items, const cJSON* old_items, int cap);
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,
                         uint64_t max_bytes);
 /// 列表文件里把 id 标成看过。/ Mark id as seen in a list file.

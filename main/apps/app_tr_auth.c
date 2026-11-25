@@ -339,6 +339,8 @@ static void web_start(void) {
     s_web_count = 0;
     s_web_note[0] = 0;
     web_unlock();
+    // 后台任务做完还留着的 Wi-Fi 先断开，热点才开得起来。/ Drop Wi-Fi lingering after a background job so the hotspot can start.
+    tomato_net_idle_off();
     const esp_err_t err = read_pico_transfer_start(&cfg);
     if (err != ESP_OK) {
         snprintf(s_msg, sizeof(s_msg), "打不开设备热点（%s）", esp_err_to_name(err));

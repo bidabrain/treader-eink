@@ -48,6 +48,7 @@ static void fill_items(int n, bool thumbs) {
         if (thumbs && i % 3 != 2) snprintf(x->jpg, sizeof(x->jpg), "%s", i % 3 ? "missing.jpg" : "ok.jpg");
         else x->jpg[0] = 0;
     }
+    s_layout_dirty = true;   // 直接填的列表，按读文件后的样子重排 / Filled directly, so re-page as a file load would
 }
 
 static void home(seg_t seg) {

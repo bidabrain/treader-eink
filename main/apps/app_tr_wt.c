@@ -27,6 +27,16 @@
  * updates; entering never refreshes; the source list comes with a store list and switching sources adds no request of
  * its own. Unsubscribing only removes the marker and downloaded episodes stay on the comic shelf. Only free public
  * episodes, never a WEBTOON sign-in. Large buffers are allocated on entry and freed on exit.
+ * Treader 修订（1.2.3，用户反映）：搜索键盘点“搜索”就退到“全部”页：右下角看不见的菜单把手点击区压在“搜索”键上，
+ * 页面设了 tab_nav 把点击区让出来。
+ * Treader revision (1.2.3, user report): tapping the search keyboard's Go key jumped to the All page: the invisible menu
+ * handle area in the bottom-right corner covered the Go key; the page now sets tab_nav to yield that area.
+ * Treader 修订（1.2.3，用户要求）：封面也按页补：刷新、切分类、搜索只先下前两页的封面，翻页时补当前页和下一页（只补封面的
+ * 任务用卡上的列表，不重新拉），刷新几十秒就结束；联网失败、点过取消或进页后没刷新过时不自动补。
+ * Treader revision (1.2.3, user request): covers fill by page too: a refresh, category change or search fetches covers for
+ * the first two pages only, and paging fills the current and next page (a cover-only job uses the list on the card, no
+ * refetch), so a refresh ends in seconds; no automatic fill after a network failure, a cancel, or before a refresh in
+ * this visit.
  */
 
 #include <stdio.h>
@@ -170,6 +180,12 @@ static tomato_status_t s_status;
 static bool s_step_loaded;
 // 已经提前生成过封面的列表页（-1 是还没有）。/ The list page whose covers were already built early (-1: none).
 static int s_covers_page = -1;
+// 刷新只先下前几页的封面，翻到的页再补；进页后成功刷新过才自动补，免得没网时一翻页就去连 Wi-Fi。
+// A refresh fetches covers for the first pages only and the pages being viewed fill in later; that happens only after a
+// successful refresh in this visit, so paging offline never tries to join Wi-Fi.
+#define COVER_PAGES 2
+static bool s_lazy_ok;
+static int s_covers_tried = -1;   // 这一页已经补过一次（失败了也不再反复试）/ This page was already filled once
 static tomato_wt_req_t s_pending;
 static bool s_has_pending;
 
@@ -365,7 +381,9 @@ static bool start_req(const tomato_wt_req_t* r) {
     s_job = *r;
     s_job_seq = tomato_sync_seq();
     s_job_active = true;
-    s_step_loaded = false;
+    // 只补封面时列表早在卡上，不算“列表写好”。/ A cover fill reuses the list already on the card, so it is not "list
+    // written".
+    s_step_loaded = r->thumbs_only;
     s_covers_page = -1;
     s_msg[0] = 0;
     tomato_sync_get_status(&s_status);
@@ -405,8 +423,12 @@ static const char* loading_text(const char* what) {
     return s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi…" : what;
 }
 
+static int grid_per(void);
+
 static void request_list(void) {
-    tomato_wt_req_t r = {.job = s_searching ? TOMATO_WT_SEARCH : TOMATO_WT_STORE};
+    // 只先下前 COVER_PAGES 页的封面。/ Covers for the first COVER_PAGES pages only.
+    tomato_wt_req_t r = {.job = s_searching ? TOMATO_WT_SEARCH : TOMATO_WT_STORE,
+                         .thumbs_count = (uint16_t)(COVER_PAGES * grid_per())};
     snprintf(r.seg, sizeof(r.seg), "%s", seg_key());
     snprintf(r.src, sizeof(r.src), "%s", s_src);
     snprintf(r.key, sizeof(r.key), "%s", s_key);
@@ -859,6 +881,7 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         if (job_running(TOMATO_WT_STORE) || job_running(TOMATO_WT_SEARCH)) {
             drop_job(TOMATO_WT_STORE);
             drop_job(TOMATO_WT_SEARCH);
+            s_lazy_ok = false;   // 点了取消就别再自动补封面，等下次刷新 / After a cancel, stop filling until the next refresh
             return APP_REDRAW_PAGE;
         }
         s_msg[0] = 0;
@@ -986,6 +1009,26 @@ static app_redraw_t job_done(bool ok) {
     }
 }
 
+// 列表停在一页上：这页和下一页缺封面就在后台补（别的页的任务在跑时不抢）。/ The list rests on a page: fill missing
+// covers for it and the next page in the background (never taking the worker from another page's job).
+static app_redraw_t fill_covers(void) {
+    if (!s_lazy_ok || s_view != V_LIST || s_item_count <= 0 || s_has_pending || tomato_sync_busy() ||
+        s_covers_tried == s_page)
+        return APP_REDRAW_NONE;
+    s_covers_tried = s_page;
+    const int per = grid_per();
+    const int a = s_page * per;
+    const int b = (s_page + COVER_PAGES) * per < s_item_count ? (s_page + COVER_PAGES) * per : s_item_count;
+    char cover[64];
+    for (int i = a; i < b; i++) {
+        if (cover_file(s_items[i].id, cover, sizeof(cover))) continue;
+        const tomato_wt_req_t r = {.job = s_searching ? TOMATO_WT_SEARCH : TOMATO_WT_STORE, .thumbs_only = true,
+                                   .thumbs_from = (uint16_t)a, .thumbs_count = (uint16_t)(b - a)};
+        return start_req(&r) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
+    }
+    return APP_REDRAW_NONE;
+}
+
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (!s_items || s_view == V_SEARCH) return APP_REDRAW_NONE;
     if (!(ctx->touch && ctx->touch->touched) && book_cover_tick()) return APP_REDRAW_PAGE;
@@ -999,7 +1042,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         return APP_REDRAW_PAGE;
     }
     if (s_has_pending && !s_job_active && tomato_sync_preemptible()) tomato_sync_cancel();
-    if (!s_job_active) return APP_REDRAW_NONE;
+    if (!s_job_active) return fill_covers();
     if (tomato_sync_seq() != s_job_seq) { s_job_active = false; return APP_REDRAW_NONE; }
     const bool busy = tomato_sync_busy();
     tomato_status_t prev = s_status;
@@ -1032,6 +1075,13 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (busy) return APP_REDRAW_NONE;
     s_job_active = false;
     const bool ok = s_status.phase != TOMATO_FAILED;
+    if (s_job.job == TOMATO_WT_STORE || s_job.job == TOMATO_WT_SEARCH) {
+        // 刷新成功才开始按页补封面；联网失败就停；被别的任务打断的那页回来再补。/ Paged fills start only after a
+        // successful refresh and stop on a network failure; a page interrupted by another job fills again on return.
+        if (ok && !s_job.thumbs_only) { s_lazy_ok = true; s_covers_tried = -1; }
+        else if (!ok && s_status.error != ESP_ERR_INVALID_STATE) s_lazy_ok = false;
+        else if (!ok) s_covers_tried = -1;
+    }
     if (!ok) {
         if (s_status.error == ESP_ERR_INVALID_STATE) s_msg[0] = 0;
         else snprintf(s_msg, sizeof(s_msg), "%s", s_status.message);
@@ -1057,6 +1107,8 @@ static void on_enter(app_ctx_t* ctx) {
     memset(&cfg, 0, sizeof(cfg));
     if (!alloc_all()) return;
     s_msg[0] = 0;
+    s_lazy_ok = false;
+    s_covers_tried = -1;
     if (s_job_active && !ours_running()) s_job_active = false;
     load_sources();
     if (s_view == V_SEARCH || s_view == V_SOURCES) s_view = V_LIST;
@@ -1095,6 +1147,12 @@ const app_desc_t app_tr_wt = {
     .title = "发现漫画",
     .detail = "WEBTOON 排行、类型、搜索与订阅（经自建 webtoon 服务器）",
     .enter_full = true,
+    // 本页没有标签栏也没画菜单把手，但没设这个标志时右下角还藏着把手的点击区：搜索键盘的“搜索”键正好在那里，
+    // 一点就被当成把手打开“全部”页，搜索永远提交不了。设上以后点击区让给页面，KEY3 照样开“全部”。
+    // This page has no tab bar and draws no menu handle, yet without this flag the handle's hit area still sits in the
+    // bottom-right corner, right where the search keyboard's Go key is: a tap there opened the All page and the search
+    // never submitted. With it set the area yields to the page, and KEY3 still opens the All page.
+    .tab_nav = true,
     .render = render,
     .on_enter = on_enter,
     .on_exit = page_on_exit,

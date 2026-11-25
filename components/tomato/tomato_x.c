@@ -28,7 +28,10 @@
 
 #define NVS_NS "x"
 #define HEADER "x-hub-token"
-#define POST_KEEP 150
+// 推文目录最多留几个（还在列表里的不删）；正在关注刷新后保留旧条目，最长到这么多，所以列表长度也以它为准。1.2.3 起 100。
+// Most post folders kept (listed ones are never removed); a refreshed Following list keeps older entries up to this
+// many, so it also caps the list length. 100 from 1.2.3.
+#define POST_KEEP 100
 // 推文目录一共最多占这么多；超过就从最旧的删大图。/ Cap for all post folders; past it the oldest lose full images.
 #define POSTS_BYTES_MAX (200ull * 1024 * 1024)
 #define TIMEOUT_MS 15000
@@ -159,65 +162,80 @@ static void state_from_feed(const cJSON* root) {
 // 列表：取最近“列表条数”条，正在关注保留旧文件里的“看过”标记，再补缩略图。服务器关了正在关注时只记开关，不动旧缓存。
 // List: fetch the latest "list size" posts, keep "seen" marks from the old Following file, then fill thumbnails. When
 // the server has Following off, only the switch is kept and the old cache stays.
-static esp_err_t run_feed(const tomato_srv_t* srv, bool following, const volatile bool* cancel,
+static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, const volatile bool* cancel,
                           tomato_hupu_progress_t progress, char* msg, size_t cap) {
+    const bool following = r->following;
     const char* file = following ? TOMATO_X_FOLLOWING_FILE : TOMATO_X_FORYOU_FILE;
-    char path[112];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?seg=%s&limit=%d", following ? "following" : "foryou",
-             tomato_x_list_limit());
-    cJSON* root = NULL;
-    esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
-    if (err != ESP_OK) return err;
-    state_from_feed(root);
-    if (following && cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(root, "on"))) {
-        cJSON_Delete(root);
-        snprintf(msg, cap, "服务器关了正在关注");
-        return ESP_OK;
-    }
-    cJSON* old = following ? tomato_cache_read_json(file) : NULL;
-    const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
-    cJSON* out = cJSON_CreateObject();
-    copy_num(out, root, "now");
-    cJSON* items = cJSON_AddArrayToObject(out, "items");
+    cJSON* out = NULL;
+    cJSON* items = NULL;
     const cJSON* n;
     int count = 0;
-    cJSON_ArrayForEach(n, cJSON_GetObjectItemCaseSensitive(root, "posts")) {
-        const cJSON* id = cJSON_GetObjectItemCaseSensitive(n, "id");
-        if (!cJSON_IsString(id) || !id->valuestring[0]) continue;
-        cJSON* x = cJSON_CreateObject();
-        copy_str(x, "id", n, "id");
-        copy_str(x, "user", n, "user");
-        copy_str(x, "text", n, "text");
-        copy_str(x, "rt_user", n, "rt_user");
-        copy_str(x, "rt_text", n, "rt_text");
-        add_source(x, n);
-        copy_num(x, n, "time");
-        copy_num(x, n, "images");
-        copy_num(x, n, "pics");
-        copy_num(x, n, "ratio");
-        copy_num(x, n, "likes");
-        copy_num(x, n, "comments");
-        copy_num(x, n, "reposts");
-        // 新到的标“新”；以前看过的保持；第一次取到的都算看过。为你推荐不标。/ New arrivals are unseen and earlier
-        // marks stay; a first fetch counts as seen. For You carries no marks.
-        bool seen = !following || !old;
-        const cJSON* o;
-        cJSON_ArrayForEach(o, old_items) {
-            const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
-            if (cJSON_IsString(oid) && !strcmp(oid->valuestring, id->valuestring)) {
-                seen = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "seen"));
-                break;
-            }
+    char path[112];
+    if (r->thumbs_only) {
+        // 翻到的页补缩略图：不重新取列表，用卡上这份。/ Thumbnails for the pages being viewed: no refetch, use the list
+        // already on the card.
+        out = tomato_cache_read_json(file);
+        items = cJSON_GetObjectItemCaseSensitive(out, "items");
+        if (!cJSON_IsArray(items)) { cJSON_Delete(out); snprintf(msg, cap, "列表还没取过"); return ESP_ERR_NOT_FOUND; }
+        count = cJSON_GetArraySize(items);
+    } else {
+        snprintf(path, sizeof(path), "/api/device/v1/feed?seg=%s&limit=%d", following ? "following" : "foryou",
+                 tomato_x_list_limit());
+        cJSON* root = NULL;
+        esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
+        if (err != ESP_OK) return err;
+        state_from_feed(root);
+        if (following && cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(root, "on"))) {
+            cJSON_Delete(root);
+            snprintf(msg, cap, "服务器关了正在关注");
+            return ESP_OK;
         }
-        cJSON_AddBoolToObject(x, "seen", seen);
-        cJSON_AddItemToArray(items, x);
-        count++;
+        cJSON* old = following ? tomato_cache_read_json(file) : NULL;
+        const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
+        out = cJSON_CreateObject();
+        copy_num(out, root, "now");
+        items = cJSON_AddArrayToObject(out, "items");
+        cJSON_ArrayForEach(n, cJSON_GetObjectItemCaseSensitive(root, "posts")) {
+            const cJSON* id = cJSON_GetObjectItemCaseSensitive(n, "id");
+            if (!cJSON_IsString(id) || !id->valuestring[0]) continue;
+            cJSON* x = cJSON_CreateObject();
+            copy_str(x, "id", n, "id");
+            copy_str(x, "user", n, "user");
+            copy_str(x, "text", n, "text");
+            copy_str(x, "rt_user", n, "rt_user");
+            copy_str(x, "rt_text", n, "rt_text");
+            add_source(x, n);
+            copy_num(x, n, "time");
+            copy_num(x, n, "images");
+            copy_num(x, n, "pics");
+            copy_num(x, n, "ratio");
+            copy_num(x, n, "likes");
+            copy_num(x, n, "comments");
+            copy_num(x, n, "reposts");
+            // 新到的标“新”；以前看过的保持；第一次取到的都算看过。为你推荐不标。/ New arrivals are unseen and earlier
+            // marks stay; a first fetch counts as seen. For You carries no marks.
+            bool seen = !following || !old;
+            const cJSON* o;
+            cJSON_ArrayForEach(o, old_items) {
+                const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
+                if (cJSON_IsString(oid) && !strcmp(oid->valuestring, id->valuestring)) {
+                    seen = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "seen"));
+                    break;
+                }
+            }
+            cJSON_AddBoolToObject(x, "seen", seen);
+            cJSON_AddItemToArray(items, x);
+            count++;
+        }
+        // 正在关注：保留以前缓存的条目，新拉的排在前面；为你推荐每次整个替换。/ Following keeps earlier cached entries
+        // behind the fresh ones; For You is replaced whole each time.
+        if (following) count = tomato_list_merge_old(items, old_items, POST_KEEP > tomato_x_list_limit() ? POST_KEEP : tomato_x_list_limit());
+        cJSON_Delete(root);
+        cJSON_Delete(old);
+        mkdirs();
+        err = tomato_cache_write_json(file, out);
+        if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     }
-    cJSON_Delete(root);
-    cJSON_Delete(old);
-    mkdirs();
-    err = tomato_cache_write_json(file, out);
-    if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     progress(1, count + 1);
     // 图：两张以上取前几张方形小图，一张取封面缩略图。失败的跳过，下次刷新再补。/ Images: with two or more, the first
     // square images; with one, the cover thumbnail. Failures wait for the next refresh.
@@ -226,6 +244,8 @@ static esp_err_t run_feed(const tomato_srv_t* srv, bool following, const volatil
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
+        // 只补要的那几条（0 是全部）。/ Only the requested items (0 means all).
+        if (i - 1 < r->thumbs_from || (r->thumbs_count && i - 1 >= r->thumbs_from + r->thumbs_count)) continue;
         const char* id = cJSON_GetObjectItemCaseSensitive(n, "id")->valuestring;
         const int pics = json_int(n, "pics");
         if (json_int(n, "images") <= 0) continue;
@@ -250,7 +270,7 @@ static esp_err_t run_feed(const tomato_srv_t* srv, bool following, const volatil
     }
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
-    prune_posts(NULL);
+    if (!r->thumbs_only) prune_posts(NULL);
     snprintf(msg, cap, "%s %d 条", following ? "正在关注" : "为你推荐", count);
     return ESP_OK;
 }
@@ -419,7 +439,7 @@ esp_err_t tomato_x_run(const tomato_x_req_t* r, const volatile bool* cancel, tom
     esp_err_t err;
     bool following;
     switch (r->job) {
-    case TOMATO_X_FEED: err = run_feed(&srv, r->following, cancel, progress, msg, cap); break;
+    case TOMATO_X_FEED: err = run_feed(&srv, r, cancel, progress, msg, cap); break;
     case TOMATO_X_POST: err = run_post(&srv, r, cancel, progress, msg, cap); break;
     case TOMATO_X_COMMENTS: err = run_comments(&srv, r, cancel, msg, cap); break;
     case TOMATO_X_STATE: err = run_state(&srv, cancel, &following, msg, cap); break;

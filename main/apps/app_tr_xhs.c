@@ -48,7 +48,7 @@
 // and comment bottoms follow the screen bottom.
 
 // 列表 / Lists
-#define LIST_MAX TOMATO_LIST_LIMIT_MAX
+#define LIST_MAX TOMATO_LIST_CAP
 #define LIST_TOP TR_S(284)
 #define PAGER_Y (TR_TABS_Y - TR_S(58))
 // 两列卡片。一页几行按翻页钮上面剩下的高度定：两行时封面还有 180 像素高就放两行（正常、大），否则一行（特大），
@@ -139,6 +139,12 @@ static uint32_t s_job_seq;           // 本页任务的序号，用来认出“�
 static tomato_red_req_t s_job;
 static tomato_status_t s_status;
 static bool s_step_loaded;
+// 刷新只先下前几页的缩略图，翻到的页再补；进页后成功刷新过才自动补，免得没网时一翻页就去连 Wi-Fi。
+// A refresh fetches thumbnails for the first pages only and the pages being viewed fill in later; that happens only
+// after a successful refresh in this visit, so paging offline never tries to join Wi-Fi.
+#define THUMB_PAGES 2
+static bool s_lazy_ok;
+static int s_thumbs_tried = -1;   // 这一页已经补过一次（失败了也不再反复试）/ This page was already filled once
 // 已经提前显示过缩略图的列表页（-1 是还没有）。/ The list page whose thumbnails were already shown early (-1: none).
 static int s_thumbs_page = -1;
 static tomato_red_req_t s_pending;
@@ -301,7 +307,9 @@ static bool start_req(const tomato_red_req_t* r) {
     s_job = *r;
     s_job_seq = tomato_sync_seq();
     s_job_active = true;
-    s_step_loaded = false;
+    // 只补缩略图时列表早在卡上，不算“第 1 步写好”，免得页码被拉回第一页。/ Thumbnail fills reuse the list already on
+    // the card, so they never count as "step 1 written", which would reset the page.
+    s_step_loaded = r->thumbs_only;
     s_thumbs_page = -1;
     s_msg[0] = 0;
     tomato_sync_get_status(&s_status);
@@ -317,9 +325,8 @@ static bool ours_running(void) {
 // 前台优先：本页的旧任务和别的页留下的浏览任务立刻取消；下载和同步不打断，排在它后面。
 // Foreground first: cancel this page's old job and browsing jobs left by other pages at once; downloads and sync are
 // left to finish and this request waits behind them.
-static bool start_job(tomato_red_job_t job, const char* id, bool rec, bool refresh, bool images_only) {
-    tomato_red_req_t req = {.job = job, .rec = rec, .refresh = refresh, .images_only = images_only};
-    if (id) snprintf(req.id, sizeof(req.id), "%s", id);
+static bool queue_req(const tomato_red_req_t* r) {
+    const tomato_red_req_t req = *r;
     if (tomato_sync_busy()) {
         const bool yields = ours_running() || tomato_sync_preemptible();
         if (yields) tomato_sync_cancel();
@@ -331,6 +338,12 @@ static bool start_job(tomato_red_job_t job, const char* id, bool rec, bool refre
     }
     s_has_pending = false;
     return start_req(&req);
+}
+
+static bool start_job(tomato_red_job_t job, const char* id, bool rec, bool refresh, bool images_only) {
+    tomato_red_req_t req = {.job = job, .rec = rec, .refresh = refresh, .images_only = images_only};
+    if (id) snprintf(req.id, sizeof(req.id), "%s", id);
+    return queue_req(&req);
 }
 
 static void drop_job(tomato_red_job_t job) {
@@ -851,6 +864,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
 
 static app_redraw_t show_seg(seg_t seg) {
     s_seg = seg;
+    s_thumbs_tried = -1;
     s_list_page = 0;
     s_msg[0] = 0;
     hupu_img_drop_pending();
@@ -863,7 +877,10 @@ static app_redraw_t show_seg(seg_t seg) {
 }
 
 static app_redraw_t refresh(void) {
-    if (s_seg == SEG_FOLLOW) start_job(TOMATO_RED_FEED, NULL, false, false, false);
+    if (s_seg == SEG_FOLLOW) {
+        const tomato_red_req_t req = {.job = TOMATO_RED_FEED, .thumbs_count = THUMB_PAGES * PER_PAGE};
+        queue_req(&req);
+    }
     else start_job(TOMATO_RED_REC, NULL, false, true, false);
     return APP_REDRAW_PAGE;
 }
@@ -990,7 +1007,8 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     if (ui_rect_hit(REFRESH_RECT, x, y)) {
         const tomato_red_job_t list = s_seg == SEG_FOLLOW ? TOMATO_RED_FEED : TOMATO_RED_REC;
-        if (job_running(list)) { drop_job(list); return APP_REDRAW_PAGE; }
+        // 点了取消就别再自动补缩略图，等下次刷新。/ After a cancel, stop filling thumbnails until the next refresh.
+        if (job_running(list)) { drop_job(list); s_lazy_ok = false; return APP_REDRAW_PAGE; }
         if (!tomato_sync_busy() || tomato_sync_preemptible()) return refresh();
     }
     const int seg = tr_segment_hit(TR_SEGMENT_RECT, 2, x, y);
@@ -1165,6 +1183,27 @@ static app_redraw_t job_done(bool ok) {
     return APP_REDRAW_NONE;
 }
 
+// 列表停在一页上：这页和下一页缺缩略图就在后台补（别的页的任务在跑时不抢）。/ The list rests on a page: fill missing
+// thumbnails for it and the next page in the background (never taking the worker from another page's job).
+static app_redraw_t fill_thumbs(void) {
+    if (!s_lazy_ok || s_view != V_LIST || s_seg != SEG_FOLLOW || s_has_pending || tomato_sync_busy() ||
+        s_thumbs_tried == s_list_page)
+        return APP_REDRAW_NONE;
+    s_thumbs_tried = s_list_page;
+    const int a = s_list_page * PER_PAGE;
+    const int b = (s_list_page + THUMB_PAGES) * PER_PAGE < s_item_count ? (s_list_page + THUMB_PAGES) * PER_PAGE
+                                                                       : s_item_count;
+    for (int i = a; i < b; i++) {
+        char path[96];
+        thumb_path(&s_items[i], path, sizeof(path));
+        if (exists(path)) continue;
+        const tomato_red_req_t req = {.job = TOMATO_RED_FEED, .thumbs_only = true, .thumbs_from = (uint16_t)a,
+                                      .thumbs_count = (uint16_t)(b - a)};
+        return start_req(&req) ? APP_REDRAW_PAGE : APP_REDRAW_NONE;
+    }
+    return APP_REDRAW_NONE;
+}
+
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (!s_items) return APP_REDRAW_NONE;
     if (tr_wallsave_tick(&s_ws, ctx->now_ms)) return APP_REDRAW_PAGE;
@@ -1181,7 +1220,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     // 排着队时又有浏览任务占了后台（别的页留下的）：让它让路。/ While queued, a browsing job from elsewhere took the
     // worker: make it yield.
     if (s_has_pending && !s_job_active && tomato_sync_preemptible()) tomato_sync_cancel();
-    if (!s_job_active) return APP_REDRAW_NONE;
+    if (!s_job_active) return fill_thumbs();
     // 序号变了：自己的任务早结束了，后台在跑别人的；不再跟踪，按缓存重画。/ The sequence moved on: our job ended and
     // another page's job runs; stop tracking and redraw from the caches.
     if (tomato_sync_seq() != s_job_seq) {
@@ -1229,6 +1268,14 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_job_active = false;
     if (s_job.job == TOMATO_RED_FEED) flush_seen();
     const bool ok = s_status.phase != TOMATO_FAILED;
+    if (s_job.job == TOMATO_RED_FEED) {
+        // 刷新成功才开始按页补缩略图；联网失败就停，免得每翻一页都等一次；被别的任务打断的那页回来再补。
+        // Paged thumbnail fills start only after a successful refresh and stop on a network failure, so not every page
+        // turn waits on it; a page interrupted by another job fills again on return.
+        if (ok && !s_job.thumbs_only) { s_lazy_ok = true; s_thumbs_tried = -1; }
+        else if (!ok && s_status.error != ESP_ERR_INVALID_STATE) s_lazy_ok = false;
+        else if (!ok) s_thumbs_tried = -1;
+    }
     if (!ok) {
         if (s_status.error == ESP_ERR_INVALID_STATE) s_msg[0] = 0;
         else snprintf(s_msg, sizeof(s_msg), "%s", s_status.message);
@@ -1258,6 +1305,8 @@ static void on_enter(app_ctx_t* ctx) {
     s_wait = false;
     s_more_wait = false;
     s_list_page = 0;
+    s_lazy_ok = false;
+    s_thumbs_tried = -1;
     // 离开期间的任务：不是自己的、或已经结束，都不再跟踪。/ A job from before: stop tracking it unless ours still runs.
     if (s_job_active && !ours_running()) s_job_active = false;
     if (!job_running(TOMATO_RED_FEED)) flush_seen();

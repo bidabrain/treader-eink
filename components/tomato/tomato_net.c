@@ -5,8 +5,16 @@
  * 一次性 STA 连网：用传书页保存的凭据，连上、用完、全部释放。
  * One-shot STA networking: uses credentials saved by the transfer page; connect, use, release everything.
  *
- * 冻结：传书服务运行时不连网；不保存凭据副本，密码用毕擦除。
- * Frozen: never connect while the transfer service runs; keep no credential copy, wipe the password after use.
+ * 冻结：传书服务运行时不连网；不保存凭据副本，密码用毕擦除。任务做完 Wi-Fi 最多再留 LINGER_MS，没人用就全部释放；
+ * 锁屏（tomato_sync_stop）、传书页和试连都先立即断开，浅睡前绝不留着 Wi-Fi。
+ * 1.2.3 修订（用户反映图片下载慢）：原来每个任务做完立刻断网，切帖子时上一个任务被取消、下一个任务又从连 Wi-Fi、
+ * 建连接、TLS 握手重来，实测每次多 15 秒以上；现在紧接着的任务直接用还连着的 Wi-Fi。
+ * Frozen: never connect while the transfer service runs; keep no credential copy, wipe the password after use. After a
+ * job Wi-Fi stays at most LINGER_MS and is then fully released if unused; lock (tomato_sync_stop), the transfer page
+ * and the connection test drop it at once, so Wi-Fi is never left up into light sleep.
+ * Revised in 1.2.3 (the user reported slow image downloads): every job used to drop the network the moment it ended,
+ * so switching posts cancelled one job and made the next one rejoin Wi-Fi, reconnect and redo the TLS handshake,
+ * measured at 15 s or more each time; a job right after another now uses the Wi-Fi that is still up.
  */
 
 #include <stdio.h>
@@ -24,6 +32,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "read_pico_transfer.h"
 #include "tomato_internal.h"
@@ -32,6 +41,9 @@
 #define BIT_IP BIT0
 #define BIT_FAIL BIT1
 #define RETRY_MAX 3
+// 任务做完 Wi-Fi 再留这么久，紧接着的任务（比如切到下一篇帖子）就不用重新连。/ How long Wi-Fi stays after a job, so
+// the next job right after it (say, the next post) need not reconnect.
+#define LINGER_MS 20000
 
 static EventGroupHandle_t s_bits;
 static esp_netif_t* s_netif;
@@ -41,6 +53,22 @@ static int s_retries;
 static bool s_sntp;
 static bool s_sntp_allowed = true;
 static bool s_public_dns;
+// 联网、断网和留网的状态只在这把锁里改。/ Up, down and linger state change only under this lock.
+static SemaphoreHandle_t s_net_mx;
+static StaticSemaphore_t s_net_mx_buf;
+static portMUX_TYPE s_net_mx_init = portMUX_INITIALIZER_UNLOCKED;
+static bool s_lingering;             // 任务做完、Wi-Fi 还留着 / A job ended and Wi-Fi is still up
+static TaskHandle_t s_linger_task;   // 到时断网的小任务 / The small task that drops Wi-Fi when time is up
+
+static void net_lock(void) {
+    if (!s_net_mx) {
+        portENTER_CRITICAL(&s_net_mx_init);
+        if (!s_net_mx) s_net_mx = xSemaphoreCreateMutexStatic(&s_net_mx_buf);
+        portEXIT_CRITICAL(&s_net_mx_init);
+    }
+    xSemaphoreTake(s_net_mx, portMAX_DELAY);
+}
+static void net_unlock(void) { xSemaphoreGive(s_net_mx); }
 
 // 路由器的 DNS 解析失败时改用公共 DNS（阿里 223.5.5.5，腾讯 119.29.29.29 备用）。很多路由器开了“DNS 重绑定保护”，
 // 会拦掉解析到内网 IP 的公网域名（比如自建服务器），电脑、手机若用公共 DNS 就看不出来。只在本次联网期间生效。
@@ -103,6 +131,8 @@ bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
 static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
     (void)arg; (void)data;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        // 断了就不算有 IP，留着的 Wi-Fi 不会被当成还能用。/ A drop clears the IP, so lingering Wi-Fi is not taken as usable.
+        xEventGroupClearBits(s_bits, BIT_IP);
         if (s_retries++ < RETRY_MAX) esp_wifi_connect();
         else xEventGroupSetBits(s_bits, BIT_FAIL);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -111,7 +141,9 @@ static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
     }
 }
 
-esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
+static void net_down_locked(void);
+
+static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
     read_pico_transfer_status_t ts;
     read_pico_transfer_get_status(&ts);
     // 传书页正占着 Wi-Fi：返回 ESP_ERR_NOT_SUPPORTED，和“取消”（ESP_ERR_INVALID_STATE）区分开，提示才不会被吞掉。
@@ -201,12 +233,86 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
 fail:
     memset(pass, 0, sizeof(pass));
     ESP_LOGW(TAG, "connect failed: %s", esp_err_to_name(err));
-    tomato_net_down();
+    net_down_locked();
     return err;
 }
 
+esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
+    net_lock();
+    if (s_lingering) {
+        s_lingering = false;
+        if (s_linger_task) xTaskNotifyGive(s_linger_task);
+        // 留着的 Wi-Fi 还有 IP 就直接用，断过就整个重来。/ Reuse the lingering Wi-Fi while it has an IP; after a drop,
+        // start over.
+        if (s_bits && (xEventGroupGetBits(s_bits) & BIT_IP)) {
+            ESP_LOGI(TAG, "reuse lingering Wi-Fi");
+            net_unlock();
+            return ESP_OK;
+        }
+        net_down_locked();
+    }
+    const esp_err_t err = net_up_locked(timeout_ms, cancel);
+    net_unlock();
+    return err;
+}
+
+// 到时没人用就断网；被叫醒说明有新任务接手、要立即断开，或又留了一轮。/ Drop Wi-Fi when time is up unused; a wake
+// means a new job took it, it is being dropped now, or another linger round began.
+static void linger_task(void* arg) {
+    (void)arg;
+    for (;;) {
+        const bool woken = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(LINGER_MS)) != 0;
+        net_lock();
+        if (!s_lingering) break;
+        if (!woken) {
+            ESP_LOGI(TAG, "linger over, Wi-Fi off");
+            s_lingering = false;
+            net_down_locked();
+            break;
+        }
+        net_unlock();
+    }
+    s_linger_task = NULL;
+    net_unlock();
+    vTaskDelete(NULL);
+}
+
+void tomato_net_linger(void) {
+    net_lock();
+    if (s_netif) {
+        s_lingering = true;
+        if (s_linger_task) xTaskNotifyGive(s_linger_task);
+        else if (xTaskCreate(linger_task, "net_linger", 3072, NULL, 3, &s_linger_task) != pdPASS) {
+            s_linger_task = NULL;
+            s_lingering = false;
+            net_down_locked();
+        }
+    }
+    net_unlock();
+}
+
+void tomato_net_idle_off(void) {
+    net_lock();
+    if (s_lingering) {
+        s_lingering = false;
+        if (s_linger_task) xTaskNotifyGive(s_linger_task);
+        net_down_locked();
+    }
+    net_unlock();
+}
+
 void tomato_net_down(void) {
-    tomato_http_drop();
+    net_lock();
+    s_lingering = false;
+    if (s_linger_task) xTaskNotifyGive(s_linger_task);
+    net_down_locked();
+    net_unlock();
+}
+
+static void net_down_locked(void) {
+    // 连接关掉，但留着 TLS 会话，下次重连能少做一次完整握手。/ Close the connection but keep the TLS session so the next
+    // reconnect skips a full handshake.
+    tomato_http_suspend();
     s_public_dns = false;
     s_synced_now = false;
     if (s_sntp) { esp_netif_sntp_deinit(); s_sntp = false; }
@@ -227,6 +333,9 @@ esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap) {
         return ESP_ERR_INVALID_STATE;
     }
     tomato_http_clear_detail();
+    // 留着的 Wi-Fi 可能是改之前的网络：先断开，真的去连保存的这个。/ Lingering Wi-Fi may be the network from before the
+    // change: drop it so the test really joins the saved one.
+    tomato_net_idle_off();
     esp_err_t err = tomato_net_up(timeout_ms, NULL);
     if (err == ESP_OK) snprintf(msg, cap, "连上了");
     else if (err == ESP_ERR_NOT_FOUND) snprintf(msg, cap, "没有保存的网络");

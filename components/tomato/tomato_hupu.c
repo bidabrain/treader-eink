@@ -943,7 +943,7 @@ esp_err_t tomato_hupu_threads(const char* zone, int sort, bool more, const volat
     return err;
 }
 
-esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap) {
+esp_err_t tomato_hupu_follow(int pages, const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap) {
     make_more_dirs();
     cJSON* follow = read_json(TOMATO_HUPU_DIR "/follow.json");
     const cJSON* zones = cJSON_GetObjectItemCaseSensitive(follow, "zones");
@@ -954,7 +954,8 @@ esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t
         snprintf(msg, cap, "还没有关注的专区");
         return ESP_ERR_NOT_FOUND;
     }
-    // 每个专区先取第一页，再轮流各取一条混排。/ Take each zone's first page, then interleave one row at a time.
+    // 每个专区取前 pages 页，再轮流各取一条混排。/ Take each zone's first `pages` pages, then interleave one row at a
+    // time.
     cJSON* lists = cJSON_CreateArray();
     int ok = 0;
     for (int i = 0; i < n && lists && !(cancel && *cancel); i++) {
@@ -967,6 +968,15 @@ esp_err_t tomato_hupu_follow(const volatile bool* cancel, tomato_hupu_progress_t
         int added = 0;
         if (!items) break;
         if (threads_by_reply(id, 1, "", cancel, items, next, sizeof(next), &added) == ESP_OK && added) {
+            // 接着翻后面几页；某一页失败或没有下一页就停在已取到的。/ Read the following pages; stop with what arrived
+            // when one fails or there is no next page.
+            for (int p = 2; p <= pages && next[0] && !(cancel && *cancel); p++) {
+                char cursor[sizeof(next)];
+                int more = 0;
+                snprintf(cursor, sizeof(cursor), "%s", next);
+                if (threads_by_reply(id, p, cursor, cancel, items, next, sizeof(next), &more) != ESP_OK || !more) break;
+                added += more;
+            }
             cJSON* row;
             cJSON_ArrayForEach(row, items) cJSON_AddStringToObject(row, "zone", name);
             cJSON_AddItemToArray(lists, items);

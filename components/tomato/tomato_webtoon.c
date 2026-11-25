@@ -325,7 +325,7 @@ esp_err_t tomato_wt_subscribe(const char* id, const char* title, const char* aut
 // 列表里缺的封面一张张取（封面是服务器转好的 150×200 灰度小图）。/ Fetch missing list covers one by one (150x200
 // gray images made by the server).
 static void fetch_covers(const tomato_srv_t* srv, const cJSON* items, const volatile bool* cancel,
-                         tomato_hupu_progress_t progress) {
+                         tomato_hupu_progress_t progress, int from, int count) {
     char q[48], path[96], dest[64], id[16];
     query(q, sizeof(q));
     const int total = cJSON_GetArraySize(items);
@@ -334,6 +334,10 @@ static void fetch_covers(const tomato_srv_t* srv, const cJSON* items, const vola
     cJSON_ArrayForEach(it, items) {
         if (*cancel) return;
         i++;
+        // 只取要的那几部（count 为 0 是全部）；进度仍按整个列表的序号报，页面据此知道这一页轮过了。
+        // Only the requested titles (count 0 means all); progress still counts by position in the whole list, which is
+        // how the page knows its page has had its turn.
+        if (i - 1 < from || (count && i - 1 >= from + count)) continue;
         tomato_json_str(it, "id", id, sizeof(id));
         tomato_wt_cover_path(id, dest, sizeof(dest));
         if (id[0] && !tomato_file_exists(dest)) {
@@ -346,18 +350,25 @@ static void fetch_covers(const tomato_srv_t* srv, const cJSON* items, const vola
     }
 }
 
-static esp_err_t run_list(const tomato_srv_t* srv, const char* path, const char* file, const volatile bool* cancel,
-                          tomato_hupu_progress_t progress, char* msg, size_t cap) {
+static esp_err_t run_list(const tomato_srv_t* srv, const tomato_wt_req_t* r, const char* path, const char* file,
+                          const volatile bool* cancel, tomato_hupu_progress_t progress, char* msg, size_t cap) {
     cJSON* root = NULL;
-    esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
-    if (err != ESP_OK) return err;
-    mkdirs();
-    err = tomato_cache_write_json(file, root);
-    if (err != ESP_OK) { cJSON_Delete(root); snprintf(msg, cap, "写不进 TF 卡"); return err; }
-    progress(1, 2);
+    if (r->thumbs_only) {
+        // 翻到的页补封面：不重新取列表，用卡上这份。/ Covers for the pages being viewed: no refetch, use the list
+        // already on the card.
+        root = tomato_cache_read_json(file);
+        if (!root) { snprintf(msg, cap, "列表还没取过"); return ESP_ERR_NOT_FOUND; }
+    } else {
+        esp_err_t err = tomato_srv_json(srv, path, TIMEOUT_MS, cancel, &root, msg, cap);
+        if (err != ESP_OK) return err;
+        mkdirs();
+        err = tomato_cache_write_json(file, root);
+        if (err != ESP_OK) { cJSON_Delete(root); snprintf(msg, cap, "写不进 TF 卡"); return err; }
+        progress(1, 2);
+    }
     const cJSON* items = cJSON_GetObjectItemCaseSensitive(root, "items");
     const int n = cJSON_GetArraySize(items);
-    fetch_covers(srv, items, cancel, progress);
+    fetch_covers(srv, items, cancel, progress, r->thumbs_from, r->thumbs_count);
     cJSON_Delete(root);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
     snprintf(msg, cap, "%d 部", n);
@@ -394,6 +405,7 @@ static void fetch_sources(const tomato_srv_t* srv, const volatile bool* cancel) 
 static esp_err_t run_store(const tomato_srv_t* srv, const tomato_wt_req_t* r, const volatile bool* cancel,
                            tomato_hupu_progress_t progress, char* msg, size_t cap) {
     static const char* const SEGS[] = {"rank", "genre", "day", "done"};
+    if (r->thumbs_only) return run_list(srv, r, NULL, TOMATO_WT_STORE_FILE, cancel, progress, msg, cap);
     char src[80];
     const bool ext = ext_src(r, src, sizeof(src));
     bool ok = false;
@@ -406,18 +418,19 @@ static esp_err_t run_store(const tomato_srv_t* srv, const tomato_wt_req_t* r, co
     query(q, sizeof(q));
     snprintf(path, sizeof(path), "/api/device/v1/store?seg=%s&key=%s&limit=60&%s%s",
              ok ? r->seg : ext ? "pop" : "rank", key, q, src);
-    return run_list(srv, path, TOMATO_WT_STORE_FILE, cancel, progress, msg, cap);
+    return run_list(srv, r, path, TOMATO_WT_STORE_FILE, cancel, progress, msg, cap);
 }
 
 static esp_err_t run_search(const tomato_srv_t* srv, const tomato_wt_req_t* r, const volatile bool* cancel,
                             tomato_hupu_progress_t progress, char* msg, size_t cap) {
+    if (r->thumbs_only) return run_list(srv, r, NULL, TOMATO_WT_SEARCH_FILE, cancel, progress, msg, cap);
     if (!r->q[0]) { snprintf(msg, cap, "没有关键词"); return ESP_ERR_INVALID_ARG; }
     char q[200], lq[48], src[80], path[400];
     tomato_url_escape(r->q, q, sizeof(q), false);
     query(lq, sizeof(lq));
     ext_src(r, src, sizeof(src));
     snprintf(path, sizeof(path), "/api/device/v1/search?q=%s&%s%s", q, lq, src);
-    return run_list(srv, path, TOMATO_WT_SEARCH_FILE, cancel, progress, msg, cap);
+    return run_list(srv, r, path, TOMATO_WT_SEARCH_FILE, cancel, progress, msg, cap);
 }
 
 static esp_err_t run_title(const tomato_srv_t* srv, const char* id, const volatile bool* cancel, char* msg,
@@ -507,6 +520,11 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
     char path[128], q[48];
     snprintf(q, sizeof(q), "lang=%s", t->mark.lang[0] ? t->mark.lang : tomato_wt_lang_code(tomato_wt_lang()));
     snprintf(path, sizeof(path), "/api/device/v1/episode/%s/%d?%s", t->mark.id, j->no, q);
+    // 状态里写“哪部第几话 · 在做什么”，书架上的状态卡片照着显示。/ The status reads "which title, episode, what now",
+    // shown as is by the shelf's status card.
+    const char* series = strrchr(t->folder, '/');
+    series = series ? series + 1 : t->folder;
+    tomato_sync_step("%.40s 第 %d 话 · 问服务器", series, j->no);
     const int64_t start = (int64_t)xTaskGetTickCount() * portTICK_PERIOD_MS;
     for (;;) {
         cJSON* st = NULL;
@@ -515,6 +533,16 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
         char state[12];
         tomato_json_str(st, "state", state, sizeof(state));
         if (!strcmp(state, "error")) tomato_json_str(st, "error", msg, cap);
+        if (!strcmp(state, "pending")) {
+            const cJSON* d = cJSON_GetObjectItemCaseSensitive(st, "done");
+            const cJSON* n = cJSON_GetObjectItemCaseSensitive(st, "total");
+            if (cJSON_IsNumber(n) && n->valueint > 0)
+                tomato_sync_step("%.40s 第 %d 话 · 服务器转换中 %d/%d", series, j->no,
+                                 cJSON_IsNumber(d) ? d->valueint : 0, n->valueint);
+            else tomato_sync_step("%.40s 第 %d 话 · 排队等服务器转换", series, j->no);
+        } else if (strcmp(state, "ready") && strcmp(state, "error")) {
+            tomato_sync_step("%.40s 第 %d 话 · 等服务器开始转换", series, j->no);
+        }
         cJSON_Delete(st);
         if (!strcmp(state, "ready")) break;
         if (!strcmp(state, "error")) return ESP_ERR_INVALID_RESPONSE;
@@ -531,6 +559,7 @@ static esp_err_t fetch_episode(const tomato_srv_t* srv, target_t* t, const job_t
     tomato_wt_episode_name(j->no, j->title, name, sizeof(name));
     snprintf(dest, sizeof(dest), "%s/%s", t->folder, name);
     snprintf(path, sizeof(path), "/api/device/v1/episode/%s/%d.cbz?%s", t->mark.id, j->no, q);
+    tomato_sync_step("%.40s 第 %d 话 · 下载中", series, j->no);
     esp_err_t err = tomato_srv_download(srv, path, dest, CBZ_MAX, TIMEOUT_MS * 3, cancel, msg, cap);
     if (err != ESP_OK) return err;
     t->mark.fresh++;
@@ -638,8 +667,10 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
     if (!c.n) {
         snprintf(msg, cap, r->id[0] ? "没找到这部的订阅" : "还没有订阅");
     } else if (r->fill && c.n == 1) {
+        tomato_sync_step("问服务器缺哪几话");
         planned = plan_fill(srv, &list[0], jobs, max, &seen, cancel, msg, cap, &err);
     } else {
+        tomato_sync_step("问服务器 %d 部订阅有没有新话", c.n);
         planned = plan_new(srv, list, c.n, jobs, max, &seen, cancel, msg, cap, &err);
     }
     int done = 0, failed = 0;
@@ -653,6 +684,7 @@ static esp_err_t run_update(const tomato_srv_t* srv, const tomato_wt_req_t* r, c
             esp_err_t e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m));
             // 网络抖一下不算断：等 10 秒再试一次。/ A brief blip is not an outage: wait 10 s and try once more.
             if (e != ESP_OK && !*cancel && !episode_only(e)) {
+                tomato_sync_step("连不上服务器，%d 秒后再试", RETRY_WAIT_MS / 1000);
                 for (int w = 0; w < RETRY_WAIT_MS && !*cancel; w += 100) vTaskDelay(pdMS_TO_TICKS(100));
                 if (!*cancel) { m[0] = 0; e = fetch_episode(srv, &list[jobs[k].target], &jobs[k], cancel, m, sizeof(m)); }
             }

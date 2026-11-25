@@ -329,6 +329,8 @@ static app_redraw_t network_ui_tick(app_ctx_t* ctx) {
     if (s_view != TRANSFER_NETWORKS || s_forget_confirm || !s_scan_pending || ctx->consumed) return APP_REDRAW_NONE;
     s_scan_pending = false;
     s_network_count = s_network_page = 0;
+    // 后台任务做完还留着的 Wi-Fi 先断开，才能扫描。/ Drop Wi-Fi lingering after a background job before scanning.
+    tomato_net_idle_off();
     esp_err_t err = read_pico_transfer_scan_wifi(s_networks, &s_network_count);
     if (err != ESP_OK) {
         s_network_count = 0;
@@ -720,6 +722,9 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
                 .font_dir = s_root.is_flash ? NULL : "/sdcard/fonts", .comic_dir = s_root.is_flash ? NULL : COMIC_ROOT,
                 .reserve_bytes_cb = reserve_bytes,
                 .file_limit = book_store_file_limit(&s_root), .free_bytes_cb = free_bytes, .free_bytes_ctx = &s_root, .file_changed_cb = book_progress_forget};
+            // 后台任务做完还留着的 Wi-Fi 先断开，传书才开得起来。/ Drop Wi-Fi lingering after a background job so the
+            // transfer service can start.
+            tomato_net_idle_off();
             err = read_pico_transfer_start(&cfg);
             s_session_started = err == ESP_OK;
             read_pico_transfer_get_status(&s_status);

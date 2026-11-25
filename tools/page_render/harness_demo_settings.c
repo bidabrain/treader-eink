@@ -28,9 +28,9 @@ esp_err_t read_pico_sd_get_info(read_pico_sd_info_t* info) {
 }
 esp_err_t tomato_store_url_load(char* out, size_t cap) { (void)out; (void)cap; return ESP_FAIL; }
 void tomato_sync_get_status(tomato_status_t* out) { memset(out, 0, sizeof(*out)); }
-int tomato_red_list_limit(void) { return 200; }
-int tomato_wb_list_limit(void) { return 100; }
-int tomato_x_list_limit(void) { return 300; }
+int tomato_red_list_limit(void) { return 50; }
+int tomato_wb_list_limit(void) { return 30; }
+int tomato_x_list_limit(void) { return 20; }
 bool tomato_sync_busy(void) { return false; }
 bool tomato_sync_preemptible(void) { return false; }
 bool tomato_config_has_builtin(void) { return false; }

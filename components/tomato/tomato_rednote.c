@@ -36,7 +36,10 @@
 
 #define TAG "tomato_red"
 #define NVS_NS "rednote"
-#define NOTE_KEEP 80
+// 笔记目录最多留几个（还在列表里的不删）；关注列表刷新后保留旧条目，最长到这么多，所以列表长度也以它为准。1.2.3 起 100。
+// Most note folders kept (listed ones are never removed); a refreshed following list keeps older entries up to this
+// many, so it also caps the list length. 100 from 1.2.3.
+#define NOTE_KEEP 100
 // 笔记目录（大图、灰度缓存）一共最多占这么多；超过就从最旧的删大图。/ Cap for all note folders (images and gray
 // caches); past it the oldest notes lose their full images.
 #define NOTES_BYTES_MAX (200ull * 1024 * 1024)
@@ -180,49 +183,64 @@ static void prune_covers(const cJSON* items) {
 
 // 关注列表：取最近“列表条数”篇，保留旧文件里的“看过”标记，再补缩略图。
 // Following list: fetch the latest "list size" notes, keep "seen" marks from the old file, then fill thumbnails.
-static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* cancel, tomato_hupu_progress_t progress,
-                          char* msg, size_t cap) {
-    cJSON* root = NULL;
-    char path[96];
-    snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", tomato_red_list_limit());
-    esp_err_t err = red_json(cfg, path, TIMEOUT_MS, cancel, &root, msg, cap);
-    if (err != ESP_OK) return err;
-    cJSON* old = read_json(TOMATO_RED_FEED_FILE);
-    const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
-    cJSON* out = cJSON_CreateObject();
-    cJSON* items = cJSON_AddArrayToObject(out, "items");
+static esp_err_t run_feed(const tomato_red_config_t* cfg, const tomato_red_req_t* r, const volatile bool* cancel,
+                          tomato_hupu_progress_t progress, char* msg, size_t cap) {
+    cJSON* out = NULL;
+    cJSON* items = NULL;
     const cJSON* n;
     int count = 0;
-    cJSON_ArrayForEach(n, cJSON_GetObjectItemCaseSensitive(root, "notes")) {
-        const cJSON* id = cJSON_GetObjectItemCaseSensitive(n, "id");
-        if (!cJSON_IsString(id) || !id->valuestring[0]) continue;
-        cJSON* x = cJSON_CreateObject();
-        copy_str(x, "id", n, "id");
-        copy_str(x, "title", n, "title");
-        copy_str(x, "author", n, "author");
-        copy_str(x, "likes", n, "likes");
-        cJSON_AddNumberToObject(x, "images", json_int(n, "images"));
-        const cJSON* tv = cJSON_GetObjectItemCaseSensitive(n, "time");
-        cJSON_AddNumberToObject(x, "time", cJSON_IsNumber(tv) ? tv->valuedouble : 0);
-        // 新到的标“新”；以前看过的保持。/ New arrivals are unseen; earlier seen marks stay.
-        bool seen = !old;   // 第一次取到的都算看过，不满屏“新” / A first fetch marks all as seen
-        const cJSON* o;
-        cJSON_ArrayForEach(o, old_items) {
-            const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
-            if (cJSON_IsString(oid) && !strcmp(oid->valuestring, id->valuestring)) {
-                seen = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "seen"));
-                break;
+    char path[112];
+    if (r->thumbs_only) {
+        // 翻到的页补缩略图：不重新取列表，用卡上这份。/ Thumbnails for the pages being viewed: no refetch, use the list
+        // already on the card.
+        out = read_json(TOMATO_RED_FEED_FILE);
+        items = cJSON_GetObjectItemCaseSensitive(out, "items");
+        if (!cJSON_IsArray(items)) { cJSON_Delete(out); snprintf(msg, cap, "列表还没取过"); return ESP_ERR_NOT_FOUND; }
+        count = cJSON_GetArraySize(items);
+    } else {
+        cJSON* root = NULL;
+        snprintf(path, sizeof(path), "/api/device/v1/feed?limit=%d", tomato_red_list_limit());
+        esp_err_t err = red_json(cfg, path, TIMEOUT_MS, cancel, &root, msg, cap);
+        if (err != ESP_OK) return err;
+        cJSON* old = read_json(TOMATO_RED_FEED_FILE);
+        const cJSON* old_items = cJSON_GetObjectItemCaseSensitive(old, "items");
+        out = cJSON_CreateObject();
+        items = cJSON_AddArrayToObject(out, "items");
+        cJSON_ArrayForEach(n, cJSON_GetObjectItemCaseSensitive(root, "notes")) {
+            const cJSON* id = cJSON_GetObjectItemCaseSensitive(n, "id");
+            if (!cJSON_IsString(id) || !id->valuestring[0]) continue;
+            cJSON* x = cJSON_CreateObject();
+            copy_str(x, "id", n, "id");
+            copy_str(x, "title", n, "title");
+            copy_str(x, "author", n, "author");
+            copy_str(x, "likes", n, "likes");
+            cJSON_AddNumberToObject(x, "images", json_int(n, "images"));
+            const cJSON* tv = cJSON_GetObjectItemCaseSensitive(n, "time");
+            cJSON_AddNumberToObject(x, "time", cJSON_IsNumber(tv) ? tv->valuedouble : 0);
+            // 新到的标“新”；以前看过的保持。/ New arrivals are unseen; earlier seen marks stay.
+            bool seen = !old;   // 第一次取到的都算看过，不满屏“新” / A first fetch marks all as seen
+            const cJSON* o;
+            cJSON_ArrayForEach(o, old_items) {
+                const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
+                if (cJSON_IsString(oid) && !strcmp(oid->valuestring, id->valuestring)) {
+                    seen = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "seen"));
+                    break;
+                }
             }
+            cJSON_AddBoolToObject(x, "seen", seen);
+            cJSON_AddItemToArray(items, x);
+            count++;
         }
-        cJSON_AddBoolToObject(x, "seen", seen);
-        cJSON_AddItemToArray(items, x);
-        count++;
+        // 保留以前缓存的条目，新拉的排在前面；封顶取缓存上限和每次拉取条数里大的。/ Keep earlier cached entries behind
+        // the fresh ones, capped at the larger of the cache limit and the fetch size.
+        count = tomato_list_merge_old(items, old_items,
+                                      NOTE_KEEP > tomato_red_list_limit() ? NOTE_KEEP : tomato_red_list_limit());
+        cJSON_Delete(root);
+        cJSON_Delete(old);
+        mkdirs();
+        err = write_json(TOMATO_RED_FEED_FILE, out);
+        if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     }
-    cJSON_Delete(root);
-    cJSON_Delete(old);
-    mkdirs();
-    err = write_json(TOMATO_RED_FEED_FILE, out);
-    if (err != ESP_OK) { cJSON_Delete(out); snprintf(msg, cap, "写不进 TF 卡"); return err; }
     progress(1, count + 1);
     // 缩略图：一篇一张，失败的跳过，下次刷新再补。/ One thumbnail per note; failures are skipped until the next refresh.
     int i = 0, got = 0;
@@ -230,6 +248,8 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* c
     cJSON_ArrayForEach(n, items) {
         if (*cancel) break;
         i++;
+        // 只补要的那几条（0 是全部）。/ Only the requested items (0 means all).
+        if (i - 1 < r->thumbs_from || (r->thumbs_count && i - 1 >= r->thumbs_from + r->thumbs_count)) continue;
         const char* id = cJSON_GetObjectItemCaseSensitive(n, "id")->valuestring;
         tomato_red_img_path(id, 0, dest, sizeof(dest));
         if (exists(dest)) continue;
@@ -245,7 +265,7 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const volatile bool* c
     }
     cJSON_Delete(out);
     if (*cancel) { snprintf(msg, cap, "已取消"); return ESP_ERR_INVALID_STATE; }
-    prune_notes(NULL);
+    if (!r->thumbs_only) prune_notes(NULL);
     snprintf(msg, cap, "关注 %d 篇", count);
     return ESP_OK;
 }
@@ -413,7 +433,7 @@ esp_err_t tomato_red_run(const tomato_red_req_t* r, const volatile bool* cancel,
     if (tomato_red_config_load(&cfg) != ESP_OK) { snprintf(msg, cap, "还没设置 rednote 服务器"); return ESP_ERR_NOT_FOUND; }
     esp_err_t err;
     switch (r->job) {
-    case TOMATO_RED_FEED: err = run_feed(&cfg, cancel, progress, msg, cap); break;
+    case TOMATO_RED_FEED: err = run_feed(&cfg, r, cancel, progress, msg, cap); break;
     case TOMATO_RED_REC: err = run_rec(&cfg, r->refresh, cancel, progress, msg, cap); break;
     case TOMATO_RED_NOTE: err = run_note(&cfg, r, cancel, progress, msg, cap); break;
     case TOMATO_RED_TEST: err = run_test(&cfg, cancel, msg, cap); break;

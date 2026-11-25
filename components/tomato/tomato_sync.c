@@ -16,6 +16,7 @@
  * The book open in the reader is never replaced. Large buffers live in a PSRAM workspace, off the task stack.
  */
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -110,6 +111,18 @@ static void set_progress(int current, int total) {
     portEXIT_CRITICAL(&s_lock);
 }
 
+void tomato_sync_step(const char* fmt, ...) {
+    char text[sizeof(s_status.step)];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof(text), fmt, ap);
+    va_end(ap);
+    portENTER_CRITICAL(&s_lock);
+    memcpy(s_status.step, text, sizeof(text));
+    s_status.revision++;
+    portEXIT_CRITICAL(&s_lock);
+}
+
 static void fail(esp_err_t err, const char* message) {
     portENTER_CRITICAL(&s_lock);
     s_status.error = err;
@@ -176,9 +189,13 @@ tomato_preempt_t tomato_sync_preempt(void) {
 }
 
 bool tomato_sync_stop(int timeout_ms) {
-    if (!s_busy) return true;
-    s_cancel = true;
-    for (int waited = 0; s_busy && waited < timeout_ms; waited += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    if (s_busy) {
+        s_cancel = true;
+        for (int waited = 0; s_busy && waited < timeout_ms; waited += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    // 任务做完还留着的 Wi-Fi 也一起断掉，锁屏浅睡前不能开着。/ Also drop Wi-Fi lingering after a job; it must not stay
+    // up into light sleep.
+    if (!s_busy) tomato_net_idle_off();
     return !s_busy;
 }
 
@@ -940,7 +957,7 @@ static void sync_task(void* arg) {
         case TOMATO_HUPU_POST: err = tomato_hupu_post(r->id, r->more, &s_cancel, set_progress, msg, sizeof(msg)); break;
         case TOMATO_HUPU_ZONES: err = tomato_hupu_zones(&s_cancel, msg, sizeof(msg)); break;
         case TOMATO_HUPU_THREADS: err = tomato_hupu_threads(r->id, r->sort, r->more, &s_cancel, msg, sizeof(msg)); break;
-        case TOMATO_HUPU_FOLLOW: err = tomato_hupu_follow(&s_cancel, set_progress, msg, sizeof(msg)); break;
+        case TOMATO_HUPU_FOLLOW: err = tomato_hupu_follow(r->pages, &s_cancel, set_progress, msg, sizeof(msg)); break;
         case TOMATO_HUPU_SCHEDULE: err = tomato_hupu_schedule(r->id, &s_cancel, msg, sizeof(msg)); break;
         case TOMATO_HUPU_RATING: err = tomato_hupu_rating(r->id, r->key, &s_cancel, msg, sizeof(msg)); break;
         default: err = ESP_ERR_INVALID_ARG; break;
@@ -1023,7 +1040,9 @@ static void sync_task(void* arg) {
         break;
     }
     }
-    tomato_net_down();
+    // Wi-Fi 先留一会儿：切到下一篇帖子之类紧接着的任务不用重新连。/ Keep Wi-Fi a little: a job right after this one
+    // (say, the next post) need not reconnect.
+    tomato_net_linger();
 out:
     heap_caps_free(shelf);
     heap_caps_free(s_work);

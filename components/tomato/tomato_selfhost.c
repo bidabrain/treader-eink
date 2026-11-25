@@ -34,6 +34,8 @@
 
 #define TAG "tomato_srv"
 #define IO_CHUNK 4096
+// 图片请求的超时（见 tomato_srv_image）。/ Timeout for image requests (see tomato_srv_image).
+#define IMG_TIMEOUT_MS 8000
 // 微博两个列表各 300 条时，列表里的目录最多 600 个。/ Two Weibo lists of 300 hold up to 600 listed folders.
 #define DIRS_MAX 700
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
@@ -77,11 +79,13 @@ int tomato_srv_list_limit(const char* ns) {
         if (nvs_get_u16(h, "list", &v) != ESP_OK) v = 0;
         nvs_close(h);
     }
-    return (v == 200 || v == 300) ? v : TOMATO_LIST_LIMIT_MIN;
+    // 旧版存的 100 / 200 / 300 和没设过的都用默认。/ Values from older versions (100 / 200 / 300) and unset ones
+    // fall back to the default.
+    return (v == TOMATO_LIST_LIMIT_MID || v == TOMATO_LIST_LIMIT_MAX) ? v : TOMATO_LIST_LIMIT_MIN;
 }
 
 esp_err_t tomato_srv_list_limit_set(const char* ns, int n) {
-    if (n != 100 && n != 200 && n != 300) return ESP_ERR_INVALID_ARG;
+    if (n != TOMATO_LIST_LIMIT_MIN && n != TOMATO_LIST_LIMIT_MID && n != TOMATO_LIST_LIMIT_MAX) return ESP_ERR_INVALID_ARG;
     nvs_handle_t h;
     esp_err_t err = nvs_open(ns, NVS_READWRITE, &h);
     if (err != ESP_OK) return err;
@@ -180,6 +184,10 @@ static esp_err_t srv_request(const tomato_srv_t* srv, const char* path, const ch
         if (tomato_http_detail()[0] == 0) tomato_http_set_detail(esp_err_to_name(err));
         snprintf(msg, cap, "连不上 %s 服务器（%s）", srv->name, tomato_http_detail());
     }
+    // 失败的请求记下错误和收到多少（断流时看停在哪）。/ A failed request logs its error and bytes in (where a
+    // stalled transfer stopped).
+    if (err != ESP_OK) ESP_LOGW(TAG, "srv %s: %s http=%d got %u of %lld B", path, esp_err_to_name(err), status,
+                                (unsigned)len, (long long)length);
     tomato_http_give(c, read_ok);
     if (err != ESP_OK) { heap_caps_free(buf); return err; }
     buf[len] = 0;
@@ -312,7 +320,17 @@ esp_err_t tomato_srv_image(const tomato_srv_t* srv, const char* path, const char
     uint8_t* buf;
     size_t len;
     char ignore[64];
-    esp_err_t err = tomato_srv_get(srv, path, TOMATO_SRV_IMG_MAX, timeout_ms, cancel, &buf, &len, ignore, sizeof(ignore));
+    // 图片多等也没用：传到一半停了、复用的连接悄悄断了（热点上常见），都是等满超时才知道，所以超时短一些，
+    // 失败了换新连接再试一次。404、令牌错、取消不重试；连不上在建连时已经试过两次。
+    // Waiting longer for an image does not help: a transfer that stalls midway or a reused connection that died
+    // silently (common on phone hotspots) only shows once the timeout runs out, so use a shorter one and retry once on
+    // a fresh connection. A 404, a bad token or a cancel are not retried; connecting already tried twice.
+    const int t = timeout_ms < IMG_TIMEOUT_MS ? timeout_ms : IMG_TIMEOUT_MS;
+    esp_err_t err = tomato_srv_get(srv, path, TOMATO_SRV_IMG_MAX, t, cancel, &buf, &len, ignore, sizeof(ignore));
+    if (err == ESP_FAIL && !(cancel && *cancel)) {
+        ESP_LOGW(TAG, "image retry %s", path);
+        err = tomato_srv_get(srv, path, TOMATO_SRV_IMG_MAX, t, cancel, &buf, &len, ignore, sizeof(ignore));
+    }
     if (err != ESP_OK) return err;
     const bool jpeg = len > 3 && buf[0] == 0xFF && buf[1] == 0xD8 && buf[2] == 0xFF;
     err = jpeg ? tomato_cache_write(dest, buf, len) : ESP_ERR_NOT_SUPPORTED;
@@ -446,6 +464,28 @@ static uint64_t strip_images(const char* dir) {
 static int cmp_oldest(const void* a, const void* b) {
     const time_t x = ((const item_dir_t*)a)->mtime, y = ((const item_dir_t*)b)->mtime;
     return x < y ? -1 : x > y;
+}
+
+int tomato_list_merge_old(cJSON* items, const cJSON* old_items, int cap) {
+    int n = cJSON_GetArraySize(items);
+    const cJSON* o;
+    cJSON_ArrayForEach(o, old_items) {
+        if (n >= cap) break;
+        const cJSON* oid = cJSON_GetObjectItemCaseSensitive(o, "id");
+        if (!cJSON_IsString(oid) || !oid->valuestring[0]) continue;
+        bool have = false;
+        const cJSON* x;
+        cJSON_ArrayForEach(x, items) {
+            const cJSON* xid = cJSON_GetObjectItemCaseSensitive(x, "id");
+            if (cJSON_IsString(xid) && !strcmp(xid->valuestring, oid->valuestring)) { have = true; break; }
+        }
+        if (have) continue;
+        cJSON* copy = cJSON_Duplicate(o, true);
+        if (!copy) break;
+        cJSON_AddItemToArray(items, copy);
+        n++;
+    }
+    return n;
 }
 
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,

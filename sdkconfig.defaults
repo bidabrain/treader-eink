@@ -71,6 +71,17 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 # Allocate all mbedTLS / PSA memory from PSRAM: with fragmented internal RAM, RSA-4096 signature checks fail with
 # PSA -141 (insufficient memory) and show as "HTTPS handshake failed", while ECC sites (GitHub) still connect.
 CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# TLS 会话复用：同一个服务器重连时走简化握手，省掉证书验证和密钥交换（新建连接实测 7～17 秒）。
+# TLS session resumption: reconnecting to the same server takes the short handshake, skipping certificate checks and
+# key exchange (new connections measured at 7-17 s).
+CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS=y
+# 椭圆曲线定点运算用预计算表，ECDHE / ECDSA 快几倍；表在 PSRAM 里，多占的内存不碍事。
+# Precomputed tables for fixed-point ECC make ECDHE / ECDSA several times faster; the tables live in PSRAM.
+CONFIG_MBEDTLS_ECP_FIXED_POINT_OPTIM=y
+# TCP 选择性确认：手机热点上丢包多，收到乱序的包时告诉对方缺哪段，只补那段，不用干等超时重传（实测图片常传到一半停十几秒）。
+# TCP selective acknowledgements: phone hotspots drop packets often; reporting which part is missing lets the sender
+# resend just that instead of waiting for a retransmit timeout (images were seen stalling midway for 15 s and more).
+CONFIG_LWIP_TCP_SACK_OUT=y
 
 # USB 传书：TinyUSB U 盘。/ USB transfer: TinyUSB mass storage.
 CONFIG_TINYUSB_MSC_ENABLED=y

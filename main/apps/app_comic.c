@@ -153,6 +153,14 @@ static bool s_wt_confirm_cancel;
 static bool s_wt_cancelling;
 static int s_wt_progress;
 static int64_t s_wt_poll_ms;
+// 书架上的更新状态卡片（占“继续看”的位置）：结果还没收起、上次画的那一步、什么时候画的。只用黑白，好局部快刷。
+// The shelf's update status card (in the continue card's place): result not dismissed yet, the step last drawn and
+// when. Black and white only, so it can be refreshed on its own.
+static bool s_wt_result;
+static char s_wt_step[96];
+static int64_t s_wt_step_ms;
+#define STEP_REDRAW_MS 2500
+static EpdRect s_area;   // 下次只推这一块（宽 0 是整屏）/ Push only this next time (zero width is the whole screen)
 static comic_entry_t* s_shelf;
 static int s_count;
 static bool s_sort_name;
@@ -506,6 +514,40 @@ static bool wt_shown(void) { return s_wt_cfg || s_wt_series > 0; }
 
 static int store_text_x(void) { return IMPORT_X - TR_S(18); }
 
+static bool status_card_shown(void) { return s_wt_cfg && (tomato_wt_updating() || s_wt_result); }
+
+// 更新进行中：第几话、哪部在做什么、进度条；做完：结果和“点一下收起”。/ While updating: which episode, what is
+// happening, a progress bar; once done: the result and "tap to dismiss".
+static void draw_status_card(uint8_t* fb, EpdRect card) {
+    epd_fill_rect(card, UI_GRAY_WHITE, fb);
+    ui_draw_round_rect(fb, card, TR_S(24), UI_GRAY_BLACK);
+    const int x = card.x + TR_S(24), w = card.width - 2 * TR_S(24);
+    char line[128];
+    if (!tomato_wt_updating()) {
+        tr_text(fb, x, card.y + TR_S(14), TR_S(28), "更新完成", EPD_DRAW_ALIGN_LEFT, true);
+        tr_text(fb, card.x + card.width - TR_S(24), card.y + TR_S(18), TR_S(24), "点一下收起", EPD_DRAW_ALIGN_RIGHT,
+                false);
+        tr_wrap(fb, x, card.y + TR_S(56), w, TR_S(24), TR_S(34), s_message, 2);
+        return;
+    }
+    tomato_status_t st;
+    tomato_sync_get_status(&st);
+    if (st.total > 0) snprintf(line, sizeof(line), "下载第 %d / %d 话", st.current < st.total ? st.current + 1 : st.total,
+                               st.total);
+    else snprintf(line, sizeof(line), "正在检查更新");
+    tr_text(fb, x, card.y + TR_S(14), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, true);
+    snprintf(line, sizeof(line), "%s", st.step[0] ? st.step
+                                     : st.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi…" : "正在开始…");
+    tr_fit(line, TR_S(24), w);
+    tr_text(fb, x, card.y + TR_S(58), TR_S(24), line, EPD_DRAW_ALIGN_LEFT, false);
+    if (st.total > 0) {
+        const EpdRect bar = {x, card.y + TR_S(100), w, TR_S(14)};
+        ui_draw_round_rect(fb, bar, bar.height / 2, UI_GRAY_BLACK);
+        const int fill = (int)((int64_t)(bar.width - 4) * st.current / st.total);
+        if (fill > 0) epd_fill_rect((EpdRect){bar.x + 2, bar.y + 2, fill, bar.height - 4}, UI_GRAY_BLACK, fb);
+    }
+}
+
 static void draw_shelf(uint8_t* fb) {
     // 有 WEBTOON 时和“发现”对应叫“我的漫画”，没有时和以前一样。/ "我的漫画" next to "发现" with WEBTOON; unchanged without.
     tr_title(fb, wt_shown() ? "我的漫画" : "漫画");
@@ -536,7 +578,8 @@ static void draw_shelf(uint8_t* fb) {
             tr_pill(fb, UPDATE_PILL, up, !updating || s_wt_confirm_cancel, pill_px(UPDATE_PILL, up));
         }
         // 胶囊占了右边，提示放到上面那一行右边。/ The pills take the right side; the message goes right of the line above.
-        if (s_message[0]) {
+        // 结果在状态卡片里时这里不再写一遍。/ Skipped while the status card shows the result.
+        if (s_message[0] && !s_wt_result) {
             const int w = TR_W - 2 * TR_MARGIN - ttf_text_width_px(TR_S(28), line) - TR_S(20);
             tr_message(fb, TR_W - TR_MARGIN, TR_S(158), TR_S(150), w, TR_S(24), s_message, EPD_DRAW_ALIGN_RIGHT, false);
         }
@@ -552,7 +595,8 @@ static void draw_shelf(uint8_t* fb) {
     }
     // 继续看。/ Continue reading.
     const EpdRect card = CARD;
-    if (s_last[0]) {
+    if (status_card_shown()) draw_status_card(fb, card);
+    else if (s_last[0]) {
         // Material 3 填充卡片（漫画只用整页刷新，灰底安全）。/ Material 3 filled card (comics refresh whole pages, so
         // the gray is safe).
         ui_fill_round_rect(fb, card, TR_S(24), TR_GRAY_SURFACE);
@@ -1141,12 +1185,15 @@ static void draw_detail_wt(uint8_t* fb) {
     tr_wrap(fb, TR_MARGIN, TR_S(190), TR_W - 2 * TR_MARGIN, TR_S(40), TR_S(56), s_detail_name, 3);
     tr_text_dim(fb, TR_MARGIN, TR_S(380), TR_S(30), s_detail_info[0], EPD_DRAW_ALIGN_LEFT);
     tr_text(fb, TR_MARGIN, TR_S(430), TR_S(30), s_detail_info[1], EPD_DRAW_ALIGN_LEFT, false);
-    char line[96];
+    char line[160];
     if (tomato_wt_updating()) {
         tomato_status_t st;
         tomato_sync_get_status(&st);
-        if (st.total > 0) snprintf(line, sizeof(line), "正在下载 %d / %d 话…", st.current, st.total);
-        else snprintf(line, sizeof(line), "正在检查更新…");
+        // 写到在做哪一步（转换中、下载中、等重试）。/ Down to the step under way (converting, downloading, retry wait).
+        if (st.total > 0) snprintf(line, sizeof(line), "第 %d / %d 话：%.80s", st.current < st.total ? st.current + 1 : st.total,
+                                   st.total, st.step);
+        else snprintf(line, sizeof(line), "%.90s", st.step[0] ? st.step : "正在检查更新…");
+        tr_fit(line, TR_S(26), TR_W - 2 * TR_MARGIN);
     } else {
         snprintf(line, sizeof(line), "%s", s_message[0] ? s_message : "取消订阅只删订阅标记，下载好的话留着。");
     }
@@ -1320,6 +1367,14 @@ static app_redraw_t tap_shelf(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     if (!s_count) return APP_REDRAW_NONE;
+    if (status_card_shown() && ui_rect_hit(CARD, x, y)) {
+        // 更新中点卡片不做什么（取消在“更新中”胶囊上）；做完了点一下收起。/ During an update a tap does nothing (cancel
+        // is on the "updating" pill); afterwards a tap dismisses it.
+        if (tomato_wt_updating()) return APP_REDRAW_NONE;
+        s_wt_result = false;
+        s_message[0] = 0;
+        return APP_REDRAW_PAGE;
+    }
     if (s_last[0] && ui_rect_hit(CARD, x, y)) {
         s_message[0] = 0;
         return open_path(s_last) ? APP_REDRAW_FULL : APP_REDRAW_PAGE;
@@ -1568,8 +1623,19 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
             s_wt_was = true;
             if (st.current != s_wt_progress) {
                 s_wt_progress = st.current;
+                snprintf(s_wt_step, sizeof(s_wt_step), "%s", st.step);
+                s_wt_step_ms = ctx->now_ms;
                 if (st.current > 0) scan();   // 新下好的话进书架 / Newly downloaded episodes join the shelf
                 return APP_REDRAW_PAGE;
+            }
+            // 只是这一步变了：局部快刷状态卡片（或详情页那一行），隔几秒一次，不闪整页。/ Only the step changed: refresh
+            // just the status card (or the detail page's line) every few seconds, without flashing the page.
+            if (strcmp(st.step, s_wt_step) && ctx->now_ms - s_wt_step_ms >= STEP_REDRAW_MS) {
+                snprintf(s_wt_step, sizeof(s_wt_step), "%s", st.step);
+                s_wt_step_ms = ctx->now_ms;
+                render(ctx, ctx->fb);
+                s_area = s_view == V_SHELF ? CARD : (EpdRect){0, TR_S(500), TR_W, TR_S(110)};
+                return APP_REDRAW_AREA;
             }
         } else if (s_wt_was) {
             s_wt_was = false;
@@ -1580,6 +1646,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
                 tomato_status_t st;
                 tomato_sync_get_status(&st);
                 snprintf(s_message, sizeof(s_message), "%s", st.message);
+                s_wt_result = s_message[0] != 0;
             }
             s_wt_ours = false;
             scan();
@@ -1700,7 +1767,9 @@ static void on_media_lost(app_ctx_t* ctx) {
 
 static EpdRect area_hint(app_ctx_t* ctx) {
     (void)ctx;
-    return (EpdRect){0, 0, TR_W, TR_H};
+    const EpdRect r = s_area;
+    s_area = (EpdRect){0};
+    return r.width ? r : (EpdRect){0, 0, TR_W, TR_H};
 }
 
 // 发现页订阅或取消后让我的漫画下次进来时重扫（进页本来就扫，这里留给以后）。/ After the store subscribes or unsubscribes,

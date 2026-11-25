@@ -133,7 +133,7 @@ enum {
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
-    R_HIMG,
+    R_HIMG, R_HPAGES,
 };
 
 static const row_t DISPLAY_ROWS[] = {
@@ -163,7 +163,7 @@ static const row_t SERVER_ROWS[] = {
     {R_URL, NULL, "服务器地址", 274},
     {R_TOKEN, NULL, "设备令牌", 346},
     {R_TEST, NULL, "测试连接", 418},
-    {R_LIST, NULL, "列表条数", 490},
+    {R_LIST, NULL, "每次拉取", 490},
 };
 // 漫画服务器页：没有列表条数，换成语言版本、简体显示和每次最多下载几话。/ The comic server page: no list size;
 // language version, simplified display and episodes per check instead.
@@ -180,6 +180,7 @@ static const row_t WT_ROWS[] = {
 #define SRV_ROW_COUNT (s_srv == S_WT ? COUNT(WT_ROWS) : COUNT(SERVER_ROWS))
 static const row_t HUPU_ROWS[] = {
     {R_HIMG, NULL, "显示图片", 190},
+    {R_HPAGES, NULL, "关注每个专区", 262},
 };
 static const row_t SYNC_ROWS[] = {
     {R_DAV, NULL, "WebDAV", 190},
@@ -378,6 +379,7 @@ static void row_value(int id, char* out, size_t cap) {
     case R_WT_LANG: snprintf(out, cap, "%s ›", tomato_wt_lang_name(tomato_wt_lang())); break;
     case R_WT_SIMP: snprintf(out, cap, "%s ›", tomato_wt_simp() ? "开" : "关"); break;
     case R_WT_MAX: snprintf(out, cap, "%d 话 ›", tomato_wt_max()); break;
+    case R_HPAGES: snprintf(out, cap, "%d 页 ›", app_settings_hupu_pages()); break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -551,6 +553,8 @@ static void web_start(void) {
     };
     s_web_srv = s_srv;   // 回调在 HTTP 任务里读它，开着期间不变 / Read by the HTTP task; fixed while serving
     s_web_tomato = s_page == P_SRC_TOMATO;
+    // 后台任务做完还留着的 Wi-Fi 先断开，热点才开得起来。/ Drop Wi-Fi lingering after a background job so the hotspot can start.
+    tomato_net_idle_off();
     const esp_err_t err = read_pico_transfer_start(&cfg);
     if (err != ESP_OK) {
         snprintf(s_message, sizeof(s_message), "打不开网页服务（%s）", esp_err_to_name(err));
@@ -1059,9 +1063,15 @@ static void draw_hupu(uint8_t* fb) {
     draw_back_title(fb, "虎扑");
     draw_message(fb);
     draw_rows(fb, HUPU_ROWS, COUNT(HUPU_ROWS));
-    tr_wrap(fb, TR_MARGIN, TR_S(300), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+    // 确认框盖在说明上，开着时不画说明。/ The confirm dialog covers the notes, so skip them while it is up.
+    if (s_hupu_ask) goto ask;
+    const int lines = tr_wrap(fb, TR_MARGIN, TR_S(372), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
             "默认只看文字：帖子里的图写成“[图片]”，列表不带缩略图，不下载也不解码图片。打开后才加载图片，设备负担会大很多。", 4);
-    if (!s_hupu_ask) return;
+    // 第二段接在第一段后面，空一行。/ The second note follows the first after a blank line.
+    tr_wrap(fb, TR_MARGIN, TR_S(372) + (lines + 1) * TR_S(36), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+            "关注每个专区：刷新关注时每个专区取几页，1、2、3 轮换。页数越多列表越长，刷新也越慢。", 3);
+    return;
+ask:;
     const EpdRect d = ask_rect();
     epd_fill_rect(d, UI_GRAY_WHITE, fb);
     ui_draw_round_rect(fb, d, TR_S(24), UI_GRAY_BLACK);
@@ -1112,7 +1122,7 @@ static void draw_server(uint8_t* fb) {
     if (room2 <= 0) return;
     tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36), s_srv == S_WT ?
             "语言版本、简体显示：点一下切换，下次刷新发现页时生效。每次最多下载：一次“检查更新”最多下几话，5、10、20、50 轮换。" :
-            "列表条数：100、200、300 轮换，下次刷新列表时生效。条数越多，TF 卡上存的缩略图越多，第一次刷新也越慢。",
+            "每次拉取：20、30、50 轮换，下次刷新生效。关注列表会保留以前缓存的条目（最多 100 条），新拉的排前面；缩略图先下前两页，翻到再补。",
             room2 < 3 ? room2 : 3);
 }
 
@@ -1738,6 +1748,12 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         tr_time_apply_settings();
         snprintf(s_message, sizeof(s_message), "%s", app_settings_time_auto() ? "下次联网时自动对时" : "已关闭自动校时");
         return APP_REDRAW_PAGE;
+    case R_HPAGES: {
+        // 1 → 2 → 3 → 1，下次刷新关注时生效。/ 1 -> 2 -> 3 -> 1, used from the next following refresh.
+        const uint8_t n = app_settings_hupu_pages();
+        app_settings_set_hupu_pages(n >= APP_HUPU_PAGES_MAX ? 1 : n + 1);
+        return APP_REDRAW_PAGE;
+    }
     case R_HIMG:
         // 关：马上生效；开：先提醒。/ Off takes effect at once; on asks first.
         if (!app_settings_hupu_images()) { s_hupu_ask = true; return APP_REDRAW_PAGE; }
@@ -1785,7 +1801,10 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
     case R_LIST: {
         if (!SERVERS[s_srv].list) return APP_REDRAW_NONE;
         const int n = SERVERS[s_srv].list();
-        SERVERS[s_srv].list_set(n >= TOMATO_LIST_LIMIT_MAX ? TOMATO_LIST_LIMIT_MIN : n + 100);
+        // 20 → 30 → 50 → 20。/ 20 -> 30 -> 50 -> 20.
+        SERVERS[s_srv].list_set(n == TOMATO_LIST_LIMIT_MIN   ? TOMATO_LIST_LIMIT_MID
+                                : n == TOMATO_LIST_LIMIT_MID ? TOMATO_LIST_LIMIT_MAX
+                                                             : TOMATO_LIST_LIMIT_MIN);
         return APP_REDRAW_PAGE;
     }
     case R_TEST:
