@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-25 · Treader 1.2.2
+
+- 书的目录右上角的“正序 / 倒序”换成跳转按钮：不在最后一页时写“最后一章”，点了翻到目录最后一页；在最后一页时写“第一章”，点了回到第一页。目录始终按正序排，只有一页时没有这个按钮。
+  The book TOC's "Asc / Desc" button becomes a jump button: "Last" before the last page turns to the TOC's last page, and "First" on the last page returns to page one. The TOC always stays in order, and a one-page TOC has no button.
+
 ## 2026-11-25 · Treader 1.2.1
 
 - 锁屏底部按睡眠方式写怎么醒：关机模式写“长按电源键开机”（短按只亮红灯，原来一律写“按电源键或拿起设备继续”，看着像睡死了），软睡写“按电源键开机”，浅睡没开拿起唤醒时只写“按电源键继续”。

@@ -345,14 +345,12 @@ void hr_scenes(void) {
     hr_allow_fit();
     hr_no_bar_check();
     hr_shot("toc_page2");
-    // 目录倒序。/ TOC reversed.
-    s_toc_desc = true;
-    ctx.leaf = toc_leaf();
+    // 目录最后一页：按钮变成“第一章”。/ The TOC's last page: the button reads "第一章".
+    ctx.leaf = leaves() - 1;
     render(&ctx, hr_fb);
     hr_allow_fit();
     hr_no_bar_check();
-    hr_shot("toc_desc");
-    s_toc_desc = false;
+    hr_shot("toc_last");
 
     // 图片预览（没加载成功）。/ Image preview (load failed).
     s_view = READING;

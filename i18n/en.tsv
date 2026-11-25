@@ -46,263 +46,263 @@
 缩进两字	2 characters
 # main/apps/app_book.c:328
 有	On
-# main/apps/app_book.c:332 main/apps/app_book.c:985
+# main/apps/app_book.c:332 main/apps/app_book.c:986
 排版	Layout
-# main/apps/app_book.c:333 main/apps/app_book.c:1168
+# main/apps/app_book.c:333 main/apps/app_book.c:1169
 完成	Done
-# main/apps/app_book.c:600 main/apps/app_tr_tomato.c:462 main/apps/app_tr_wt.c:801
+# main/apps/app_book.c:601 main/apps/app_tr_tomato.c:462 main/apps/app_tr_wt.c:801
 搜索	Search
-# main/apps/app_book.c:754
+# main/apps/app_book.c:755
 确认删除文件？	Delete the file?
-# main/apps/app_book.c:754
+# main/apps/app_book.c:755
 确认清除进度？	Clear progress?
-# main/apps/app_book.c:754
+# main/apps/app_book.c:755
 图书详情	Book details
-# main/apps/app_book.c:757 components/read_pico_transfer/read_pico_transfer.c:860
+# main/apps/app_book.c:758 components/read_pico_transfer/read_pico_transfer.c:860
 内置存储	Built-in storage
-# main/apps/app_book.c:757 main/apps/app_tr_card.c:156 main/apps/app_tr_card.c:289 main/apps/app_tr_settings.c:193 …
+# main/apps/app_book.c:758 main/apps/app_tr_card.c:156 main/apps/app_tr_card.c:289 main/apps/app_tr_settings.c:193 …
 TF 卡	SD card
-# main/apps/app_book.c:760
+# main/apps/app_book.c:761
 阅读进度 %u%%	Progress %u%%
-# main/apps/app_book.c:760
+# main/apps/app_book.c:761
 尚无阅读进度	No progress yet
-# main/apps/app_book.c:767
+# main/apps/app_book.c:768
 删除后文件无法恢复	Deleted files cannot be recovered
-# main/apps/app_book.c:767
+# main/apps/app_book.c:768
 仅清阅读进度，保留图书文件	Clears progress only; the book file stays
-# main/apps/app_book.c:768 main/apps/app_book.c:804 main/apps/app_tr_auth.c:426 main/apps/app_tr_card.c:143 …
+# main/apps/app_book.c:769 main/apps/app_book.c:805 main/apps/app_tr_auth.c:426 main/apps/app_tr_card.c:143 …
 取消	Cancel
-# main/apps/app_book.c:769 main/apps/app_tr_wall.c:164
+# main/apps/app_book.c:770 main/apps/app_tr_wall.c:164
 确认删除	Delete
-# main/apps/app_book.c:769
+# main/apps/app_book.c:770
 确认清除	Clear
-# main/apps/app_book.c:771 main/apps/app_book.c:774 main/apps/app_tr_settings.c:391
+# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:391
 关闭	Close
-# main/apps/app_book.c:772
+# main/apps/app_book.c:773
 重试清理	Retry cleanup
-# main/apps/app_book.c:775 main/apps/app_book.c:1247
+# main/apps/app_book.c:776 main/apps/app_book.c:1248
 清进度	Clear progress
-# main/apps/app_book.c:776
+# main/apps/app_book.c:777
 删除文件	Delete file
-# main/apps/app_book.c:792
-拼音首字母、全拼或英文都能搜	Search by pinyin initials, full pinyin or English
 # main/apps/app_book.c:793
+拼音首字母、全拼或英文都能搜	Search by pinyin initials, full pinyin or English
+# main/apps/app_book.c:794
 要输入汉字就把键盘切到“全拼”	To type Chinese, switch the keyboard to “Pinyin”
-# main/apps/app_book.c:801
+# main/apps/app_book.c:802
 %s %u 本图书？	%s %u books?
-# main/apps/app_book.c:801 main/apps/app_comic.c:1158 main/apps/app_comic.c:1171 main/apps/app_tr_auth.c:746 …
+# main/apps/app_book.c:802 main/apps/app_comic.c:1158 main/apps/app_comic.c:1171 main/apps/app_tr_auth.c:746 …
 删除	Delete
-# main/apps/app_book.c:801
+# main/apps/app_book.c:802
 清除进度：	Clear progress for
-# main/apps/app_book.c:803
+# main/apps/app_book.c:804
 删除文件不可撤销，失败项可重试	Can't be undone; failed ones can retry
-# main/apps/app_book.c:803
+# main/apps/app_book.c:804
 仅清阅读进度，所有文件保留	Clears progress only; all files stay
-# main/apps/app_book.c:805
+# main/apps/app_book.c:806
 确认	Confirm
-# main/apps/app_book.c:886 main/apps/app_book.c:953
+# main/apps/app_book.c:887 main/apps/app_book.c:954
 进度未保存，稍后重试	Progress not saved; try again later
-# main/apps/app_book.c:896
+# main/apps/app_book.c:897
 内建字体缺字，请选择 TF 卡字体	Built-in font lacks characters; pick an SD card font
-# main/apps/app_book.c:898
+# main/apps/app_book.c:899
 打开字体页 / 无卡正文可能缺字	Open Font / without a card, text may miss characters
-# main/apps/app_book.c:919
+# main/apps/app_book.c:920
  · 本章 %u/%u · 全书 %u%%	 · Ch. %u/%u · Book %u%%
-# main/apps/app_book.c:921
+# main/apps/app_book.c:922
  · 本章 %u/… · 全书 %u%%	 · Ch. %u/… · Book %u%%
-# main/apps/app_book.c:926 main/apps/app_book.c:932
+# main/apps/app_book.c:927 main/apps/app_book.c:933
 进度未保存	Progress not saved
-# main/apps/app_book.c:942
+# main/apps/app_book.c:943
 ‹ 上一章	‹ Prev ch.
-# main/apps/app_book.c:942
+# main/apps/app_book.c:943
 下一章 ›	Next ch. ›
-# main/apps/app_book.c:962
+# main/apps/app_book.c:963
 ‹ 书库	‹ Library
-# main/apps/app_book.c:977 main/apps/app_book.c:1475 main/book/book_epub.c:562
+# main/apps/app_book.c:978 main/apps/app_book.c:1478 main/book/book_epub.c:562
 第 %u 节	Section %u
-# main/apps/app_book.c:981
+# main/apps/app_book.c:982
 字号 %d	Size %d
-# main/apps/app_book.c:985 main/apps/app_book.c:1263
+# main/apps/app_book.c:986 main/apps/app_book.c:1264
 目录	Contents
-# main/apps/app_book.c:985
+# main/apps/app_book.c:986
 菜单	Menu
-# main/apps/app_book.c:985 main/apps/app_book.c:1135 main/apps/app_book.c:2708 main/ui/tr_ui.c:501
+# main/apps/app_book.c:986 main/apps/app_book.c:1136 main/apps/app_book.c:2710 main/ui/tr_ui.c:501
 书库	Library
-# main/apps/app_book.c:1046
+# main/apps/app_book.c:1047
 图片未加载	Image not loaded
-# main/apps/app_book.c:1046
+# main/apps/app_book.c:1047
 标题图预览	Title image preview
-# main/apps/app_book.c:1046
+# main/apps/app_book.c:1047
 图片预览	Image preview
-# main/apps/app_book.c:1046
+# main/apps/app_book.c:1047
 点击图片或返回按钮回到正文	Tap the image or Back to return to the text
-# main/apps/app_book.c:1068
-图片不可用	Image unavailable
 # main/apps/app_book.c:1069
+图片不可用	Image unavailable
+# main/apps/app_book.c:1070
 返回正文	Back to text
-# main/apps/app_book.c:1112 main/apps/app_book.c:1166 main/apps/app_tr_store.c:405 main/apps/app_tr_tomato.c:304 …
+# main/apps/app_book.c:1113 main/apps/app_book.c:1167 main/apps/app_tr_store.c:405 main/apps/app_tr_tomato.c:304 …
 番茄	Tomato
-# main/apps/app_book.c:1113 main/apps/app_book.c:1215
+# main/apps/app_book.c:1114 main/apps/app_book.c:1216
 已选	Selected
-# main/apps/app_book.c:1116
+# main/apps/app_book.c:1117
 已删	Deleted
-# main/apps/app_book.c:1129 main/apps/app_book.c:1241 main/apps/tr_lock.c:210 main/ui/tr_ui.c:791
+# main/apps/app_book.c:1130 main/apps/app_book.c:1242 main/apps/tr_lock.c:210 main/ui/tr_ui.c:791
 读完	Finished
-# main/apps/app_book.c:1129 main/apps/app_book.c:1241
+# main/apps/app_book.c:1130 main/apps/app_book.c:1242
 未读	Unread
-# main/apps/app_book.c:1135
+# main/apps/app_book.c:1136
 管理书库	Manage library
-# main/apps/app_book.c:1144
+# main/apps/app_book.c:1145
 进度未保存：点此重试	Progress not saved: tap to retry
-# main/apps/app_book.c:1146
+# main/apps/app_book.c:1147
 已选 %u 本 · 筛选或重扫会清除勾选	%u selected · filtering or rescanning clears it
-# main/apps/app_book.c:1147 main/apps/app_book.c:1148
+# main/apps/app_book.c:1148 main/apps/app_book.c:1149
 %d 本 · %s	%d books · %s
-# main/apps/app_book.c:1148
+# main/apps/app_book.c:1149
 按最近阅读	Recently read
-# main/apps/app_book.c:1148 main/apps/app_book.c:1167
+# main/apps/app_book.c:1149 main/apps/app_book.c:1168
 按书名	By title
 # (unused)
 番茄 %d 本有更新 ›	Tomato: %d books updated ›
-# main/apps/app_book.c:1166 main/apps/app_comic.c:519 main/apps/app_tr_all.c:70 main/apps/app_tr_all.c:147 …
+# main/apps/app_book.c:1167 main/apps/app_comic.c:519 main/apps/app_tr_all.c:70 main/apps/app_tr_all.c:147 …
 全部	All
 # (unused)
 其他书	Other books
-# main/apps/app_book.c:1167 main/apps/app_comic.c:515 main/apps/app_comic.c:517
+# main/apps/app_book.c:1168 main/apps/app_comic.c:515 main/apps/app_comic.c:517
 按最近	Recent
-# main/apps/app_book.c:1168
+# main/apps/app_book.c:1169
 管理	Manage
-# main/apps/app_book.c:1190 main/apps/app_book.c:1309
+# main/apps/app_book.c:1191 main/apps/app_book.c:1312
 继续阅读	Continue reading
-# main/apps/app_book.c:1192
+# main/apps/app_book.c:1193
 接着读 →	Resume →
-# main/apps/app_book.c:1201
+# main/apps/app_book.c:1202
 当前筛选没有图书	No books match this filter
-# main/apps/app_book.c:1215
-未选	Not selected
 # main/apps/app_book.c:1216
-已删·待清理	Deleted · cleanup pending
+未选	Not selected
 # main/apps/app_book.c:1217
-+%u 章 待下载	+%u ch. to download
+已删·待清理	Deleted · cleanup pending
 # main/apps/app_book.c:1218
++%u 章 待下载	+%u ch. to download
+# main/apps/app_book.c:1219
 +%u 章	+%u ch.
-# main/apps/app_book.c:1232
-番茄%s%s	Tomato%s%s
 # main/apps/app_book.c:1233
+番茄%s%s	Tomato%s%s
+# main/apps/app_book.c:1234
  · 内置	 · Built-in
-# main/apps/app_book.c:1247
+# main/apps/app_book.c:1248
 本页全选	Select page
-# main/apps/app_book.c:1247
+# main/apps/app_book.c:1248
 清除勾选	Clear selection
-# main/apps/app_book.c:1247 main/apps/app_transfer.c:245
+# main/apps/app_book.c:1248 main/apps/app_transfer.c:245
 重新扫描	Rescan
-# main/apps/app_book.c:1247
+# main/apps/app_book.c:1248
 删除所选	Delete selected
-# main/apps/app_book.c:1281
+# main/apps/app_book.c:1284
 第 %d 节	Section %d
-# main/apps/app_book.c:1286
+# main/apps/app_book.c:1289
 在读	Reading
-# main/apps/app_book.c:1291
-‹ 上一页	‹ Prev page
-# main/apps/app_book.c:1292
-返回阅读	Back to reading
 # main/apps/app_book.c:1294
+‹ 上一页	‹ Prev page
+# main/apps/app_book.c:1295
+返回阅读	Back to reading
+# main/apps/app_book.c:1297
 下一页 ›	Next page ›
-# main/apps/app_book.c:1302
+# main/apps/app_book.c:1305
 继续上次阅读？	Continue where you left off?
-# main/apps/app_book.c:1307
+# main/apps/app_book.c:1310
 确认后才加载图书	The book loads only after you confirm
-# main/apps/app_book.c:1308
+# main/apps/app_book.c:1311
 留在书库	Stay in library
-# main/apps/app_book.c:1385
+# main/apps/app_book.c:1388
 正在加载图片…	Loading image…
-# main/apps/app_book.c:1385
+# main/apps/app_book.c:1388
 加载后可返回原阅读位置	You can return to your place afterwards
-# main/apps/app_book.c:1393
+# main/apps/app_book.c:1396
 内存不足，请返回后重试	Out of memory; go back and try again
-# main/apps/app_book.c:1394
+# main/apps/app_book.c:1397
 图片文件缺失	Image file missing
-# main/apps/app_book.c:1395
+# main/apps/app_book.c:1398
 图片超出大小限制或文件损坏	Image too large or file damaged
-# main/apps/app_book.c:1395
+# main/apps/app_book.c:1398
 图片损坏或格式暂不支持	Image damaged or format not supported
-# main/apps/app_book.c:1400
+# main/apps/app_book.c:1403
 已读最早：第 %u 节 · %s	Earliest read: section %u · %s
-# main/apps/app_book.c:1410
-解析失败：内存不足，请稍后重试	Parse failed: out of memory; try again later
-# main/apps/app_book.c:1411
-超出上限：32768 项或资源过大	Over limit: 32768 items or resources too large
-# main/apps/app_book.c:1412
-文件格式、压缩或加密暂不支持	File format, compression or encryption not supported
 # main/apps/app_book.c:1413
-书籍或章节缺失，请检查文件和卡	Book or chapter missing; check the file and card
+解析失败：内存不足，请稍后重试	Parse failed: out of memory; try again later
 # main/apps/app_book.c:1414
+超出上限：32768 项或资源过大	Over limit: 32768 items or resources too large
+# main/apps/app_book.c:1415
+文件格式、压缩或加密暂不支持	File format, compression or encryption not supported
+# main/apps/app_book.c:1416
+书籍或章节缺失，请检查文件和卡	Book or chapter missing; check the file and card
+# main/apps/app_book.c:1417
 解析失败：文件异常，请重新传入	Parse failed: bad file; transfer it again
-# main/apps/app_book.c:1437
+# main/apps/app_book.c:1440
 正在加载和排版…	Loading and laying out…
-# main/apps/app_book.c:1437
+# main/apps/app_book.c:1440
 长章节需要更多时间，请稍候	Long chapters take a while; please wait
-# main/apps/app_book.c:1462 main/apps/app_book.c:1872 main/apps/app_book.c:2139 main/apps/app_book.c:2684
+# main/apps/app_book.c:1465 main/apps/app_book.c:1875 main/apps/app_book.c:2142 main/apps/app_book.c:2686
 排版失败：内存不足或章节过长	Layout failed: out of memory or chapter too long
-# main/apps/app_book.c:1488
+# main/apps/app_book.c:1491
 TF 卡不可用，请重新挂载后打开	SD card unavailable; remount and open again
-# main/apps/app_book.c:1495 main/apps/app_book.c:1796 main/apps/app_book.c:2242 main/apps/app_book.c:2502
+# main/apps/app_book.c:1498 main/apps/app_book.c:1799 main/apps/app_book.c:2244 main/apps/app_book.c:2504
 文件已删除，进度清理失败，请重试	File deleted, but clearing progress failed; try again
-# main/apps/app_book.c:1500
+# main/apps/app_book.c:1503
 无法读取文件，请检查存储卡	Can't read the file; check the SD card
-# main/apps/app_book.c:1504
+# main/apps/app_book.c:1507
 内置存储单本限 1 MB	Built-in storage: 1 MB per book
-# main/apps/app_book.c:1508
+# main/apps/app_book.c:1511
 内存不足，无法保留待保存进度	Out of memory; can't keep unsaved progress
-# main/apps/app_book.c:1514
+# main/apps/app_book.c:1517
 内存不足，无法打开图书	Out of memory; can't open the book
-# main/apps/app_book.c:1517
+# main/apps/app_book.c:1520
 正在解析图书…	Parsing book…
-# main/apps/app_book.c:1517
+# main/apps/app_book.c:1520
 大书需要更多时间，请稍候	Large books take a while; please wait
-# main/apps/app_book.c:1696 main/apps/app_book.c:1761
+# main/apps/app_book.c:1699 main/apps/app_book.c:1764
 内置余	Built-in free
-# main/apps/app_book.c:1696 main/apps/app_book.c:1761
+# main/apps/app_book.c:1699 main/apps/app_book.c:1764
 TF余	SD free
-# main/apps/app_book.c:1744 main/apps/app_tr_auth.c:643 main/apps/app_tr_auth.c:1060 main/apps/app_tr_settings.c:634 …
+# main/apps/app_book.c:1747 main/apps/app_tr_auth.c:643 main/apps/app_tr_auth.c:1060 main/apps/app_tr_settings.c:634 …
 没有 TF 卡	No SD card
-# main/apps/app_book.c:1744
-存储不可用，请检查 TF 卡	Storage unavailable; check the SD card
-# main/apps/app_book.c:1745
-内存不足，仅列 %d 本；释放后重扫	Out of memory; only %d books listed. Free some and rescan
-# main/apps/app_book.c:1746
-部分目录或文件不可读，请检查后重扫	Some folders or files unreadable; check and rescan
 # main/apps/app_book.c:1747
-部分文件过大或名称过长，未列入	Some files too large or names too long; not listed
+存储不可用，请检查 TF 卡	Storage unavailable; check the SD card
 # main/apps/app_book.c:1748
+内存不足，仅列 %d 本；释放后重扫	Out of memory; only %d books listed. Free some and rescan
+# main/apps/app_book.c:1749
+部分目录或文件不可读，请检查后重扫	Some folders or files unreadable; check and rescan
+# main/apps/app_book.c:1750
+部分文件过大或名称过长，未列入	Some files too large or names too long; not listed
+# main/apps/app_book.c:1751
 图书已更新，旧待保存进度已作废	Book updated; old unsaved progress discarded
-# main/apps/app_book.c:1750
+# main/apps/app_book.c:1753
 暂无图书，请传入 TXT 或 EPUB	No books yet; transfer a TXT or EPUB
-# main/apps/app_book.c:1750
+# main/apps/app_book.c:1753
 书都放在 TF 卡上，请插入 TF 卡	Books live on the SD card; insert one
-# main/apps/app_book.c:1771
+# main/apps/app_book.c:1774
 内存不足，无法保留删除重试记录	Out of memory; can't keep the delete retry list
-# main/apps/app_book.c:1797
+# main/apps/app_book.c:1800
 文件删除失败，请检查存储后重试	Delete failed; check storage and try again
-# main/apps/app_book.c:1797
+# main/apps/app_book.c:1800
 进度清理失败，请重新尝试	Clearing progress failed; try again
-# main/apps/app_book.c:1910 main/apps/app_book.c:1947
+# main/apps/app_book.c:1913 main/apps/app_book.c:1950
 排版失败，请重新扫描并打开图书	Layout failed; rescan and open the book again
-# main/apps/app_book.c:2021
+# main/apps/app_book.c:2024
 成功 %u 本，失败 %u 本%s	%u done, %u failed%s
-# main/apps/app_book.c:2021
+# main/apps/app_book.c:2024
 ；所选可重试	; selected ones can be retried
-# main/apps/app_book.c:2286
+# main/apps/app_book.c:2288
 正在检测存储…	Checking storage…
-# main/apps/app_book.c:2287
+# main/apps/app_book.c:2289
 正在扫描图书…	Scanning books…
-# main/apps/app_book.c:2353
+# main/apps/app_book.c:2355
 TF 卡已移除	SD card removed
-# main/apps/app_book.c:2354
+# main/apps/app_book.c:2356
 已停止阅读，正在检查内置图书	Reading stopped; checking built-in books
-# main/apps/app_book.c:2669
+# main/apps/app_book.c:2671
 字体重排失败，请重新打开图书	Font relayout failed; reopen the book
-# main/apps/app_book.c:2708
+# main/apps/app_book.c:2710
 TF 卡上的 TXT 与 EPUB	TXT and EPUB on the SD card
 # main/apps/app_comic.c:511
 我的漫画	My comics
@@ -314,13 +314,13 @@ TF 卡上的 TXT 与 EPUB	TXT and EPUB on the SD card
 %d 部 · %s	%d titles · %s
 # main/apps/app_comic.c:515 main/apps/app_comic.c:517
 按名字	By name
-# main/apps/app_book.c:1166 main/apps/app_comic.c:519
+# main/apps/app_book.c:1167 main/apps/app_comic.c:519
 本地	Local
 # main/apps/app_comic.c:531
 更新中 %d/%d	Updating %d/%d
 # main/apps/app_comic.c:532
 更新中…	Updating…
-# main/apps/app_book.c:1096 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新	Check for updates
 # main/apps/app_comic.c:548
 还没有漫画。设置 → Wi-Fi 与传书，用手机网页上传 CBZ；也可以用读卡器把 CBZ 放进 TF 卡的 comics 文件夹，一部漫画的多话放在同一个子文件夹里。	No comics yet. In Settings → Wi-Fi & transfer, upload CBZ files from a phone browser, or use a card reader to put CBZ files in the comics folder on the SD card, keeping all episodes of a series in one subfolder.
@@ -638,7 +638,7 @@ CW32 无应答	CW32 not responding
 设备上没有这个账号	This account isn't on the device
 # main/apps/app_tr_auth.c:271 main/apps/app_tr_auth.c:281 main/apps/app_tr_settings.c:1517
 保存失败	Save failed
-# main/apps/app_book.c:2049 main/apps/app_tr_auth.c:321 main/apps/app_tr_auth.c:928 main/apps/app_tr_settings.c:528 …
+# main/apps/app_book.c:2052 main/apps/app_tr_auth.c:321 main/apps/app_tr_auth.c:928 main/apps/app_tr_settings.c:528 …
 正在停下后台加载，请再点一次	Stopping background loading; tap again
 # main/apps/app_tr_auth.c:322
 后台正在下载或同步，完成后再导入	Downloading or syncing in the background; import when done
@@ -1200,7 +1200,7 @@ WebDAV 密码	WebDAV password
 {\"error\":\"请粘贴设备令牌\"}	{\"error\":\"Paste the device token\"}
 # main/apps/app_tr_settings.c:469 main/apps/app_tr_settings.c:515
 {\"error\":\"保存失败\"}	{\"error\":\"Save failed\"}
-# main/apps/app_book.c:2050 main/apps/app_tr_settings.c:529 main/apps/app_tr_store.c:555 main/apps/app_tr_tomato.c:551
+# main/apps/app_book.c:2053 main/apps/app_tr_settings.c:529 main/apps/app_tr_store.c:555 main/apps/app_tr_tomato.c:551
 后台正在下载或同步，完成后再试	Downloading or syncing in the background. Try again when done
 # main/apps/app_tr_settings.c:556
 打不开网页服务（%s）	Could not start web service (%s)
@@ -1418,7 +1418,7 @@ Tomato-Novel-Downloader 下载服务	Tomato-Novel-Downloader download service
 后台正在下载或同步，完成后再刷新	Downloading or syncing in background, refresh when done
 # (unused)
 书架	Shelf
-# main/apps/app_book.c:420 main/apps/app_book.c:1151 main/apps/app_tr_store.c:288 main/apps/app_tr_store.c:817
+# main/apps/app_book.c:420 main/apps/app_book.c:1152 main/apps/app_tr_store.c:288 main/apps/app_tr_store.c:817
 书城	Store
 # main/apps/app_tr_store.c:293
 正在获取榜单…	Fetching rankings…
@@ -2716,15 +2716,15 @@ WebDAV 用户名或密码不对	Wrong WebDAV username or password
 {\"error\":\"网络正在切换，请连接后重试\"}	{\"error\":\"Network is switching, reconnect and try again\"}
 # components/read_pico/include/read_pico_board.h:36
 小纸 Pico	Read Pico
-# main/apps/app_book.c:771 main/apps/app_book.c:774 main/apps/app_tr_settings.c:391
+# main/apps/app_book.c:772 main/apps/app_book.c:775 main/apps/app_tr_settings.c:391
 关闭@@main/apps/app_tr_settings.c	Off
-# main/apps/app_book.c:1096 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新@@main/apps/app_tr_tomato.c	Updates
-# main/apps/app_book.c:2044 main/apps/app_comic.c:525
+# main/apps/app_book.c:2047 main/apps/app_comic.c:525
 正在取消…	Cancelling…
 # main/apps/app_comic.c:527 main/apps/app_tr_wt.c:662
 再点取消@@main/apps/app_comic.c	Cancel?
-# main/apps/app_book.c:1096 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
+# main/apps/app_book.c:1097 main/apps/app_comic.c:534 main/apps/app_tr_update.c:524 main/apps/app_tr_update.c:525 …
 检查更新@@main/apps/app_comic.c	Update
 # main/apps/app_tr_settings.c:144
 翻页刷新	Page refresh
@@ -2778,21 +2778,21 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 深	Dark
 # main/apps/app_tr_settings.c:360
 更深	Darker
-# main/apps/app_book.c:765
+# main/apps/app_book.c:766
 后台正在检查更新	Checking for updates
-# main/apps/app_book.c:765
+# main/apps/app_book.c:766
 检查这本更新	Check this book
-# main/apps/app_book.c:1090
-更新中	Updating
-# main/apps/app_book.c:1090
-检查中	Checking
 # main/apps/app_book.c:1091
-%s %d/%d · 取消	%s %d/%d · Cancel
+更新中	Updating
+# main/apps/app_book.c:1091
+检查中	Checking
 # main/apps/app_book.c:1092
+%s %d/%d · 取消	%s %d/%d · Cancel
+# main/apps/app_book.c:1093
 %s… · 取消	%s... · Cancel
-# main/apps/app_book.c:1094
+# main/apps/app_book.c:1095
 下载 %d 本更新	Download updates (%d)
-# main/apps/app_book.c:2058
+# main/apps/app_book.c:2061
 后台正在忙，稍后再试	Busy, try again later
 # main/apps/app_tr_tomato.c:635
 番茄搜索	Tomato search
@@ -2818,13 +2818,13 @@ Wi-Fi 传书 · USB 传书	Wi-Fi transfer · USB transfer
 按电源键继续	Press power to continue
 # main/apps/tr_lock.c:190
 %s · 电量 %d%%	%s · Battery %d%%
-# main/apps/app_book.c:518 main/apps/app_book.c:1266
-倒序	Desc
-# main/apps/app_book.c:1266
-正序	Asc
 # main/apps/app_tr_weibo.c:1037 main/apps/app_tr_x.c:1082 main/apps/app_tr_xhs.c:720
 图片没下载成功	Image not downloaded
 # main/apps/app_tr_weibo.c:1044 main/apps/app_tr_x.c:1089 main/apps/app_tr_xhs.c:727
 点这里重试	Tap here to retry
 # components/tomato/tomato_rednote.c:392 components/tomato/tomato_weibo.c:276 components/tomato/tomato_x.c:329
 连不上服务器，图片没下载完	Can't reach the server; images incomplete
+# main/apps/app_book.c:517 main/apps/app_book.c:519
+最后一章	Last
+# main/apps/app_book.c:517
+第一章	First
