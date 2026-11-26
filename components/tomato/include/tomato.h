@@ -171,6 +171,30 @@ esp_err_t tomato_config_save(const tomato_config_t* cfg);
 esp_err_t tomato_webdav_config_load(tomato_webdav_config_t* out);
 esp_err_t tomato_webdav_config_save(const tomato_webdav_config_t* cfg);
 
+/* ---- 局域网代理 / LAN proxy ---- */
+
+typedef enum {
+    TOMATO_PROXY_SOCKS5 = 0,   ///< SOCKS5，域名交给代理解析 / SOCKS5, names resolved by the proxy
+    TOMATO_PROXY_HTTP = 1,     ///< HTTP CONNECT 隧道 / HTTP CONNECT tunnel
+} tomato_proxy_type_t;
+
+typedef struct {
+    bool on;            ///< 开关 / Enabled
+    uint8_t type;       ///< tomato_proxy_type_t
+    uint16_t port;      ///< 代理端口 / Proxy port
+    char host[64];      ///< 代理地址（IPv4 或主机名）/ Proxy address (IPv4 or host name)
+    char user[40];      ///< 用户名，空表示不认证 / User name; empty means no authentication
+    char pass[64];      ///< 密码 / Password
+} tomato_proxy_t;
+
+/// 读代理设置（NVS 命名空间 proxy）；没设过就是关。/ Read the proxy settings (NVS namespace proxy); off when never set.
+esp_err_t tomato_proxy_load(tomato_proxy_t* out);
+/// 保存并立即生效，对之后新建的连接有效。/ Save and apply at once, for connections opened afterwards.
+esp_err_t tomato_proxy_save(const tomato_proxy_t* cfg);
+/// 把“192.168.1.5:7890”或带 socks5:// / http:// 头的文字解析进 cfg 的 host、port、type；格式不对返回 false。
+/// Parse "192.168.1.5:7890", optionally with a socks5:// or http:// prefix, into host, port and type; false if malformed.
+bool tomato_proxy_parse(const char* text, tomato_proxy_t* cfg);
+
 /// 书城榜单地址：config.json 的 store_url，没填用编译时默认（local.properties 的 STORE_URL）。
 /// Rank site URL: store_url in config.json, else the build default (STORE_URL in local.properties).
 esp_err_t tomato_store_url_load(char* out, size_t cap);

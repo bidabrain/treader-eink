@@ -1,4 +1,4 @@
-<!-- en of main/apps/server_form.html sha256:16320878f0d49363ccaeb9f3e4e9bfa346c3675feaf1cbc54cae87c658eb44eb -->
+<!-- en of main/apps/server_form.html sha256:7975fac964afa359c5256223269ccd8566da94002701cbd47596c41c660448a2 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -33,13 +33,18 @@
     <h2 id="secret">Device token</h2>
     <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="Paste the device token">
     <p class="hint" id="tokenHint">Paste the device token shown in the panel.</p>
+    <div id="extraBox" hidden>
+      <h2 id="extraLabel">Another address</h2>
+      <input id="extra" type="url" inputmode="url" autocomplete="off" maxlength="150">
+      <p class="hint" id="extraHint"></p>
+    </div>
     <button id="go">Save</button>
   </form>
   <div class="box" id="out" hidden></div>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-let hasToken = false, optional = false, saved = '';
+let hasToken = false, optional = false, urlOptional = false, saved = '';
 // The device may replace texts (Tomato uses an optional device password).
 const esc = (t) => String(t).replace(/[<>&]/g, '');
 fetch('/form').then((r) => r.json()).then((d) => {
@@ -57,6 +62,15 @@ fetch('/form').then((r) => r.json()).then((d) => {
     if (d.user_ph) $('#user').placeholder = d.user_ph;
     if (d.user) $('#user').value = d.user;
   }
+  // The device may ask for one more address (Tomato's rank site) and allow a blank server address (rank site only).
+  if (d.extra_label) {
+    $('#extraBox').hidden = false;
+    $('#extraLabel').textContent = d.extra_label;
+    if (d.extra_ph) $('#extra').placeholder = d.extra_ph;
+    if (d.extra_hint) $('#extraHint').textContent = d.extra_hint;
+    if (d.extra) $('#extra').value = d.extra;
+  }
+  urlOptional = !!d.url_optional;
   if (d.secret) $('#secret').textContent = d.secret;
   if (d.secret_ph) $('#token').placeholder = d.secret_ph;
   if (d.secret_hint) $('#tokenHint').textContent = d.secret_hint;
@@ -76,13 +90,18 @@ $('#f').onsubmit = async (e) => {
   const token = $('#token').value.trim();
   const out = $('#out');
   out.hidden = false;
-  if (!/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">The address must start with http:// or https://</span>'; return; }
-  if (!token && !hasToken && !optional) { out.innerHTML = '<span class="err">Paste the device token</span>'; return; }
+  const extra = $('#extra').value.trim();
+  const blankOk = urlOptional && !url && !token;
+  if (urlOptional && !url && token) { out.innerHTML = '<span class="err">A device password needs the server address</span>'; return; }
+  if (!blankOk && !/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">The address must start with http:// or https://</span>'; return; }
+  if (!$('#extraBox').hidden && extra && !/^https?:\/\/\S+$/.test(extra)) { out.innerHTML = '<span class="err">The rank site address must start with http:// or https://</span>'; return; }
+  if (!blankOk && !token && !hasToken && !optional) { out.innerHTML = '<span class="err">Paste the device token</span>'; return; }
   $('#go').disabled = true;
   out.textContent = 'Saving…';
   try {
     const payload = { url, token };
     if (!$('#userBox').hidden) payload.user = $('#user').value.trim();
+    if (!$('#extraBox').hidden) payload.extra = extra;
     const r = await fetch('/form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));

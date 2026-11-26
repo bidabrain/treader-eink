@@ -50,6 +50,11 @@ void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
     epd_fill_rect(area, 0x00, fb);
     epd_fill_rect((EpdRect){area.x + 12, area.y + 12, area.width - 24, area.height - 24}, 0xFF, fb);
 }
+#ifndef HR_BASELINE   // 改动前没有代理设置 / No proxy settings before this change
+esp_err_t tomato_proxy_load(tomato_proxy_t* out) { memset(out, 0, sizeof(*out)); return ESP_OK; }
+esp_err_t tomato_proxy_save(const tomato_proxy_t* cfg) { (void)cfg; return ESP_OK; }
+bool tomato_proxy_parse(const char* text, tomato_proxy_t* cfg) { (void)text; (void)cfg; return true; }
+#endif
 esp_err_t nvs_open(const char* ns, nvs_open_mode_t m, nvs_handle_t* h) { (void)ns; (void)m; (void)h; return ESP_FAIL; }
 
 
@@ -100,6 +105,31 @@ void hr_scenes(void) {
     hr_allow_fit();
     page(P_HOME, "home_message");
     s_message[0] = 0;
+#ifndef HR_BASELINE
+    // 代理：关；开着的 SOCKS5；带用户名的 HTTP；填地址的键盘；没填地址就想开。/ Proxy: off; SOCKS5 on; HTTP with a user
+    // name; the address keyboard; trying to switch on without an address.
+    hr_allow_fit();
+    page(P_PROXY, "proxy_off");
+    snprintf(s_px.host, sizeof(s_px.host), "192.168.1.5");
+    s_px.port = 7890;
+    s_px.on = true;
+    hr_allow_fit();
+    page(P_HOME, "home_proxy_on");
+    hr_allow_fit();
+    page(P_PROXY, "proxy_socks5");
+    s_px.type = TOMATO_PROXY_HTTP;
+    snprintf(s_px.user, sizeof(s_px.user), "alice");
+    snprintf(s_px.pass, sizeof(s_px.pass), "secret");
+    hr_allow_fit();
+    page(P_PROXY, "proxy_http_auth");
+    edit(E_PX_ADDR, "192.168.1.5:7890", "proxy_edit_addr");
+    edit(E_PX_PASS, "", "proxy_edit_pass");
+    memset(&s_px, 0, sizeof(s_px));
+    snprintf(s_message, sizeof(s_message), "先填代理地址");
+    hr_allow_fit();
+    page(P_PROXY, "proxy_need_addr");
+    s_message[0] = 0;
+#endif
     hr_allow_fit();
     page(P_DISPLAY, "display");
 #ifndef HR_BASELINE   // 改动前没有翻页区域 / No turn-zone setting before this change

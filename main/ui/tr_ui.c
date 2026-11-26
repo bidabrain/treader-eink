@@ -477,6 +477,16 @@ void tr_icon_on(uint8_t* fb, tr_icon_t icon, int cx, int cy, uint8_t c, uint8_t 
         epd_fill_circle(cx, y + P(26), P(2), c, fb);
         thick_line(fb, cx, y + P(26), cx, y + P(31), c);
         break;
+    case TR_ICON_PROXY:
+        // 代理：设备圆点，中间一个方框，对面圆点，三者连成线。/ Proxy: a device dot, a box in between and a far dot,
+        // joined by lines.
+        epd_fill_circle(x + P(6), cy, P(3), c, fb);
+        epd_fill_circle(x + P(34), cy, P(3), c, fb);
+        thick_line(fb, x + P(9), cy, x + P(14), cy, c);
+        thick_line(fb, x + P(26), cy, x + P(31), cy, c);
+        ui_draw_round_rect(fb, (EpdRect){x + P(14), cy - P(8), P(12), P(16)}, P(3), c);
+        ui_draw_round_rect(fb, (EpdRect){x + P(14) + 1, cy - P(8) + 1, P(12) - 2, P(16) - 2}, P(3) - 1, c);
+        break;
     case TR_ICON_IMPORT:
         thick_line(fb, x + P(20), y + P(6), x + P(20), y + P(26), c);
         thick_line(fb, x + P(12), y + P(18), x + P(20), y + P(26), c);

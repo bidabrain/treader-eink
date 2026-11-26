@@ -2,12 +2,21 @@
 # 番茄小说同步：联网、HTTP、书架元数据、后台任务。/ Tomato sync: network, HTTP, shelf metadata, background task.
 idf_component_register(
     SRCS "tomato_net.c" "tomato_http.c" "tomato_store.c" "tomato_sync.c" "tomato_webdav.c" "tomato_rank.c" "tomato_hupu.c"
-         "tomato_rednote.c" "tomato_selfhost.c" "tomato_weibo.c" "tomato_x.c" "tomato_webtoon.c" "tomato_ota.c"
+         "tomato_rednote.c" "tomato_selfhost.c" "tomato_weibo.c" "tomato_x.c" "tomato_webtoon.c" "tomato_ota.c" "tomato_proxy.c"
     INCLUDE_DIRS "include"
     REQUIRES espressif__cjson
     PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif lwip esp_event esp_http_client esp-tls mbedtls heap fatfs nvs_flash esp_timer
                   esp_timer
 )
+
+# 局域网代理：链接时拦截 lwIP 的 connect 和 getaddrinfo，见 tomato_proxy.c；INTERFACE 让最终固件也带上这两个选项。
+# LAN proxy: intercept lwIP's connect and getaddrinfo at link time, see tomato_proxy.c; INTERFACE carries the options to the
+# final firmware link.
+# -u 把 tomato_proxy.o 从静态库里拉进来：它只被 esp-tls 的（已改名的）引用用到，否则链接顺序一变就找不到。
+# -u pulls tomato_proxy.o out of the static library: only esp-tls's (renamed) references need it, so it would go missing
+# whenever the link order changes.
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=lwip_connect" "-Wl,--wrap=lwip_getaddrinfo"
+                      "-Wl,-u,__wrap_lwip_connect" "-Wl,-u,__wrap_lwip_getaddrinfo")
 
 # 静态分析构建：idf.py -B build-analyze -DTREADER_ANALYZE=1 build
 # Static-analysis build: idf.py -B build-analyze -DTREADER_ANALYZE=1 build

@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · Treader 1.2.11
+
+- 新增“设置 → 代理”：填一台局域网里的 SOCKS5 或 HTTP 代理（地址:端口，可选用户名密码，也能写 socks5://… 或 http://… 自动选协议），打开后书城、番茄、小红书、微博、X、漫画、WebDAV 和固件升级的联网都经它出去，改完马上对新连接生效。域名交给代理解析，所以被污染的域名也能通；局域网地址、.local 名字直连，校时不走代理；TLS 仍在设备和目标之间端到端，代理只转发密文。握手只在新建连接时多两三次往返，不占 PSRAM、不多占连接。
+  New "Settings > Proxy": enter a SOCKS5 or HTTP proxy on your LAN (address:port, optional user name and password; socks5://… or http://… picks the protocol), and the store, Tomato, RedNote, Weibo, X, comics, WebDAV and firmware updates all leave through it, applied to new connections at once. Names are resolved by the proxy, so poisoned domains work too; LAN addresses and .local names go direct and time sync skips it; TLS stays end to end between the device and the target and the proxy only relays ciphertext. The handshake adds two or three round trips only when a connection is opened, uses no PSRAM and holds no extra connection.
+- 番茄设置的“手机网页填写”多了“书城榜单地址”一栏，扫码就能在手机上填番茄服务器和书城榜单；网页上服务器地址留空表示不改，可以只改榜单，榜单地址留空恢复默认。
+  The Tomato settings "phone web form" gains a "rank site address" field, so the Tomato server and the store ranking can both be filled from the phone; a blank server address leaves it unchanged so the rank site can be set alone, and a blank rank address restores the default.
+
 ## 2026-11-26 · Treader 1.2.10
 
 - 书库里“下载 N 本更新”在跑时，状态行下面多一条进度条，左边写正在做哪一步：连接 Wi-Fi、服务器生成 TXT，或者“书名 · 3.2 / 9.0 MB”，下载中每 2 秒刷新一次。以前一本大书要下好几分钟，画面一动不动，看起来像卡住了。服务器不给文件大小时，进度按旧文件大小和新增章节估算。书城和番茄详情页的下载条知道文件大小时也按真实进度走，MB 数下载中会跟着变。

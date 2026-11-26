@@ -32,13 +32,18 @@
     <h2 id="secret">设备令牌</h2>
     <input id="token" type="password" autocomplete="off" maxlength="90" placeholder="粘贴设备令牌">
     <p class="hint" id="tokenHint">粘贴面板里显示的设备令牌。</p>
+    <div id="extraBox" hidden>
+      <h2 id="extraLabel">另一个地址</h2>
+      <input id="extra" type="url" inputmode="url" autocomplete="off" maxlength="150">
+      <p class="hint" id="extraHint"></p>
+    </div>
     <button id="go">保存</button>
   </form>
   <div class="box" id="out" hidden></div>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-let hasToken = false, optional = false, saved = '';
+let hasToken = false, optional = false, urlOptional = false, saved = '';
 // 设备可以换掉说明文字（番茄用设备密码，可以不填）。/ The device may replace texts (Tomato uses an optional device password).
 const esc = (t) => String(t).replace(/[<>&]/g, '');
 fetch('/form').then((r) => r.json()).then((d) => {
@@ -56,6 +61,15 @@ fetch('/form').then((r) => r.json()).then((d) => {
     if (d.user_ph) $('#user').placeholder = d.user_ph;
     if (d.user) $('#user').value = d.user;
   }
+  // 设备可以多要一个地址（番茄的书城榜单），也可以允许服务器地址留空（只改榜单）。/ The device may ask for one more address (Tomato's rank site) and allow a blank server address (rank site only).
+  if (d.extra_label) {
+    $('#extraBox').hidden = false;
+    $('#extraLabel').textContent = d.extra_label;
+    if (d.extra_ph) $('#extra').placeholder = d.extra_ph;
+    if (d.extra_hint) $('#extraHint').textContent = d.extra_hint;
+    if (d.extra) $('#extra').value = d.extra;
+  }
+  urlOptional = !!d.url_optional;
   if (d.secret) $('#secret').textContent = d.secret;
   if (d.secret_ph) $('#token').placeholder = d.secret_ph;
   if (d.secret_hint) $('#tokenHint').textContent = d.secret_hint;
@@ -75,13 +89,18 @@ $('#f').onsubmit = async (e) => {
   const token = $('#token').value.trim();
   const out = $('#out');
   out.hidden = false;
-  if (!/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">地址要以 http:// 或 https:// 开头</span>'; return; }
-  if (!token && !hasToken && !optional) { out.innerHTML = '<span class="err">请粘贴设备令牌</span>'; return; }
+  const extra = $('#extra').value.trim();
+  const blankOk = urlOptional && !url && !token;
+  if (urlOptional && !url && token) { out.innerHTML = '<span class="err">填了设备密码，就要填服务器地址</span>'; return; }
+  if (!blankOk && !/^https?:\/\/\S+$/.test(url)) { out.innerHTML = '<span class="err">地址要以 http:// 或 https:// 开头</span>'; return; }
+  if (!$('#extraBox').hidden && extra && !/^https?:\/\/\S+$/.test(extra)) { out.innerHTML = '<span class="err">榜单地址要以 http:// 或 https:// 开头</span>'; return; }
+  if (!blankOk && !token && !hasToken && !optional) { out.innerHTML = '<span class="err">请粘贴设备令牌</span>'; return; }
   $('#go').disabled = true;
   out.textContent = '正在保存…';
   try {
     const payload = { url, token };
     if (!$('#userBox').hidden) payload.user = $('#user').value.trim();
+    if (!$('#extraBox').hidden) payload.extra = extra;
     const r = await fetch('/form', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));

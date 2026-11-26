@@ -84,7 +84,7 @@ extern const char server_form_start[] asm("_binary_server_form_html_start");
 extern const char server_form_end[] asm("_binary_server_form_html_end");
 
 typedef enum {
-    P_HOME, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SYNC, P_POWER, P_ABOUT,
+    P_HOME, P_PROXY, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SYNC, P_POWER, P_ABOUT,
     P_TIME, P_TZ, P_TSET, P_TURN
 } page_t;
 
@@ -117,7 +117,7 @@ static const struct {
 };
 
 // 首页分类。/ Home categories.
-typedef enum { C_NET, C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
+typedef enum { C_NET, C_PROXY, C_DISPLAY, C_TABS, C_WIFI, C_SOURCES, C_SYNC, C_POWER, C_COUNT } cat_t;
 
 // 二级页的行：y 是行顶；section 非空时在上方画分组名。/ Sub-page rows: y is the row top; section draws a group name.
 typedef struct {
@@ -134,6 +134,7 @@ enum {
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
     R_HIMG, R_HPAGES,
+    R_PX_ON, R_PX_TYPE, R_PX_ADDR, R_PX_USER, R_PX_PASS,
 };
 
 static const row_t DISPLAY_ROWS[] = {
@@ -157,6 +158,13 @@ static const row_t TOMATO_ROWS[] = {
     {R_WEB, NULL, "手机网页填写", 190},
     {R_SRV, NULL, "番茄服务器", 274},
     {R_STORE, NULL, "书城榜单", 346},
+};
+static const row_t PROXY_ROWS[] = {
+    {R_PX_ON, NULL, "使用代理", 190},
+    {R_PX_TYPE, NULL, "协议", 262},
+    {R_PX_ADDR, NULL, "代理地址", 334},
+    {R_PX_USER, NULL, "用户名", 406},
+    {R_PX_PASS, NULL, "密码", 478},
 };
 static const row_t SERVER_ROWS[] = {
     {R_WEB, NULL, "手机网页填写", 190},
@@ -227,7 +235,8 @@ static bool s_open_transfer;  // 书库的传书按钮要求打开“传书”/ 
 // 键盘编辑：番茄（地址→密码）、WebDAV（地址→用户名→密码）、榜单、自建服务器地址和令牌。
 // Keyboard edits: Tomato (URL, password), WebDAV (URL, user, password), rank site, self-hosted server URL and token.
 typedef enum {
-    E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL, E_HOST_URL, E_HOST_TOKEN
+    E_NONE = 0, E_SRV_URL, E_SRV_PASS, E_DAV_URL, E_DAV_USER, E_DAV_PASS, E_STORE_URL, E_HOST_URL, E_HOST_TOKEN,
+    E_PX_ADDR, E_PX_USER, E_PX_PASS
 } edit_t;
 
 static const struct { const char* title; const char* hint; const char* go; } EDIT[] = {
@@ -242,6 +251,9 @@ static const struct { const char* title; const char* hint; const char* go; } EDI
     // hint is built per server, see draw_edit.
     [E_HOST_URL] = {"服务器地址", "", "保存"},
     [E_HOST_TOKEN] = {"设备令牌", "令牌很长，建议用“手机网页填写”；留空表示不改", "保存"},
+    [E_PX_ADDR] = {"代理地址", "例如 192.168.1.5:7890，也可以写 socks5://… 或 http://…", "保存"},
+    [E_PX_USER] = {"代理用户名", "代理不需要认证就留空", "下一步"},
+    [E_PX_PASS] = {"代理密码", "留空表示不改", "保存"},
 };
 
 static edit_t s_edit;
@@ -249,6 +261,11 @@ static char s_wifi[33];
 static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
 static tomato_srv_config_t s_host[S_COUNT];
+static tomato_proxy_t s_px;
+// 代理的用户名要先于密码填完才一起保存；单独用一份，不和别的编辑流程共用 s_step1。/ The proxy user name is typed before
+// the password and saved together; it has its own buffer rather than sharing s_step1 with other edit flows.
+static char s_px_user[40];
+static bool s_px_user_set;
 static bool s_has_cfg, s_has_dav, s_has_host[S_COUNT];
 static srv_t s_srv;
 static char s_message[112];
@@ -328,6 +345,7 @@ static void load(void) {
     }
     s_has_dav = tomato_webdav_config_load(&s_dav) == ESP_OK;
     for (int i = 0; i < S_COUNT; i++) s_has_host[i] = SERVERS[i].load(&s_host[i]) == ESP_OK;
+    tomato_proxy_load(&s_px);
 }
 
 // 去掉 http:// 只显示主机。/ Drop the scheme and show the host only.
@@ -366,6 +384,13 @@ static void row_value(int id, char* out, size_t cap) {
         snprintf(out, cap, "%s ›", NAMES[app_settings_text_depth() % TR_TEXT_DEPTHS]);
         break;
     }
+    case R_PX_TYPE: snprintf(out, cap, "%s ›", s_px.type == TOMATO_PROXY_HTTP ? "HTTP" : "SOCKS5"); break;
+    case R_PX_ADDR:
+        if (s_px.host[0]) snprintf(out, cap, "%.100s:%u ›", s_px.host, (unsigned)s_px.port);
+        else snprintf(out, cap, "未设置 ›");
+        break;
+    case R_PX_USER: snprintf(out, cap, "%.60s ›", s_px.user[0] ? s_px.user : "未填写"); break;
+    case R_PX_PASS: snprintf(out, cap, "%s ›", s_px.pass[0] ? "已填写" : "未填写"); break;
     case R_SRV: snprintf(out, cap, "%s ›", !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置服务器" : host_of(s_cfg.url)); break;
     case R_STORE: {
         char url[160];
@@ -444,6 +469,14 @@ static int web_form_tomato(const char* body, size_t len, char* reply, size_t cap
         cJSON_AddStringToObject(j, "secret_kept", "已经填过密码，不显示原值；留空表示不改。");
         cJSON_AddStringToObject(j, "saved", "已保存。回到设备上就能用番茄小说和书城了。");
         cJSON_AddBoolToObject(j, "optional", true);
+        // 书城榜单地址也在这里填；服务器地址留空表示不改，可以只改榜单。/ The rank site address is filled here too; a blank
+        // server address means no change, so the rank site can be set alone.
+        char store[160];
+        cJSON_AddStringToObject(j, "extra_label", "书城榜单地址");
+        cJSON_AddStringToObject(j, "extra_hint", "留空用默认榜单；填自己部署的榜单站，形如 https://用户名.github.io/仓库名");
+        cJSON_AddStringToObject(j, "extra_ph", tomato_store_url_default());
+        cJSON_AddStringToObject(j, "extra", tomato_store_url_load(store, sizeof(store)) == ESP_OK ? store : "");
+        cJSON_AddBoolToObject(j, "url_optional", true);
         // 内置服务器不回显。/ Never echo the built-in server.
         cJSON_AddStringToObject(j, "url", has ? cur.url : "");
         cJSON_AddBoolToObject(j, "has_token", has && cur.password[0] != 0);
@@ -457,21 +490,40 @@ static int web_form_tomato(const char* body, size_t len, char* reply, size_t cap
     cJSON* j = cJSON_ParseWithLength(body, len);
     const cJSON* url = cJSON_GetObjectItemCaseSensitive(j, "url");
     const cJSON* pass = cJSON_GetObjectItemCaseSensitive(j, "token");
+    const cJSON* extra = cJSON_GetObjectItemCaseSensitive(j, "extra");
+    // 服务器地址留空：不改服务器。榜单地址没带：不改榜单；带了空串：恢复默认。/ A blank server address leaves the
+    // server alone; a missing rank address leaves the rank site alone, an empty one restores the default.
+    const bool has_url = cJSON_IsString(url) && url->valuestring[0];
+    const bool has_extra = cJSON_IsString(extra);
+    const bool pass_given = cJSON_IsString(pass) && pass->valuestring[0];
     int status = 400;
-    if (!cJSON_IsString(url) || (strncmp(url->valuestring, "http://", 7) && strncmp(url->valuestring, "https://", 8)) ||
-        strlen(url->valuestring) >= sizeof(cur.url) - 1) {
+    if (!has_url && !has_extra) {
         snprintf(reply, cap, "{\"error\":\"地址要以 http:// 或 https:// 开头\"}");
+    } else if (!has_url && pass_given) {
+        snprintf(reply, cap, "{\"error\":\"填了设备密码，就要填番茄服务器地址\"}");
+    } else if (has_url && (strncmp(url->valuestring, "http://", 7) && strncmp(url->valuestring, "https://", 8))) {
+        snprintf(reply, cap, "{\"error\":\"地址要以 http:// 或 https:// 开头\"}");
+    } else if (has_url && strlen(url->valuestring) >= sizeof(cur.url) - 1) {
+        snprintf(reply, cap, "{\"error\":\"地址太长\"}");
     } else if (cJSON_IsString(pass) && strlen(pass->valuestring) >= sizeof(cur.password) - 1) {
         snprintf(reply, cap, "{\"error\":\"密码太长\"}");
+    } else if (has_extra && extra->valuestring[0] && strncmp(extra->valuestring, "http://", 7) &&
+               strncmp(extra->valuestring, "https://", 8)) {
+        snprintf(reply, cap, "{\"error\":\"榜单地址要以 http:// 或 https:// 开头\"}");
+    } else if (has_extra && strlen(extra->valuestring) >= 150) {
+        snprintf(reply, cap, "{\"error\":\"榜单地址太长\"}");
     } else {
-        // 密码留空：有自填的旧密码就沿用，没有就是不设密码。/ A blank password keeps an earlier self-hosted one, or
-        // means no password.
-        tomato_config_t next = {0};
-        snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
-        snprintf(next.password, sizeof(next.password), "%s",
-                 cJSON_IsString(pass) && pass->valuestring[0] ? pass->valuestring : has ? cur.password : "");
-        const esp_err_t err = tomato_config_save(&next);
-        memset(&next, 0, sizeof(next));
+        esp_err_t err = ESP_OK;
+        if (has_url) {
+            // 密码留空：有自填的旧密码就沿用，没有就是不设密码。/ A blank password keeps an earlier self-hosted one, or
+            // means no password.
+            tomato_config_t next = {0};
+            snprintf(next.url, sizeof(next.url), "%s", url->valuestring);
+            snprintf(next.password, sizeof(next.password), "%s", pass_given ? pass->valuestring : has ? cur.password : "");
+            err = tomato_config_save(&next);
+            memset(&next, 0, sizeof(next));
+        }
+        if (err == ESP_OK && has_extra) err = tomato_store_url_save(extra->valuestring);
         status = err == ESP_OK ? 200 : 500;
         snprintf(reply, cap, err == ESP_OK ? "{\"ok\":true}" : "{\"error\":\"保存失败\"}");
         if (err == ESP_OK) s_web_tomato_rev++;
@@ -740,6 +792,11 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
         else snprintf(out, cap, "未保存网络 · 只能保存一个");
         break;
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书 · USB 传书"); break;
+    case C_PROXY:
+        if (s_px.on && s_px.host[0]) snprintf(out, cap, "%s %.100s:%u", s_px.type == TOMATO_PROXY_HTTP ? "HTTP" : "SOCKS5",
+                                              s_px.host, (unsigned)s_px.port);
+        else snprintf(out, cap, "未开启 · 所有联网直连");
+        break;
     case C_SOURCES:
         snprintf(out, cap, "番茄%s · 小红书%s · 微博%s · X%s · 漫画%s · 验证器%s",
                  !s_has_cfg ? "未设置" : s_cfg.builtin ? "内置" : "已设置", s_has_host[S_RED] ? "已设置" : "未设置",
@@ -757,8 +814,8 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
 }
 
 static void draw_home(uint8_t* fb) {
-    static const char* const NAMES[C_COUNT] = {"Wi-Fi", "显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
-    static const tr_icon_t ICONS[C_COUNT] = {TR_ICON_WIFI, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_IMPORT, TR_ICON_SOURCE,
+    static const char* const NAMES[C_COUNT] = {"Wi-Fi", "代理", "显示与阅读", "底部标签", "传书", "内容来源", "同步", "电源与设备"};
+    static const tr_icon_t ICONS[C_COUNT] = {TR_ICON_WIFI, TR_ICON_PROXY, TR_ICON_FONT, TR_ICON_TABS, TR_ICON_IMPORT, TR_ICON_SOURCE,
                                              TR_ICON_SYNC, TR_ICON_POWER};
     tr_title(fb, "设置");
     draw_message(fb);
@@ -837,6 +894,8 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_time_auto());
         } else if (r->id == R_HIMG) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_hupu_images());
+        } else if (r->id == R_PX_ON) {
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, s_px.on);
         } else {
             // 右边的值让开左边的名字（正常档至少留 220）。/ The value keeps clear of the label (220 at least).
             char value[160];
@@ -1228,7 +1287,7 @@ static void draw_edit(uint8_t* fb) {
     EpdRect f = {TR_MARGIN, fy, TR_W - 2 * TR_MARGIN, fh};
     ui_draw_round_rect(fb, f, TR_S(14), TR_GRAY_OUTLINE);
     ui_draw_round_rect(fb, ui_inset_rect(f, 1), TR_S(14) - 1, TR_GRAY_OUTLINE);
-    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_HOST_TOKEN;
+    bool secret = s_edit == E_SRV_PASS || s_edit == E_DAV_PASS || s_edit == E_HOST_TOKEN || s_edit == E_PX_PASS;
     char shown[TR_KBD_TEXT_MAX];
     if (secret) {
         // 密码只露最后一个字符。/ Passwords show only the last character.
@@ -1526,6 +1585,14 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     if (s_edit != E_NONE) { draw_edit(fb); return; }
     switch (s_page) {
     case P_HOME: draw_home(fb); break;
+    case P_PROXY:
+        draw_back_title(fb, "代理");
+        draw_message(fb);
+        draw_rows(fb, PROXY_ROWS, COUNT(PROXY_ROWS));
+        tr_wrap(fb, TR_MARGIN, TR_S(572), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+                "打开后，书城、番茄、小红书、微博、X、漫画、WebDAV 和固件升级的联网都经这台局域网代理；"
+                "局域网里的地址直连，校时不走代理。", 5);
+        break;
     case P_DISPLAY: draw_back_title(fb, "显示与阅读"); draw_rows(fb, DISPLAY_ROWS, COUNT(DISPLAY_ROWS)); break;
     case P_TABS: draw_tabs(fb); break;
     case P_TRANSFER: draw_transfer(fb); break;
@@ -1581,6 +1648,26 @@ static app_redraw_t finish_edit(void) {
         // 只剩协议头也算没填，恢复默认。/ A bare scheme counts as empty and restores the default.
         const bool empty = !s_kbd.text[0] || !strcmp(s_kbd.text, "http://") || !strcmp(s_kbd.text, "https://");
         err = tomato_store_url_save(empty ? "" : s_kbd.text);
+    } else if (s_edit == E_PX_ADDR) {
+        tomato_proxy_t next = s_px;
+        if (!tomato_proxy_parse(s_kbd.text, &next)) {
+            memset(&next, 0, sizeof(next));
+            snprintf(s_message, sizeof(s_message), "格式是 地址:端口，例如 192.168.1.5:7890");
+            return APP_REDRAW_PAGE;   // 留在键盘里改 / Stay in the keyboard to fix it
+        }
+        err = tomato_proxy_save(&next);
+        memset(&next, 0, sizeof(next));
+    } else if (s_edit == E_PX_USER || s_edit == E_PX_PASS) {
+        // E_PX_USER 走到这里只有一种情况：用户名留空，清掉认证。/ E_PX_USER reaches here only for a blank user name,
+        // which clears the authentication.
+        tomato_proxy_t next = s_px;
+        if (s_px_user_set) snprintf(next.user, sizeof(next.user), "%.39s", s_px_user);
+        if (!next.user[0]) next.pass[0] = 0;
+        else if (s_kbd.text[0]) snprintf(next.pass, sizeof(next.pass), "%.63s", s_kbd.text);
+        err = tomato_proxy_save(&next);
+        memset(&next, 0, sizeof(next));
+        memset(s_px_user, 0, sizeof(s_px_user));
+        s_px_user_set = false;
     } else if (s_edit == E_SRV_PASS) {
         tomato_config_t next = {0};
         snprintf(next.url, sizeof(next.url), "%.127s", s_step1);
@@ -1641,6 +1728,18 @@ static app_redraw_t touch_edit(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         begin_edit(E_SRV_PASS, s_has_cfg ? s_cfg.password : "");
         return APP_REDRAW_PAGE;
+    case E_PX_USER:
+        // 用户名和密码接着填；用户名留空就是不认证，不再问密码。/ The password follows the user name; a blank user name
+        // means no authentication and skips it.
+        snprintf(s_px_user, sizeof(s_px_user), "%.39s", s_kbd.text);
+        s_px_user_set = true;
+        if (!s_px_user[0]) {
+            s_edit = E_PX_PASS;
+            s_kbd.text[0] = 0;
+            return finish_edit();
+        }
+        begin_edit(E_PX_PASS, "");
+        return APP_REDRAW_PAGE;
     case E_DAV_URL:
         snprintf(s_step1, sizeof(s_step1), "%.159s", s_kbd.text);
         begin_edit(E_DAV_USER, s_has_dav ? s_dav.user : "");
@@ -1693,6 +1792,7 @@ static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t y) {
     const int h = home_cat_h();
     if (y < CAT_TOP || y >= CAT_TOP + C_COUNT * h) return APP_REDRAW_NONE;
     switch ((cat_t)((y - CAT_TOP) / h)) {
+    case C_PROXY: return open_page(P_PROXY);
     case C_DISPLAY: return open_page(P_DISPLAY);
     case C_TABS: return open_page(P_TABS);
     case C_NET:
@@ -1864,6 +1964,29 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         return open_page(P_TSET);
     case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
     case R_ABOUT: s_about_page = 0; return open_page(P_ABOUT);
+    case R_PX_ON:
+        if (!s_px.on && (!s_px.host[0] || !s_px.port)) {
+            snprintf(s_message, sizeof(s_message), "先填代理地址");
+            return APP_REDRAW_PAGE;
+        }
+        s_px.on = !s_px.on;
+        snprintf(s_message, sizeof(s_message), tomato_proxy_save(&s_px) == ESP_OK ? (s_px.on ? "已开启，新建的连接走代理" : "已关闭")
+                                                                                  : "保存失败");
+        load();
+        return APP_REDRAW_PAGE;
+    case R_PX_TYPE:
+        s_px.type = s_px.type == TOMATO_PROXY_HTTP ? TOMATO_PROXY_SOCKS5 : TOMATO_PROXY_HTTP;
+        snprintf(s_message, sizeof(s_message), tomato_proxy_save(&s_px) == ESP_OK ? "已保存" : "保存失败");
+        load();
+        return APP_REDRAW_PAGE;
+    case R_PX_ADDR: {
+        char cur[110] = "";
+        if (s_px.host[0]) snprintf(cur, sizeof(cur), "%s:%u", s_px.host, (unsigned)s_px.port);
+        begin_edit(E_PX_ADDR, cur);
+        return APP_REDRAW_PAGE;
+    }
+    case R_PX_USER: s_px_user_set = false; begin_edit(E_PX_USER, s_px.user); return APP_REDRAW_PAGE;
+    case R_PX_PASS: s_px_user_set = false; begin_edit(E_PX_PASS, ""); return APP_REDRAW_PAGE;
     case R_STORE: {
         char url[160];
         begin_edit(E_STORE_URL, tomato_store_url_load(url, sizeof(url)) == ESP_OK ? url : "");
@@ -1946,6 +2069,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         id = row_hit(HUPU_ROWS, COUNT(HUPU_ROWS), y);
         break;
     case P_TRANSFER: return touch_transfer(ctx, y);
+    case P_PROXY: id = row_hit(PROXY_ROWS, COUNT(PROXY_ROWS), y); break;
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;
     case P_SYNC: id = row_hit(SYNC_ROWS, s_web_on ? 1 : COUNT(SYNC_ROWS), y); break;
     case P_POWER: id = row_hit(POWER_ROWS, COUNT(POWER_ROWS), y); break;
