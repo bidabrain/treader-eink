@@ -391,9 +391,9 @@ static bool card_shown(void) {
 // 书架一页几本：列表是翻页条上面放得下几行（最多 4 行），网格是行数乘列数；书架、管理、详情弹窗用同一个数，页码不乱。
 // Books per shelf page: rows above the pager in the list (at most 4), rows times columns in the grid; shelf, manage
 // mode and the detail dialog share the number so page numbers stay put.
-// 网格（只在书架和管理里）：三列封面，下面书名和进度；行数按剩下的高度算，封面不小于整列宽时的七成才多排一行。
-// / Grid (shelf and manage only): three columns of covers with the title and progress below; rows follow the height
-// left, and one more row is taken only while covers stay at least 70% of their full-column size.
+// 网格（只在书架和管理里）：三列封面，下面书名和进度；100% 和 115% 两行（放不下就缩封面），130% 一行。
+// / Grid (shelf and manage only): three columns of covers with the title and progress below; two rows at 100% and
+// 115% (covers shrink to fit) and one at 130%.
 #define GRID_COLS 3
 #define GRID_GAP TR_S(20)
 #define GRID_TEXT_H TR_S(70)
@@ -403,10 +403,8 @@ static grid_t grid_layout(void) {
     grid_t g;
     const int top = card_layout() ? CARD_ROWS_TOP : SHELF_ROW_TOP, avail = SHELF_PAGER_Y - TR_S(24) - top;
     g.cell_w = (ui_content_width() - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
-    const int full = g.cell_w * 4 / 3, min = full * 7 / 10;
-    g.rows = (avail + GRID_GAP) / (min + GRID_TEXT_H + GRID_GAP);
-    if (g.rows < 1) g.rows = 1;
-    if (g.rows > 3) g.rows = 3;
+    const int full = g.cell_w * 4 / 3;
+    g.rows = ui_scale_pct > 115 ? 1 : 2;
     g.cell_h = (avail - GRID_GAP * (g.rows - 1)) / g.rows;
     g.cover_h = g.cell_h - GRID_TEXT_H;
     if (g.cover_h > full) g.cover_h = full;

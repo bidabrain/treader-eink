@@ -55,16 +55,17 @@
 
 /* ---- 版式 / Layout ---- */
 
-// 封面和漫画页是图片，不随显示大小放大；文字、按钮、行高和间距都放大。放大后书架一页一行、话列表一页少几行，
-// 工具条从屏幕底往上排。
-// Covers and comic pages are images and do not scale; text, buttons, row heights and gaps do. Scaled up, the shelf
-// shows one row per page, the episode list fewer rows, and the toolbar stacks up from the screen bottom.
+// 漫画页是图片，不随显示大小放大；文字、按钮、行高和间距都放大。书架封面在 115% 缩小到一页仍排两行 6 本，在 130%
+// 一页一行 3 本、封面放大填满；话列表一页少几行，工具条从屏幕底往上排。
+// Comic pages are images and do not scale; text, buttons, row heights and gaps do. Shelf covers shrink at 115% so a
+// page still holds two rows of six, and at 130% a page holds one row of three with larger covers filling the space;
+// the episode list shows fewer rows and the toolbar stacks up from the screen bottom.
 #define BIG (ui_scale_pct > 100)
 #define CELL_W 150
 #define COVER_H 200
 #define MINI_W 70
 #define MINI_H 96
-#define PER_PAGE (3 * shelf_rows())
+#define PER_PAGE (3 * shelf_geo().rows)
 #define PAGER_Y (TR_TABS_Y - TR_S(54))
 #define CARD (EpdRect){TR_MARGIN, TR_S(284), TR_W - 2 * TR_MARGIN, TR_S(136)}
 #define SORT_PILL (EpdRect){TR_MARGIN, TR_S(212), TR_S(150), TR_S(54)}
@@ -78,7 +79,6 @@
 #define SRC_PILL (EpdRect){TR_MARGIN + TR_S(166), TR_S(212), WT_PILL_W(170), TR_S(54)}
 #define UPDATE_PILL (EpdRect){TR_W - TR_MARGIN - WT_PILL_W(196), TR_S(212), WT_PILL_W(196), TR_S(54)}
 #define GRID_TOP (TR_S(284) + TR_S(136) + TR_S(34))
-#define GRID_PITCH (COVER_H + TR_S(94))
 #define CELL_TEXT_H (TR_S(74) + (BIG ? TR_S(28) : 0))   // 放大后状态行可折成两行 / The status may fold to 2 lines
 #define ROWS_TOP series_rows_top()
 #define ROW_H TR_S(66)
@@ -100,14 +100,32 @@
 
 static const int CELL_X[3] = {40, 267, 494};
 
-// 书架一页几行：按翻页条上面剩下的高度算（正常档 2 行）。/ Shelf rows per page from the height above the pager (2 at
-// normal size).
-static int shelf_rows(void) {
-    const int rows = (PAGER_Y - TR_S(16) - GRID_TOP + TR_S(26)) / GRID_PITCH;
-    return rows < 1 ? 1 : rows > 2 ? 2 : rows;
+// 书架格子：一页几行、封面多大、格子左边和文字宽度。/ Shelf grid: rows per page, cover size, cell left and text width.
+typedef struct {
+    int rows, w, h, pitch, text_w;
+    int x[3];
+} shelf_geo_t;
+
+// 100% 用原来的固定格子；放大后封面按翻页条上面剩下的高度缩放（3:4），115% 两行，130% 一行。
+// 100% keeps the original fixed cells; scaled up, covers (3:4) are sized from the height above the pager, two rows at
+// 115% and one at 130%.
+static shelf_geo_t shelf_geo(void) {
+    shelf_geo_t g = {2, CELL_W, COVER_H, COVER_H + TR_S(94), CELL_W, {CELL_X[0], CELL_X[1], CELL_X[2]}};
+    if (!BIG) return g;
+    g.rows = ui_scale_pct > 115 ? 1 : 2;
+    // 一行时状态可折成两行。/ With one row the status may fold to two lines.
+    const int text = TR_S(94) + (g.rows == 1 ? TR_S(28) : 0);
+    const int col = (TR_W - 2 * TR_MARGIN) / 3;
+    g.text_w = col - TR_S(16);
+    g.h = (PAGER_Y - TR_S(16) - GRID_TOP + TR_S(26)) / g.rows - text;
+    g.w = g.h * 3 / 4;
+    if (g.w > g.text_w) { g.w = g.text_w; g.h = g.w * 4 / 3; }
+    g.pitch = g.h + text;
+    for (int k = 0; k < 3; k++) g.x[k] = TR_MARGIN + k * col + (col - g.text_w) / 2;
+    return g;
 }
 
-static int cell_y(int k) { return GRID_TOP + (k / 3) * GRID_PITCH; }
+static int cell_y(const shelf_geo_t* g, int k) { return GRID_TOP + (k / 3) * g->pitch; }
 
 // 画一行字；放不下且带“ · ”时从那里折成两行（不截短固定文字）。strong 为加粗黑字，否则深灰。返回行数。
 // Draw one line; when it does not fit and has " · ", fold it there into two lines (fixed text is never cut). strong
@@ -271,6 +289,9 @@ typedef struct {
 } cover_t;
 
 EXT_RAM_BSS_ATTR static cover_t s_covers[COVER_SLOTS];
+// 放大档书架封面的缩放暂存，最大一格。/ Scratch for scaled shelf covers at larger sizes, one cell at most.
+#define SCALED_MAX (TR_W / 3 * TR_W / 3 * 4 / 3)
+static uint8_t* s_cover_scaled;
 static uint32_t s_cover_clock;
 static bool s_cover_built;
 
@@ -282,6 +303,8 @@ static void cover_free(cover_t* c) {
 
 static void covers_release(void) {
     for (int i = 0; i < COVER_SLOTS; i++) cover_free(&s_covers[i]);
+    heap_caps_free(s_cover_scaled);
+    s_cover_scaled = NULL;
 }
 
 static cover_t* cover_find(const char* key) {
@@ -440,6 +463,17 @@ static void cover_build(const comic_entry_t* e) {
 static void draw_cover(uint8_t* fb, EpdRect r, const char* key, const char* title, bool mini) {
     const cover_t* c = cover_find(key);
     const uint8_t* px = c ? (mini ? c->mini : c->px) : NULL;
+    // 放大档书架格子和缓存大小不同，缩到暂存区再画。/ Larger-size shelf cells differ from the cached size; scale into
+    // the scratch buffer first.
+    if (px && !mini && (r.width != CELL_W || r.height != COVER_H)) {
+        if (!s_cover_scaled) s_cover_scaled = heap_caps_malloc(SCALED_MAX, PSRAM_CAPS);
+        if (s_cover_scaled && r.width * r.height <= SCALED_MAX) {
+            book_image_fill(px, CELL_W, COVER_H, s_cover_scaled, r.width, r.height);
+            px = s_cover_scaled;
+        } else {
+            px = NULL;
+        }
+    }
     if (px) hupu_img_draw(fb, r.x, r.y, r.width, r.height, px, true);
     else tr_cover(fb, r, title, "", "CBZ", false);
 }
@@ -499,10 +533,10 @@ static void scan(void) {
     load_last();
 }
 
-static void draw_series_stack(uint8_t* fb, int x, int y) {
+static void draw_series_stack(uint8_t* fb, int x, int y, int w, int h) {
     // 系列封面后面垫两张浅灰卡片，表示一叠。/ Two light gray cards behind a series cover show a stack.
     for (int k = 2; k >= 1; k--) {
-        EpdRect r = {x + 5 * k, y - 5 * k, CELL_W, COVER_H};
+        EpdRect r = {x + 5 * k, y - 5 * k, w, h};
         epd_fill_rect(r, k == 2 ? TR_GRAY_SELECTED : TR_GRAY_SURFACE, fb);
         epd_draw_rect(r, TR_GRAY_OUTLINE, fb);
     }
@@ -626,13 +660,14 @@ static void draw_shelf(uint8_t* fb) {
         tr_text_on(fb, TR_W - 60, card.y + TR_S(94), TR_S(26), line, EPD_DRAW_ALIGN_RIGHT, true, UI_GRAY_BLACK,
                    TR_GRAY_SURFACE);
     }
-    for (int k = 0; k < PER_PAGE; k++) {
-        const int i = s_page * PER_PAGE + k;
+    const shelf_geo_t g = shelf_geo();
+    for (int k = 0; k < 3 * g.rows; k++) {
+        const int i = s_page * 3 * g.rows + k;
         if (i >= s_count) break;
         const comic_entry_t* e = &s_shelf[i];
-        const int x = CELL_X[k % 3], y = cell_y(k);
-        if (e->series) draw_series_stack(fb, x, y);
-        draw_cover(fb, (EpdRect){x, y, CELL_W, COVER_H}, e->path, e->name, false);
+        const int x = g.x[k % 3], y = cell_y(&g, k);
+        if (e->series) draw_series_stack(fb, x, y, g.w, g.h);
+        draw_cover(fb, (EpdRect){x, y, g.w, g.h}, e->path, e->name, false);
         if (e->webtoon) {
             // 左上角黑底白字“WT”。/ A white-on-black "WT" in the top left corner.
             const int bw = ttf_text_width_px(TR_S(20), "WT") + TR_S(14);
@@ -641,8 +676,8 @@ static void draw_shelf(uint8_t* fb) {
         }
         char name[COMIC_NAME_MAX];
         snprintf(name, sizeof(name), "%s", e->name);
-        tr_fit(name, TR_S(24), CELL_W);
-        tr_text(fb, x, y + COVER_H + TR_S(8), TR_S(24), name, EPD_DRAW_ALIGN_LEFT, true);
+        tr_fit(name, TR_S(24), g.text_w);
+        tr_text(fb, x, y + g.h + TR_S(8), TR_S(24), name, EPD_DRAW_ALIGN_LEFT, true);
         bool done = e->series ? e->done == e->volumes : e->done;
         if (e->series && e->webtoon && e->fresh) {
             snprintf(line, sizeof(line), "%u 话 · %u 话新", (unsigned)e->volumes, (unsigned)e->fresh);
@@ -658,10 +693,16 @@ static void draw_shelf(uint8_t* fb) {
             else if (e->stamp) snprintf(line, sizeof(line), "单本 · %u%%", (unsigned)e->pct);
             else snprintf(line, sizeof(line), "单本 · 未看");
         }
-        // 看完的加粗黑字，其余深灰；放大后放不下就在“ · ”处折行。/ Finished ones are bold black, the rest dark
-        // gray; scaled up, a line that does not fit folds at " · ".
+        // 看完的加粗黑字，其余深灰；一页一行时放不下就在“ · ”处折行，两行时截短。/ Finished ones are bold black,
+        // the rest dark gray; with one row a line that does not fit folds at " · ", with two rows it is shortened.
+        if (BIG && g.rows == 1) {
+            draw_split(fb, x, y + g.h + TR_S(46), TR_S(22), TR_S(28), g.text_w, line, done);
+            continue;
+        }
         if (BIG) {
-            draw_split(fb, x, y + COVER_H + TR_S(46), TR_S(22), TR_S(28), CELL_W, line, done);
+            tr_fit(line, TR_S(22), g.text_w);
+            if (done) tr_text(fb, x, y + g.h + TR_S(46), TR_S(22), line, EPD_DRAW_ALIGN_LEFT, true);
+            else tr_text_dim(fb, x, y + g.h + TR_S(46), TR_S(22), line, EPD_DRAW_ALIGN_LEFT);
             continue;
         }
         tr_fit(line, 22, CELL_W);
@@ -1341,11 +1382,12 @@ static app_redraw_t touch_detail(uint16_t x, uint16_t y) {
 /* ---- 触摸 / Touch ---- */
 
 static int shelf_hit(uint16_t x, uint16_t y) {
-    for (int k = 0; k < PER_PAGE; k++) {
-        const int i = s_page * PER_PAGE + k;
+    const shelf_geo_t g = shelf_geo();
+    for (int k = 0; k < 3 * g.rows; k++) {
+        const int i = s_page * 3 * g.rows + k;
         if (i >= s_count) break;
-        const int cx = CELL_X[k % 3], cy = cell_y(k);
-        if (x >= cx && x < cx + CELL_W && y + 12 >= cy && y < cy + COVER_H + CELL_TEXT_H) return i;
+        const int cx = g.x[k % 3], cy = cell_y(&g, k);
+        if (x >= cx && x < cx + g.text_w && y + 12 >= cy && y < cy + g.h + CELL_TEXT_H) return i;
     }
     return -1;
 }

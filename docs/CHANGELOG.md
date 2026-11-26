@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-27 · Treader 1.2.15
+
+- 显示大小放大后，漫画书架和书库网格一页能放更多：100% 和 115% 都是每页 6 本（115% 封面缩小，“继续看 / 继续阅读”卡片保留），130% 每页 3 本、封面放大填满屏幕，不再下面空一大块。100% 的样子不变。
+  At larger display sizes the comics shelf and the library grid fit more per page: six at 100% and 115% (smaller covers at 115%, with the continue card kept), and three at 130% with larger covers filling the screen instead of leaving a big gap below. 100% looks the same.
+
 ## 2026-11-27 · webtoon 服务器 0.3.5
 
 - 面板新增“上传”页：上传自己的 CBZ（ZIP）或 PDF，服务器和下载的话一样转灰度、按页面大小分页（竖长条在空白处切，普通漫画一张一页），打包成 CBZ 放进缓存，在“缓存”页下载；可以一次选几个文件，源文件转完就删。

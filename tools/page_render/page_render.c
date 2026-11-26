@@ -20,6 +20,13 @@
 #include <zlib.h>
 
 #include "page_render.h"
+
+// 页面里缩放封面用；链接了真实 book_cover.c 的页面用真的。/ Cover scaling for pages; pages linking the real
+// book_cover.c use that one.
+__attribute__((weak)) void book_image_fill(const uint8_t* src, int sw, int sh, uint8_t* dst, int dw, int dh) {
+    for (int y = 0; y < dh; y++)
+        for (int x = 0; x < dw; x++) dst[y * dw + x] = src[(y * sh / dh) * sw + x * sw / dw];
+}
 #include "read_pico_pmu.h"
 #include "tr_ui.h"
 #include "ttf_font.h"
