@@ -143,6 +143,7 @@
   .tip p { margin: 0 0 10px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
   .tip p:last-child { margin-bottom: 0; }
   .tip .url { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .tip p code { overflow-wrap: anywhere; }
   .tip .url code { font-size: 14px; background: var(--chip); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; color: var(--ink); }
   .dl-note { border-left: 3px solid var(--ink); padding-left: 16px; }
   .dl-note b { display: block; margin-bottom: 4px; }
@@ -401,9 +402,9 @@
 
     <div class="tip" id="store-tip">
       <h3>Store rankings won't load?</h3>
-      <p>By default the Store fetches rankings from GitHub Pages (<code>bidabrain.github.io</code>), which is often unreachable from mainland China. On the device, under "Settings › Content sources › Tomato › Store rankings" (in the Tomato Android app, "Settings › Store rankings"), change the address to this jsDelivr mirror:</p>
-      <div class="url"><code id="storeMirror">https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code><button class="btn small" type="button" id="copyMirror">Copy</button></div>
-      <p>The mirror can lag by up to half a day. You can also fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> to host your own rankings (turn on GitHub Pages, then enter your own site address); see <a href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md#store-rankings">Store rankings</a>.</p>
+      <p>By default the Store fetches rankings from GitHub Pages (<code>bidabrain.github.io</code>), which is often unreachable from mainland China. On the device, under "Settings › Content sources › Tomato › Store rankings" (in the Tomato Android app, "Settings › Store rankings"), change the address to this gh-proxy address:</p>
+      <div class="url"><code id="storeMirror">https://gh-proxy.com/https://raw.githubusercontent.com/bidabrain/FanqieRankTracker/main</code><button class="btn small" type="button" id="copyMirror">Copy</button></div>
+      <p>gh-proxy is a free third-party proxy that relays the ranking files from the GitHub repository, only a few minutes behind. If it stops working too, switch back to the jsDelivr mirror <code>https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code> (up to half a day behind). You can also fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> to host your own rankings (turn on GitHub Pages, then enter your own site address); see <a href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md#store-rankings">Store rankings</a>.</p>
     </div>
 
     <div class="card unsupported" id="unsupported">

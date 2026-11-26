@@ -141,6 +141,7 @@
   .tip p { margin: 0 0 10px; color: var(--mid); font-size: 14.5px; line-height: 1.65; }
   .tip p:last-child { margin-bottom: 0; }
   .tip .url { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .tip p code { overflow-wrap: anywhere; }
   .tip .url code { font-size: 14px; background: var(--chip); border-radius: 8px; padding: 6px 10px; overflow-wrap: anywhere; color: var(--ink); }
   .dl-note { border-left: 3px solid var(--ink); padding-left: 16px; }
   .dl-note b { display: block; margin-bottom: 4px; }
@@ -398,9 +399,9 @@
 
     <div class="tip" id="store-tip">
       <h3>书城榜单总是连不上？</h3>
-      <p>书城默认从 GitHub Pages（<code>bidabrain.github.io</code>）取榜单，国内很多时候连不上。可以在设备“设置 › 内容来源 › 番茄小说 › 书城榜单”（番茄安卓 App 在“设置 › 书城榜单”）把地址改成下面这个 jsDelivr 镜像：</p>
-      <div class="url"><code id="storeMirror">https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code><button class="btn small" type="button" id="copyMirror">复制</button></div>
-      <p>镜像最多晚半天更新。也可以 fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> 自建榜单（打开 GitHub Pages 后填你自己的网站地址），说明见 <a href="https://github.com/bidabrain/treader-eink#书城榜单">书城榜单</a>。</p>
+      <p>书城默认从 GitHub Pages（<code>bidabrain.github.io</code>）取榜单，国内很多时候连不上。可以在设备“设置 › 内容来源 › 番茄小说 › 书城榜单”（番茄安卓 App 在“设置 › 书城榜单”）把地址改成下面这个 gh-proxy 加速地址：</p>
+      <div class="url"><code id="storeMirror">https://gh-proxy.com/https://raw.githubusercontent.com/bidabrain/FanqieRankTracker/main</code><button class="btn small" type="button" id="copyMirror">复制</button></div>
+      <p>gh-proxy 是第三方公益加速，转发 GitHub 仓库里的榜单文件，更新只晚几分钟；哪天它也连不上，可以换回 jsDelivr 镜像 <code>https://cdn.jsdelivr.net/gh/bidabrain/FanqieRankTracker@main</code>（最多晚半天）。也可以 fork <a href="https://github.com/bidabrain/FanqieRankTracker">FanqieRankTracker</a> 自建榜单（打开 GitHub Pages 后填你自己的网站地址），说明见 <a href="https://github.com/bidabrain/treader-eink#书城榜单">书城榜单</a>。</p>
     </div>
 
     <div class="card unsupported" id="unsupported">
