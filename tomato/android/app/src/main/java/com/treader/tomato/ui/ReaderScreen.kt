@@ -309,6 +309,7 @@ private fun LayoutPanel(vm: AppVm, onDone: () -> Unit) {
                 Triple("页边距", listOf("窄", "中", "宽"), s.margin),
                 Triple("首行缩进", listOf("按原文", "缩进两字"), if (s.indent) 1 else 0),
                 Triple("下划线", listOf("无", "有"), if (s.underline) 1 else 0),
+                Triple("空行", listOf("忽略", "保留"), if (s.keepBlank) 1 else 0),
             )
             rows.forEachIndexed { row, (name, choices, value) ->
                 Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -318,7 +319,8 @@ private fun LayoutPanel(vm: AppVm, onDone: () -> Unit) {
                     Segment(choices, value, { opt ->
                         vm.changeStyle(when (row) {
                             0 -> s.copy(line = opt); 1 -> s.copy(para = opt); 2 -> s.copy(margin = opt)
-                            3 -> s.copy(indent = opt == 1); else -> s.copy(underline = opt == 1)
+                            3 -> s.copy(indent = opt == 1); 4 -> s.copy(underline = opt == 1)
+                            else -> s.copy(keepBlank = opt == 1)
                         })
                     }, Modifier.weight(1f))
                 }

@@ -3,6 +3,17 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · Treader 1.2.13
+
+- 文字深浅整体加深一档：去掉原来最浅的“标准”，原来的“深”现在叫“标准”，原来的“更深”现在叫“深”，新加的“更深”正文再加粗一级、灰字变纯黑。升级后看起来和原来一样：原来选“深”的落到新“标准”，选“更深”的落到新“深”，原来选“标准”的落到新“标准”。
+  Text darkness moves one step darker: the old lightest "Standard" is gone, the old "Dark" is now "Standard", the old "Darker" is now "Dark", and the new "Darker" makes body text one weight bolder and gray text pure black. After the update the text looks as before: old "Dark" lands on the new "Standard", old "Darker" on the new "Dark", and old "Standard" on the new "Standard".
+- 阅读排版新增“空行：忽略 / 保留”，默认忽略：TXT 里只有空白的行不再占一整行高度，段与段之间只按“段距”隔开，原文每段之间空一行的书不会再显得稀稀拉拉；一段折行后剩下的行尾空格不算空行。选“保留”就照原文显示。番茄安卓 App 的排版面板也加了这一项。
+  Reading layout gains "Blank lines: Skip / Keep", skipping by default: lines of only blanks in a TXT no longer take a full line, so paragraphs are separated by the paragraph spacing alone and books with an empty line between every paragraph no longer look sparse; trailing blanks left by a wrapped line are not a blank line. "Keep" shows the text as written. The Tomato Android app's layout panel gains the same option.
+- 书库的“检查更新 / 下载 N 本更新”从状态行右边的字换成筛选条最右边的按钮，和漫画的“检查更新”一样；正在检查或更新时点一下先变“再点取消”，再点才取消，点别处复原，不会再一碰就取消。
+  The library's "Check updates / Download N updates" moves from text at the right of the status line to a button at the right end of the chip row, like the comics' "Check updates"; while checking or updating, one tap shows "Tap again to cancel" and only a second tap cancels, while tapping elsewhere resets it, so a stray touch no longer cancels.
+- 没选过睡眠方式的设备，锁屏默认改为深睡（短按电源键开机），不再是关机；在设置里选过的照旧。
+  Devices that never chose a sleep mode now default to deep sleep on lock (a short press of the power key boots) instead of power off; a choice made in Settings stays.
+
 ## 2026-11-26 · Treader 1.2.12
 
 - 修正用一阵子以后小红书、微博、X、虎扑的大图卡在“正在处理图片…”、漫画报“这一页设备解不了”，重启才好：原因是字形缓存的几千个小块和图片要的大块混在同一片 PSRAM 里，把内存切碎了，总空闲还有两三 MB 却凑不出一块全屏图。现在字形缓存开机时就放进一块专用区（上限从 1.5 MB 改成 1 MB），离开漫画会还回进度表、书架和话名表（约 800 KB）；万一还是解不开，先放掉内存里缓存的图再试一次，真不行就显示“这张图打不开”，不会一直停在“正在处理”。

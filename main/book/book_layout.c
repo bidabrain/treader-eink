@@ -9,9 +9,9 @@
  * 为尽早进入阅读，支持分批分页；未加载图片绘制可点击占位及已读重复提示，不在绘图时读取资源或解码。
  * Frozen: Caller owns source text and serializes all font measurement and drawing.
  * Incremental pagination enables early reading; unloaded images show clickable placeholders and visited-chapter repeat hints; never read or decode resources while drawing.
- * Treader 修订：排版样式（行距、段距、首行缩进、行下虚线）由 book_layout_set_style 设定，分页、绘制和图片命中共用同一套行高与段距计算；
+ * Treader 修订：排版样式（行距、段距、首行缩进、行下虚线、忽略空行）由 book_layout_set_style 设定，分页、绘制和图片命中共用同一套行高与段距计算；
  * 改样式后调用方必须重新排版。/ Treader revision: the style (line and paragraph spacing, first-line indent, rules under
- * lines) comes from book_layout_set_style; pagination, drawing and image hits share one line-height and gap calculation;
+ * lines, skipped blank lines) comes from book_layout_set_style; pagination, drawing and image hits share one line-height and gap calculation;
  * callers must re-paginate after a style change.
  */
 #include "book_layout.h"
@@ -45,12 +45,14 @@ static int s_line_pct = 150;
 static int s_para = 1;          // 0 无 1 小 2 大 / none, small, large
 static bool s_indent;
 static bool s_underline;
+static bool s_skip_blank;
 
-void book_layout_set_style(int line_pct, int para, bool indent, bool underline) {
+void book_layout_set_style(int line_pct, int para, bool indent, bool underline, bool skip_blank) {
     s_line_pct = line_pct < 110 ? 110 : line_pct > 220 ? 220 : line_pct;
     s_para = para < 0 ? 0 : para > 2 ? 2 : para;
     s_indent = indent;
     s_underline = underline;
+    s_skip_blank = skip_blank;
 }
 
 static int text_line_height(int px) { return px * s_line_pct / 100; }
@@ -224,6 +226,19 @@ static bool take_line(size_t off, size_t* next, bool* paragraph_end, int* px, bo
     return *next > off;
 }
 
+// 忽略空行时，只有空白的整段不占高度、不加段距，也不会成为页首。图片块不算空行。
+// With blank lines skipped, a paragraph of only blanks takes no height or gap and never starts a page. Image blocks
+// are not blank.
+static bool skip_line(size_t off) {
+    if (!s_skip_blank) return false;
+    const blk_t* block = block_at(off);
+    if (block && (block->image || block->image_src)) return false;
+    if (!(off == 0 || s_text[off - 1] == '\n' || s_text[off - 1] == '\r' || (block && block->offset == off))) return false;
+    const size_t limit = block ? block->offset + block->len : s_len;
+    for (size_t n; off < limit && (n = blank_size(off));) off += n;
+    return off >= limit || s_text[off] == '\r' || s_text[off] == '\n';
+}
+
 bool book_layout_build(const char* utf8, size_t len, EpdRect rect, int px) {
     return book_layout_build_blocks(utf8, len, NULL, 0, rect, px);
 }
@@ -282,6 +297,7 @@ bool book_layout_extend(size_t pages) {
         bool paragraph_end, heading;
         int line_px, indent;
         if (!take_line(s_scan, &next, &paragraph_end, &line_px, &heading, &indent)) goto fail;
+        if (skip_line(s_scan)) { s_scan = next; continue; }
         const blk_t* block = block_at(s_scan);
         int line_height = row_height(block, line_px);
         if (line_height > s_rect.height) goto fail;
@@ -330,6 +346,7 @@ void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
         bool paragraph_end, heading;
         int line_px, indent;
         if (!take_line(off, &next, &paragraph_end, &line_px, &heading, &indent)) return;
+        if (skip_line(off)) { off = next; continue; }
         const blk_t* block = block_at(off);
         int line_height = row_height(block, line_px);
         int image_width = 0;
@@ -369,6 +386,7 @@ size_t book_layout_image_at(size_t page, EpdRect rect, int x, int y, EpdRect* hi
     while (off < end) {
         size_t next; bool paragraph_end, heading; int px, indent;
         if (!take_line(off, &next, &paragraph_end, &px, &heading, &indent)) return SIZE_MAX;
+        if (skip_line(off)) { off = next; continue; }
         const blk_t* block = block_at(off);
         int height = row_height(block, px);
         if (used + height > rect.height) return SIZE_MAX;

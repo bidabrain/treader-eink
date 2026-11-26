@@ -41,8 +41,8 @@ extern "C" {
 #define TR_GRAY_SURFACE 0xE0     ///< #EEE 卡片、标签栏、圆按钮底 / Cards, tab bar, round buttons
 #define TR_GRAY_SELECTED 0xC0    ///< #CCC 选中的标签底、分段选中 / Selected tab indicator and segment
 #define TR_GRAY_OUTLINE 0x50     ///< #555 描边（DU 下按黑处理）/ Outlines (black under DU)
-/// 次要文字的灰度，随“文字深浅”变（标准 #555、深 #333、更深 #111）。/ Secondary text gray, following Text
-/// darkness (#555 standard, #333 dark, #111 darker).
+/// 次要文字的灰度，随“文字深浅”变（标准 #333、深 #111、更深 #000）。/ Secondary text gray, following Text
+/// darkness (#333 standard, #111 dark, #000 darker).
 extern uint8_t tr_gray_secondary;
 #define TR_GRAY_SECONDARY tr_gray_secondary
 /// 文字深浅档数。/ Number of text-darkness levels.

@@ -200,6 +200,23 @@ int main(void) {
     drawn[0]=0;book_layout_draw_page(&fb,0,r,48);
     assert(strstr(drawn,"标题图") && !strstr(drawn,"重复") && !strstr(drawn,"第 8 节"));
     assert(book_layout_page_count()==before_pages && book_layout_page_start_offset(0)==before_offset);
+    // 忽略空行：只有空白的段不占高度、不当页首；折行剩下的行尾空格不算空行。
+    // Skipped blank lines: blank-only paragraphs take no height and never start a page; trailing blanks left by a wrap
+    // are not a blank line.
+    const char blanks[] = "a\n\n \xe3\x80\x80\nb\nc";
+    r = (EpdRect){0,0,20,40};
+    book_layout_set_style(200, 0, false, false, false);
+    assert(book_layout_build(blanks, strlen(blanks), r, 10));
+    assert(book_layout_page_count() == 3);
+    book_layout_set_style(200, 0, false, false, true);
+    assert(book_layout_build(blanks, strlen(blanks), r, 10));
+    assert(book_layout_page_count() == 2 && book_layout_page_start_offset(1) == 10);
+    drawn[0] = 0;
+    for (size_t i = 0; i < 2; ++i) book_layout_draw_page(&fb, i, r, 10);
+    assert(!strcmp(drawn, "abc"));
+    assert(book_layout_build("ab  \nc", 6, r, 10));
+    assert(book_layout_page_count() == 2 && book_layout_page_start_offset(1) == 5);
+    book_layout_set_style(150, 1, false, false, false);
     book_layout_free();
     puts("book_layout_host_test: PASS");
 }

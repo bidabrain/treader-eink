@@ -24,6 +24,7 @@
  * Treader 修订（1.2.0，用户要求番茄照漫画的样子并进书库）：番茄不再是单独的标签。设置了番茄服务器时，书库右上角多出“书城”，
  * 状态行右侧原来跳番茄页的更新提示改成就地的“检查更新 / 下载 N 本更新”，进度和“取消”也在这里；长按番茄书的详情里多出
  * “检查这本更新”。来源胶囊叫“全部 / 本地 / 番茄”。检查和下载仍只在点了以后运行。
+ * 用户修订（状态行的字容易按错）：番茄更新改成筛选条最右边的胶囊，和漫画的“检查更新”一样；在跑时点一下变“再点取消”，再点才取消。
  * Frozen: Phase4b uses the shared gesture entry and owns previous/tools/next keys; the toolbar keeps full refresh and the middle-key hold or handle opens the demo menu. Screen turns commit on release without pressed decoration.
  * Shake is experimental, off by default, forward only; exit disables AOI2 and sleeps it. Render only paints.
  * Join preparation before returning callbacks so menus/lock cannot race the page-local TTF lock.
@@ -42,6 +43,8 @@
  * to lead to the Tomato page becomes in-place "检查更新 / 下载 N 本更新" with progress and "取消" right there; a Tomato
  * book's long-press detail gains "检查这本更新". The source pill reads All / Local / Tomato. Checks and downloads still
  * run only on a tap.
+ * User revision (the status-line text was easy to mis-tap): the Tomato update became a pill at the right end of the chip
+ * row, like the comics' "检查更新"; while running one tap shows "再点取消" and a second cancels.
  * User revision: load images only after a tap and return without repagination; cache one viewed image in the current chapter and distinguish visited-chapter origins from the first occurrence in the whole book.
  * Treader 修订：书架和阅读工具条改成 RickyOS 风格（docs/design/ui.html），书架带底部标签栏；工具条的晃动开关换成“菜单”入口，
  * 去掉阅读页常驻菜单把手。番茄下载的书显示书名、作者和新章节数。功能和交互逻辑不变。
@@ -189,12 +192,12 @@ static app_book_style_t s_style = {.line = 1, .para = 1, .margin = 1};
 static bool s_typeset;
 static const int LINE_PCT[3] = {130, 150, 180};
 static const int MARGIN_PX[3] = {24, 40, 64};
-#define TYPESET_Y (UI_BAR_TOP - TR_S(476))
-#define TYPESET_ROWS 5
+#define TYPESET_Y (UI_BAR_TOP - TR_S(552))
+#define TYPESET_ROWS 6
 #define TYPESET_ROW0 (TYPESET_Y + TR_S(84))
 #define TYPESET_ROW_H TR_S(76)
 static void apply_style(void) {
-    book_layout_set_style(LINE_PCT[s_style.line], s_style.para, s_style.indent, s_style.underline);
+    book_layout_set_style(LINE_PCT[s_style.line], s_style.para, s_style.indent, s_style.underline, !s_style.keep_blank);
 }
 static int64_t s_save_retry_ms;
 static unsigned s_store_revision;
@@ -217,6 +220,9 @@ static tom_op_t s_tom_op;
 static uint32_t s_tom_seq, s_tom_rev;
 static bool s_tom_cfg;
 static char s_tom_note[96];
+// 更新中点了一下“更新中”胶囊，等第二下才取消；点别处复原。/ The running pill was tapped once; a second tap cancels and
+// any other tap resets it.
+static bool s_tom_confirm_cancel, s_tom_cancelling;
 static int64_t s_tom_poll_ms, s_tom_draw_ms;
 static uint32_t s_tom_bytes;
 #define TOM_BYTES_REDRAW_MS 2000   // 下载中按字节刷进度的间隔 / Interval for byte-driven progress redraws while downloading
@@ -311,7 +317,8 @@ static EpdRect body_rect(void) {
     const int bottom = footer_top() - 8 < reader_area().height ? footer_top() - 8 : reader_area().height;
     return (EpdRect){m, top, UI_LOCK_WIDTH - 2 * m, bottom - top};
 }
-// 排版面板：五行选项，前三行三选一，后两行二选一。/ Layout panel: five rows; three choices each for the first three.
+// 排版面板：六行选项，前三行三选一，后三行二选一。/ Layout panel: six rows; three choices each for the first three, two
+// for the rest.
 static int typeset_choices(int row) { return row < 3 ? 3 : 2; }
 static EpdRect typeset_rect(int row, int opt) {
     const int n = typeset_choices(row), gap = TR_S(12), x0 = 224;
@@ -322,12 +329,14 @@ static EpdRect typeset_done_rect(void) {
     return (EpdRect){UI_LOCK_WIDTH - UI_MARGIN - TR_S(140), TYPESET_Y + TR_S(14), TR_S(140), TR_S(56)};
 }
 static int typeset_value(int row) {
-    return row == 0 ? s_style.line : row == 1 ? s_style.para : row == 2 ? s_style.margin : row == 3 ? s_style.indent : s_style.underline;
+    return row == 0 ? s_style.line : row == 1 ? s_style.para : row == 2 ? s_style.margin : row == 3 ? s_style.indent :
+           row == 4 ? s_style.underline : s_style.keep_blank;
 }
 static void draw_typeset(uint8_t* fb) {
-    static const char* const NAMES[TYPESET_ROWS] = {"行距", "段距", "页边距", "首行缩进", "下划线"};
+    static const char* const NAMES[TYPESET_ROWS] = {"行距", "段距", "页边距", "首行缩进", "下划线", "空行"};
     static const char* const CHOICES[TYPESET_ROWS][3] = {
         {"紧凑", "标准", "宽松"}, {"无", "小", "大"}, {"窄", "中", "宽"}, {"按原文", "缩进两字", ""}, {"无", "有", ""},
+        {"忽略", "保留", ""},
     };
     epd_fill_rect((EpdRect){0, TYPESET_Y, UI_LOCK_WIDTH, UI_BAR_TOP - TYPESET_Y}, UI_GRAY_WHITE, fb);
     tr_hline(fb, TYPESET_Y, 0, UI_LOCK_WIDTH, false);
@@ -411,12 +420,15 @@ static int shelf_rows(void) {
     return n < 1 ? 1 : n > 4 ? 4 : n;
 }
 static EpdRect card_rect(void) { return (EpdRect){UI_MARGIN, CARD_TOP, ui_content_width(), CARD_H}; }
+// 筛选条最右边的番茄更新胶囊，和漫画的“检查更新”一样。/ The Tomato update pill at the right end of the chip row,
+// like the comics' "检查更新".
+#define TOMATO_PILL_X 426
 static EpdRect tomato_hint_rect(void) {
-    return (EpdRect){UI_LOCK_WIDTH / 2, TR_S(146), UI_LOCK_WIDTH / 2 - UI_MARGIN, TR_S(52)};
+    return (EpdRect){TOMATO_PILL_X, TR_S(212), UI_LOCK_WIDTH - UI_MARGIN - TOMATO_PILL_X, TR_S(54)};
 }
-// 番茄任务在跑时，状态行整行和下面的进度条一起局刷。/ While a Tomato job runs, the whole status line and the bar
-// under it refresh together.
-static EpdRect tomato_busy_rect(void) { return (EpdRect){0, TR_S(146), UI_LOCK_WIDTH, TR_S(62)}; }
+// 番茄任务在跑时，状态行、下面的进度条和更新胶囊一起局刷。/ While a Tomato job runs, the status line, the bar under it
+// and the update pill refresh together.
+static EpdRect tomato_busy_rect(void) { return (EpdRect){0, TR_S(146), UI_LOCK_WIDTH, TR_S(126)}; }
 static EpdRect view_icon_rect(void);
 // “书城”在列表 / 网格切换图标左边（设置了番茄服务器才有）。/ "书城" left of the list / grid switch (only with a
 // Tomato server set).
@@ -439,8 +451,10 @@ static bool tomato_any(void) {
 // 本页发起的番茄任务还在跑。/ The Tomato job this page started is still running.
 static bool tom_running(void) { return s_tom_op != TOM_NONE && tomato_sync_busy() && tomato_sync_seq() == s_tom_seq; }
 static app_redraw_t tomato_action(const char* book_id);
-// 状态行右侧的番茄更新提示只在没有别的提示时出现。/ The Tomato hint shows only when the status line has nothing else to say.
+// 番茄更新胶囊：设了服务器、书库里有番茄书（或本页任务在跑），不在管理和搜索时出现。/ The Tomato update pill: with a
+// server set and Tomato books in the library (or this page's job running), outside manage mode and search.
 static bool tomato_hint_shown(void);
+static bool tomato_pill_room(void);
 static EpdRect row_rect(int row, bool toc) {
     if (toc) return (EpdRect){UI_MARGIN, TR_S(210) + row * TR_S(88), ui_content_width(), TR_S(84)};
     const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
@@ -474,10 +488,19 @@ static EpdRect tool_rect(int i) {
                          AUTO_TURN_ROW_H + TR_S(16)};
     return (EpdRect){0, 0, 320, TR_S(110)};
 }
-// 书架筛选条：0 来源、1 排序、2 管理/完成、3 清除搜索。/ Shelf chips: 0 source, 1 sort, 2 manage/done, 3 clear search.
+// 书架筛选条：0 来源、1 排序、2 管理/完成、3 清除搜索。有番茄更新胶囊时前三个收窄给它腾地方。
+// Shelf chips: 0 source, 1 sort, 2 manage/done, 3 clear search. With the Tomato update pill the first three narrow to
+// make room for it.
 static EpdRect chip_rect(int i) {
     static const int xs[4] = {40, 202, 364, 496}, ws[4] = {150, 150, 120, 148};
+    static const int xs_tom[3] = {40, 172, 304}, ws_tom[3] = {120, 120, 110};
+    if (i < 3 && tomato_pill_room()) return (EpdRect){xs_tom[i], TR_S(212), ws_tom[i], TR_S(54)};
     return (EpdRect){xs[i], TR_S(212), ws[i], TR_S(54)};
+}
+// 胶囊里的字放不下就缩小。/ Shrink a pill's label until it fits.
+static int chip_px(EpdRect r, const char* label, int px) {
+    while (px > 20 && ttf_text_width_px(px, label) > r.width - TR_S(24)) px -= 2;
+    return px;
 }
 // 两个图标靠右排，格子随显示大小放大。/ The two icons sit at the right; their cells scale with the display size.
 static EpdRect import_icon_rect(void) {
@@ -1085,19 +1108,21 @@ static void shelf_display_title(const shelf_entry_t* e, char* out, size_t cap) {
 }
 // 状态行右边的番茄操作：设置了番茄服务器、书库里有番茄书（或本页的任务在跑）才有。/ The Tomato action on the right of
 // the status line: only with a Tomato server set and Tomato books in the library (or this page's job running).
-static bool tomato_hint_shown(void) {
-    const char* note = s_message[0] ? s_message : s_shelf_warning;
-    return s_view == SHELF && !s_save_failed && !note[0] && s_tom_cfg && (tomato_any() || tom_running());
-}
-// 在跑：进度加“取消”；有待下载的：下载；否则检查。/ Running: progress plus "取消"; updates pending: download them;
-// otherwise check.
+// 筛选条给更新胶囊留位置：管理时胶囊不画，但前三个胶囊不挪。/ The chip row keeps room for the update pill: manage mode
+// does not draw the pill, yet the first three chips stay put.
+static bool tomato_pill_room(void) { return !s_query[0] && s_tom_cfg && (tomato_any() || tom_running()); }
+static bool tomato_hint_shown(void) { return s_view == SHELF && tomato_pill_room(); }
+// 在跑：进度，点一下变“再点取消”；有待下载的：下载；否则检查。/ Running: progress, turning into "再点取消" after one
+// tap; updates pending: download them; otherwise check.
 static void tomato_hint_label(char* out, size_t cap) {
     if (tom_running()) {
         tomato_status_t st;
         tomato_sync_get_status(&st);
         const char* what = s_tom_op == TOM_UPDATE ? "更新中" : "检查中";
-        if (st.total > 0) snprintf(out, cap, "%s %d/%d · 取消", what, st.current, st.total);
-        else snprintf(out, cap, "%s… · 取消", what);
+        if (s_tom_cancelling) copy_text(out, cap, "正在取消…");
+        else if (s_tom_confirm_cancel) copy_text(out, cap, "再点取消");
+        else if (st.total > 0) snprintf(out, cap, "%s %d/%d", what, st.current, st.total);
+        else snprintf(out, cap, "%s…", what);
     } else if (tomato_pending() > 0) {
         snprintf(out, cap, "下载 %d 本更新", tomato_pending());
     } else {
@@ -1183,11 +1208,11 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     if (tomato_hint_shown()) {
         char hint[48];
         tomato_hint_label(hint, sizeof(hint));
-        tr_text(fb, UI_LOCK_WIDTH - UI_MARGIN, TR_S(156), TR_S(28), hint, EPD_DRAW_ALIGN_RIGHT, true);
-        line_w -= ttf_text_width_px(TR_S(28), hint) + TR_S(24);
-        // 在跑：左边换成进行到哪一步，状态行下面加一条进度条。/ Running: the left says where it is and a progress bar
-        // goes under the status line.
-        if (tom_running() && s_view == SHELF) {
+        const EpdRect pill = tomato_hint_rect();
+        tr_pill(fb, pill, hint, !tom_running() || s_tom_confirm_cancel, chip_px(pill, hint, TR_S(28)));
+        // 在跑且状态行没有别的提示：左边换成进行到哪一步，状态行下面加一条进度条。/ Running with nothing else on the
+        // status line: the left says where it is and a progress bar goes under the status line.
+        if (tom_running() && !s_save_failed && !note[0]) {
             tomato_status_t st;
             tomato_sync_get_status(&st);
             if (!s_tom_note[0]) tomato_busy_line(&st, line, sizeof(line));
@@ -1200,9 +1225,11 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     else tr_text_dim(fb, UI_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
 
     // 书都在 TF 卡上，筛选改成按来源。/ All books are on the card, so filter by source instead.
-    tr_pill(fb, chip_rect(0), s_filter == 0 ? "全部" : s_filter == 1 ? "本地" : "番茄", s_filter != 0, TR_S(28));
-    tr_pill(fb, chip_rect(1), s_recent_sort ? "按最近" : "按书名", false, TR_S(28));
-    tr_pill(fb, chip_rect(2), s_view == BULK ? "完成" : "管理", s_view == BULK, TR_S(28));
+    const char* const chips[3] = {s_filter == 0 ? "全部" : s_filter == 1 ? "本地" : "番茄",
+                                  s_recent_sort ? "按最近" : "按书名", s_view == BULK ? "完成" : "管理"};
+    tr_pill(fb, chip_rect(0), chips[0], s_filter != 0, chip_px(chip_rect(0), chips[0], TR_S(28)));
+    tr_pill(fb, chip_rect(1), chips[1], false, chip_px(chip_rect(1), chips[1], TR_S(28)));
+    tr_pill(fb, chip_rect(2), chips[2], s_view == BULK, chip_px(chip_rect(2), chips[2], TR_S(28)));
     if (s_query[0]) {
         char chip[96];
         snprintf(chip, sizeof(chip), "%s ×", s_query);
@@ -1966,7 +1993,8 @@ static app_redraw_t restyle(app_ctx_t* ctx, int row, int opt) {
     else if (row == 1) next.para = (uint8_t)opt;
     else if (row == 2) next.margin = (uint8_t)opt;
     else if (row == 3) next.indent = opt != 0;
-    else next.underline = opt != 0;
+    else if (row == 4) next.underline = opt != 0;
+    else next.keep_blank = opt != 0;
     if (!memcmp(&next, &s_style, sizeof(next))) return APP_REDRAW_NONE;
     size_t off = book_layout_page_start_offset(s_page);
     save_progress();
@@ -2080,9 +2108,11 @@ static app_redraw_t batch_action(app_ctx_t* ctx, uint16_t x, uint16_t y) {
 static app_redraw_t tomato_action(const char* book_id) {
     if (tom_running()) {
         tomato_sync_cancel();
+        s_tom_cancelling = true;
         copy_text(s_tom_note, sizeof(s_tom_note), "正在取消…");
         return APP_REDRAW_PAGE;
     }
+    s_tom_confirm_cancel = s_tom_cancelling = false;
     const tomato_preempt_t room = tomato_sync_busy() ? tomato_sync_preempt() : TOMATO_PREEMPT_FREE;
     if (room != TOMATO_PREEMPT_FREE) {
         copy_text(s_tom_note, sizeof(s_tom_note), room == TOMATO_PREEMPT_STOPPING ? "正在停下后台加载，请再点一次"
@@ -2199,6 +2229,17 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         return APP_REDRAW_PAGE;
     }
     if (s_view == SHELF || s_view == BULK) {
+        // 更新中：点一下胶囊变“再点取消”，再点才取消；点别处复原。/ While running: one tap on the pill asks for
+        // confirmation and a second cancels; tapping elsewhere resets it.
+        const bool confirm = s_tom_confirm_cancel;
+        s_tom_confirm_cancel = false;
+        if (tomato_hint_shown() && ui_rect_hit(tomato_hint_rect(), x, y)) {
+            if (!tom_running()) return tomato_action(NULL);
+            if (s_tom_cancelling) return APP_REDRAW_NONE;
+            if (!confirm) { s_tom_confirm_cancel = true; return APP_REDRAW_PAGE; }
+            return tomato_action(NULL);
+        }
+        if (confirm) return APP_REDRAW_PAGE;
         if (ui_rect_hit(chip_rect(0), x, y)) {
             s_filter = (s_filter + 1) % 3; clear_selection(); s_batch_message[0] = 0;
             sort_shelf(ctx);
@@ -2245,7 +2286,6 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             ctx->request_app = &app_tr_store;
             return APP_REDRAW_NONE;
         }
-        if (tomato_hint_shown() && ui_rect_hit(tomato_hint_rect(), x, y)) return tomato_action(NULL);
         if (card_shown() && ui_rect_hit(card_rect(), x, y)) {
             open_book(ctx, s_shelf[continue_index()].path);
             return APP_REDRAW_PAGE;
@@ -2433,7 +2473,7 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
     if (s_view == READING) {
         if (s_toolbar && s_typeset && y >= TYPESET_Y) {
             *rect = typeset_done_rect();
-            if (ui_rect_hit(*rect, x, y)) return 820;
+            if (ui_rect_hit(*rect, x, y)) return 840;
             for (int row = 0; row < TYPESET_ROWS; ++row)
                 for (int opt = 0; opt < typeset_choices(row); ++opt) {
                     *rect = typeset_rect(row, opt);
@@ -2675,6 +2715,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
                 copy_text(s_tom_note, sizeof(s_tom_note), st.message);
             else s_tom_note[0] = 0;
             s_tom_op = TOM_NONE;
+            s_tom_confirm_cancel = s_tom_cancelling = false;
             const int leaf = ctx->leaf;
             scan_shelf(ctx);
             ctx->leaf = leaf < leaves() ? leaf : leaves() - 1;

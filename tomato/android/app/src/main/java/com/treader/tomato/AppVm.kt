@@ -267,12 +267,12 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun setDefaultPx(px: Int) = ui.edit().putInt("px", px).apply()
 
     private fun loadStyle() = Style(ui.getInt("line", 1), ui.getInt("para", 1), ui.getInt("margin", 1),
-        ui.getBoolean("indent", false), ui.getBoolean("underline", false))
+        ui.getBoolean("indent", false), ui.getBoolean("underline", false), ui.getBoolean("keep_blank", false))
 
     fun changeStyle(s: Style) {
         style = s
         ui.edit().putInt("line", s.line).putInt("para", s.para).putInt("margin", s.margin)
-            .putBoolean("indent", s.indent).putBoolean("underline", s.underline).apply()
+            .putBoolean("indent", s.indent).putBoolean("underline", s.underline).putBoolean("keep_blank", s.keepBlank).apply()
     }
 
     fun changeSerif(on: Boolean) { serif = on; ui.edit().putBoolean("serif", on).apply() }

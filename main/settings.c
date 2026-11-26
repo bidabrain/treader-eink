@@ -2,10 +2,10 @@
  * SPDX-FileCopyrightText: 2026 mindreset
  * SPDX-License-Identifier: Apache-2.0
  *
- * NVS 读写。打开失败就用关机默认值，不擦除整个分区。
+ * NVS 读写。打开失败就用默认值（睡眠默认深睡），不擦除整个分区。
  *
- * NVS load/store. A failed open keeps the power-off default; the
- * partition is not erased.
+ * NVS load/store. A failed open keeps the defaults (deep sleep for
+ * sleep); the partition is not erased.
  */
 
 #include "settings.h"
@@ -28,10 +28,14 @@
 #define NVS_KEY_PICKUP "pickup"
 #define NVS_KEY_SHELF_GRID "shelfgrid"
 #define NVS_KEY_FAST_TURN "fastturn"
-#define NVS_KEY_TEXT_DEPTH "txtdepth"
+#define NVS_KEY_TEXT_DEPTH "txtdepth2"
+// 旧的三档（标准 / 深 / 更深）去掉了最浅的一档，旧值读进来往下挪一档。/ The old three levels lost the lightest, so an
+// old value is read one level down.
+#define NVS_KEY_TEXT_DEPTH_OLD "txtdepth"
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_BOOK_STYLE "bk_style"
+#define NVS_KEY_BOOK_BLANK "bk_blank" // 1 = 保留空行 / Keep blank lines
 #define NVS_KEY_HIDE_HUPU "hide_hupu"   // 旧版，只读来迁移 / Old key, read only to migrate
 #define NVS_KEY_TABS_OFF "tabs_off"   // 旧版 8 位掩码，降级回旧固件时用 / Old 8-bit mask, kept for downgrades
 #define NVS_KEY_TABS_OFF16 "tabs_off16" // 16 位掩码（功能超过 8 个）/ 16-bit mask (more than 8 features)
@@ -52,7 +56,7 @@
 #define PIN_HASH_LEN 32
 #define FONT_PATH_MAX 160
 
-static app_sleep_mode_t s_sleep = APP_SLEEP_OFF;
+static app_sleep_mode_t s_sleep = APP_SLEEP_DEEP;
 static char s_font[FONT_PATH_MAX];
 static uint8_t s_last_wake;
 static uint8_t s_last_boot;
@@ -65,6 +69,7 @@ static bool s_book_shake;
 // 默认：标准行距、小段距、中页边距、按原文缩进、无下划线（和以前的排版一样）。
 // Defaults: standard line spacing, small paragraph gap, medium margins, indent as written, no rules (the old layout).
 static uint8_t s_book_style = 0x15;
+static bool s_book_keep_blank;
 // X 标签默认关闭。/ The X tab starts hidden.
 static uint16_t s_tabs_off = 1u << TR_TAB_X;
 // 底部常用功能（书库之后），-1 表示还没读过或要迁移。/ Pinned features after the library; -1 means not loaded.
@@ -154,12 +159,18 @@ void app_settings_init(void) {
     uint8_t fast = 0;
     if (nvs_get_u8(h, NVS_KEY_FAST_TURN, &fast) == ESP_OK) s_fast_turn = fast != 0;
     uint8_t depth = 0;
-    if (nvs_get_u8(h, NVS_KEY_TEXT_DEPTH, &depth) == ESP_OK && depth < 3) s_text_depth = depth;
+    if (nvs_get_u8(h, NVS_KEY_TEXT_DEPTH, &depth) == ESP_OK) {
+        if (depth < 3) s_text_depth = depth;
+    } else if (nvs_get_u8(h, NVS_KEY_TEXT_DEPTH_OLD, &depth) == ESP_OK && depth < 3) {
+        s_text_depth = depth ? depth - 1 : 0;
+    }
     uint8_t book_px = 48, book_shake = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_PX, &book_px) == ESP_OK) s_book_px = valid_book_px(book_px);
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
     uint8_t book_style = 0;
     if (nvs_get_u8(h, NVS_KEY_BOOK_STYLE, &book_style) == ESP_OK) s_book_style = book_style;
+    uint8_t keep_blank = 0;
+    if (nvs_get_u8(h, NVS_KEY_BOOK_BLANK, &keep_blank) == ESP_OK) s_book_keep_blank = keep_blank != 0;
     uint8_t tabs_off = 0, hide_hupu = 0;
     uint16_t tabs_off16 = 0;
     // 先读 16 位掩码；没有就从旧的 8 位换算，新加的功能（验证器）默认不隐藏。/ Prefer the 16-bit mask; otherwise
@@ -337,10 +348,16 @@ bool app_settings_book_shake(void) {
 }
 
 app_book_style_t app_settings_book_style(void) {
-    return unpack_style(s_book_style);
+    app_book_style_t s = unpack_style(s_book_style);
+    s.keep_blank = s_book_keep_blank;
+    return s;
 }
 
 void app_settings_set_book_style(const app_book_style_t* style) {
+    if (style->keep_blank != s_book_keep_blank) {
+        s_book_keep_blank = style->keep_blank;
+        nvs_put_u8(NVS_KEY_BOOK_BLANK, s_book_keep_blank ? 1 : 0);
+    }
     const app_book_style_t clean = unpack_style(pack_style(style));
     const uint8_t v = pack_style(&clean);
     if (v == s_book_style) return;

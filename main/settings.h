@@ -15,8 +15,8 @@
 
 #include "esp_err.h"
 
-/// 默认关机。浅睡：按键回原页；拿起唤醒默认关。软睡：SOFT_SLEEP 拉低 EN，再短按开机。关机：EN=0，长按开机。
-/// Default is off. Light: key returns to the page; pickup-wake defaults off. Soft sleep: SOFT_SLEEP drops EN, then a short press boots. Off: EN=0, long-press to boot.
+/// 默认深睡（没选过的设备；选过的照旧）。浅睡：按键回原页；拿起唤醒默认关。软睡：SOFT_SLEEP 拉低 EN，再短按开机。关机：EN=0，长按开机。
+/// Default is deep sleep (for devices that never chose; a saved choice stays). Light: key returns to the page; pickup-wake defaults off. Soft sleep: SOFT_SLEEP drops EN, then a short press boots. Off: EN=0, long-press to boot.
 typedef enum {
     APP_SLEEP_LIGHT = 0,
     APP_SLEEP_DEEP = 1,
@@ -46,8 +46,8 @@ void app_settings_set_shelf_grid(bool on);
 /// / Fast page-turn refresh: body and footer in one pass with the 8-gray table; off by default (normal).
 bool app_settings_fast_turn(void);
 void app_settings_set_fast_turn(bool on);
-/// 文字深浅：0 标准、1 深、2 更深，界面和阅读正文一起变。/ Text darkness: 0 standard, 1 dark, 2 darker, for the UI
-/// and reading text alike.
+/// 文字深浅：0 标准、1 深、2 更深（标准是原来的“深”），界面和阅读正文一起变。
+/// Text darkness: 0 standard, 1 dark, 2 darker (standard is the old dark), for the UI and reading text alike.
 uint8_t app_settings_text_depth(void);
 void app_settings_set_text_depth(uint8_t level);
 /// 阅读默认字号，36..72、步长 4，默认 48。/ Default reading size, 36..72 in steps of 4, initially 48.
@@ -64,9 +64,11 @@ typedef struct {
     uint8_t margin;    ///< 页边距：0 窄 1 中 2 宽 / Page margins: narrow, medium, wide
     bool indent;       ///< 首行自动缩进两字（否则按原文）/ Indent first lines by two characters (else as written)
     bool underline;    ///< 每行下面画虚线 / Draw a dashed rule under each line
+    bool keep_blank;   ///< 保留原文空行（默认忽略，空行不占高度）/ Keep blank lines (skipped by default, taking no height)
 } app_book_style_t;
 
-/// 读写阅读排版，存 NVS（一个字节）。/ Get or set the reading layout, stored in NVS as one byte.
+/// 读写阅读排版，存 NVS（样式一个字节，空行另一个字节）。/ Get or set the reading layout, stored in NVS (one byte for
+/// the style, another for blank lines).
 app_book_style_t app_settings_book_style(void);
 void app_settings_set_book_style(const app_book_style_t* style);
 

@@ -11,19 +11,20 @@ data class Style(
     val margin: Int = 1,      // 页边距：0 窄 1 中 2 宽 / narrow, medium, wide
     val indent: Boolean = false,
     val underline: Boolean = false,
+    val keepBlank: Boolean = false, // 保留原文空行；默认忽略，空行不占高度 / Keep blank lines; skipped by default
 ) {
     val linePct get() = intArrayOf(130, 150, 180)[line.coerceIn(0, 2)]
 }
 
 /**
  * 一章的分页，照固件 main/book/book_layout.c：逐字量宽折行，遇换行（CRLF 算一个）断段；开首行缩进时去掉段首空白、
- * 统一空两个字宽；行高 = 字号 × 行距；段后间距按段距（标题段留半行）；一行放不下就换页。页的起点是本章 UTF-8 字节偏移，
- * 和设备的进度偏移是同一种数。
+ * 统一空两个字宽；行高 = 字号 × 行距；段后间距按段距（标题段留半行）；忽略空行时只有空白的段不占高度；一行放不下就换页。
+ * 页的起点是本章 UTF-8 字节偏移，和设备的进度偏移是同一种数。
  * Pagination of one chapter after the firmware's main/book/book_layout.c: wrap glyph by glyph on measured width and
  * break paragraphs at newlines (CRLF counts once); with first-line indent, drop leading blanks and indent by two
- * characters; line height = size x spacing; paragraph gaps follow the setting (headings keep half a line); a line that
- * does not fit starts a new page. Page starts are UTF-8 byte offsets in the chapter, the same unit as the device's
- * progress offset.
+ * characters; line height = size x spacing; paragraph gaps follow the setting (headings keep half a line); with blank
+ * lines skipped, blank-only paragraphs take no height; a line that does not fit starts a new page. Page starts are
+ * UTF-8 byte offsets in the chapter, the same unit as the device's progress offset.
  */
 class ChapterLayout(
     private val text: ByteArray,
@@ -88,6 +89,19 @@ class ChapterLayout(
 
     private fun isBreak(at: Int) = text[at] == '\r'.code.toByte() || text[at] == '\n'.code.toByte()
 
+    // 照固件 skip_line：段首起只有空白直到换行或块尾的一行不占高度，也不当页首。
+    // After the firmware's skip_line: a line of only blanks from a paragraph start to the break or block end takes no
+    // height and never starts a page.
+    private fun skipLine(off: Int): Boolean {
+        if (style.keepBlank) return false
+        val b = block(off)
+        if (!(off == 0 || isBreak(off - 1) || (b != null && b.offset == off))) return false
+        val limit = if (b != null) b.offset + b.len else text.size
+        var at = off
+        while (at < limit) { val n = blankSize(at); if (n == 0) break; at += n }
+        return at >= limit || isBreak(at)
+    }
+
     private fun takeLine(off: Int): Line {
         val b = block(off)
         val heading = b?.heading == true
@@ -132,6 +146,7 @@ class ChapterLayout(
         var scan = 0
         while (scan < text.size) {
             val l = takeLine(scan)
+            if (skipLine(scan)) { scan = l.next; continue }
             val lh = lineHeight(if (l.heading) headingPaint else paint)
             if (used + lh > height && used > 0) { pages.add(scan); used = 0f }
             used += lh
@@ -161,6 +176,7 @@ class ChapterLayout(
         var used = 0f
         while (off < end) {
             val l = takeLine(off)
+            if (skipLine(off)) { off = l.next; continue }
             val p = if (l.heading) headingPaint else paint
             val lh = lineHeight(p)
             val base = y + used + (lh - (p.descent() - p.ascent())) / 2 - p.ascent()

@@ -119,8 +119,9 @@ void hr_scenes(void) {
     hr_shot("shelf_card_page2");
 
 #ifndef HR_BASELINE
-    // 番茄并进书库：右上角“书城”，状态行右边“下载 N 本更新”、检查中带“取消”、检查完的结果。/ Tomato in the library:
-    // "书城" at the top right, "下载 N 本更新" on the status line, checking with "取消", and a finished check's result.
+    // 番茄并进书库：右上角“书城”，筛选条右边的更新胶囊（“下载 N 本更新”、检查中）、检查完的结果。/ Tomato in the library:
+    // "书城" at the top right, the update pill at the right of the chip row ("下载 N 本更新", checking), and a finished
+    // check's result.
     hr_reset();
     s_tom_cfg = true;
     snprintf(s_continue, sizeof(s_continue), "%s", s_hr_books[1].path);
@@ -153,6 +154,12 @@ void hr_scenes(void) {
     render(&ctx, hr_fb);
     hr_allow_fit();
     hr_shot("shelf_tomato_downloading");
+    // 更新中点了一下胶囊：变成实心的“再点取消”。/ The running pill tapped once: a filled "再点取消".
+    s_tom_confirm_cancel = true;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("shelf_tomato_confirm_cancel");
+    s_tom_confirm_cancel = false;
     hr_reset();
     s_tom_cfg = true;
     s_shelf[1].new_chapters = 0;

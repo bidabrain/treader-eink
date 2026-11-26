@@ -17,13 +17,15 @@
 #include "ttf_font.h"
 #include "ui_kit.h"
 
-uint8_t tr_gray_secondary = 0x50;
-static int s_bold = 700;   // 粗体字重，随文字深浅 / Bold weight, following Text darkness
+uint8_t tr_gray_secondary = 0x33;
+static int s_bold = 750;   // 粗体字重，随文字深浅 / Bold weight, following Text darkness
 
 void tr_text_depth_apply(uint8_t level) {
-    static const int BODY[TR_TEXT_DEPTHS] = {400, 500, 600};
-    static const int BOLD[TR_TEXT_DEPTHS] = {700, 750, 800};
-    static const uint8_t GRAY[TR_TEXT_DEPTHS] = {0x50, 0x33, 0x11};
+    // 内置字体字重轴最高 800，更深档的粗体到顶。/ The built-in font's weight axis tops out at 800, so the darkest bold
+    // sits at the top.
+    static const int BODY[TR_TEXT_DEPTHS] = {500, 600, 700};
+    static const int BOLD[TR_TEXT_DEPTHS] = {750, 800, 800};
+    static const uint8_t GRAY[TR_TEXT_DEPTHS] = {0x33, 0x11, 0x00};
     if (level >= TR_TEXT_DEPTHS) level = 0;
     s_bold = BOLD[level];
     tr_gray_secondary = GRAY[level];
