@@ -75,6 +75,10 @@ void comic_direction_set(const char* key, bool rtl);
 esp_err_t comic_progress_flush(void);
 /// 丢掉内存里的进度表（拔卡时用，不写卡）。/ Drop the in-memory table without writing (on media loss).
 void comic_progress_drop(void);
+/// 离开漫画页时放掉进度表（约 600 KB PSRAM），下次用时从卡上重读；还有没写进卡的改动就不放。
+/// Free the progress table (about 600 KB of PSRAM) when leaving the comics page; it is reread from the card when next
+/// used. Kept while changes are not on the card yet.
+void comic_progress_release(void);
 
 /// 删除单本 CBZ 或整个系列文件夹（只删里面的 CBZ 和文件夹本身），并清进度。
 /// Delete a single CBZ or a whole series folder (its CBZ files and the folder) and forget the progress.

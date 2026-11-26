@@ -28,6 +28,7 @@ idf_component_register(
     SRCS
         "app_main.c"
         "display.c"
+        "heap_diag.c"
         "sleep.c"
         "settings.c"
         "app/app_loop.c"
@@ -109,4 +110,11 @@ set_source_files_properties("book/vendor/jpegdec/jpegdec.c" PROPERTIES COMPILE_O
 # Static-analysis build: idf.py -B build-analyze -DTREADER_ANALYZE=1 build
 if(TREADER_ANALYZE)
     target_compile_options(${COMPONENT_LIB} PRIVATE -fanalyzer -fstack-usage -Wno-error)
+endif()
+
+# PSRAM 占用诊断固件：idf.py -B build-diag -DTREADER_HEAP_DIAG=1 build，每分钟在串口打一次 PSRAM 清单（heap_diag.c）。
+# PSRAM usage diagnostic build: idf.py -B build-diag -DTREADER_HEAP_DIAG=1 build prints a PSRAM report on the serial
+# port every minute (heap_diag.c).
+if(TREADER_HEAP_DIAG)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE TREADER_HEAP_DIAG=1)
 endif()

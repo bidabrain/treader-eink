@@ -53,7 +53,7 @@ EXT_RAM_BSS_ATTR static job_t s_queue[QUEUE_MAX];
 static int s_queue_count;
 static bool s_built;
 static uint32_t s_failed[FAILED_MAX];
-static int s_failed_count;
+static int s_failed_count, s_failed_next;
 
 // 4×4 有序抖动到 16 级灰度。/ 4x4 ordered dither to 16 gray levels.
 static const uint8_t BAYER[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
@@ -173,32 +173,61 @@ static void write_cache(const char* jpg, int w, int h, const uint8_t* px) {
     if (!ok || rename(tmp, path) != 0) remove(tmp);
 }
 
+// 解一张排队的图；成功返回缩放好的像素。known 表示文件头是 JPEG / PNG（失败多半是内存，值得再试）。
+// Build one queued image; returns the scaled pixels on success. known means a JPEG / PNG header (a failure is then
+// most likely memory and worth a retry).
+static uint8_t* build(const job_t* job, bool* known, size_t* len) {
+    *len = 0;
+    uint8_t* data = read_file(job->jpg, len);
+    *known = data && *len >= 4 &&
+             ((data[0] == 0xff && data[1] == 0xd8) || (data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G'));
+    uint8_t* gray = NULL;
+    uint16_t gw = 0, gh = 0;
+    const bool decoded = *known && book_image_decode(data, *len, 648u * 1000u, &gray, &gw, &gh);
+    heap_caps_free(data);
+    uint8_t* px = decoded ? heap_caps_malloc((size_t)job->w * job->h, PSRAM_CAPS) : NULL;
+    if (px) book_image_fill(gray, gw, gh, px, job->w, job->h);
+    free(gray);
+    return px;
+}
+
 bool hupu_img_tick(void) {
     if (!s_queue_count) return false;
     job_t job = s_queue[0];
     memmove(&s_queue[0], &s_queue[1], sizeof(s_queue[0]) * (size_t)(--s_queue_count));
     const uint32_t key = key_of(job.jpg, job.w, job.h);
-    size_t len = 0;
+    bool known;
+    size_t len;
     tomato_hupu_cache_lock();
-    uint8_t* data = read_file(job.jpg, &len);
-    uint8_t* gray = NULL;
-    uint16_t gw = 0, gh = 0;
-    const bool decoded = data && book_image_decode(data, len, 648u * 1000u, &gray, &gw, &gh);
-    heap_caps_free(data);
-    uint8_t* px = decoded ? heap_caps_malloc((size_t)job.w * job.h, PSRAM_CAPS) : NULL;
+    uint8_t* px = build(&job, &known, &len);
+    if (!px && known && mem_used()) {
+        // 文件没问题却解不出：多半是 PSRAM 一时不够。内存里的图在 TF 卡上都有缓存，放掉再试一次，用时再读回来。
+        // A sound file that will not build is most likely short on PSRAM. Images held in memory are all cached on the
+        // card, so free them and try once more; they are read back when needed.
+        const size_t held = mem_used();
+        for (int i = 0; i < SLOT_MAX; i++) free_slot(&s_slots[i]);
+        ESP_LOGW(TAG, "retry after freeing %u bytes: %s", (unsigned)held, job.jpg);
+        px = build(&job, &known, &len);
+    }
     if (px) {
-        book_image_fill(gray, gw, gh, px, job.w, job.h);
         write_cache(job.jpg, job.w, job.h, px);
         insert(key, job.w, job.h, px);
-        s_built = true;
-    } else if (!decoded && s_failed_count < FAILED_MAX) {
-        // 解不了（比如图床给了 WEBP）就记下，免得每次重画都重试。/ Remember undecodable images so redraws do not retry.
-        s_failed[s_failed_count++] = key;
-        ESP_LOGW(TAG, "decode failed: %s", job.jpg);
+    } else {
+        // 记下（满了换最早的），免得每次重画都重试；也要让页面重画一次，显示“这张图打不开”而不是一直“正在处理”。
+        // Remember it (replacing the oldest when full) so redraws do not retry, and have the page redraw once so it
+        // shows "这张图打不开" instead of "正在处理" forever.
+        if (!failed(key)) {
+            s_failed[s_failed_next] = key;
+            s_failed_next = (s_failed_next + 1) % FAILED_MAX;
+            if (s_failed_count < FAILED_MAX) s_failed_count++;
+        }
+        ESP_LOGW(TAG, "%s failed: %s (%u bytes, %ux%u, psram free %u, largest %u)", known ? "build" : "format", job.jpg,
+                 (unsigned)len, (unsigned)job.w, (unsigned)job.h, (unsigned)heap_caps_get_free_size(PSRAM_CAPS),
+                 (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
     }
+    s_built = true;
     tomato_hupu_cache_unlock();
-    free(gray);
-    if (s_queue_count || !s_built) return false;
+    if (s_queue_count) return false;
     s_built = false;
     return true;
 }
@@ -216,6 +245,7 @@ void hupu_img_release(void) {
     // 失败记录只在这次停留期间有效，下次进来再试（可能是临时缺内存）。/ Failures last for this visit only; retry next
     // time in case it was a transient shortage.
     s_failed_count = 0;
+    s_failed_next = 0;
 }
 
 void hupu_img_draw(uint8_t* fb, int x, int y, int w, int h, const uint8_t* px, bool border) {

@@ -9,6 +9,7 @@
  * is unset, the factory page blocks first. Then control goes to app_loop.
  */
 
+#include "heap_diag.h"
 #include "esp_ota_ops.h"
 #include <stdint.h>
 
@@ -114,6 +115,7 @@ void app_main(void) {
     // Treader: the app counts as good only once display and touch are up; a TF-upgraded app that never gets
     // here is rolled back on the next reset.
     esp_ota_mark_app_valid_cancel_rollback();
+    heap_diag_start();
 
     app_loop_run(&(app_loop_config_t){
         .hl = &hl,

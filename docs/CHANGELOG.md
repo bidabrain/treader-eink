@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · Treader 1.2.12
+
+- 修正用一阵子以后小红书、微博、X、虎扑的大图卡在“正在处理图片…”、漫画报“这一页设备解不了”，重启才好：原因是字形缓存的几千个小块和图片要的大块混在同一片 PSRAM 里，把内存切碎了，总空闲还有两三 MB 却凑不出一块全屏图。现在字形缓存开机时就放进一块专用区（上限从 1.5 MB 改成 1 MB），离开漫画会还回进度表、书架和话名表（约 800 KB）；万一还是解不开，先放掉内存里缓存的图再试一次，真不行就显示“这张图打不开”，不会一直停在“正在处理”。
+  Fixed large images in RedNote, Weibo, X and Hupu sticking at "Processing image…" and comics reporting "this page cannot be decoded" after a while of use until a restart: thousands of small glyph-cache blocks mixed with the large blocks images need shredded PSRAM, so two or three megabytes stayed free yet no full-screen block could be found. The glyph cache now lives in its own block reserved at boot (its cap goes from 1.5 MB to 1 MB), and leaving comics returns the progress table, shelf and episode names (about 800 KB); if an image still will not decode, cached images in memory are freed and it is tried once more, and a real failure shows "this image cannot be opened" instead of "Processing" forever.
+
 ## 2026-11-26 · Treader 1.2.11
 
 - 新增“设置 → 代理”：填一台局域网里的 SOCKS5 或 HTTP 代理（地址:端口，可选用户名密码，也能写 socks5://… 或 http://… 自动选协议），打开后书城、番茄、小红书、微博、X、漫画、WebDAV 和固件升级的联网都经它出去，改完马上对新连接生效。域名交给代理解析，所以被污染的域名也能通；局域网地址、.local 名字直连，校时不走代理；TLS 仍在设备和目标之间端到端，代理只转发密文。握手只在新建连接时多两三次往返，不占 PSRAM、不多占连接。

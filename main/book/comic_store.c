@@ -231,6 +231,15 @@ void comic_progress_drop(void) {
     s_rec_count = 0;
 }
 
+void comic_progress_release(void) {
+    // 还有没写进卡的改动就先留着，不丢进度。/ Keep it while changes are not on the card yet, so no progress is lost.
+    if (s_dirty) return;
+    heap_caps_free(s_rec);
+    s_rec = NULL;
+    s_loaded = false;
+    s_rec_count = 0;
+}
+
 /* ---- 扫描 / Scanning ---- */
 
 int comic_store_volumes(const char* series_path, char (*names)[COMIC_NAME_MAX], int max) {

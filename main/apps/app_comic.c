@@ -1770,6 +1770,16 @@ static void comic_on_exit(app_ctx_t* ctx) {
     s_pages = NULL;
     s_page_count = 0;
     covers_release();
+    // 进度表、书架和话名表加起来约 800 KB，离开就放掉，进页时 on_enter 重新分配、重读重扫。
+    // The progress table, shelf and episode names come to about 800 KB; free them on leaving, and on_enter allocates,
+    // rereads and rescans them.
+    comic_progress_release();
+    heap_caps_free(s_shelf);
+    s_shelf = NULL;
+    s_count = 0;
+    heap_caps_free(s_vols);
+    s_vols = NULL;
+    s_vol_count = 0;
 }
 
 // 每次锁屏前（含浅睡）把正在看的这一页写回卡上；不画屏、不关文件。没在看就什么也不做。

@@ -28,6 +28,9 @@
 
 #include "settings.h"
 #include "esp_heap_caps.h"
+#ifdef ESP_PLATFORM
+#include "multi_heap.h"
+#endif
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -52,8 +55,13 @@ static void ttf_free(void* ptr, void* userdata) {
 #pragma GCC diagnostic pop
 
 /* ---- 调参 / Tunables ---- */
-// 光栅化位图 LRU 上限，PSRAM。/ Raster bitmap LRU cap, PSRAM.
-#define TTF_CACHE_LIMIT (1536 * 1024)
+// 光栅化位图 LRU 上限，PSRAM。原来是 1.5 MB；字形放进专用区后改成 1 MB，省下的留给全屏图。
+// Raster bitmap LRU cap, PSRAM. It was 1.5 MB; with glyphs in their own arena it is now 1 MB, leaving the rest for
+// full-screen images.
+#define TTF_CACHE_LIMIT (1024 * 1024)
+// 字形缓存的专用区：上限再加 1/8 给每块的管理开销和区内零碎。/ The glyph cache arena: the cap plus 1/8 for per-block
+// overhead and slack inside the arena.
+#define TTF_ARENA_BYTES (TTF_CACHE_LIMIT + TTF_CACHE_LIMIT / 8)
 // 哈希桶数。/ Hash buckets.
 #define TTF_CACHE_BUCKETS 256
 // 两档字号的像素高，对齐 ui_kit 正文/标题。/ Small/large px, matches ui_kit body/title.
@@ -1599,6 +1607,50 @@ static void lru_touch(glyph_entry_t* entry) {
     if (lru_tail == NULL) lru_tail = entry;
 }
 
+/* ---- 字形专用区 / Glyph arena ---- */
+
+// 字形条目和点阵是几千个几十到一千多字节的小块。和全屏图要的几百 KB 大块混在同一片 PSRAM 里，用久了会把 PSRAM
+// 切碎：总空闲还有两三 MB，却凑不出一块 700 KB，图片就解不开，重启才好。所以开机第一次用时就划出一整块，字形只在
+// 这里分配和淘汰；划不出来就照旧直接用 PSRAM。
+// Glyph entries and bitmaps are thousands of blocks from tens of bytes to over a kilobyte. Mixed into the same PSRAM as
+// the several-hundred-kilobyte blocks a full-screen image needs, they shred PSRAM over time: two or three megabytes stay
+// free yet no 700 KB block can be found, images fail to decode and only a restart helps. So the first use, at boot,
+// takes one whole block and glyphs are allocated and evicted only inside it; if it cannot be had, plain PSRAM is used.
+#ifdef ESP_PLATFORM
+static multi_heap_handle_t s_arena;
+static portMUX_TYPE s_arena_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_arena_tried;
+
+static void arena_init(void) {
+    if (s_arena_tried) return;
+    s_arena_tried = true;
+    void* mem = heap_caps_malloc(TTF_ARENA_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (mem) s_arena = multi_heap_register(mem, TTF_ARENA_BYTES);
+    if (!s_arena) {
+        heap_caps_free(mem);
+        ESP_LOGW(TAG, "glyph arena unavailable; glyphs use plain PSRAM");
+        return;
+    }
+    multi_heap_set_lock(s_arena, &s_arena_lock);
+    ESP_LOGI(TAG, "glyph arena %u bytes", (unsigned)TTF_ARENA_BYTES);
+}
+
+static void* glyph_alloc(size_t n) {
+    arena_init();
+    return s_arena ? multi_heap_malloc(s_arena, n) : heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+
+static void glyph_free(void* p) {
+    if (!p) return;
+    if (s_arena) multi_heap_free(s_arena, p);
+    else heap_caps_free(p);
+}
+#else
+// 电脑上的渲染工具没有专用区，直接分配。/ The host render tools have no arena and allocate directly.
+static void* glyph_alloc(size_t n) { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
+static void glyph_free(void* p) { heap_caps_free(p); }
+#endif
+
 static void cache_reset(void) {
     size_t n = 0;
     for (unsigned i = 0; i < TTF_CACHE_BUCKETS; i++) {
@@ -1606,8 +1658,8 @@ static void cache_reset(void) {
         cache_buckets[i] = NULL;
         while (entry != NULL) {
             glyph_entry_t* next = entry->hash_next;
-            heap_caps_free(entry->bitmap);
-            heap_caps_free(entry);
+            glyph_free(entry->bitmap);
+            glyph_free(entry);
             entry = next;
             n++;
         }
@@ -1636,8 +1688,16 @@ static void cache_evict_one(void) {
     }
 
     cache_bytes -= victim->bitmap_bytes + sizeof(*victim);
-    heap_caps_free(victim->bitmap);
-    heap_caps_free(victim);
+    glyph_free(victim->bitmap);
+    glyph_free(victim);
+}
+
+// 专用区里一时凑不出这么大的连续空间：接着淘汰最旧的，直到分得出或缓存空了。
+// The arena cannot fit this size right now: keep evicting the oldest until it fits or the cache is empty.
+static void* glyph_alloc_evicting(size_t n) {
+    void* p;
+    while (!(p = glyph_alloc(n)) && lru_tail != NULL) cache_evict_one();
+    return p;
 }
 
 static void cache_reserve(size_t extra) {
@@ -1696,17 +1756,14 @@ static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
     size_t bitmap_bytes = (size_t)width * (size_t)height;
     cache_reserve(bitmap_bytes + sizeof(glyph_entry_t));
 
-    glyph_entry_t* entry = heap_caps_calloc(
-        1, sizeof(*entry), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
-    );
+    glyph_entry_t* entry = glyph_alloc_evicting(sizeof(*entry));
     if (entry == NULL) return NULL;
+    memset(entry, 0, sizeof(*entry));
 
     if (bitmap_bytes > 0) {
-        entry->bitmap = heap_caps_malloc(
-            bitmap_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
-        );
+        entry->bitmap = glyph_alloc_evicting(bitmap_bytes);
         if (entry->bitmap == NULL) {
-            heap_caps_free(entry);
+            glyph_free(entry);
             return NULL;
         }
         stbtt_MakeGlyphBitmap(

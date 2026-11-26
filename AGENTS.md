@@ -24,6 +24,8 @@ idf.py build
 
 不要在没有对应 flash 的机器上把 CI 配置当产品默认。/ Do not ship the CI timing as the product default.
 
+PSRAM 占用诊断版：`idf.py -B build-diag -DTREADER_HEAP_DIAG=1 build`，每分钟在串口打 PSRAM 清单（总量、最大连续空闲块、按大小归类、最大的几块和开机后新增仍存活的小块，见 `main/heap_diag.c`）。正式构建里是空函数，不用改源码。/ PSRAM diagnostic build: `idf.py -B build-diag -DTREADER_HEAP_DIAG=1 build` prints a PSRAM report on the serial port every minute (totals, largest free block, usage by size, the biggest blocks and small blocks allocated since boot that are still alive; see `main/heap_diag.c`). It is an empty function in the product build, with no source change.
+
 ## 目录职责 / Layout
 
 | 路径 / Path | 职责 / Role |
