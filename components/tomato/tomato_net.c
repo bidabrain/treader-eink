@@ -2,8 +2,11 @@
  * SPDX-FileCopyrightText: 2026 Treader contributors
  * SPDX-License-Identifier: Apache-2.0
  *
- * 一次性 STA 连网：用传书页保存的凭据，连上、用完、全部释放。
- * One-shot STA networking: uses credentials saved by the transfer page; connect, use, release everything.
+ * 一次性 STA 连网：用传书组件给的当前凭据（临时网络优先），连上、用完、全部释放。当前网络连不上时，经主程序注册的
+ * 回调扫描并换试别的保存网络，连上的由主程序记成当前网络。
+ * One-shot STA networking: uses the current credentials from the transfer component (temporary first); connect, use,
+ * release everything. When the current network fails, hooks registered by the app scan and try other saved networks,
+ * and the app makes the one that joins current.
  *
  * 冻结：传书服务运行时不连网；不保存凭据副本，密码用毕擦除。任务做完 Wi-Fi 最多再留 LINGER_MS，没人用就全部释放；
  * 锁屏（tomato_sync_stop）、传书页和试连都先立即断开，浅睡前绝不留着 Wi-Fi。
@@ -59,6 +62,26 @@ static StaticSemaphore_t s_net_mx_buf;
 static portMUX_TYPE s_net_mx_init = portMUX_INITIALIZER_UNLOCKED;
 static bool s_lingering;             // 任务做完、Wi-Fi 还留着 / A job ended and Wi-Fi is still up
 static TaskHandle_t s_linger_task;   // 到时断网的小任务 / The small task that drops Wi-Fi when time is up
+static volatile uint8_t s_reason;    // 最近一次断开的原因码 / Reason code of the latest disconnect
+static const tomato_wifi_hooks_t* s_hooks;
+#define FALLBACK_MAX 3                 // 当前网络连不上时最多再试几个保存的网络 / Saved networks tried after the current one fails
+
+void tomato_net_set_wifi_hooks(const tomato_wifi_hooks_t* hooks) { s_hooks = hooks; }
+
+// 断开原因归成三类：密码不对、找不到网络、其他。/ Sort a disconnect reason into wrong password, no network, or other.
+static tomato_net_fail_t fail_kind(uint8_t reason) {
+    switch (reason) {
+    case WIFI_REASON_AUTH_FAIL: case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: case WIFI_REASON_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_MIC_FAILURE: case WIFI_REASON_802_1X_AUTH_FAILED:
+        return TOMATO_NET_FAIL_AUTH;
+    case WIFI_REASON_NO_AP_FOUND: case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD: case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+    case WIFI_REASON_BEACON_TIMEOUT:
+        return TOMATO_NET_FAIL_NO_AP;
+    default:
+        return TOMATO_NET_FAIL_OTHER;
+    }
+}
 
 static void net_lock(void) {
     if (!s_net_mx) {
@@ -129,8 +152,9 @@ bool tomato_net_sync_time(int wait_ms) { return s_inited && (s_synced_now || snt
 bool tomato_time_valid(void) { return time(NULL) > 1735689600; }
 
 static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
-    (void)arg; (void)data;
+    (void)arg;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (data) s_reason = ((const wifi_event_sta_disconnected_t*)data)->reason;
         // 断了就不算有 IP，留着的 Wi-Fi 不会被当成还能用。/ A drop clears the IP, so lingering Wi-Fi is not taken as usable.
         xEventGroupClearBits(s_bits, BIT_IP);
         if (s_retries++ < RETRY_MAX) esp_wifi_connect();
@@ -143,7 +167,7 @@ static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data) {
 
 static void net_down_locked(void);
 
-static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
+static esp_err_t transfer_busy(void) {
     read_pico_transfer_status_t ts;
     read_pico_transfer_get_status(&ts);
     // 传书页正占着 Wi-Fi：返回 ESP_ERR_NOT_SUPPORTED，和“取消”（ESP_ERR_INVALID_STATE）区分开，提示才不会被吞掉。
@@ -153,16 +177,15 @@ static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
         tomato_http_set_detail("传书还在占用 Wi-Fi");
         return ESP_ERR_NOT_SUPPORTED;
     }
-    if (s_netif) return ESP_ERR_NOT_SUPPORTED;
+    return s_netif ? ESP_ERR_NOT_SUPPORTED : ESP_OK;
+}
 
-    char ssid[33], pass[65];
-    // 设置页读 SSID 时会短暂占着凭据存储，稍等重试。/ The settings page briefly holds the credential store; retry.
-    esp_err_t err = ESP_ERR_INVALID_STATE;
-    for (int i = 0; i < 5 && err == ESP_ERR_INVALID_STATE; i++) {
-        err = read_pico_transfer_load_wifi(ssid, pass);
-        if (err == ESP_ERR_INVALID_STATE) vTaskDelay(pdMS_TO_TICKS(100));
-    }
+// 用给定的网络连一次；失败时全部释放。密码由调用方擦除。/ Join the given network once, releasing everything on failure.
+// The caller wipes the password.
+static esp_err_t net_join_locked(const char* ssid, const char* pass, int timeout_ms, const volatile bool* cancel) {
+    esp_err_t err = transfer_busy();
     if (err != ESP_OK) return err;
+    s_reason = 0;
 
     if (!s_bits) s_bits = xEventGroupCreate();
     if (!s_bits) { err = ESP_ERR_NO_MEM; goto fail; }
@@ -191,8 +214,8 @@ static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
     if (err != ESP_OK) goto fail;
 
     wifi_config_t wc = { 0 };
-    memcpy(wc.sta.ssid, ssid, sizeof(wc.sta.ssid));
-    memcpy(wc.sta.password, pass, sizeof(wc.sta.password));
+    memcpy(wc.sta.ssid, ssid, strnlen(ssid, sizeof(wc.sta.ssid)));
+    memcpy(wc.sta.password, pass, strnlen(pass, sizeof(wc.sta.password)));
     wc.sta.threshold.authmode = pass[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     wc.sta.pmf_cfg.capable = true;
     // 与传书页一致，WPA3 网络也能连。/ Match the transfer page so WPA3 networks work too.
@@ -217,7 +240,6 @@ static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
     if (err == ESP_FAIL) tomato_http_set_detail("密码不对或信号太弱");
     else if (err == ESP_ERR_TIMEOUT) tomato_http_set_detail("连上了但没拿到 IP");
     if (err != ESP_OK) goto fail;
-    memset(pass, 0, sizeof(pass));
     // 联网期间关掉 Wi-Fi 省电：默认的 modem sleep 在有的路由器上把下载拖到每秒几百字节。只在后台任务联网时开着，
     // 用完就断，耗电影响很小。
     // Wi-Fi power save off while online: the default modem sleep drags downloads to a few hundred bytes a second on some
@@ -231,10 +253,51 @@ static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel) {
     return ESP_OK;
 
 fail:
-    memset(pass, 0, sizeof(pass));
-    ESP_LOGW(TAG, "connect failed: %s", esp_err_to_name(err));
+    ESP_LOGW(TAG, "connect failed: %s reason=%u", esp_err_to_name(err), (unsigned)s_reason);
     net_down_locked();
     return err;
+}
+
+// 连当前网络；连不上（密码不对、找不到、超时）且注册了候选回调时，再按顺序试别的保存网络。
+// Join the current network; when it fails (wrong password, not found, timeout) and a candidate hook is registered, try
+// the other saved networks in order.
+static esp_err_t net_up_locked(int timeout_ms, const volatile bool* cancel, bool fallback) {
+    esp_err_t err = transfer_busy();
+    if (err != ESP_OK) return err;
+    char ssid[33], pass[65];
+    bool session = false;
+    // 设置页读 SSID 时会短暂占着凭据存储，稍等重试。/ The settings page briefly holds the credential store; retry.
+    err = ESP_ERR_INVALID_STATE;
+    for (int i = 0; i < 5 && err == ESP_ERR_INVALID_STATE; i++) {
+        err = read_pico_transfer_load_current_wifi(ssid, pass, &session);
+        if (err == ESP_ERR_INVALID_STATE) vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    if (err == ESP_OK) err = net_join_locked(ssid, pass, timeout_ms, cancel);
+    if (err == ESP_OK) {
+        if (s_hooks && s_hooks->joined && !session) s_hooks->joined(ssid, pass, false);
+        memset(pass, 0, sizeof(pass));
+        return ESP_OK;
+    }
+    memset(pass, 0, sizeof(pass));
+    const bool retry = err == ESP_FAIL || err == ESP_ERR_TIMEOUT || err == ESP_ERR_NOT_FOUND;
+    if (!fallback || !retry || !s_hooks || !s_hooks->candidates || (cancel && *cancel)) return err;
+    tomato_wifi_cred_t* cands = calloc(FALLBACK_MAX, sizeof(*cands));
+    if (!cands) return err;
+    const int n = s_hooks->candidates(err == ESP_ERR_NOT_FOUND ? "" : ssid, cands, FALLBACK_MAX);
+    const esp_err_t first = err;
+    for (int i = 0; i < n && !(cancel && *cancel); ++i) {
+        ESP_LOGI(TAG, "try saved network %d/%d", i + 1, n);
+        tomato_http_clear_detail();
+        err = net_join_locked(cands[i].ssid, cands[i].password, timeout_ms, cancel);
+        if (err == ESP_OK) {
+            if (s_hooks->joined) s_hooks->joined(cands[i].ssid, cands[i].password, true);
+            break;
+        }
+    }
+    for (int i = 0; i < FALLBACK_MAX; ++i) memset(&cands[i], 0, sizeof(cands[i]));
+    free(cands);
+    // 都没连上就报当前网络的原因。/ When none joins, report the current network's failure.
+    return err == ESP_OK || !n ? err : first;
 }
 
 esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
@@ -251,7 +314,7 @@ esp_err_t tomato_net_up(int timeout_ms, const volatile bool* cancel) {
         }
         net_down_locked();
     }
-    const esp_err_t err = net_up_locked(timeout_ms, cancel);
+    const esp_err_t err = net_up_locked(timeout_ms, cancel, true);
     net_unlock();
     return err;
 }
@@ -336,11 +399,29 @@ esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap) {
     // 留着的 Wi-Fi 可能是改之前的网络：先断开，真的去连保存的这个。/ Lingering Wi-Fi may be the network from before the
     // change: drop it so the test really joins the saved one.
     tomato_net_idle_off();
-    esp_err_t err = tomato_net_up(timeout_ms, NULL);
+    net_lock();
+    esp_err_t err = net_up_locked(timeout_ms, NULL, false);
+    net_unlock();
     if (err == ESP_OK) snprintf(msg, cap, "连上了");
     else if (err == ESP_ERR_NOT_FOUND) snprintf(msg, cap, "没有保存的网络");
     else if (tomato_http_detail()[0]) snprintf(msg, cap, "连不上：%s", tomato_http_detail());
     else snprintf(msg, cap, "连不上（%s）", esp_err_to_name(err));
     tomato_net_down();
+    return err;
+}
+
+esp_err_t tomato_net_try(const char* ssid, const char* pass, int timeout_ms, tomato_net_fail_t* why) {
+    if (why) *why = TOMATO_NET_FAIL_OTHER;
+    if (!ssid || !pass) return ESP_ERR_INVALID_ARG;
+    if (tomato_sync_busy()) return ESP_ERR_INVALID_STATE;
+    tomato_http_clear_detail();
+    tomato_net_idle_off();
+    net_lock();
+    esp_err_t err = net_join_locked(ssid, pass, timeout_ms, NULL);
+    const uint8_t reason = s_reason;
+    net_down_locked();
+    net_unlock();
+    if (why) *why = err == ESP_OK ? TOMATO_NET_FAIL_NONE : fail_kind(reason);
+    ESP_LOGI(TAG, "try result=%s reason=%u", esp_err_to_name(err), (unsigned)reason);
     return err;
 }

@@ -123,6 +123,9 @@ void hr_scenes(void) {
     s_scan_pending = false;
     s_saved_configured = true;
     s_forget_confirm = true;
+#ifndef HR_BASELINE   // 改动前确认页写的是唯一保存的网络 / Before this change the confirm view named the one saved network
+    snprintf(s_forget_ssid, sizeof(s_forget_ssid), "%s", s_saved_ssid);
+#endif
     snprintf(s_network_message, sizeof(s_network_message), "遗忘失败，请重试或取消");
     hr_allow_fit();
     shot("networks_forget");
@@ -159,6 +162,58 @@ void hr_scenes(void) {
     snprintf(s_network_message, sizeof(s_network_message), "连不上：%s", "连上了但没拿到 IP，检查路由器的 DHCP 设置");
     hr_allow_fit();
     shot("manage_failed");
+
+    // 多个保存的网络：列表里的标记、已保存的网络页、复选框。/ Several saved networks: list marks, the saved view and
+    // the checkbox.
+    s_network_message[0] = 0;
+    s_known_count = 0;
+    static const char* const KNOWN[] = {"A-Very-Long-Network-Name-For-Test", "Net-1", "Net-3", "Cafe-Free-WiFi",
+                                        "家庭网络-长名字ABCDEFGHIJ", "Office", "Old-Router"};
+    for (int i = 0; i < 7; ++i) {
+        s_known[i] = (tr_wifi_item_t){.last_ok = i ? 1764000000u - (uint32_t)i * 86400u * 9 : 0, .current = !i,
+                                      .on_card = true, .saved = true};
+        snprintf(s_known[i].ssid, sizeof(s_known[i].ssid), "%s", KNOWN[i]);
+    }
+    s_known_count = 7;
+    for (int i = 0; i < 8; ++i) { s_net_current[i] = i == 0; s_net_saved[i] = i == 0 || i == 1 || i == 3; }
+    hr_allow_fit();
+    shot("manage_multi");
+    s_view = TRANSFER_SAVED;
+    s_known_page = 0;
+    s_pressed = 21;
+    hr_allow_fit();
+    shot("saved_list");
+    s_pressed = -1;
+    s_known_page = 1;
+    hr_allow_fit();
+    shot("saved_list_page2");
+    s_known_page = 0;
+    s_known[0].saved = false;
+    snprintf(s_network_message, sizeof(s_network_message), "%s 不在范围内", "Cafe-Free-WiFi");
+    hr_allow_fit();
+    shot("saved_session_message");
+    s_known[0].saved = true;
+    s_network_message[0] = 0;
+    s_forget_confirm = true;
+    snprintf(s_forget_ssid, sizeof(s_forget_ssid), "%s", "Office");
+    hr_allow_fit();
+    shot("saved_forget");
+    s_forget_confirm = false;
+    s_view = TRANSFER_PASSWORD;
+    s_selected = s_networks[0];
+    s_password[0] = 0;
+    s_save_checked = true;
+    snprintf(s_network_message, sizeof(s_network_message), "密码可能已更改，请重新输入");
+    hr_allow_fit();
+    shot("password_save_checked");
+    s_save_checked = false;
+    s_selected.requires_password = false;
+    s_network_message[0] = 0;
+    s_pressed = 47;
+    hr_allow_fit();
+    shot("password_open_unchecked");
+    s_pressed = -1;
+    s_save_checked = true;
     s_manage = false;
 #endif
 }

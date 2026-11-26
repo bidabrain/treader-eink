@@ -172,6 +172,12 @@ enum EpdRotation epd_get_rotation(void) { return EPD_ROT_PORTRAIT; }
 static pmu_snapshot_t s_pmu = {.soc_permille = 820};
 bool read_pico_pmu_ready(void) { return true; }
 const pmu_snapshot_t* read_pico_pmu_get(void) { return &s_pmu; }
+// 状态栏的 Wi-Fi 名默认为空，原有截图不变；页面可以改 hr_wifi_name。/ The status-bar Wi-Fi name is empty by default so
+// existing shots stay the same; a page may set hr_wifi_name.
+char hr_wifi_name[33];
+const char* tr_wifi_current_name(void) { return hr_wifi_name; }
+__attribute__((weak)) bool tr_wifi_card_ok(void) { return true; }
+__attribute__((weak)) bool tomato_time_valid(void) { return true; }
 bool book_cover_draw(uint8_t* fb, EpdRect r, const char* path) {
 #ifdef HR_DEMO
     // 演示：有图片封面的书画渐变，路径决定花样；路径里带 "text:" 的当作没有图片封面。/ Demo: books with an image cover get a

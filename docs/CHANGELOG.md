@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · Treader 1.2.14
+
+- Wi-Fi 能保存多个网络，用法像手机：选网页里保存过的网络排在前面、标“当前”或“已保存”，点一下直接连；密码页多了“保存这个网络”（默认勾），改成先连后存，连上才保存，不勾只在这次开机用；新加“已保存的网络”页，列出所有保存的网络和上次连上的时间，逐个“忘记”。列表加密存在 TF 卡（钥匙在设备里，不用设密码，单拿卡解不开）；当前网络连不上时自动换试附近保存过的网络，连上的记成当前网络。没插卡时照旧只有一个网络。
+  Wi-Fi keeps several networks, like a phone: saved networks lead the list marked "Current" or "Saved" and join on a tap; the password view gains "Save this network" (checked by default) and now connects before saving, so a network is saved only once it joins and unchecked means this boot only; a new "Saved networks" view lists every saved network with when it last joined and forgets them one at a time. The list is encrypted on the SD card (the key stays in the device with no password to set, so the card alone opens nothing); when the current network fails, nearby saved networks are tried and the one that joins becomes current. Without a card there is still one network, as before.
+- 状态栏右上角、电量左边显示当前要连的 Wi-Fi 名；设置首页的 Wi-Fi 一行写当前网络和保存了几个。
+  The status bar shows the current Wi-Fi name at the top right, left of the battery; the Settings home Wi-Fi row shows the current network and how many are saved.
+
 ## 2026-11-26 · Treader 1.2.13
 
 - 文字深浅整体加深一档：去掉原来最浅的“标准”，原来的“深”现在叫“标准”，原来的“更深”现在叫“深”，新加的“更深”正文再加粗一级、灰字变纯黑。升级后看起来和原来一样：原来选“深”的落到新“标准”，选“更深”的落到新“深”，原来选“标准”的落到新“标准”。

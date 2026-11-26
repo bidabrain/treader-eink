@@ -4,6 +4,7 @@ set(main_requires
     read_pico_usb
     read_pico_search
     read_pico_totp
+    read_pico_wifi_vault
     tomato
     pinyin_ime
     espressif__qrcode
@@ -23,6 +24,7 @@ set(main_requires
     esp_app_format
     app_update
     mbedtls
+    esp_wifi
 )
 idf_component_register(
     SRCS
@@ -43,6 +45,7 @@ idf_component_register(
         "app/tr_nav.c"
         "app/tr_time.c"
         "app/tr_auth.c"
+        "app/tr_wifi.c"
         "app/auto_turn.c"
         "apps/app_tr_tomato.c"
         "apps/app_tr_settings.c"

@@ -106,6 +106,18 @@ void hr_scenes(void) {
     page(P_HOME, "home_message");
     s_message[0] = 0;
 #ifndef HR_BASELINE
+    // 状态栏右上角的 Wi-Fi 名：普通的和 32 字节长的。/ The Wi-Fi name at the status bar's top right: a normal one and a
+    // 32-byte one.
+    s_wifi_count = 3;
+    snprintf(hr_wifi_name, sizeof(hr_wifi_name), "HomeNetwork-5G");
+    hr_allow_fit();
+    page(P_HOME, "home_wifi_name");
+    snprintf(hr_wifi_name, sizeof(hr_wifi_name), "家庭网络-长名字ABCDEFGHIJ");
+    snprintf(s_wifi, sizeof(s_wifi), "%s", hr_wifi_name);
+    hr_allow_fit();
+    page(P_HOME, "home_wifi_long");
+    hr_wifi_name[0] = 0;
+    snprintf(s_wifi, sizeof(s_wifi), "HomeNetwork-5G");
     // 代理：关；开着的 SOCKS5；带用户名的 HTTP；填地址的键盘；没填地址就想开。/ Proxy: off; SOCKS5 on; HTTP with a user
     // name; the address keyboard; trying to switch on without an address.
     hr_allow_fit();

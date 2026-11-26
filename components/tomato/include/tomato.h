@@ -634,12 +634,46 @@ int32_t tomato_last_time_fix_ms(void);
 /// Go online just to sync the time once (regardless of the auto-time switch); see tomato_sync_get_status. Used by the
 /// authenticator's "sync time".
 esp_err_t tomato_sync_start_time(void);
-/// 用保存的 Wi-Fi 试连一次，连上就断开；会阻塞到连上或超时。后台在跑任务或传书占着 Wi-Fi 时直接失败。
-/// msg 写结果（连上了，或者连不上的原因）。设置里 Wi-Fi 页保存新网络后用。
-/// Try the saved Wi-Fi once and disconnect; blocks until connected or timed out. Fails at once while a background job
-/// runs or transfer holds Wi-Fi. msg gets the outcome (connected, or why not). Used by the Settings Wi-Fi page after
-/// saving a network.
+/// 用当前的 Wi-Fi（临时网络优先）试连一次，不换别的保存网络，连上就断开；会阻塞到连上或超时。后台在跑任务或传书
+/// 占着 Wi-Fi 时直接失败。msg 写结果（连上了，或者连不上的原因）。设置里 Wi-Fi 页的“测试连接”用。
+/// Try the current Wi-Fi (temporary first) once without switching to other saved networks, then disconnect; blocks
+/// until connected or timed out. Fails at once while a background job runs or transfer holds Wi-Fi. msg gets the
+/// outcome (connected, or why not). Used by "test connection" on the Settings Wi-Fi page.
 esp_err_t tomato_net_test(int timeout_ms, char* msg, size_t cap);
+/// 试连失败的原因。/ Why a connection attempt failed.
+typedef enum {
+    TOMATO_NET_FAIL_NONE = 0,  ///< 连上了 / Connected
+    TOMATO_NET_FAIL_AUTH,      ///< 密码不对 / Wrong password
+    TOMATO_NET_FAIL_NO_AP,     ///< 找不到网络 / Network not found
+    TOMATO_NET_FAIL_OTHER,     ///< 其他（超时、拿不到 IP 等）/ Anything else (timeout, no IP, ...)
+} tomato_net_fail_t;
+/// 用给定的网络试连一次，连上就断开，不读也不写保存的网络；会阻塞到连上或超时。后台在跑任务或传书占着 Wi-Fi 时直接
+/// 失败。设置里 Wi-Fi 页“先连后存”用。
+/// Try the given network once and disconnect, reading and writing no saved network; blocks until connected or timed
+/// out. Fails at once while a background job runs or transfer holds Wi-Fi. Used by the Settings Wi-Fi page to connect
+/// before saving.
+esp_err_t tomato_net_try(const char* ssid, const char* pass, int timeout_ms, tomato_net_fail_t* why);
+/// 一个候选网络。/ One candidate network.
+typedef struct {
+    char ssid[33];
+    char password[65];
+} tomato_wifi_cred_t;
+/// 多网络回调，由主程序注册（保存的网络列表在主程序里）。都在联网的后台任务里调用，可以阻塞几秒。
+/// Multi-network hooks registered by the app, which owns the saved list. Both run on the networking task and may block
+/// for a few seconds.
+typedef struct {
+    /// 当前网络连不上时调用：扫描后给出最多 max 个保存过、在范围内的别的网络，先试的在前，返回个数。failed 是没连上的
+    /// 网络名（没有当前网络时为空串）。
+    /// Called when the current network fails: scan and return up to max other saved networks in range, first to try
+    /// first; returns the count. failed names the network that failed (empty with no current network).
+    int (*candidates)(const char* failed, tomato_wifi_cred_t* out, int max);
+    /// 连上一个保存的网络后调用；fallback 为真表示是候选网络（应记成当前网络）。临时网络不调。
+    /// Called after joining a saved network; fallback means a candidate (to be made the current one). Not called for
+    /// the temporary network.
+    void (*joined)(const char* ssid, const char* password, bool fallback);
+} tomato_wifi_hooks_t;
+/// 注册多网络回调；hooks 须一直有效。/ Register the multi-network hooks; hooks must stay valid.
+void tomato_net_set_wifi_hooks(const tomato_wifi_hooks_t* hooks);
 /// 判断一个路径是不是阅读器正开着的书；是的话更新会跳过它（阅读器还持有旧文件）。
 /// Whether a path is the book open in the reader; updates skip it because the reader still holds the old file.
 typedef bool (*tomato_open_check_t)(const char* path);

@@ -11,29 +11,36 @@
  * 电源键锁屏仍走全局路径，深睡/断电会中断传输。
  * render只画快照；内置存储单文件上限由book_store提供，不格式化TF卡。
  * 上传并发扫描曾欠载，页内增加预填余量；离页停服后恢复，不改波形或像素时钟。
- * 用户要求设备端配网：停服后扫描选网，ASCII密码只在连接保存时写入，离开输入页即清空。
+ * 用户要求设备端配网：停服后扫描选网，ASCII密码只在连上后保存，离开输入页即清空。
  * 用户验收要求停止后恢复进入传书前的页面或菜单位置；遗忘网络必须确认。
  * 用户要求联网后提供网址二维码；热点用单码切换连接/网页，网络变更清除旧码。
  * 卡失效时停止并汇合接收任务，清除旧容量与二维码；当前请求不得切换存储源。
- * 用户要求（2026-11-25）设置里像手机一样单独管理 Wi-Fi：从设置 › Wi-Fi 进来直接到选网页，不开传书服务；
- * 保存新网络后试连一次报结果；页头写明只能保存一个网络。
+ * 用户要求（2026-11-25）设置里像手机一样单独管理 Wi-Fi：从设置 › Wi-Fi 进来直接到选网页，不开传书服务。
+ * 决策变更（2026-11-26，用户要求像安卓一样存多个网络）：原来先保存再试连、只能存一个；现在先连后存，密码页有
+ * “保存这个网络”（默认勾），连上才写 NVS 和 TF 卡上的加密列表，不勾只在本次开机用；保存过的网络在列表里标出、
+ * 点了直接连，“已保存的网络”页逐个忘记（要确认）。
  * Frozen: user-requested AP/STA modes stop networking on exit.
  * Idle auto-sleep does not run while this page is current, so a waiting hotspot and reception stay up.
  * Decision change: the 2-minute idle lock was closing the transfer flow; the user requires that flow to keep running.
  * The power key still uses the global lock path, and deep sleep or power loss still interrupts transfer.
  * Render only paints snapshots; book_store defines the flash file limit. Never format the TF card.
  * Concurrent uploads underrun scan queues; increase prefill until service exit without changing waveforms or pixel clocks.
- * User-requested device provisioning scans while stopped; save ASCII passwords only on connect and clear input on leaving the editor.
+ * User-requested device provisioning scans while stopped; save ASCII passwords only after joining and clear input on leaving the editor.
  * Acceptance requires returning to the page or menu position used to enter transfer; forgetting WiFi requires confirmation.
  * User-requested URL QR follows network readiness; AP switches one code between joining and browsing, discarding stale codes on changes.
  * Lost media stops and joins reception and clears capacity/QR; never switch storage beneath an active request.
  * User request (2026-11-25): manage Wi-Fi from Settings like a phone. Settings › Wi-Fi opens the network list directly
- * without the transfer service, tries the network once after saving it, and the header says only one network is kept.
+ * without the transfer service.
+ * Decision change (2026-11-26, the user asked to keep several networks like Android): it used to save first, then try,
+ * and kept one network; now it connects first, the password view has "save this network" (checked by default), NVS and
+ * the encrypted TF list are written only after joining, unchecked means this boot only; saved networks are marked in
+ * the list and join on a tap, and the saved-networks view forgets them one by one, with confirmation.
  */
 // 整个传书页暂停 SD 字体并使用内置字库；HTTP 停止后才恢复读取。
 // Use the built-in font and suspend SD font opens for this page; resume only after HTTP stops.
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "app.h"
 #include "comic_store.h"
@@ -45,6 +52,7 @@
 #include "esp_log.h"
 #include "read_pico_transfer.h"
 #include "tomato.h"
+#include "tr_wifi.h"
 #include "ttf_font.h"
 #include "ui_gesture.h"
 #include "ui_kit.h"
@@ -81,7 +89,7 @@ static void prepare_qr(void) {
         : ui_wifi_qr_prepare(s_status.ssid, READ_PICO_TRANSFER_PASSWORD);
 }
 
-typedef enum { TRANSFER_HOME, TRANSFER_NETWORKS, TRANSFER_PASSWORD } transfer_view_t;
+typedef enum { TRANSFER_HOME, TRANSFER_NETWORKS, TRANSFER_PASSWORD, TRANSFER_SAVED } transfer_view_t;
 // 长度随显示大小放大；放大后选网页一页少几行，密码页和主页间距收紧，二维码让出左栏宽度，都放在底栏上面。
 // Lengths scale with the display size; scaled up, the network list shows fewer rows per page, the password and home
 // views tighten their gaps and the QR code yields width to the left column, all staying above the bottom bar.
@@ -98,8 +106,71 @@ static int s_keyboard_mode;
 // 从设置 › Wi-Fi 进来：只管保存的网络，不开传书服务；返回回设置。/ Opened from Settings › Wi-Fi: manage the saved
 // network only, without the transfer service; going back returns to Settings.
 static bool s_manage, s_test_pending, s_leave;
+// 保存的网络（当前的在最前）和扫描结果里哪些是保存过的。/ Saved networks (current first) and which scan results
+// are saved.
+static tr_wifi_item_t s_known[TR_WIFI_LIST_MAX];
+static int s_known_count, s_known_page;
+static bool s_net_saved[READ_PICO_TRANSFER_SCAN_MAX], s_net_current[READ_PICO_TRANSFER_SCAN_MAX];
+static bool s_save_checked = true;
+static char s_forget_ssid[33];
+// 设置里先连后存：下一轮试连这个网络。/ Settings connects before saving: try this network next tick.
+static bool s_try_pending, s_try_save, s_try_from_saved;
+static char s_try_ssid[33], s_try_pass[PASSWORD_MAX + 1];
+// 传书里连新网络：连上后按 s_sta_save 决定写不写。/ Transfer joining a network: once joined, s_sta_save decides
+// whether it is written.
+static bool s_sta_pending, s_sta_save, s_sta_joined;
+static char s_sta_ssid[33], s_sta_pass[PASSWORD_MAX + 1];
 
 void app_transfer_open_wifi(void) { s_manage = true; }
+
+static void wipe(void* p, size_t n) {
+    volatile char* b = p;
+    while (n--) *b++ = 0;
+}
+
+static void clear_try(void) {
+    s_try_pending = false;
+    wipe(s_try_pass, sizeof(s_try_pass));
+}
+
+static void clear_sta(void) {
+    s_sta_pending = false;
+    wipe(s_sta_pass, sizeof(s_sta_pass));
+}
+
+static int network_rows(void);
+
+// 读当前网络和保存列表，标出扫描结果里保存过的，并把当前、保存过的排到前面（各自保持信号顺序）。
+// Read the current network and the saved list, mark saved scan results, and move current then saved ones to the
+// front (each keeping signal order).
+static void refresh_known(void) {
+    s_saved_ssid[0] = 0;
+    s_saved_configured = false;
+    read_pico_transfer_get_current_wifi(s_saved_ssid, &s_saved_configured, NULL);
+    s_known_count = tr_wifi_list(s_known, TR_WIFI_LIST_MAX);
+    if (s_known_page * NETWORK_ROWS >= s_known_count) s_known_page = 0;
+    read_pico_transfer_network_t sorted[READ_PICO_TRANSFER_SCAN_MAX];
+    size_t n = 0;
+    for (int pass = 0; pass < 3; ++pass) {
+        for (size_t i = 0; i < s_network_count; ++i) {
+            const bool cur = s_saved_configured && !strcmp(s_networks[i].ssid, s_saved_ssid);
+            bool saved = cur;
+            for (int k = 0; k < s_known_count && !saved; ++k) saved = !strcmp(s_known[k].ssid, s_networks[i].ssid);
+            if ((pass == 0 && cur) || (pass == 1 && saved && !cur) || (pass == 2 && !saved)) {
+                s_net_current[n] = cur;
+                s_net_saved[n] = saved;
+                sorted[n++] = s_networks[i];
+            }
+        }
+    }
+    memcpy(s_networks, sorted, n * sizeof(sorted[0]));
+}
+
+static int scan_index(const char* ssid) {
+    for (size_t i = 0; i < s_network_count; ++i)
+        if (!strcmp(s_networks[i].ssid, ssid)) return (int)i;
+    return -1;
+}
 
 // 下一轮试连保存的网络（先把“正在连接”画出来）。/ Try the saved network next tick (after "connecting" is drawn).
 static void start_test(void) {
@@ -144,6 +215,16 @@ static EpdRect network_control_rect(int id) {
     return ui_row_rect(id - 7, 3, network_nav_y(), UI_S(84));
 }
 
+// 已保存的网络页：行 0..5，行里右边的“忘记”是 20..25，翻页 7、9，返回 10。/ Saved-networks view: rows 0..5, the
+// "forget" button at each row's right is 20..25, pager 7 and 9, back 10.
+static EpdRect saved_control_rect(int id) {
+    if (id >= 20) {
+        const EpdRect row = network_control_rect(id - 20);
+        return (EpdRect){row.x + row.width - UI_S(140) - UI_S(12), row.y + UI_S(12), UI_S(140), row.height - UI_S(24)};
+    }
+    return network_control_rect(id);
+}
+
 // 密码页的纵向排布。正常档沿用原坐标；放大后从标题下依次排、间距收紧，消息行留在底栏上面。
 // Password view rows. Normal size keeps the original coordinates; scaled up they stack below the header with tighter
 // gaps so the message line stays above the bottom bar.
@@ -167,8 +248,14 @@ static pw_geo_t pw_geo(void) {
     return g;
 }
 
+#define SAVE_BOX UI_S(28)   // “保存这个网络”的方框边长 / Side of the "save this network" box
+
 static EpdRect password_control_rect(int id) {
     const pw_geo_t g = pw_geo();
+    if (id == 47) {
+        const int w = SAVE_BOX + UI_S(10) + ttf_text_width_px(UI_PX_CAPTION, "保存这个网络") + UI_S(8);
+        return (EpdRect){ui_content_right() - w, g.caption - UI_S(10), w, UI_S(48)};
+    }
     if (id < 40) {
         const int gap = 6;
         int width = (ui_content_width() - 9 * gap) / 10;
@@ -197,7 +284,7 @@ static void draw_networks(uint8_t* fb) {
     if (s_forget_confirm) {
         ui_draw_header(fb, "遗忘已保存网络？", "仅清除 WiFi 连接信息，不影响图书");
         char name[33];
-        snprintf(name, sizeof(name), "%s", s_saved_ssid);
+        snprintf(name, sizeof(name), "%s", s_forget_ssid);
         fit_label(name, UI_PX_BODY, ui_content_width());
         ui_text(fb, UI_MARGIN, UI_S(350), UI_PX_BODY, name, EPD_DRAW_ALIGN_LEFT, false);
         ui_text(fb, UI_MARGIN, UI_S(450), UI_PX_CAPTION, s_network_message, EPD_DRAW_ALIGN_LEFT, false);
@@ -206,13 +293,18 @@ static void draw_networks(uint8_t* fb) {
         ui_draw_menu_handle(fb, false);
         return;
     }
-    if (s_manage) ui_draw_header(fb, "Wi-Fi", "只能保存一个 2.4 GHz 网络，连新网络会替换它");
+    if (s_manage) ui_draw_header(fb, "Wi-Fi", "只支持 2.4 GHz 网络，保存的网络加密存在 TF 卡");
     else ui_draw_header(fb, "选择 WiFi", "选择 2.4 GHz 网络，连接后同网传书");
-    if (s_saved_configured) {
-        provisioning_button(fb, network_control_rect(6), s_manage ? "测试连接" : "连接已保存", 6);
-        provisioning_button(fb, network_control_rect(11), "遗忘网络", 11);
+    // 有当前网络或保存过网络时，上面放两个按钮和当前网络名。/ With a current or saved network, two buttons and the
+    // current name sit on top.
+    const bool top = s_saved_configured || s_known_count;
+    if (top) {
+        if (s_saved_configured)
+            provisioning_button(fb, network_control_rect(6), s_manage ? "测试连接" : "连接已保存", 6);
+        if (s_known_count) provisioning_button(fb, network_control_rect(11), "已保存的网络", 11);
         char saved[64];
-        snprintf(saved, sizeof(saved), "已保存网络：%s", s_saved_ssid);
+        if (s_saved_configured) snprintf(saved, sizeof(saved), "当前网络：%s", s_saved_ssid);
+        else snprintf(saved, sizeof(saved), "当前网络：无");
         int name_px = UI_PX_CAPTION;
         while (name_px > 12 && ttf_text_width_px(name_px, saved) > ui_content_width()) --name_px;
         ui_text(fb, UI_MARGIN, UI_S(270), name_px, saved, EPD_DRAW_ALIGN_LEFT, false);
@@ -224,7 +316,7 @@ static void draw_networks(uint8_t* fb) {
     char note[sizeof(s_network_message)];
     snprintf(note, sizeof(note), "%s", s_scan_pending ? "正在扫描，请稍候…" : s_network_message[0] ? s_network_message : count);
     fit_label(note, UI_PX_CAPTION, ui_content_width());
-    ui_text(fb, UI_MARGIN, s_saved_configured ? UI_S(310) : UI_S(280), UI_PX_CAPTION, note, EPD_DRAW_ALIGN_LEFT, false);
+    ui_text(fb, UI_MARGIN, top ? UI_S(310) : UI_S(280), UI_PX_CAPTION, note, EPD_DRAW_ALIGN_LEFT, false);
     for (int row = 0; row < NETWORK_ROWS; ++row) {
         size_t index = s_network_page * NETWORK_ROWS + row;
         if (index >= s_network_count) break;
@@ -238,6 +330,7 @@ static void draw_networks(uint8_t* fb) {
         fit_label(name, UI_PX_BTN, rect.width - 2 * UI_PAD);
         ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(8), UI_PX_BTN, name, EPD_DRAW_ALIGN_LEFT, false);
         snprintf(detail, sizeof(detail), "%d dBm · %s", network->rssi,
+                 s_net_current[index] ? "当前" : s_net_saved[index] ? "已保存" :
                  !network->supported ? "暂不支持" : network->requires_password ? "需要密码" : "开放网络");
         ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(50), UI_PX_CAPTION, detail, EPD_DRAW_ALIGN_LEFT, false);
     }
@@ -248,9 +341,59 @@ static void draw_networks(uint8_t* fb) {
     ui_draw_menu_handle(fb, false);
 }
 
+// 上次连上是什么时候；时间没对过就不写。/ When it last joined; nothing before the clock is set.
+static void last_ok_label(uint32_t last_ok, char* out, size_t cap) {
+    out[0] = 0;
+    if (!last_ok || !tomato_time_valid()) return;
+    const time_t then = (time_t)last_ok, now = time(NULL);
+    struct tm a, b;
+    localtime_r(&then, &a);
+    localtime_r(&now, &b);
+    const long days = (long)((now - then) / 86400);
+    if (a.tm_year == b.tm_year && a.tm_yday == b.tm_yday) snprintf(out, cap, "今天");
+    else if (days < 30) snprintf(out, cap, "%ld 天前", days < 1 ? 1 : days);
+    else snprintf(out, cap, "%04d-%02d-%02d", a.tm_year + 1900, a.tm_mon + 1, a.tm_mday);
+}
+
+static void draw_saved(uint8_t* fb) {
+    ui_clear_page(fb);
+    ui_draw_header(fb, "已保存的网络", tr_wifi_card_ok() ? "点网络名连接，点忘记删除" : "插入 TF 卡可保存多个网络");
+    const int pages = s_known_count ? (s_known_count + NETWORK_ROWS - 1) / NETWORK_ROWS : 1;
+    char note[sizeof(s_network_message)];
+    if (s_network_message[0]) snprintf(note, sizeof(note), "%s", s_network_message);
+    else snprintf(note, sizeof(note), "%d 个网络 · 第 %d/%d 页", s_known_count, s_known_page + 1, pages);
+    fit_label(note, UI_PX_CAPTION, ui_content_width());
+    ui_text(fb, UI_MARGIN, UI_S(280), UI_PX_CAPTION, note, EPD_DRAW_ALIGN_LEFT, false);
+    for (int row = 0; row < NETWORK_ROWS; ++row) {
+        const int index = s_known_page * NETWORK_ROWS + row;
+        if (index >= s_known_count) break;
+        const tr_wifi_item_t* item = &s_known[index];
+        const EpdRect rect = saved_control_rect(row), forget = saved_control_rect(20 + row);
+        if (s_pressed == row) ui_draw_pressed_round_rect(fb, rect, UI_BTN_RADIUS);
+        ui_draw_round_rect(fb, rect, UI_BTN_RADIUS, UI_GRAY_OUTLINE);
+        ui_draw_round_rect(fb, ui_inset_rect(rect, 1), UI_BTN_RADIUS - 1, UI_GRAY_OUTLINE);
+        const int text_w = forget.x - rect.x - 2 * UI_PAD;
+        char name[33], when[48], detail[96];
+        snprintf(name, sizeof(name), "%s", item->ssid);
+        fit_label(name, UI_PX_BTN, text_w);
+        ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(8), UI_PX_BTN, name, EPD_DRAW_ALIGN_LEFT, false);
+        last_ok_label(item->last_ok, when, sizeof(when));
+        const char* state = item->current ? (item->saved ? "当前" : "当前 · 未保存") : when;
+        const bool away = !s_scan_pending && scan_index(item->ssid) < 0;
+        snprintf(detail, sizeof(detail), "%s%s%s", state, state[0] && away ? " · " : "", away ? "不在范围内" : "");
+        fit_label(detail, UI_PX_CAPTION, text_w);
+        ui_text(fb, rect.x + UI_PAD, rect.y + UI_S(50), UI_PX_CAPTION, detail, EPD_DRAW_ALIGN_LEFT, false);
+        provisioning_button(fb, forget, "忘记", 20 + row);
+    }
+    provisioning_button(fb, saved_control_rect(7), "上一页", 7);
+    provisioning_button(fb, saved_control_rect(9), "下一页", 9);
+    provisioning_button(fb, saved_control_rect(10), "返回", 10);
+    ui_draw_menu_handle(fb, false);
+}
+
 static void draw_password(uint8_t* fb) {
     ui_clear_page(fb);
-    ui_draw_header(fb, "WiFi 密码", "输入完成后点连接，密码将保存在设备");
+    ui_draw_header(fb, "WiFi 密码", "输入完成后点连接，连上后才保存");
     char name[33];
     snprintf(name, sizeof(name), "%s", s_selected.ssid);
     fit_label(name, UI_PX_BODY, ui_content_width());
@@ -259,7 +402,18 @@ static void draw_password(uint8_t* fb) {
     char caption[80];
     size_t len = strlen(s_password);
     snprintf(caption, sizeof(caption), "%s · %u/%u", s_selected.requires_password ? "密码" : "开放网络，无需密码", (unsigned)len, PASSWORD_MAX);
+    // 说明文字给右边的“保存这个网络”让出位置。/ The caption leaves room for "save this network" on the right.
+    const EpdRect save = password_control_rect(47);
+    fit_label(caption, UI_PX_CAPTION, save.x - UI_S(12) - UI_MARGIN);
     ui_text(fb, UI_MARGIN, g.caption, UI_PX_CAPTION, caption, EPD_DRAW_ALIGN_LEFT, false);
+    // “保存这个网络”：方框打勾时填黑。/ "Save this network": the box is filled black when checked.
+    if (s_pressed == 47) ui_draw_pressed_round_rect(fb, save, UI_BTN_RADIUS);
+    const EpdRect box = {save.x + UI_S(4), save.y + (save.height - SAVE_BOX) / 2, SAVE_BOX, SAVE_BOX};
+    epd_draw_rect(box, UI_GRAY_BLACK, fb);
+    epd_draw_rect(ui_inset_rect(box, 1), UI_GRAY_BLACK, fb);
+    if (s_save_checked) epd_fill_rect(ui_inset_rect(box, UI_S(6)), UI_GRAY_BLACK, fb);
+    ui_text_vc(fb, box.x + SAVE_BOX + UI_S(10), save.y + save.height / 2, UI_PX_CAPTION, "保存这个网络",
+               EPD_DRAW_ALIGN_LEFT, false);
     EpdRect field = g.field;
     ui_draw_round_rect(fb, field, UI_BTN_RADIUS, UI_GRAY_BLACK);
     char shown[PASSWORD_MAX + 1];
@@ -296,7 +450,7 @@ static void queue_network_start(read_pico_transfer_mode_t mode) {
     clear_password();
     memset(&s_status, 0, sizeof(s_status));
     s_status.mode = s_mode;
-    read_pico_transfer_get_saved_wifi(s_status.wifi_ssid, &s_status.wifi_configured);
+    read_pico_transfer_get_current_wifi(s_status.wifi_ssid, &s_status.wifi_configured, NULL);
     s_start_pending = true;
 }
 
@@ -309,11 +463,90 @@ static bool enter_networks(void) {
     s_network_count = s_network_page = 0;
     s_scan_pending = true;
     s_network_message[0] = 0;
-    s_saved_ssid[0] = 0;
-    s_saved_configured = false;
-    read_pico_transfer_get_saved_wifi(s_saved_ssid, &s_saved_configured);
+    refresh_known();
     clear_password();
     return true;
+}
+
+// 连一个网络。设置里下一轮试连，连上再按 save 写；传书里先设成临时网络再开传书，连上后由 on_tick 按 save 写。
+// 返回 false 表示凭据不合格。
+// Join a network. In Settings it is tried next tick and written per save once joined; in transfer it becomes the
+// temporary network, transfer starts, and on_tick writes it per save once joined. False means invalid credentials.
+static bool connect_network(const char* ssid, const char* pass, bool save, bool from_saved) {
+    if (s_manage) {
+        snprintf(s_try_ssid, sizeof(s_try_ssid), "%s", ssid);
+        snprintf(s_try_pass, sizeof(s_try_pass), "%s", pass);
+        s_try_save = save;
+        s_try_from_saved = from_saved;
+        s_try_pending = true;
+        snprintf(s_network_message, sizeof(s_network_message), "正在连接 %s…", ssid);
+        return true;
+    }
+    clear_sta();
+    // 点的就是当前网络：直接连。/ The current network was tapped: just join it.
+    if (!(s_saved_configured && !strcmp(ssid, s_saved_ssid))) {
+        if (tr_wifi_use_once(ssid, pass) != ESP_OK) return false;
+        snprintf(s_sta_ssid, sizeof(s_sta_ssid), "%s", ssid);
+        snprintf(s_sta_pass, sizeof(s_sta_pass), "%s", pass);
+        s_sta_save = save;
+        s_sta_pending = true;
+    }
+    queue_network_start(READ_PICO_TRANSFER_MODE_STA);
+    return true;
+}
+
+// 点了一个保存过的网络：取出密码直接连；取不到就当新网络输密码。/ A saved network was tapped: fetch its password and
+// join; without one, ask for the password like a new network.
+static void connect_saved(const read_pico_transfer_network_t* net) {
+    s_selected = *net;
+    char pass[PASSWORD_MAX + 1];
+    if (tr_wifi_take(net->ssid, pass)) {
+        connect_network(net->ssid, pass, true, true);
+    } else {
+        clear_password();
+        s_network_message[0] = 0;
+        s_keyboard_mode = 0;
+        s_save_checked = true;
+        s_view = TRANSFER_PASSWORD;
+    }
+    wipe(pass, sizeof(pass));
+}
+
+// 设置里试连的结果。/ The outcome of a Settings connection attempt.
+static void finish_try(void) {
+    tomato_net_fail_t why = TOMATO_NET_FAIL_OTHER;
+    const esp_err_t err = tomato_net_try(s_try_ssid, s_try_pass, 20000, &why);
+    if (err == ESP_OK) {
+        const esp_err_t saved = s_try_save ? tr_wifi_commit(s_try_ssid, s_try_pass)
+                                           : tr_wifi_use_once(s_try_ssid, s_try_pass);
+        snprintf(s_network_message, sizeof(s_network_message), "%s", saved != ESP_OK ? "已连上，但保存失败" :
+                 s_try_save ? "已连接并保存" : "已连接（未保存，重启后失效）");
+        clear_password();
+        if (s_view == TRANSFER_PASSWORD) s_view = TRANSFER_NETWORKS;
+        refresh_known();
+    } else if (err == ESP_ERR_INVALID_STATE) {
+        snprintf(s_network_message, sizeof(s_network_message), "后台正在联网，稍后再试");
+    } else if (why == TOMATO_NET_FAIL_AUTH && s_try_from_saved) {
+        // 保存的密码对不上：多半路由器改了密码，进密码页重输。/ The saved password failed, most likely changed on the
+        // router: ask for it again.
+        const int i = scan_index(s_try_ssid);
+        if (i >= 0) s_selected = s_networks[i];
+        else {
+            memset(&s_selected, 0, sizeof(s_selected));
+            snprintf(s_selected.ssid, sizeof(s_selected.ssid), "%s", s_try_ssid);
+            s_selected.supported = s_selected.requires_password = true;
+        }
+        clear_password();
+        s_keyboard_mode = 0;
+        s_save_checked = true;
+        s_view = TRANSFER_PASSWORD;
+        snprintf(s_network_message, sizeof(s_network_message), "密码可能已更改，请重新输入");
+    } else if (why == TOMATO_NET_FAIL_AUTH) {
+        snprintf(s_network_message, sizeof(s_network_message), "密码不对，请重新输入");
+    } else {
+        snprintf(s_network_message, sizeof(s_network_message), "连接失败，请靠近路由器后重试");
+    }
+    clear_try();
 }
 
 // 提示页先呈现，下一轮才同步扫描；输入页不轮询已停服的传书状态。
@@ -323,6 +556,12 @@ static app_redraw_t network_ui_tick(app_ctx_t* ctx) {
         s_test_pending = false;
         // 网络名上一行已经写着，这里只写结果。/ The network name is on the line above; show only the outcome.
         tomato_net_test(20000, s_network_message, sizeof(s_network_message));
+        s_pressed = -1;
+        return APP_REDRAW_PAGE;
+    }
+    if (s_try_pending && !ctx->consumed) {
+        s_try_pending = false;
+        finish_try();
         s_pressed = -1;
         return APP_REDRAW_PAGE;
     }
@@ -338,8 +577,15 @@ static app_redraw_t network_ui_tick(app_ctx_t* ctx) {
     }
     else if (!s_network_count) snprintf(s_network_message, sizeof(s_network_message), "未发现网络，请靠近路由器后重扫");
     else s_network_message[0] = 0;
+    refresh_known();
     s_pressed = -1;
     return APP_REDRAW_PAGE;
+}
+
+static EpdRect view_rect(int id) {
+    if (s_forget_confirm) return network_control_rect(id);
+    if (s_view == TRANSFER_PASSWORD) return password_control_rect(id);
+    return s_view == TRANSFER_SAVED ? saved_control_rect(id) : network_control_rect(id);
 }
 
 static int provisioning_hit(uint16_t x, uint16_t y) {
@@ -347,43 +593,74 @@ static int provisioning_hit(uint16_t x, uint16_t y) {
         for (int i = 11; i <= 12; ++i) if (ui_rect_hit(network_control_rect(i), x, y)) return i;
         return -1;
     }
+    if (s_try_pending || s_test_pending) return -1;
     if (s_view == TRANSFER_PASSWORD) {
-        for (int i = 0; i < 47; ++i) if (ui_rect_hit(password_control_rect(i), x, y)) return i;
+        for (int i = 0; i <= 47; ++i) if (ui_rect_hit(password_control_rect(i), x, y)) return i;
+    } else if (s_view == TRANSFER_SAVED) {
+        for (int row = 0; row < NETWORK_ROWS && s_known_page * NETWORK_ROWS + row < s_known_count; ++row) {
+            // 行里的“忘记”先于整行。/ A row's forget button wins over the row.
+            if (ui_rect_hit(saved_control_rect(20 + row), x, y)) return 20 + row;
+            if (ui_rect_hit(saved_control_rect(row), x, y)) return row;
+        }
+        for (int i = 7; i <= 10; ++i) if (i != 8 && ui_rect_hit(saved_control_rect(i), x, y)) return i;
     } else {
         for (int i = 0; i < 12; ++i) {
             if (i < NETWORK_ROWS_MAX && (i >= NETWORK_ROWS || s_scan_pending ||
                                          s_network_page * NETWORK_ROWS + i >= s_network_count)) continue;
-            if ((i == 6 || i == 11) && !s_saved_configured) continue;
+            if ((i == 6 && !s_saved_configured) || (i == 11 && !s_known_count)) continue;
             if (ui_rect_hit(network_control_rect(i), x, y)) return i;
         }
     }
     return -1;
 }
 
+static app_redraw_t saved_action(int id) {
+    s_network_message[0] = 0;
+    if (id >= 20) {
+        snprintf(s_forget_ssid, sizeof(s_forget_ssid), "%s", s_known[s_known_page * NETWORK_ROWS + id - 20].ssid);
+        s_forget_confirm = true;
+    } else if (id < NETWORK_ROWS_MAX) {
+        const tr_wifi_item_t* item = &s_known[s_known_page * NETWORK_ROWS + id];
+        const int i = scan_index(item->ssid);
+        if (i < 0) snprintf(s_network_message, sizeof(s_network_message), "%s 不在范围内", item->ssid);
+        else connect_saved(&s_networks[i]);
+    } else if (id == 7 && s_known_page) --s_known_page;
+    else if (id == 9 && (s_known_page + 1) * NETWORK_ROWS < s_known_count) ++s_known_page;
+    else if (id == 10) s_view = TRANSFER_NETWORKS;
+    return APP_REDRAW_PAGE;
+}
+
 static app_redraw_t provisioning_action(int id) {
     if (s_forget_confirm) {
         if (id == 12) { s_forget_confirm = false; s_network_message[0] = 0; }
         else if (id == 11) {
-            esp_err_t err = read_pico_transfer_forget_wifi();
+            esp_err_t err = tr_wifi_forget(s_forget_ssid);
             if (err == ESP_OK) {
                 s_forget_confirm = false;
-                s_saved_configured = false;
-                s_saved_ssid[0] = 0;
+                refresh_known();
+                if (!s_known_count) s_view = TRANSFER_NETWORKS;
                 snprintf(s_network_message, sizeof(s_network_message), "已遗忘网络");
             } else snprintf(s_network_message, sizeof(s_network_message), "遗忘失败，请重试或取消");
         }
         return APP_REDRAW_PAGE;
     }
+    if (s_view == TRANSFER_SAVED) return saved_action(id);
     if (s_view == TRANSFER_NETWORKS) {
         if (id < NETWORK_ROWS_MAX) {
-            s_selected = s_networks[s_network_page * NETWORK_ROWS + id];
+            const size_t index = s_network_page * NETWORK_ROWS + id;
+            s_selected = s_networks[index];
             if (!s_selected.supported) {
                 snprintf(s_network_message, sizeof(s_network_message), "此网络认证暂不支持，请选择其他网络");
+                return APP_REDRAW_PAGE;
+            }
+            if (s_net_saved[index]) {
+                connect_saved(&s_networks[index]);
                 return APP_REDRAW_PAGE;
             }
             clear_password();
             s_network_message[0] = 0;
             s_keyboard_mode = 0;
+            s_save_checked = true;
             s_view = TRANSFER_PASSWORD;
         } else if (id == 6) {
             if (s_manage) start_test();
@@ -396,7 +673,7 @@ static app_redraw_t provisioning_action(int id) {
             if (s_manage) { s_leave = true; return APP_REDRAW_NONE; }
             queue_network_start(s_mode);
         }
-        else if (id == 11) { s_forget_confirm = true; s_network_message[0] = 0; }
+        else if (id == 11) { s_view = TRANSFER_SAVED; s_known_page = 0; s_network_message[0] = 0; }
         return APP_REDRAW_PAGE;
     }
     size_t len = strlen(s_password);
@@ -411,24 +688,15 @@ static app_redraw_t provisioning_action(int id) {
     else if (id == 43) { if (len) s_password[len - 1] = 0; s_network_message[0] = 0; }
     else if (id == 44) { clear_password(); s_network_message[0] = 0; s_view = TRANSFER_NETWORKS; return APP_REDRAW_PAGE; }
     else if (id == 45) s_password_visible = !s_password_visible;
+    else if (id == 47) s_save_checked = !s_save_checked;
     else if (id == 46) {
         if (s_selected.requires_password && len < 8) {
             snprintf(s_network_message, sizeof(s_network_message), "加密网络密码至少 8 个字符");
+        } else if (connect_network(s_selected.ssid, s_selected.requires_password ? s_password : "", s_save_checked,
+                                   false)) {
+            return APP_REDRAW_PAGE;
         } else {
-            esp_err_t err = read_pico_transfer_save_wifi(s_selected.ssid,
-                s_selected.requires_password ? s_password : "");
-            if (err == ESP_OK && s_manage) {
-                // 只保存并试连，不开传书。/ Save and try it; no transfer service.
-                s_saved_configured = true;
-                snprintf(s_saved_ssid, sizeof(s_saved_ssid), "%s", s_selected.ssid);
-                clear_password();
-                s_view = TRANSFER_NETWORKS;
-                start_test();
-                return APP_REDRAW_PAGE;
-            }
-            if (err == ESP_OK) { queue_network_start(READ_PICO_TRANSFER_MODE_STA); return APP_REDRAW_PAGE; }
-            snprintf(s_network_message, sizeof(s_network_message), "%s", err == ESP_ERR_INVALID_ARG ?
-                     "密码须 8～63 字符或 64 位十六进制" : "保存失败，输入已保留，请重试");
+            snprintf(s_network_message, sizeof(s_network_message), "密码须 8～63 字符或 64 位十六进制");
         }
     }
     return APP_REDRAW_AREA;
@@ -439,8 +707,7 @@ static app_redraw_t provisioning_gesture(app_ctx_t* ctx, const ui_gesture_event_
     int origin = provisioning_hit(ev->x0, ev->y0);
     s_pressed = ev->type == UI_GESTURE_PRESS ? origin : -1;
     bool action = ev->type == UI_GESTURE_TAP && old >= 0 && old == origin && provisioning_hit(ev->x, ev->y) == origin;
-    EpdRect old_rect = s_view == TRANSFER_PASSWORD ? password_control_rect(old >= 0 ? old : origin >= 0 ? origin : 0)
-                                                  : network_control_rect(old >= 0 ? old : origin >= 0 ? origin : 0);
+    EpdRect old_rect = view_rect(old >= 0 ? old : origin >= 0 ? origin : 0);
     if (action) {
         app_redraw_t redraw = provisioning_action(origin);
         if (s_leave) {
@@ -583,7 +850,8 @@ static EpdRect control_rect(int id) {
 }
 
 static void render(app_ctx_t* ctx, uint8_t* fb) {
-    if (s_view == TRANSFER_NETWORKS) { draw_networks(fb); return; }
+    if (s_view == TRANSFER_SAVED && !s_forget_confirm) { draw_saved(fb); return; }
+    if (s_view == TRANSFER_NETWORKS || s_forget_confirm) { draw_networks(fb); return; }
     if (s_view == TRANSFER_PASSWORD) { draw_password(fb); return; }
     (void)ctx;
     ui_clear_page(fb);
@@ -652,7 +920,7 @@ static void on_enter(app_ctx_t* ctx) {
     s_pressed = -1;
     s_settle = s_any_changed = false;
     s_status.mode = s_mode;
-    read_pico_transfer_get_saved_wifi(s_status.wifi_ssid, &s_status.wifi_configured);
+    read_pico_transfer_get_current_wifi(s_status.wifi_ssid, &s_status.wifi_configured, NULL);
     s_poll_ms = 0;
     s_free = 0;
     if (s_manage) {
@@ -663,9 +931,7 @@ static void on_enter(app_ctx_t* ctx) {
         s_network_count = s_network_page = 0;
         s_scan_pending = true;
         s_network_message[0] = 0;
-        s_saved_ssid[0] = 0;
-        s_saved_configured = false;
-        read_pico_transfer_get_saved_wifi(s_saved_ssid, &s_saved_configured);
+        refresh_known();
     }
 }
 
@@ -698,8 +964,14 @@ static void transfer_on_media_lost(app_ctx_t* ctx) {
 static void transfer_on_exit(app_ctx_t* ctx) {
     s_manage = s_test_pending = s_leave = false;
     clear_password();
+    clear_try();
+    clear_sta();
+    s_save_checked = true;
     s_scan_pending = false;
     stop_session();
+    // 热点网页可能改了网络，状态栏的名字跟着更新。/ The hotspot web page may have changed the network; update the
+    // status-bar name.
+    tr_wifi_refresh_name();
     ttf_font_suspend_sd(false);
     display_set_bulk_io(false);
     guard_draw_result(ctx->hl, update_display_white(ctx->hl));
@@ -713,6 +985,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (s_view != TRANSFER_HOME) return network_ui_tick(ctx);
     if (s_start_pending) {
         s_start_pending = false;
+        s_sta_joined = false;
         if (s_font_error != ESP_OK) s_font_error = ttf_font_suspend_sd(true);
         esp_err_t err = s_font_error == ESP_OK ? book_store_upload_root(&s_root) : s_font_error;
         if (err == ESP_OK) {
@@ -756,6 +1029,19 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     s_settle = next.changed_count != s_status.changed_count || next.done_count != s_status.done_count ||
         (s_status.state == READ_PICO_TRANSFER_UPLOADING && next.state != READ_PICO_TRANSFER_UPLOADING);
     s_status = next;
+    if (s_mode == READ_PICO_TRANSFER_MODE_STA && next.network_ready && !s_sta_joined) {
+        // 连上了：新网络按“保存”写进 NVS 和卡，当前网络补进卡。/ Joined: a new network is written to NVS and the
+        // card per "save", the current one is added to the card.
+        s_sta_joined = true;
+        if (s_sta_pending && s_sta_save) tr_wifi_commit(s_sta_ssid, s_sta_pass);
+        else if (!s_sta_pending) tr_wifi_joined_current();
+        clear_sta();
+    } else if (s_mode == READ_PICO_TRANSFER_MODE_STA && s_sta_pending && next.state == READ_PICO_TRANSFER_ERROR &&
+               !next.network_ready) {
+        // 新网络没连上：不保留，回到原来的网络。/ The new network failed: drop it and fall back to the previous one.
+        clear_sta();
+        tr_wifi_use_once(NULL, NULL);
+    }
     if (network_changed) prepare_qr();
     if (s_settle) { refresh_capacity(); return APP_REDRAW_FULL; }
     if (network_changed) { refresh_capacity(); return APP_REDRAW_PAGE; }
@@ -800,7 +1086,7 @@ static app_redraw_t on_gesture(app_ctx_t* ctx, const ui_gesture_event_t* ev) {
                 clear_qr();
                 memset(&s_status, 0, sizeof(s_status));
                 s_status.mode = s_mode;
-                read_pico_transfer_get_saved_wifi(s_status.wifi_ssid, &s_status.wifi_configured);
+                read_pico_transfer_get_current_wifi(s_status.wifi_ssid, &s_status.wifi_configured, NULL);
                 s_start_pending = true;
                 return APP_REDRAW_PAGE;
             }

@@ -27,6 +27,7 @@
 #include "tomato.h"
 #include "sleep.h"
 #include "tr_ui.h"
+#include "tr_wifi.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "vcom_setup.h"
@@ -73,6 +74,9 @@ void app_main(void) {
     read_pico_handle_t hw;
     if (read_pico_init(&hw) != ESP_OK) return;
     app_settings_init();
+    // 多个保存的 Wi-Fi：注册番茄联网的换网回调，记下当前网络名给状态栏。/ Several saved Wi-Fi networks: register the
+    // network-switch hooks and remember the current name for the status bar.
+    tr_wifi_init();
     // 隐藏的功能和底部常用的顺序交给标签栏（放不下的由标签栏按显示大小留在“全部”里）。/ Hand the hidden features
     // and the pinned order to the bar (pins that do not fit stay on the All page, per the display size).
     uint8_t pins[TR_TAB_MAX];

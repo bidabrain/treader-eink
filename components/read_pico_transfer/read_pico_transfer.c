@@ -401,8 +401,27 @@ static void release_config(void) {
     portENTER_CRITICAL(&s_lock); s_config_busy = false; portEXIT_CRITICAL(&s_lock);
 }
 
+// 本次开机临时用的网络（设置里没勾保存，或自动换到的候选还没写回），只在内存里，优先于 NVS 里保存的那个。
+// The network used for this boot only (saved unchecked in Settings, or a fallback not yet written back); kept in memory
+// only and taking priority over the one saved in NVS.
+static transfer_credentials_t s_session;
+
+static bool session_copy(transfer_credentials_t *out) {
+    portENTER_CRITICAL(&s_lock); *out = s_session; portEXIT_CRITICAL(&s_lock);
+    return out->version == 1;
+}
+
+// 实际要连的网络：先临时的，再 NVS 里的。/ The network actually used: the temporary one first, then NVS.
+static esp_err_t load_effective(transfer_credentials_t *out, bool *session) {
+    const bool temp = session_copy(out);
+    if (session) *session = temp;
+    return temp ? ESP_OK : load_credentials(out);
+}
+
+// 状态里写的是实际要连的网络，有临时的就写临时的。/ Status names the network actually used, the temporary one if set.
 static void publish_credentials(const transfer_credentials_t *c) {
     portENTER_CRITICAL(&s_lock);
+    if (s_session.version == 1) c = &s_session;
     s_status.wifi_configured = c && c->version == 1;
     memset(s_status.wifi_ssid, 0, sizeof(s_status.wifi_ssid));
     if (s_status.wifi_configured) memcpy(s_status.wifi_ssid, c->ssid, sizeof(s_status.wifi_ssid));
@@ -420,7 +439,32 @@ esp_err_t read_pico_transfer_get_saved_wifi(char ssid[33], bool *configured) {
     return err;
 }
 
-esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]) {
+esp_err_t read_pico_transfer_get_current_wifi(char ssid[33], bool *configured, bool *session) {
+    if (!ssid || !configured) return ESP_ERR_INVALID_ARG;
+    ssid[0] = 0; *configured = false;
+    if (session) *session = false;
+    if (!claim_config()) return ESP_ERR_INVALID_STATE;
+    transfer_credentials_t saved;
+    esp_err_t err = load_effective(&saved, session);
+    if (err == ESP_OK && saved.version == 1) { memcpy(ssid, saved.ssid, 33); *configured = true; }
+    clear_secret(&saved, sizeof(saved)); release_config();
+    return err;
+}
+
+esp_err_t read_pico_transfer_load_current_wifi(char ssid[33], char password[65], bool *session) {
+    if (!ssid || !password) return ESP_ERR_INVALID_ARG;
+    ssid[0] = 0; password[0] = 0;
+    if (session) *session = false;
+    if (!claim_config()) return ESP_ERR_INVALID_STATE;
+    transfer_credentials_t saved;
+    esp_err_t err = load_effective(&saved, session);
+    if (err == ESP_OK && saved.version != 1) err = ESP_ERR_NOT_FOUND;
+    if (err == ESP_OK) { memcpy(ssid, saved.ssid, 33); memcpy(password, saved.password, 65); }
+    clear_secret(&saved, sizeof(saved)); release_config();
+    return err;
+}
+
+esp_err_t read_pico_transfer_load_saved_wifi(char ssid[33], char password[65]) {
     if (!ssid || !password) return ESP_ERR_INVALID_ARG;
     ssid[0] = 0; password[0] = 0;
     if (!claim_config()) return ESP_ERR_INVALID_STATE;
@@ -429,6 +473,39 @@ esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]) {
     if (err == ESP_OK && saved.version != 1) err = ESP_ERR_NOT_FOUND;
     if (err == ESP_OK) { memcpy(ssid, saved.ssid, 33); memcpy(password, saved.password, 65); }
     clear_secret(&saved, sizeof(saved)); release_config();
+    return err;
+}
+
+esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]) {
+    return read_pico_transfer_load_current_wifi(ssid, password, NULL);
+}
+
+esp_err_t read_pico_transfer_set_session_wifi(const char *ssid, const char *password) {
+    transfer_credentials_t next = {0};
+    if (ssid && !credentials_from_text(ssid, password ? password : "", &next)) return ESP_ERR_INVALID_ARG;
+    if (!claim_config()) { clear_secret(&next, sizeof(next)); return ESP_ERR_INVALID_STATE; }
+    portENTER_CRITICAL(&s_lock);
+    memcpy(&s_session, &next, sizeof(next));
+    portEXIT_CRITICAL(&s_lock);
+    // 清掉临时网络后，状态回到 NVS 里的那个。/ With the temporary network cleared, status falls back to NVS.
+    transfer_credentials_t saved = {0};
+    if (load_credentials(&saved) != ESP_OK) memset(&saved, 0, sizeof(saved));
+    publish_credentials(&saved);
+    clear_secret(&saved, sizeof(saved)); clear_secret(&next, sizeof(next)); release_config();
+    ESP_LOGI("transfer", "wifi session=%d", ssid ? 1 : 0);
+    return ESP_OK;
+}
+
+esp_err_t read_pico_transfer_commit_session_wifi(void) {
+    if (!claim_config()) return ESP_ERR_INVALID_STATE;
+    transfer_credentials_t next;
+    esp_err_t err = session_copy(&next) ? store_credentials(&next) : ESP_ERR_NOT_FOUND;
+    if (err == ESP_OK) {
+        portENTER_CRITICAL(&s_lock); clear_secret(&s_session, sizeof(s_session)); portEXIT_CRITICAL(&s_lock);
+        publish_credentials(&next);
+        ESP_LOGI("transfer", "wifi saved configured=1");
+    }
+    clear_secret(&next, sizeof(next)); release_config();
     return err;
 }
 
@@ -441,6 +518,7 @@ esp_err_t read_pico_transfer_save_wifi(const char *ssid, const char *password) {
     if (!claim_config()) { clear_secret(&next, sizeof(next)); return ESP_ERR_INVALID_STATE; }
     esp_err_t err = store_credentials(&next);
     if (err == ESP_OK) {
+        portENTER_CRITICAL(&s_lock); clear_secret(&s_session, sizeof(s_session)); portEXIT_CRITICAL(&s_lock);
         publish_credentials(&next);
         ESP_LOGI("transfer", "wifi saved configured=1");
     }
@@ -728,6 +806,9 @@ static esp_err_t wifi_handler(httpd_req_t *req) {
     if (claim_config()) {
         err = store_credentials(&next);
         if (err == ESP_OK) {
+            // 网页配好的网络立刻生效，不再用临时网络。/ A web-provisioned network takes effect at once, replacing any
+            // temporary one.
+            portENTER_CRITICAL(&s_lock); clear_secret(&s_session, sizeof(s_session)); portEXIT_CRITICAL(&s_lock);
             publish_credentials(&next);
             ESP_LOGI("transfer", "wifi saved configured=1");
         }
@@ -1141,7 +1222,7 @@ esp_err_t read_pico_transfer_start(const read_pico_transfer_cfg_t *cfg) {
     portEXIT_CRITICAL(&s_lock);
     transfer_credentials_t saved = {0};
     wifi_config_t wifi = {0};
-    esp_err_t err = load_credentials(&saved);
+    esp_err_t err = load_effective(&saved, NULL);
     if (err != ESP_OK && cfg->mode == READ_PICO_TRANSFER_MODE_STA) goto fail;
     publish_credentials(&saved);
     if (cfg->mode == READ_PICO_TRANSFER_MODE_STA && saved.version != 1) { err = ESP_ERR_NOT_FOUND; goto fail; }

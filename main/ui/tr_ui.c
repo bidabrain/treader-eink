@@ -14,6 +14,7 @@
 
 #include "book_cover.h"
 #include "read_pico_pmu.h"
+#include "tr_wifi.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
 
@@ -221,20 +222,30 @@ void tr_status_bar(uint8_t* fb) {
         snprintf(clock, sizeof(clock), "%02d:%02d", tm.tm_hour, tm.tm_min);
         tr_text(fb, TR_MARGIN, TR_STATUS_Y, TR_S(28), clock, EPD_DRAW_ALIGN_LEFT, false);
     }
-    if (!read_pico_pmu_ready()) return;
-    const pmu_snapshot_t* pmu = read_pico_pmu_get();
-    if (!pmu) return;
-    int pct = (pmu->soc_permille + 5) / 10;
-    if (pct > 100) pct = 100;
-    // 电池外框、正极帽和电量填充。/ Battery outline, terminal and fill.
-    const int bw = TR_S(40), bh = TR_S(22), bx = TR_W - TR_MARGIN - TR_S(44), by = TR_STATUS_Y + TR_S(6);
-    epd_draw_rect((EpdRect){bx, by, bw, bh}, UI_GRAY_BLACK, fb);
-    epd_draw_rect((EpdRect){bx + 1, by + 1, bw - 2, bh - 2}, UI_GRAY_BLACK, fb);
-    epd_fill_rect((EpdRect){bx + bw, by + TR_S(7), TR_S(4), bh - 2 * TR_S(7)}, UI_GRAY_BLACK, fb);
-    epd_fill_rect((EpdRect){bx + 4, by + 4, (bw - 8) * pct / 100, bh - 8}, UI_GRAY_BLACK, fb);
-    char label[8];
-    snprintf(label, sizeof(label), "%d%%", pct);
-    tr_text(fb, bx - TR_S(10), TR_STATUS_Y, TR_S(28), label, EPD_DRAW_ALIGN_RIGHT, false);
+    int right = TR_W - TR_MARGIN;
+    const pmu_snapshot_t* pmu = read_pico_pmu_ready() ? read_pico_pmu_get() : NULL;
+    if (pmu) {
+        int pct = (pmu->soc_permille + 5) / 10;
+        if (pct > 100) pct = 100;
+        // 电池外框、正极帽和电量填充。/ Battery outline, terminal and fill.
+        const int bw = TR_S(40), bh = TR_S(22), bx = TR_W - TR_MARGIN - TR_S(44), by = TR_STATUS_Y + TR_S(6);
+        epd_draw_rect((EpdRect){bx, by, bw, bh}, UI_GRAY_BLACK, fb);
+        epd_draw_rect((EpdRect){bx + 1, by + 1, bw - 2, bh - 2}, UI_GRAY_BLACK, fb);
+        epd_fill_rect((EpdRect){bx + bw, by + TR_S(7), TR_S(4), bh - 2 * TR_S(7)}, UI_GRAY_BLACK, fb);
+        epd_fill_rect((EpdRect){bx + 4, by + 4, (bw - 8) * pct / 100, bh - 8}, UI_GRAY_BLACK, fb);
+        char label[8];
+        snprintf(label, sizeof(label), "%d%%", pct);
+        tr_text(fb, bx - TR_S(10), TR_STATUS_Y, TR_S(28), label, EPD_DRAW_ALIGN_RIGHT, false);
+        right = bx - TR_S(10) - ttf_text_width_px(TR_S(28), label);
+    }
+    // 电量左边写当前要连的 Wi-Fi 名（设备平时不连网，只是告诉用户会连哪个）。/ Left of the battery, the Wi-Fi network
+    // that will be used (the device is normally offline; this only says which network it will join).
+    char wifi[40];
+    snprintf(wifi, sizeof(wifi), "%s", tr_wifi_current_name());
+    if (wifi[0]) {
+        tr_fit(wifi, TR_S(24), TR_S(260));
+        tr_text_dim(fb, right - TR_S(20), TR_STATUS_Y + TR_S(3), TR_S(24), wifi, EPD_DRAW_ALIGN_RIGHT);
+    }
 }
 
 void tr_title(uint8_t* fb, const char* title) {

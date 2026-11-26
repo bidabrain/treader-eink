@@ -70,8 +70,8 @@ typedef struct {
     read_pico_transfer_state_t state; ///< 当前状态 / Current state
     read_pico_transfer_mode_t mode; ///< 网络模式 / Network mode
     char url[64]; ///< 可访问地址，未联网为空 / Reachable address, empty when offline
-    char wifi_ssid[33]; ///< 已保存网络名称，不含密码 / Saved network name, never a password
-    bool wifi_configured; ///< 存在有效凭据 / Valid credentials saved
+    char wifi_ssid[33]; ///< 实际要连的网络名（临时网络优先），不含密码 / Network actually used (temporary first), never a password
+    bool wifi_configured; ///< 存在有效凭据（含临时网络） / Valid credentials exist, temporary included
     bool network_ready; ///< 已取得可用网络地址 / Usable network address acquired
     unsigned sta_count; ///< 连接数 / Station count
     char ssid[33]; ///< 热点名称 / AP name
@@ -93,14 +93,35 @@ bool read_pico_transfer_try_stop_if_idle(void);
 void read_pico_transfer_get_status(read_pico_transfer_status_t *out);
 /// 控制任务每500ms驱动有界连接重试与15秒超时。/ Owner task polls every 500 ms for bounded retries and a 15 s timeout.
 void read_pico_transfer_service_poll(void);
-/// 只读已保存SSID；未配置仍返回ESP_OK。/ Read only the saved SSID; unconfigured still returns ESP_OK.
+/// 只读 NVS 里保存的 SSID（不看临时网络）；未配置仍返回ESP_OK。/ Read only the SSID saved in NVS (ignoring the
+/// temporary network); unconfigured still returns ESP_OK.
 esp_err_t read_pico_transfer_get_saved_wifi(char ssid[33], bool *configured);
-/// 读出已保存的凭据，供番茄同步自行连网；调用方用毕须擦除密码。未配置返回 ESP_ERR_NOT_FOUND。
-/// Read saved credentials so Tomato sync can connect on its own; caller must wipe the password. ESP_ERR_NOT_FOUND when unset.
+/// 只读实际要连的网络名：有临时网络就是它，否则是 NVS 里保存的；session 可为 NULL。
+/// Read only the name of the network actually used: the temporary one if set, else the one saved in NVS; session may
+/// be NULL.
+esp_err_t read_pico_transfer_get_current_wifi(char ssid[33], bool *configured, bool *session);
+/// 读出实际要连的凭据（临时网络优先），供番茄同步自行连网；调用方用毕须擦除密码。未配置返回 ESP_ERR_NOT_FOUND。
+/// Read the credentials actually used (temporary first) so Tomato sync can connect on its own; caller must wipe the
+/// password. ESP_ERR_NOT_FOUND when unset.
+esp_err_t read_pico_transfer_load_current_wifi(char ssid[33], char password[65], bool *session);
+/// 只读 NVS 里保存的凭据（不看临时网络）；调用方用毕须擦除密码。未配置返回 ESP_ERR_NOT_FOUND。
+/// Read only the credentials saved in NVS (ignoring the temporary network); caller must wipe the password.
+/// ESP_ERR_NOT_FOUND when unset.
+esp_err_t read_pico_transfer_load_saved_wifi(char ssid[33], char password[65]);
+/// 同 load_current_wifi，不问是不是临时网络。/ Same as load_current_wifi without the temporary flag.
 esp_err_t read_pico_transfer_load_wifi(char ssid[33], char password[65]);
+/// 设本次开机临时用的网络（只在内存里，优先于 NVS，重启就没了）；ssid 为 NULL 清掉。传书和番茄联网都用它。
+/// Set the network for this boot only (memory only, ahead of NVS, gone after a restart); NULL ssid clears it. Both
+/// transfer and Tomato networking use it.
+esp_err_t read_pico_transfer_set_session_wifi(const char *ssid, const char *password);
+/// 把临时网络写进 NVS 并清掉临时的；任何状态都可以（写的就是正在用的那个）。没有临时网络返回 ESP_ERR_NOT_FOUND。
+/// Write the temporary network to NVS and clear it; allowed in any state since it is the network in use.
+/// ESP_ERR_NOT_FOUND without one.
+esp_err_t read_pico_transfer_commit_session_wifi(void);
 /// 仅热点或停止状态可遗忘；上传中拒绝。/ Forget only while AP or stopped; rejected during upload.
 esp_err_t read_pico_transfer_forget_wifi(void);
 /// 停服后同步扫描2.4GHz网络；最多16个去重SSID，按信号降序，所有临时资源均释放。/ Scan synchronously while stopped; up to 16 unique SSIDs by descending RSSI; release all temporary resources.
 esp_err_t read_pico_transfer_scan_wifi(read_pico_transfer_network_t out[READ_PICO_TRANSFER_SCAN_MAX], size_t *count);
-/// 停服后保存设备输入的凭据，不自动连接；密码校验与网页相同。/ Save device-entered credentials while stopped without connecting; validation matches the webpage.
+/// 停服后保存设备输入的凭据，不自动连接，并清掉临时网络；密码校验与网页相同。/ Save device-entered credentials while
+/// stopped without connecting and clear the temporary network; validation matches the webpage.
 esp_err_t read_pico_transfer_save_wifi(const char *ssid, const char *password);

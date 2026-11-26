@@ -54,6 +54,7 @@
 #include "tr_nav.h"
 #include "tr_time.h"
 #include "tr_ui.h"
+#include "tr_wifi.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
 #include "ui_menu.h"
@@ -258,6 +259,7 @@ static const struct { const char* title; const char* hint; const char* go; } EDI
 
 static edit_t s_edit;
 static char s_wifi[33];
+static int s_wifi_count;
 static tomato_config_t s_cfg;
 static tomato_webdav_config_t s_dav;
 static tomato_srv_config_t s_host[S_COUNT];
@@ -336,7 +338,12 @@ static tomato_import_result_t import_progress(const tomato_progress_t* in) {
 
 static void load(void) {
     bool configured = false;
-    if (read_pico_transfer_get_saved_wifi(s_wifi, &configured) != ESP_OK || !configured) s_wifi[0] = 0;
+    if (read_pico_transfer_get_current_wifi(s_wifi, &configured, NULL) != ESP_OK || !configured) s_wifi[0] = 0;
+    // 保存了几个网络（卡上的加上 NVS 里的）。/ How many networks are saved (the card's plus the NVS one).
+    tr_wifi_item_t known[TR_WIFI_LIST_MAX];
+    const int n = tr_wifi_list(known, TR_WIFI_LIST_MAX);
+    s_wifi_count = 0;
+    for (int i = 0; i < n; ++i) s_wifi_count += known[i].saved;
     s_has_cfg = tomato_config_load(&s_cfg) == ESP_OK;
     // 内置服务器的地址和密码不留在页面里，只记“在用内置”。/ Keep no copy of the built-in URL or password, only the flag.
     if (s_cfg.builtin) {
@@ -788,8 +795,9 @@ static void cat_summary(cat_t c, char* out, size_t cap) {
         break;
     }
     case C_NET:
-        if (s_wifi[0]) snprintf(out, cap, "已保存：%s · 只能保存一个", s_wifi);
-        else snprintf(out, cap, "未保存网络 · 只能保存一个");
+        if (s_wifi[0]) snprintf(out, cap, "当前：%s · 已保存 %d 个", s_wifi, s_wifi_count);
+        else if (s_wifi_count) snprintf(out, cap, "已保存 %d 个网络", s_wifi_count);
+        else snprintf(out, cap, "未保存网络");
         break;
     case C_WIFI: snprintf(out, cap, "Wi-Fi 传书 · USB 传书"); break;
     case C_PROXY:
