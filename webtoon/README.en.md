@@ -7,7 +7,7 @@ The Discover page and follow-along server for the Comics tab on Read Pico: brows
 - **The server keeps no subscriptions**: subscriptions are stored on the device's SD card (one `.webtoon` marker file in each title's folder), and the device asks "do these titles have new episodes?". Changing servers or reinstalling never loses subscriptions.
 - **Page cuts suited to e-ink**: tall vertical-scroll comics are cut into pages of 648×1000, with cut points found in the white space between panels so that panels and speech bubbles are rarely split in half; very long gaps are shortened and fully blank pages are dropped. Each page is a plain (baseline) JPEG, so the device can use fast decoding and page turns are as fast as reading a local CBZ.
 - **Simplified / Traditional Chinese**: the Chinese edition of WEBTOON uses Traditional Chinese. Simplified keywords typed with the device's pinyin input are converted to Traditional by the server before searching; titles and summaries are shown in Simplified by default (text inside the images is unchanged).
-- **Deploy from one compose file**: `docker compose up -d`, then open the web panel. The panel can also browse the Discover page and convert a test episode to download as a CBZ and see the result.
+- **Deploy from one compose file**: `docker compose up -d`, then open the web panel. The panel can also browse the Discover page, open a title and tick episodes (all, the latest 5 or a range) to download into the server cache, then download the finished CBZs; the Cache page lists every converted episode still on the server.
 - **Internet access**: built-in Cloudflare Tunnel (quick tunnel or tunnel token). The tunnel only lets the device API through; the panel always stays on the LAN.
 
 ```

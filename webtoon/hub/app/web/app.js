@@ -114,21 +114,102 @@ $('#qGo').onclick = async () => {
     covers(r.items);
   } catch (e) { $('#storeMsg').textContent = e.message; }
 };
+// 详情页：cur 是正在看的作品；sel 是勾选的话号，st 是各话状态（服务器给的）。
+// Detail view: cur is the open title; sel holds the ticked numbers and st each episode's state from the server.
+const SHOW_N = 30, EP_MB = 4.5;
+let cur = null;
 async function openTitle(id) {
-  $('#detail').hidden = false; $('#dTitle').textContent = '加载中…'; $('#dEps').innerHTML = '';
+  $('#detail').hidden = false; $('#dTitle').textContent = '加载中…'; $('#dEps').innerHTML = ''; $('#dMore').hidden = true;
+  cur = null;
   try {
     const t = await api(`/api/panel/title/${id}?lang=${lang()}`);
     $('#dTitle').textContent = t.title;
     $('#dMeta').textContent = `${t.src ? t.src + ' · ' : ''}${t.author} · ${t.genre} · ${t.src ? '' : '免费 '}${t.episodes.length} 话${t.done ? ' · 已完结' : ''}${t.error ? ' · ' + t.error : ''}`;
     $('#dSummary').textContent = t.summary;
-    $('#dEps').innerHTML = t.episodes.slice().reverse().slice(0, 30).map((e) =>
-      `<li><span>#${e.no} ${esc(e.title)}</span><span><span class="muted" id="ep${e.no}"></span> <button class="ghost" data-no="${e.no}">试转</button></span></li>`).join('');
-    $$('#dEps button').forEach((b) => { b.onclick = () => tryEpisode(id, b.dataset.no); });
+    cur = { id, lang: lang(), eps: t.episodes, sel: new Set(), st: {}, all: false, maxMb: 0, timer: 0 };
+    drawEps();
     // 插件作品可以重新编号。/ Extension titles can be renumbered.
     $('#dRenum').hidden = !/^m\d/.test(id);
     $('#renumBtn').onclick = () => renumber(id);
     $('#detail').scrollIntoView({ behavior: 'smooth' });
+    refreshStates(cur);
   } catch (e) { $('#dTitle').textContent = e.message; }
+}
+function epState(no) {
+  const s = cur.st[no];
+  if (!s) return '';
+  const q = `lang=${encodeURIComponent(cur.lang)}`;
+  if (s.state === 'ready') return `<a href="/api/panel/episode/${cur.id}/${no}.cbz?${q}">下载 CBZ（${(s.size / 1048576).toFixed(1)} MB）</a>`;
+  if (s.state === 'error') return `<span class="err">${esc(s.error)}</span>`;
+  return s.running ? (s.total ? `转换中 ${s.done}/${s.total}` : '转换中…') : '排队中';
+}
+function drawEps() {
+  const list = cur.eps.slice().reverse();
+  const shown = cur.all ? list : list.slice(0, SHOW_N);
+  $('#dEps').innerHTML = shown.length ? shown.map((e) => {
+    const s = cur.st[e.no], busy = s && (s.state === 'ready' || s.state === 'pending');
+    return `<li><label><input type="checkbox" data-no="${e.no}"${cur.sel.has(e.no) ? ' checked' : ''}${busy ? ' disabled' : ''}> #${e.no} ${esc(e.title)}</label>
+      <span class="muted">${epState(e.no)}</span></li>`;
+  }).join('') : '<li class="muted">没有可下载的话</li>';
+  $$('#dEps input').forEach((c) => { c.onchange = () => { const n = +c.dataset.no; c.checked ? cur.sel.add(n) : cur.sel.delete(n); drawPick(); }; });
+  $('#dMore').hidden = list.length <= SHOW_N;
+  $('#dMoreBtn').textContent = cur.all ? `只显示最新 ${SHOW_N} 话` : `显示全部 ${list.length} 话`;
+  drawPick();
+}
+function drawPick() {
+  const n = cur.sel.size, mine = Object.values(cur.st).filter((s) => s.state === 'pending').length;
+  $('#dQueue').disabled = !n;
+  $('#dQueue').textContent = n ? `下载到缓存（${n} 话）` : '下载到缓存';
+  $('#dCancel').hidden = !mine;
+  const est = n * EP_MB;
+  $('#dQMsg').textContent = [mine ? `这部还有 ${mine} 话在排队或转换` : '',
+    n && cur.maxMb && est > cur.maxMb * 0.8 ? `约 ${Math.round(est)} MB，快到缓存上限 ${cur.maxMb} MB 了，超出时先清掉最久没用的（设置里能调）` : '']
+    .filter(Boolean).join('；');
+}
+// 能选的话：没转好、也没在排的。/ Pickable episodes: neither converted nor queued.
+const free = (e) => { const s = cur.st[e.no]; return !s || s.state === 'error'; };
+function pick(eps) { cur.sel = new Set(eps.filter(free).map((e) => e.no)); drawEps(); }
+$('#pickAll').onclick = () => cur && pick(cur.eps);
+$('#pickLast5').onclick = () => cur && pick(cur.eps.filter(free).slice(-5));
+$('#pickNone').onclick = () => cur && pick([]);
+$('#pickRange').onclick = () => {
+  if (!cur) return;
+  const a = +$('#pickFrom').value || 1, b = +$('#pickTo').value || Infinity;
+  pick(cur.eps.filter((e) => e.no >= Math.min(a, b) && e.no <= Math.max(a, b)));
+};
+$('#dMoreBtn').onclick = () => { if (cur) { cur.all = !cur.all; drawEps(); } };
+$('#dQueue').onclick = async () => {
+  const c = cur;
+  if (!c || !c.sel.size) return;
+  $('#dQueue').disabled = true; $('#dQMsg').textContent = '排队中…';
+  try {
+    const r = await api(`/api/panel/queue/${c.id}?lang=${encodeURIComponent(c.lang)}`, { method: 'POST', body: { nos: [...c.sel] } });
+    c.sel.clear();
+    await refreshStates(c);
+    $('#dQMsg').textContent = `已排进 ${r.added} 话${r.ready ? `，${r.ready} 话本来就转好了` : ''}；整个队列 ${r.queue} 话`;
+  } catch (e) { $('#dQMsg').textContent = e.message; $('#dQueue').disabled = false; }
+};
+$('#dCancel').onclick = async () => {
+  const c = cur;
+  if (!c) return;
+  try {
+    const r = await api(`/api/panel/queue/${c.id}/cancel?lang=${encodeURIComponent(c.lang)}`, { method: 'POST' });
+    await refreshStates(c);
+    $('#dQMsg').textContent = `已取消 ${r.cancelled} 话（正在转的那一话会转完）`;
+  } catch (e) { $('#dQMsg').textContent = e.message; }
+};
+// 拉一次各话状态；有话在排就过 3 秒再拉，换了作品就停。/ Fetch the states once; poll every 3 s while any is queued and
+// stop once another title is opened.
+async function refreshStates(c) {
+  clearTimeout(c.timer);
+  try {
+    const r = await api(`/api/panel/states/${c.id}?lang=${encodeURIComponent(c.lang)}`);
+    if (c !== cur) return;
+    c.st = r.items; c.maxMb = r.max_mb;
+    for (const n of [...c.sel]) if (!free({ no: n })) c.sel.delete(n);
+    drawEps();
+  } catch (e) { if (c === cur) $('#dQMsg').textContent = e.message; }
+  if (c === cur && !$('#detail').hidden && Object.values(c.st).some((s) => s.state === 'pending')) c.timer = setTimeout(() => refreshStates(c), 3000);
 }
 async function renumber(id) {
   if (!confirm('按章节号重新给这部作品编话号？服务器上已经转好的这部的话会删掉。设备和 App 上已订阅的：先取消订阅并删掉已下载的话，再重新订阅。')) return;
@@ -140,16 +221,6 @@ async function renumber(id) {
     await openTitle(id);
     $('#renumMsg').textContent = note;
   } catch (e) { $('#renumMsg').textContent = e.message; }
-}
-async function tryEpisode(id, no) {
-  const out = $('#ep' + no);
-  for (;;) {
-    const s = await api(`/api/panel/episode/${id}/${no}?lang=${lang()}`).catch((e) => ({ state: 'error', error: e.message }));
-    if (s.state === 'ready') { out.innerHTML = `<a href="/api/panel/episode/${id}/${no}.cbz?lang=${lang()}">下载 CBZ（${(s.size / 1048576).toFixed(1)} MB）</a>`; return; }
-    if (s.state === 'error') { out.textContent = s.error; return; }
-    out.textContent = s.total ? `转换中 ${s.done}/${s.total}` : '排队中…';
-    await new Promise((r) => setTimeout(r, 2000));
-  }
 }
 
 // ---- 插件 / Extensions ----

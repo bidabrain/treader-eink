@@ -58,9 +58,17 @@
         <h2 id="dTitle"></h2>
         <p id="dMeta" class="muted"></p>
         <p id="dSummary"></p>
-        <p class="muted">在这里可以试转一话，下载 CBZ 看看切页效果；订阅请在设备的发现漫画里点。</p>
+        <p class="muted">勾选要的话点“下载到缓存”，服务器从旧到新一话一话转，转好的点“下载 CBZ”或在“缓存”页下载；订阅请在设备或 App 的发现漫画里点。</p>
+        <div class="tools">
+          <button class="ghost" id="pickAll">全选</button>
+          <button class="ghost" id="pickLast5">最近 5 话</button>
+          <span>第 <input id="pickFrom" type="number" min="1"> 到 <input id="pickTo" type="number" min="1"> 话 <button class="ghost" id="pickRange">选中</button></span>
+          <button class="ghost" id="pickNone">清除</button>
+        </div>
+        <div class="tools"><button id="dQueue" disabled>下载到缓存</button> <button id="dCancel" class="ghost" hidden>取消排队</button> <span id="dQMsg" class="muted"></span></div>
         <p id="dRenum" hidden><button id="renumBtn" class="ghost">重新编号</button> <span class="muted" id="renumMsg">话号编错了（比如第 1 话不是最早的一章）时用</span></p>
         <ul id="dEps" class="list"></ul>
+        <p id="dMore" hidden><button class="ghost" id="dMoreBtn"></button></p>
       </div>
     </section>
 

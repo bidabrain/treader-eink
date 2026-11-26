@@ -240,7 +240,7 @@ async def panel_password(body: Password):
 @app.get("/api/panel/status")
 async def panel_status():
     return {"version": config.VERSION, "cache_mb": round(await asyncio.to_thread(jobs.cache_mb), 1),
-            "queue": jobs._queue.qsize() if jobs._queue else 0, "recent": jobs.recent, "tunnel": tunnel.state}
+            "queue": jobs.pending(), "recent": jobs.recent, "tunnel": tunnel.state}
 
 
 @app.get("/api/panel/store")
@@ -268,6 +268,45 @@ async def panel_episode(tid: str, no: int, lang: str = "zh-hant"):
     """面板里“试转一话”：返回状态；转好后用 .cbz 地址下载。/ The panel's "try one episode": returns the state; download
     from the .cbz address once ready."""
     return jobs.status(_check(lang, tid), tid, no)
+
+
+QUEUE_MAX = 500
+
+
+@app.get("/api/panel/states/{tid}")
+async def panel_states(tid: str, lang: str = "zh-hant"):
+    """这部作品哪些话已经转好、排着、正在转或出错，面板详情页拿来标在每一话旁边。不会开始转。/ Which episodes of this
+    title are converted, queued, converting or failed, shown beside each episode in the panel. Never starts one."""
+    lang = _check(lang, tid)
+    return {"lang": lang, "items": {str(k): v for k, v in jobs.states(lang, tid).items()},
+            "queue": jobs.pending(), "max_mb": config.load()["max_mb"]}
+
+
+class QueueBody(BaseModel):
+    nos: list[int]
+
+
+@app.post("/api/panel/queue/{tid}")
+async def panel_queue(tid: str, body: QueueBody, lang: str = "zh-hant"):
+    """把选中的几话排进转换队列，从旧到新一话一话转，转好留在缓存里（和设备要的一样会按保留天数和上限清理）。
+    Queue the selected episodes, converted one by one oldest first and kept in the cache (pruned by the same
+    retention days and size cap as device requests)."""
+    lang = _check(lang, tid)
+    nos = sorted({n for n in body.nos if n > 0})
+    if not nos:
+        raise HTTPException(400, "没有选话")
+    if len(nos) > QUEUE_MAX:
+        raise HTTPException(400, f"一次最多排 {QUEUE_MAX} 话")
+    got = [jobs.enqueue(lang, tid, no) for no in nos]
+    added, ready = got.count("added"), got.count("ready")
+    return {"added": added, "ready": ready, "queue": jobs.pending()}
+
+
+@app.post("/api/panel/queue/{tid}/cancel")
+async def panel_queue_cancel(tid: str, lang: str = "zh-hant"):
+    """取消这部作品还没开始转的话；正在转的那一话会转完。/ Cancel this title's episodes not yet started; the one
+    converting finishes."""
+    return {"cancelled": jobs.cancel(_check(lang, tid), tid), "queue": jobs.pending()}
 
 
 @app.get("/api/panel/episode/{tid}/{no:int}.cbz")

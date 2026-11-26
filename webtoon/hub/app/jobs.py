@@ -10,6 +10,7 @@ kept; past the retention days or size cap the least recently used go first.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import time
 from pathlib import Path
@@ -23,7 +24,12 @@ _state: dict[tuple[str, str, int], dict] = {}
 # once for a while instead of each waiting to time out, so other sources are not held up.
 _cf_block: dict[str, tuple[float, str]] = {}
 CF_PAUSE = 600
-_queue: asyncio.Queue | None = None
+# 队列按 (优先级, 序号, 话) 排：设备和 App 要的是 0，面板选的是 1，所以面板一次排一大批也不会让设备等到超时。
+# The queue is ordered by (priority, sequence, episode): device and app requests are 0 and panel picks 1, so a large
+# panel batch never makes a device wait until it times out.
+_queue: asyncio.PriorityQueue | None = None
+_seq = itertools.count()
+_running: tuple[str, str, int] | None = None   # 正在转的那一话 / The episode being converted
 recent: list[dict] = []          # 面板显示最近做过的 / Recent jobs for the panel
 
 
@@ -79,10 +85,14 @@ def _forget_errors() -> None:
         del _state[k]
 
 
-def status(lang: str, tid: str, no: int, start: bool = True) -> dict:
-    """这一话的状态：ready（附大小）、pending（附进度）或 error；不在队列里又没转过时开始转。
-    An episode's state: ready (with size), pending (with progress) or error; starts converting when neither queued
-    nor converted."""
+def _put(key: tuple[str, str, int], panel: bool) -> None:
+    _queue.put_nowait((1 if panel else 0, next(_seq), key))
+
+
+def status(lang: str, tid: str, no: int, start: bool = True, panel: bool = False) -> dict:
+    """这一话的状态：ready（附大小）、pending（附进度）或 error；不在队列里又没转过时开始转。设备问到面板排着的话时
+    把它提到前面。/ An episode's state: ready (with size), pending (with progress) or error; starts converting when
+    neither queued nor converted. A device asking for a panel-queued episode moves it to the front."""
     path = cbz_path(lang, tid, no)
     if path.exists():
         return {"state": "ready", "size": path.stat().st_size}
@@ -91,13 +101,64 @@ def status(lang: str, tid: str, no: int, start: bool = True) -> dict:
     if st and st["state"] == "error" and time.time() - st["at"] > 120:
         st = None                    # 出错两分钟后允许重试 / Allow a retry two minutes after an error
     if st:
-        return dict(st)
+        if start and not panel and st["state"] == "pending" and st.get("panel") and key != _running:
+            st["panel"] = False
+            _put(key, False)         # 旧条目留在后面，轮到时会跳过 / The old entry stays behind and is skipped
+        return {k: v for k, v in st.items() if k != "panel"}
     if not start:
         return {"state": "none"}
-    st = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "queued": _queue.qsize() if _queue else 0}
+    st = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "queued": pending(), "panel": panel}
     _state[key] = st
-    _queue.put_nowait(key)
-    return dict(st)
+    _put(key, panel)
+    return {k: v for k, v in st.items() if k != "panel"}
+
+
+def enqueue(lang: str, tid: str, no: int) -> str:
+    """面板选话：转好了给 ready，已经在排给 pending，否则排进队列给 added（刚出错的也马上重排）。/ Panel selection:
+    ready when converted, pending when already queued, otherwise queued and added (a fresh error is retried at once)."""
+    path = cbz_path(lang, tid, no)
+    if path.exists():
+        return "ready"
+    key = (lang, tid, int(no))
+    st = _state.get(key)
+    if st and st["state"] == "pending":
+        return "pending"
+    _state.pop(key, None)
+    status(lang, tid, no, panel=True)
+    return "added"
+
+
+def pending() -> int:
+    """排着和正在转的话数（取消的不算，队列里可能还留着它们的旧条目）。/ Episodes queued or converting (cancelled ones
+    excluded, though their stale entries may still sit in the queue)."""
+    return sum(1 for v in _state.values() if v["state"] == "pending")
+
+
+def states(lang: str, tid: str) -> dict[int, dict]:
+    """一部作品各话的状态：转好的、排着的、正在转的、出错的；别的话不出现。不会开始转。/ Per-episode state of one
+    title: converted, queued, converting or failed; other episodes are absent. Never starts a conversion."""
+    out: dict[int, dict] = {}
+    d = config.CACHE_DIR / lang / tid
+    if d.is_dir():
+        for p in d.glob("*.cbz"):
+            if p.stem.isdigit():
+                out[int(p.stem)] = {"state": "ready", "size": p.stat().st_size}
+    for (l, t, no), st in list(_state.items()):
+        if l == lang and t == tid and no not in out:
+            out[no] = {k: v for k, v in st.items() if k != "panel"}
+            if (l, t, no) == _running:
+                out[no]["running"] = True
+    return out
+
+
+def cancel(lang: str, tid: str) -> int:
+    """取消这部作品面板排的、还没开始转的话；正在转的那一话和设备要的不动。返回取消了几话。/ Cancel this title's
+    panel-queued episodes that have not started; the one converting and device requests stay. Returns how many."""
+    keys = [k for k, v in _state.items()
+            if k[0] == lang and k[1] == tid and v["state"] == "pending" and v.get("panel") and k != _running]
+    for k in keys:
+        del _state[k]
+    return len(keys)
 
 
 async def _convert(key: tuple[str, str, int], meta: dict) -> None:
@@ -143,11 +204,18 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
 
 
 async def worker() -> None:
-    global _queue
-    _queue = asyncio.Queue()
+    global _queue, _running
+    _queue = asyncio.PriorityQueue()
     while True:
-        key = await _queue.get()
+        _, _, key = await _queue.get()
         lang, tid, no = key
+        # 取消了的、或者同一话重排过已经转好的，跳过。/ Skip cancelled entries and re-queued duplicates already done.
+        st = _state.get(key)
+        if not st or st["state"] != "pending" or cbz_path(lang, tid, no).exists():
+            if st and st["state"] == "pending":
+                _state.pop(key, None)
+            continue
+        _running = key
         t0 = time.time()
         meta = {"web": "" if is_ext(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
         src = ""
@@ -178,6 +246,7 @@ async def worker() -> None:
         except Exception as e:  # noqa: BLE001
             _state[key].update(state="error", error=f"转换出错：{e.__class__.__name__}", at=time.time())
             note = f"出错：{e!r}"
+        _running = None
         _forget_errors()
         recent.insert(0, {"lang": lang, "id": tid, "no": no, "title": meta.get("series", ""), "note": note,
                           "sec": round(time.time() - t0, 1), "at": int(time.time())})

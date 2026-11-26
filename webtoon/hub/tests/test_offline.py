@@ -206,6 +206,71 @@ def test_panel_cache_list_and_download():
     p.unlink()
 
 
+def test_panel_queue_states_and_cancel(monkeypatch):
+    """面板选话下载：排进去的话转好后在状态里是 ready，转好的不重排，0 和空选择报错；取消只动没开始的话。
+    Panel episode selection: queued episodes end up ready in the states, converted ones are not queued again, 0 and an
+    empty selection are rejected; cancelling touches only episodes that have not started."""
+    _fake_source(monkeypatch)
+    with TestClient(main.app) as c:
+        assert c.post("/api/panel/queue/5", json={"nos": [1]}).status_code == 401
+        c.post("/api/panel/setup", json={"password": "password123"})
+        c.post("/api/panel/login", json={"password": "password123"})
+        assert c.post("/api/panel/queue/5", json={"nos": [0]}).status_code == 400
+        assert c.post("/api/panel/queue/x5", json={"nos": [1]}).status_code == 400
+        r = c.post("/api/panel/queue/5", json={"nos": [3, 1, 1]}).json()
+        assert r["added"] == 2 and r["ready"] == 0
+        for _ in range(200):
+            st = c.get("/api/panel/states/5").json()["items"]
+            if st.get("1", {}).get("state") == "ready" and st.get("3", {}).get("state") == "ready":
+                break
+            asyncio.run(asyncio.sleep(0.05))
+        assert st["1"]["state"] == "ready" and st["3"]["state"] == "ready", st
+        r = c.post("/api/panel/queue/5", json={"nos": [1, 3]}).json()
+        assert r["added"] == 0 and r["ready"] == 2
+        assert c.post("/api/panel/queue/5/cancel").json()["cancelled"] == 0
+    # 取消：排着的删掉，正在转的留着。/ Cancel: queued ones go, the converting one stays.
+    run, wait = ("zh-hant", "77", 1), ("zh-hant", "77", 2)
+    jobs._state[run] = {"state": "pending", "done": 1, "total": 4, "at": time.time()}
+    dev = ("zh-hant", "77", 3)
+    jobs._state[wait] = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "panel": True}
+    jobs._state[dev] = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "panel": False}
+    jobs._running = run
+    try:
+        assert jobs.cancel("zh-hant", "77") == 1 and wait not in jobs._state and dev in jobs._state
+        assert jobs.states("zh-hant", "77")[1]["running"] is True
+    finally:
+        jobs._running = None
+        jobs._state.pop(run, None)
+        jobs._state.pop(dev, None)
+    for n in (1, 3):
+        jobs.cbz_path("zh-hant", "5", n).unlink(missing_ok=True)
+
+
+def test_device_requests_jump_panel_batch():
+    """面板排的一批在后面；设备要的新话排到前面，设备问到面板排着的话也提前。/ A panel batch waits behind; a
+    device's new episode goes first, and a device asking for a panel-queued one moves it up."""
+    saved = jobs._queue
+    jobs._queue = asyncio.PriorityQueue()
+    keys = [("en", "88", n) for n in (1, 2, 3, 9)]
+    try:
+        for n in (1, 2, 3):
+            assert jobs.enqueue("en", "88", n) == "added"
+        assert jobs.enqueue("en", "88", 2) == "pending"
+        jobs.status("en", "88", 9)            # 设备要的新话 / A new device request
+        jobs.status("en", "88", 3)            # 设备问到面板排着的 / Device asks for a panel-queued one
+        order = []
+        while not jobs._queue.empty():
+            _, _, k = jobs._queue.get_nowait()
+            if k not in order:
+                order.append(k)
+        assert [k[2] for k in order] == [9, 3, 1, 2]
+        assert jobs.cancel("en", "88") == 2 and set(jobs._state) & set(keys) == {("en", "88", 9), ("en", "88", 3)}
+    finally:
+        jobs._queue = saved
+        for k in keys:
+            jobs._state.pop(k, None)
+
+
 def test_prune():
     p = jobs.cbz_path("en", "9", 1)
     p.parent.mkdir(parents=True, exist_ok=True)

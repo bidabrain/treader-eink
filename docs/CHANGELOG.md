@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · webtoon 服务器 0.3.4
+
+- 面板“发现”里点开作品后能像客户端一样选话下载到服务器缓存：每话前有勾选框，可以全选、选最近 5 话或填“第几话到第几话”，点“下载到缓存”后服务器从旧到新一话一话转；每话旁边显示排队中、转换进度或“下载 CBZ”，转好的也在“缓存”页。详情默认列最新 30 话，可展开全部；还没开始的可以“取消排队”，正在转的那一话会转完。选得太多快超过缓存上限时会提示（超出会先清掉最久没用的）。设备接口和固件、安卓 App 都不用改。
+  In the panel's Store, an opened title now lets you pick episodes to download into the server cache like the clients: tick episodes, select all, the latest 5 or a "from episode N to M" range, then "下载到缓存" converts them one by one oldest first; each episode shows queued, conversion progress or "下载 CBZ", and finished ones also appear on the Cache page. The detail lists the newest 30 episodes and can expand to all; episodes not yet started can be cancelled, while the one converting finishes. A selection close to the cache cap gets a warning (the least recently used go first when it is exceeded). No device, firmware or Android change.
+
 ## 2026-11-26 · Treader 1.2.14
 
 - Wi-Fi 能保存多个网络，用法像手机：选网页里保存过的网络排在前面、标“当前”或“已保存”，点一下直接连；密码页多了“保存这个网络”（默认勾），改成先连后存，连上才保存，不勾只在这次开机用；新加“已保存的网络”页，列出所有保存的网络和上次连上的时间，逐个“忘记”。列表加密存在 TF 卡（钥匙在设备里，不用设密码，单拿卡解不开）；当前网络连不上时自动换试附近保存过的网络，连上的记成当前网络。没插卡时照旧只有一个网络。

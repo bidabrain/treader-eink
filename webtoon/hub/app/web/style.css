@@ -39,3 +39,6 @@ code { word-break: break-all; }
 .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .notes figure { cursor: pointer; }
 select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.tools input[type=number] { width: 72px; }
+.list li label { display: flex; gap: 8px; align-items: center; margin: 0; }
