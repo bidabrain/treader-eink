@@ -61,6 +61,7 @@ static SemaphoreHandle_t s_hits_mutex;
 static volatile bool s_cancel;
 static volatile bool s_busy;
 static volatile uint32_t s_bytes;
+static volatile uint32_t s_expect;
 static op_t s_op;
 static char s_query[96];
 static tomato_hit_t s_target;
@@ -143,6 +144,7 @@ void tomato_sync_get_status(tomato_status_t* out) {
     *out = s_status;
     portEXIT_CRITICAL(&s_lock);
     out->bytes = s_bytes;
+    out->expect = s_expect;
 }
 
 int tomato_sync_hits(tomato_hit_t* out, int max) {
@@ -391,10 +393,16 @@ static esp_err_t fetch_book(const tomato_config_t* cfg, tomato_book_t* book) {
     snprintf(dest, sizeof(dest), TOMATO_BOOKS_DIR "/%s", file);
     tomato_url_escape(w->rel, w->rel_esc, sizeof(w->rel_esc), true);
     snprintf(w->url, sizeof(w->url), "/download/%s", w->rel_esc);
-    set_phase(TOMATO_DOWNLOADING, title);
     struct stat st;
     uint32_t old_size = stat(dest, &st) == 0 ? (uint32_t)st.st_size : 0;
-    err = tomato_http_download(cfg, w->url, dest, &s_cancel, &s_bytes);
+    // 服务器不给长度时，更新按旧文件大小和新旧章节数估一个，进度条用。/ Without a length from the server, an update
+    // estimates the size from the old file and the chapter counts, for the progress bar.
+    const int new_total = chapter_total > book->remote ? chapter_total : book->remote;
+    s_expect = old_size && book->chapters && new_total > book->chapters
+             ? (uint32_t)((uint64_t)old_size * (uint64_t)new_total / book->chapters) : 0;
+    s_bytes = 0;
+    set_phase(TOMATO_DOWNLOADING, title);
+    err = tomato_http_download(cfg, w->url, dest, &s_cancel, &s_bytes, &s_expect);
     if (err != ESP_OK) return err;
     if (s_file_hook && stat(dest, &st) == 0) s_file_hook(dest, old_size, (uint32_t)st.st_size);
 
@@ -1063,6 +1071,7 @@ static esp_err_t start(op_t op) {
     s_seq++;
     s_cancel = false;
     s_bytes = 0;
+    s_expect = 0;
     s_op = op;
     int hits = s_status.hit_count;
     memset(&s_status, 0, sizeof(s_status));

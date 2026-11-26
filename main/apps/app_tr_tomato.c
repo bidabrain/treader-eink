@@ -295,6 +295,13 @@ static bool detail_is_dl(void) {
     return s_dl_id[0] && s_detail >= 0 && s_detail < s_hit_count && !strcmp(s_hits[s_detail].book_id, s_dl_id);
 }
 
+// 下载条：知道大小按已收占比（最多 99%），不知道就停在 80%。/ Download bar: received over expected when the size is
+// known (at most 99%), otherwise held at 80%.
+static int dl_pct(const tomato_status_t* st) {
+    if (!st->expect) return 80;
+    return st->bytes >= st->expect ? 99 : (int)((uint64_t)st->bytes * 100 / st->expect);
+}
+
 static void draw_detail(uint8_t* fb) {
     const tomato_hit_t* h = &s_hits[s_detail];
     tr_text(fb, TR_MARGIN, TR_S(90), TR_S(30), "‹ 搜索结果", EPD_DRAW_ALIGN_LEFT, false);
@@ -358,11 +365,13 @@ static void draw_detail(uint8_t* fb) {
     if (downloading) {
         const char* what = s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi"
                          : s_status.phase == TOMATO_QUEUED ? "服务器正在生成 TXT" : "正在下载";
-        if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
+        if (s_status.phase == TOMATO_DOWNLOADING && s_status.expect)
+            snprintf(line, sizeof(line), "%s · %.1f / %.1f MB", what, s_status.bytes / 1048576.0, s_status.expect / 1048576.0);
+        else if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
         else snprintf(line, sizeof(line), "%s…", what);
         tr_text(fb, TR_MARGIN, btn.y - TR_S(4), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
         tr_progress(fb, TR_MARGIN, btn.y + TR_S(54), btn.width - TR_S(110),
-                    s_status.phase == TOMATO_DOWNLOADING ? 80 : s_status.phase == TOMATO_QUEUED ? 40 : 10);
+                    s_status.phase == TOMATO_DOWNLOADING ? dl_pct(&s_status) : s_status.phase == TOMATO_QUEUED ? 40 : 10);
         tr_text(fb, TR_W - TR_MARGIN, btn.y + TR_S(38), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, false);
         return;
     }

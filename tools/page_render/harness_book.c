@@ -137,6 +137,22 @@ void hr_scenes(void) {
     render(&ctx, hr_fb);
     hr_allow_fit();
     hr_shot("shelf_tomato_checking");
+    // 下载更新中：状态行写书名和 MB，下面一条进度条，和“继续阅读”卡片同屏。/ Downloading updates: the status line
+    // shows the title and MB with a bar under it, alongside the continue card.
+    hr_reset();
+    s_tom_cfg = true;
+    snprintf(s_continue, sizeof(s_continue), "%s", s_hr_books[1].path);
+    s_tom_op = TOM_UPDATE;
+    s_hr_tom_busy = true;
+    s_hr_tom_status.phase = TOMATO_DOWNLOADING;
+    snprintf(s_hr_tom_status.message, sizeof(s_hr_tom_status.message), "宿命之环");
+    s_hr_tom_status.current = 2;
+    s_hr_tom_status.total = 3;
+    s_hr_tom_status.bytes = 3355443;
+    s_hr_tom_status.expect = 9437184;
+    render(&ctx, hr_fb);
+    hr_allow_fit();
+    hr_shot("shelf_tomato_downloading");
     hr_reset();
     s_tom_cfg = true;
     s_shelf[1].new_chapters = 0;

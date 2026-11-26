@@ -81,10 +81,11 @@ void tomato_http_set_detail(const char* text);
 esp_err_t tomato_http_json(const tomato_config_t* cfg, const char* method, const char* path,
                            const char* body, cJSON** out, int* status);
 
-/// 下载到 dest（先写 .part 再改名）。cancel 置位时中止。
-/// Download to dest via a .part file and rename. Aborts when *cancel is set.
+/// 下载到 dest（先写 .part 再改名）。cancel 置位时中止。服务器给了长度就写进 *expect，没给不动它。
+/// Download to dest via a .part file and rename. Aborts when *cancel is set. A length from the server goes to *expect;
+/// without one *expect is left alone.
 esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, const char* dest,
-                               const volatile bool* cancel, volatile uint32_t* bytes);
+                               const volatile bool* cancel, volatile uint32_t* bytes, volatile uint32_t* expect);
 
 /// GET 一个完整 URL 存到 dest（不超过 max 字节）。image 为真时只收 JPEG/PNG，否则不写文件。
 /// GET a full URL into dest (at most max bytes). With image set, only JPEG/PNG content is written.

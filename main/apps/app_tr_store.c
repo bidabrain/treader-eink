@@ -99,6 +99,8 @@ static queued_t s_queued;
 static int s_dl_index = -1;
 static char s_dl_id[sizeof(((tomato_rank_book_t*)0)->book_id)];
 static uint32_t s_seen_revision;
+static int64_t s_busy_draw_ms;
+#define BUSY_REDRAW_MS 3000   // 下载中按字节刷新的间隔 / Interval for byte-driven redraws while downloading
 static int64_t s_poll_ms;
 
 /* ---- 数据 / Data ---- */
@@ -394,6 +396,13 @@ static void draw_rank(uint8_t* fb) {
     tr_pager(fb, PAGER_Y, s_page, rank_pages());
 }
 
+// 下载条：知道大小按已收占比（最多 99%），不知道就停在 80%。/ Download bar: received over expected when the size is
+// known (at most 99%), otherwise held at 80%.
+static int dl_pct(const tomato_status_t* st) {
+    if (!st->expect) return 80;
+    return st->bytes >= st->expect ? 99 : (int)((uint64_t)st->bytes * 100 / st->expect);
+}
+
 static void draw_detail(uint8_t* fb) {
     const tomato_rank_book_t* b = &s_books[s_detail];
     char line[160];
@@ -439,11 +448,13 @@ static void draw_detail(uint8_t* fb) {
         const char* what = s_queued == Q_DOWNLOAD ? "正在准备"
                          : s_status.phase == TOMATO_CONNECTING ? "正在连接 Wi-Fi"
                          : s_status.phase == TOMATO_QUEUED ? "服务器正在生成 TXT" : "正在下载";
-        if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
+        if (s_status.phase == TOMATO_DOWNLOADING && s_status.expect)
+            snprintf(line, sizeof(line), "%s · %.1f / %.1f MB", what, s_status.bytes / 1048576.0, s_status.expect / 1048576.0);
+        else if (s_status.phase == TOMATO_DOWNLOADING) snprintf(line, sizeof(line), "%s · %.1f MB", what, s_status.bytes / 1048576.0);
         else snprintf(line, sizeof(line), "%s…", what);
         tr_text(fb, TR_MARGIN, btn.y - TR_S(4), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
         tr_progress(fb, TR_MARGIN, btn.y + TR_S(54), btn.width - TR_S(110),
-                    s_status.phase == TOMATO_DOWNLOADING ? 80 : s_status.phase == TOMATO_QUEUED ? 40 : 10);
+                    s_status.phase == TOMATO_DOWNLOADING ? dl_pct(&s_status) : s_status.phase == TOMATO_QUEUED ? 40 : 10);
         tr_text(fb, TR_W - TR_MARGIN, btn.y + TR_S(38), TR_S(30), "取消", EPD_DRAW_ALIGN_RIGHT, false);
         return;
     }
@@ -760,9 +771,13 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
         }
         return APP_REDRAW_PAGE;
     }
-    if (s_status.revision == s_seen_revision || s_view != V_DETAIL || s_op != OP_DOWNLOAD || !detail_is_dl())
+    // 下载中字节在涨但 revision 不变，隔一会儿也刷一次。/ While downloading the bytes grow without a revision bump,
+    // so refresh every little while too.
+    const bool stale = s_status.phase == TOMATO_DOWNLOADING && ctx->now_ms - s_busy_draw_ms >= BUSY_REDRAW_MS;
+    if ((s_status.revision == s_seen_revision && !stale) || s_view != V_DETAIL || s_op != OP_DOWNLOAD || !detail_is_dl())
         return APP_REDRAW_NONE;
     s_seen_revision = s_status.revision;
+    s_busy_draw_ms = ctx->now_ms;
     return APP_REDRAW_PAGE;
 }
 

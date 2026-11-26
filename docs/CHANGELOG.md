@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-26 · Treader 1.2.10
+
+- 书库里“下载 N 本更新”在跑时，状态行下面多一条进度条，左边写正在做哪一步：连接 Wi-Fi、服务器生成 TXT，或者“书名 · 3.2 / 9.0 MB”，下载中每 2 秒刷新一次。以前一本大书要下好几分钟，画面一动不动，看起来像卡住了。服务器不给文件大小时，进度按旧文件大小和新增章节估算。书城和番茄详情页的下载条知道文件大小时也按真实进度走，MB 数下载中会跟着变。
+  While "Download N updates" runs in the library, a progress bar appears under the status line and the left side says which step is under way: joining Wi-Fi, the server making the TXT, or "title · 3.2 / 9.0 MB", refreshed every 2 seconds while downloading. Before, a large book took minutes with nothing moving on screen and looked stuck. When the server gives no file size, progress is estimated from the old file and the new chapters. The store and Tomato detail bars follow the real progress when the size is known, and their MB count now moves while downloading.
+- 修正书库网格视图在放大显示时，选中框和按下框比书大很多、下面拖出一大截：框现在只包住封面、书名和进度。
+  Fixed the library grid's selection and press outlines reaching far below the book at larger display sizes: they now wrap only the cover, title and progress.
+
 ## 2026-11-25 · Treader 1.2.9
 
 - 锁屏用壁纸时，底部白条连书名也不写了，只留唤醒提示和电量。

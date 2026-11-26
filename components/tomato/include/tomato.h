@@ -223,6 +223,7 @@ typedef struct {
     int current;              ///< 第几本 / Book index in progress (1-based)
     int total;                ///< 共几本 / Books in this run
     uint32_t bytes;           ///< 当前文件已收字节 / Bytes received for the current file
+    uint32_t expect;          ///< 当前文件预计大小，0 是不知道 / Expected size of the current file; 0 when unknown
     int updated;              ///< 本轮更新了几本 / Books updated this run
     int pending;              ///< 检查后有新章节的本数 / Books with new chapters after a check
     int hit_count;            ///< 搜索结果数 / Search result count

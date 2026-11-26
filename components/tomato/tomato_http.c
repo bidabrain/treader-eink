@@ -401,7 +401,7 @@ done:
 }
 
 esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, const char* dest,
-                               const volatile bool* cancel, volatile uint32_t* bytes) {
+                               const volatile bool* cancel, volatile uint32_t* bytes, volatile uint32_t* expect) {
     char part[200];
     snprintf(part, sizeof(part), "%s.part", dest);
     *bytes = 0;
@@ -437,7 +437,7 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
             idle++;
             continue;
         }
-        esp_http_client_fetch_headers(c);
+        const int64_t length = esp_http_client_fetch_headers(c);
         const int status = esp_http_client_get_status_code(c);
         if (status == 200 && have) {
             if (restarts++) { err = ESP_FAIL; break; }
@@ -448,6 +448,8 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
             err = ESP_ERR_NOT_FOUND;
             break;
         }
+        // 206 的长度是剩下的部分。/ A 206 length covers only the rest.
+        if (length > 0) *expect = have + (uint32_t)length;
         f = fopen(part, have ? "ab" : "wb");
         if (!f) { err = ESP_FAIL; break; }
         *bytes = have;

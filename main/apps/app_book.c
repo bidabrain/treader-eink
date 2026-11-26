@@ -217,7 +217,9 @@ static tom_op_t s_tom_op;
 static uint32_t s_tom_seq, s_tom_rev;
 static bool s_tom_cfg;
 static char s_tom_note[96];
-static int64_t s_tom_poll_ms;
+static int64_t s_tom_poll_ms, s_tom_draw_ms;
+static uint32_t s_tom_bytes;
+#define TOM_BYTES_REDRAW_MS 2000   // 下载中按字节刷进度的间隔 / Interval for byte-driven progress redraws while downloading
 
 void app_book_request_open(const char* path) {
     snprintf(s_open_request, sizeof(s_open_request), "%s", path ? path : "");
@@ -412,6 +414,9 @@ static EpdRect card_rect(void) { return (EpdRect){UI_MARGIN, CARD_TOP, ui_conten
 static EpdRect tomato_hint_rect(void) {
     return (EpdRect){UI_LOCK_WIDTH / 2, TR_S(146), UI_LOCK_WIDTH / 2 - UI_MARGIN, TR_S(52)};
 }
+// 番茄任务在跑时，状态行整行和下面的进度条一起局刷。/ While a Tomato job runs, the whole status line and the bar
+// under it refresh together.
+static EpdRect tomato_busy_rect(void) { return (EpdRect){0, TR_S(146), UI_LOCK_WIDTH, TR_S(62)}; }
 static EpdRect view_icon_rect(void);
 // “书城”在列表 / 网格切换图标左边（设置了番茄服务器才有）。/ "书城" left of the list / grid switch (only with a
 // Tomato server set).
@@ -440,11 +445,13 @@ static EpdRect row_rect(int row, bool toc) {
     if (toc) return (EpdRect){UI_MARGIN, TR_S(210) + row * TR_S(88), ui_content_width(), TR_S(84)};
     const int top = card_shown() ? CARD_ROWS_TOP : SHELF_ROW_TOP;
     if (shelf_grid()) {
-        // 网格：第 row 本所在的格子（封面加两行字）。/ Grid: the cell of the row-th book (cover plus two lines).
+        // 网格：第 row 本所在的格子（封面加两行字）。封面封顶后格子比内容高，高度只算到字下面，选中框才贴着书。
+        // Grid: the cell of the row-th book (cover plus two lines). Once the cover is capped the cell is taller than
+        // its content, so the height stops below the text and the selection outline hugs the book.
         const grid_t g = grid_layout();
         const int col = row % GRID_COLS, line = row / GRID_COLS;
-        return (EpdRect){UI_MARGIN + col * (g.cell_w + GRID_GAP), top + line * (g.cell_h + GRID_GAP), g.cell_w,
-                         g.cell_h};
+        const int h = g.cover_h + GRID_TEXT_H < g.cell_h ? g.cover_h + GRID_TEXT_H : g.cell_h;
+        return (EpdRect){UI_MARGIN + col * (g.cell_w + GRID_GAP), top + line * (g.cell_h + GRID_GAP), g.cell_w, h};
     }
     return (EpdRect){UI_MARGIN, top + row * SHELF_ROW_H, ui_content_width(), SHELF_ROW_H - TR_S(12)};
 }
@@ -1097,6 +1104,27 @@ static void tomato_hint_label(char* out, size_t cap) {
         copy_text(out, cap, "检查更新");
     }
 }
+// 番茄任务进度：前面几本算做完，当前这本按已收字节占预计大小算（不知道大小就不算），最多到 99%。
+// Tomato job progress: earlier books count as done, the current one by bytes over its expected size (nothing when
+// unknown), capped at 99%.
+static int tomato_busy_pct(const tomato_status_t* st) {
+    if (st->total <= 0 || st->current <= 0) return 0;
+    int part = 0;
+    if (st->phase == TOMATO_DOWNLOADING && st->expect)
+        part = st->bytes >= st->expect ? 99 : (int)((uint64_t)st->bytes * 100 / st->expect);
+    const int pct = ((st->current - 1) * 100 + part) / st->total;
+    return pct > 99 ? 99 : pct;
+}
+// 番茄任务在跑时状态行左边写正在做哪一步，下载时带书名和 MB。/ While a Tomato job runs the left of the status line
+// says which step is under way, with the title and MB while downloading.
+static void tomato_busy_line(const tomato_status_t* st, char* out, size_t cap) {
+    if (st->phase == TOMATO_CONNECTING) copy_text(out, cap, "正在连接 Wi-Fi…");
+    else if (st->phase == TOMATO_QUEUED) copy_text(out, cap, "服务器正在生成 TXT…");
+    else if (st->phase == TOMATO_DOWNLOADING && st->expect)
+        snprintf(out, cap, "%s · %.1f / %.1f MB", st->message, st->bytes / 1048576.0, st->expect / 1048576.0);
+    else if (st->phase == TOMATO_DOWNLOADING) snprintf(out, cap, "%s · %.1f MB", st->message, st->bytes / 1048576.0);
+    else copy_text(out, cap, "正在检查更新…");
+}
 // 网格的一格：封面（新章节小胶囊压在右上角），下面书名，再下面进度条加百分比或“未读 / 读完”；管理时选中的描粗框。
 // / One grid cell: the cover (a new-chapter badge on its top right), the title below, then a progress bar and percent
 // or 未读 / 读完; in manage mode a selected book gets a thick outline.
@@ -1157,6 +1185,14 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         tomato_hint_label(hint, sizeof(hint));
         tr_text(fb, UI_LOCK_WIDTH - UI_MARGIN, TR_S(156), TR_S(28), hint, EPD_DRAW_ALIGN_RIGHT, true);
         line_w -= ttf_text_width_px(TR_S(28), hint) + TR_S(24);
+        // 在跑：左边换成进行到哪一步，状态行下面加一条进度条。/ Running: the left says where it is and a progress bar
+        // goes under the status line.
+        if (tom_running() && s_view == SHELF) {
+            tomato_status_t st;
+            tomato_sync_get_status(&st);
+            if (!s_tom_note[0]) tomato_busy_line(&st, line, sizeof(line));
+            tr_progress(fb, UI_MARGIN, TR_S(196), ui_content_width(), tomato_busy_pct(&st));
+        }
     }
     tr_fit(line, TR_S(28), line_w);
     // 出错和待重试的提示用黑字，平常的数量行用深灰。/ Errors and retries stay black; the plain count line is dark gray.
@@ -2644,10 +2680,17 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
             ctx->leaf = leaf < leaves() ? leaf : leaves() - 1;
             return APP_REDRAW_PAGE;
         }
-        if (s_view == SHELF && st.revision != s_tom_rev && tomato_hint_shown() && !(ctx->touch && ctx->touch->touched)) {
+        // 下载中字节在涨但 revision 不变，隔一会儿也刷一次。/ While downloading the bytes grow without a revision bump,
+        // so refresh every little while too.
+        const bool grew = st.phase == TOMATO_DOWNLOADING && st.bytes != s_tom_bytes &&
+                          ctx->now_ms - s_tom_draw_ms >= TOM_BYTES_REDRAW_MS;
+        if (s_view == SHELF && (st.revision != s_tom_rev || grew) && tomato_hint_shown() &&
+            !(ctx->touch && ctx->touch->touched)) {
             s_tom_rev = st.revision;
+            s_tom_bytes = st.bytes;
+            s_tom_draw_ms = ctx->now_ms;
             render(ctx, ctx->fb);
-            s_area = tomato_hint_rect();
+            s_area = tomato_busy_rect();
             s_mode = MODE_DU;
             return APP_REDRAW_AREA;
         }
