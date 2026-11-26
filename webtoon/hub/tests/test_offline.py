@@ -271,6 +271,110 @@ def test_device_requests_jump_panel_batch():
             jobs._state.pop(k, None)
 
 
+def _login(c):
+    c.post("/api/panel/setup", json={"password": "password123"})
+    c.post("/api/panel/login", json={"password": "password123"})
+
+
+def _wait_upload(c, tid):
+    for _ in range(200):
+        st = jobs.status("upload", tid, 1, start=False)
+        if st["state"] != "pending":
+            return st
+        asyncio.run(asyncio.sleep(0.05))
+    return st
+
+
+def test_upload_cbz_and_pdf():
+    """上传 CBZ 和 PDF：转成灰度、按页面大小、带系列名的 CBZ，源文件删掉，缓存页能按名字下载；不认识的文件 400，
+    设备接口碰不到上传。/ Uploaded CBZ and PDF become gray CBZs at the page size named after the file, the source is
+    deleted, the cache page downloads them by name; unknown files are 400 and the device API cannot reach uploads."""
+    z = io.BytesIO()
+    with zipfile.ZipFile(z, "w") as zf:
+        for name in ("p10.png", "p2.png", "p1.png"):
+            im = Image.new("RGB", (900, 1300), "white")
+            ImageDraw.Draw(im).rectangle((50, 50, 850, 1250), fill=(200, 30, 30))
+            buf = io.BytesIO()
+            im.save(buf, "PNG")
+            zf.writestr("ch/" + name, buf.getvalue())
+        zf.writestr("__MACOSX/ch/._p1.png", b"junk")
+        zf.writestr("ch/broken.jpg", b"not an image")
+    pdf = io.BytesIO()
+    pages = [Image.new("RGB", (595, 842), "white") for _ in range(2)]
+    ImageDraw.Draw(pages[0]).rectangle((40, 40, 555, 802), fill=(0, 90, 0))
+    pages[0].save(pdf, "PDF", save_all=True, append_images=pages[1:])
+    with TestClient(main.app) as c:
+        assert c.put("/api/panel/upload", content=z.getvalue()).status_code == 401
+        _login(c)
+        assert c.put("/api/panel/upload", content=b"hello").status_code == 400
+        assert c.put("/api/panel/upload?spread=bad", content=z.getvalue()).status_code == 400
+        r = c.put("/api/panel/upload?name=我的漫画.cbz", content=z.getvalue()).json()
+        assert r["kind"] == "cbz" and r["pages"] == 4 and jobs.is_upload(r["id"])
+        assert _wait_upload(c, r["id"])["state"] == "ready"
+        cbz = jobs.cbz_path("upload", r["id"], 1)
+        with zipfile.ZipFile(cbz) as zf:
+            names = zf.namelist()
+            assert names[-1] == "ComicInfo.xml" and "<Series>我的漫画</Series>" in zf.read("ComicInfo.xml").decode()
+            first = Image.open(io.BytesIO(zf.read(names[0])))
+            assert first.mode == "L" and first.width <= 648 and first.height <= 1000 and len(names) == 4
+        assert not any(config.UPLOAD_DIR.iterdir())
+        d = c.get("/api/panel/cache/file", params={"lang": "upload", "id": r["id"], "no": 1})
+        assert d.status_code == 200 and "%E6%88%91%E7%9A%84%E6%BC%AB%E7%94%BB.cbz" in d.headers["content-disposition"]
+        h = {"x-webtoon-token": config.load()["device_token"]}
+        assert c.get(f"/api/device/v1/episode/{r['id']}/1", headers=h).status_code == 400
+        r = c.put("/api/panel/upload?name=doc.pdf&spread=fit", content=pdf.getvalue()).json()
+        assert r["kind"] == "pdf" and r["pages"] == 2
+        assert _wait_upload(c, r["id"])["state"] == "ready"
+        with zipfile.ZipFile(jobs.cbz_path("upload", r["id"], 1)) as zf:
+            assert len([n for n in zf.namelist() if n.endswith(".jpg")]) == 2
+        mine = [i for i in c.get("/api/panel/cache").json()["items"] if i["lang"] == "upload"]
+        assert {i["series"] for i in mine} >= {"我的漫画", "doc"}
+
+
+def test_tasks_list_and_cancel(monkeypatch):
+    """当前任务：正在转的在前；取消排着的立刻变成“已在面板取消”（设备问到也是这个错误），取消正在转的在下一张图前
+    停下、不留半成品。/ Current tasks: the running one first; cancelling a queued one turns it into "已在面板取消" at once
+    (also what a device sees), and cancelling the running one stops it before the next image without leftovers."""
+    _fake_source(monkeypatch)
+
+    async def slow_images(lang, tid, no):
+        return [str(i) for i in range(40)]
+
+    async def slow_get(url, pace=True):
+        await asyncio.sleep(0.05)
+        return _strip(600, [(50, 550)])
+
+    monkeypatch.setattr(source, "images", slow_images)
+    monkeypatch.setattr(source, "get_image", slow_get)
+    with TestClient(main.app) as c:
+        _login(c)
+        c.post("/api/panel/queue/6", json={"nos": [1, 2], "name": "慢作品"})
+        for _ in range(100):
+            t = c.get("/api/panel/tasks").json()["items"]
+            if t and t[0]["running"] and t[0]["total"]:
+                break
+            asyncio.run(asyncio.sleep(0.05))
+        assert [(i["no"], i["running"], i["name"], i["src"]) for i in t] == [(1, True, "慢作品", "panel"),
+                                                                              (2, False, "慢作品", "panel")]
+        r = c.post("/api/panel/tasks/cancel", json={"items": [{"lang": "zh-hant", "id": "6", "no": 2}]}).json()
+        assert r["cancelled"] == 1 and [i["no"] for i in r["items"]] == [1]
+        h = {"x-webtoon-token": config.load()["device_token"]}
+        st = c.get("/api/device/v1/episode/6/2", headers=h).json()
+        assert st["state"] == "error" and st["error"] == jobs.CANCELLED
+        r = c.post("/api/panel/tasks/cancel", json={"all": True}).json()
+        assert r["cancelled"] == 1 and r["items"][0]["cancelling"]
+        for _ in range(100):
+            if not c.get("/api/panel/tasks").json()["items"]:
+                break
+            asyncio.run(asyncio.sleep(0.05))
+        assert jobs.status("zh-hant", "6", 1, start=False)["error"] == jobs.CANCELLED
+        p = jobs.cbz_path("zh-hant", "6", 1)
+        assert not p.exists() and not p.with_suffix(".part").exists()
+        assert jobs.recent[0]["note"] == "已取消"
+    for n in (1, 2):
+        jobs._state.pop(("zh-hant", "6", n), None)
+
+
 def test_prune():
     p = jobs.cbz_path("en", "9", 1)
     p.parent.mkdir(parents=True, exist_ok=True)

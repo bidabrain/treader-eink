@@ -7,7 +7,7 @@ The Discover page and follow-along server for the Comics tab on Read Pico: brows
 - **The server keeps no subscriptions**: subscriptions are stored on the device's SD card (one `.webtoon` marker file in each title's folder), and the device asks "do these titles have new episodes?". Changing servers or reinstalling never loses subscriptions.
 - **Page cuts suited to e-ink**: tall vertical-scroll comics are cut into pages of 648×1000, with cut points found in the white space between panels so that panels and speech bubbles are rarely split in half; very long gaps are shortened and fully blank pages are dropped. Each page is a plain (baseline) JPEG, so the device can use fast decoding and page turns are as fast as reading a local CBZ.
 - **Simplified / Traditional Chinese**: the Chinese edition of WEBTOON uses Traditional Chinese. Simplified keywords typed with the device's pinyin input are converted to Traditional by the server before searching; titles and summaries are shown in Simplified by default (text inside the images is unchanged).
-- **Deploy from one compose file**: `docker compose up -d`, then open the web panel. The panel can also browse the Discover page, open a title and tick episodes (all, the latest 5 or a range) to download into the server cache, then download the finished CBZs; the Cache page lists every converted episode still on the server.
+- **Deploy from one compose file**: `docker compose up -d`, then open the web panel. The panel can also browse the Discover page, open a title and tick episodes (all, the latest 5 or a range) to download into the server cache, then download the finished CBZs; your own CBZ / PDF files can be uploaded and converted the same way; Home shows the current tasks with a cancel button; the Cache page lists every converted episode still on the server.
 - **Internet access**: built-in Cloudflare Tunnel (quick tunnel or tunnel token). The tunnel only lets the device API through; the panel always stays on the LAN.
 
 ```
@@ -90,6 +90,18 @@ Panel → **设备与外网** (Devices & internet) shows the address and the tok
 | Wait between two original images | 0.4–1.2 seconds | Random, to avoid burdening WEBTOON |
 | List and details cache | 30 minutes | Discover page lists, title details |
 | Days kept / cache limit | 14 days / 3000 MB | Converted CBZs and covers; beyond that, the least recently used are deleted first |
+
+## Upload conversion (panel → 上传 / Upload)
+
+Your own CBZ (ZIP) or PDF files can become e-ink CBZs too: panel → Upload, pick files (several at once, up to 2 GB each) and the spread layout, then "上传并转换". The server grays and pages them like downloaded episodes, at the page size from Settings (tall strips are cut in panel gaps, regular comics go one image per page with white borders trimmed), packs a CBZ into the cache and lists it on the Cache page under the uploaded file name.
+
+- CBZ images are taken in natural file-name order (2 before 10), skipping `__MACOSX`, hidden files and broken images; each PDF page is rendered to gray at 1.5x the page box, then scaled down.
+- Uploads are stored in `data/uploads` and deleted once converted (success, failure or cancel); unfinished ones are cleared when the server restarts and need uploading again.
+- Converted uploads are pruned by the same retention days and cache cap as episodes; the device API cannot reach them, so copy them into the TF card's `comics` folder yourself.
+
+## Current tasks (panel → 概览 / Home)
+
+The top of Home lists what the server is doing and has queued: title, episode ("上传的文件" for uploads), origin (device / app, panel pick, upload) and progress, refreshed every 3 s. Device and app requests run before panel picks and uploads. Every task can be cancelled, or all at once: queued ones go at once, the running one stops before its next image and leaves nothing half-written. A cancelled device request stops that download on the device with "已在面板取消"; checking for updates two minutes later asks for it again.
 
 ## Plugin sources (optional)
 
@@ -213,7 +225,8 @@ Offline tests, no network: parsing (synthetic web page fragments), page cutting 
 | `hub/app/convert.py` | Original images → e-ink pages: scaling, grayscale, cutting in blank space (vertical scroll) or one image per page (regular comics), CBZ packing, covers |
 | `hub/app/mihon.py` | Plugin sources: Suwayomi GraphQL calls, the episode number table, plugin and repository management |
 | `hub/app/ehentai.py` | E-Hentai channel: lists, the official API, splitting galleries into episodes, image fetching, direct IP, sign-in |
-| `hub/app/jobs.py` | Conversion queue (one episode at a time) and cache cleanup |
+| `hub/app/upload.py` | Uploaded CBZ / PDF: type detection, page count and images in order (PDF rendered with pdfium) |
+| `hub/app/jobs.py` | Conversion queue (one episode at a time, devices first), uploads, cancelling and cache cleanup |
 | `hub/app/main.py` | Panel and device API |
 | `hub/app/tunnel.py`, `auth.py` | Cloudflare tunnel, panel password and device token (same as rednote) |
 | `hub/app/web/` | Panel web pages |

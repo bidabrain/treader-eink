@@ -13,10 +13,14 @@ from typing import Any
 
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
 CACHE_DIR = DATA / "cache"
+# 面板上传的 CBZ / PDF 源文件：转完就删；队列只在内存里，重启后这里剩下的都是没转完的，开机清掉。
+# CBZ / PDF files uploaded in the panel: deleted once converted. The queue lives in memory only, so whatever is left
+# here after a restart was never finished and is cleared at startup.
+UPLOAD_DIR = DATA / "uploads"
 CONFIG_PATH = DATA / "config.json"
 AUTH_PATH = DATA / "auth.json"
 PORT = int(os.environ.get("PORT", "8095"))
-VERSION = "0.3.4"
+VERSION = "0.3.5"
 BASE = os.environ.get("WEBTOON_BASE", "https://www.webtoons.com").rstrip("/")
 MOBILE = os.environ.get("WEBTOON_MOBILE", "https://m.webtoons.com").rstrip("/")
 
@@ -72,6 +76,10 @@ _lock = threading.Lock()
 def ensure_dirs() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    for p in UPLOAD_DIR.iterdir():
+        if p.is_file():
+            p.unlink(missing_ok=True)
 
 
 def load() -> dict[str, Any]:

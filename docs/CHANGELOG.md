@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-27 · webtoon 服务器 0.3.5
+
+- 面板新增“上传”页：上传自己的 CBZ（ZIP）或 PDF，服务器和下载的话一样转灰度、按页面大小分页（竖长条在空白处切，普通漫画一张一页），打包成 CBZ 放进缓存，在“缓存”页下载；可以一次选几个文件，源文件转完就删。
+  The panel has a new Upload page: upload your own CBZ (ZIP) or PDF and the server grays and pages it like downloaded episodes (tall strips cut in gaps, regular comics one image per page), packs a CBZ into the cache for download on the Cache page; several files at once, sources deleted once converted.
+- 概览新增“当前任务”：列出正在转和排着的任务（作品、话、来源、进度），每 3 秒刷新；每个都能取消，也能全部取消，正在转的在下一张图之前停下。设备要的话被取消后，设备上显示“已在面板取消”。固件和安卓 App 不用改。
+  Home gains Current tasks listing running and queued jobs (title, episode, origin, progress), refreshed every 3 s; each can be cancelled, or all at once, and a running one stops before its next image. A cancelled device request shows "已在面板取消" on the device. No firmware or Android change.
+
 ## 2026-11-26 · webtoon 服务器 0.3.4
 
 - 面板“发现”里点开作品后能像客户端一样选话下载到服务器缓存：每话前有勾选框，可以全选、选最近 5 话或填“第几话到第几话”，点“下载到缓存”后服务器从旧到新一话一话转；每话旁边显示排队中、转换进度或“下载 CBZ”，转好的也在“缓存”页。详情默认列最新 30 话，可展开全部；还没开始的可以“取消排队”，正在转的那一话会转完。选得太多快超过缓存上限时会提示（超出会先清掉最久没用的）。设备接口和固件、安卓 App 都不用改。

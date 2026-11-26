@@ -42,7 +42,9 @@ $('#logout').onclick = async () => { await api('/api/panel/logout', { method: 'P
 
 // ---- 页签 / Tabs ----
 const loaders = {};
+let homeTimer = 0;
 function show(tab) {
+  clearTimeout(homeTimer);
   $$('header nav a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   $$('main section').forEach((s) => { s.hidden = s.dataset.panel !== tab; });
   if (loaders[tab]) loaders[tab]().catch((e) => console.warn(e));
@@ -50,14 +52,41 @@ function show(tab) {
 $$('header nav a').forEach((a) => { a.onclick = () => show(a.dataset.tab); });
 
 // ---- 概览 / Home ----
+const isUp = (lang) => lang === 'upload';
+const epName = (lang, no) => isUp(lang) ? '上传的文件' : `第 ${no} 话`;
+const SRC_NAME = { device: '设备 / App', panel: '面板选话', upload: '上传' };
+// 概览：统计、当前任务、最近转换；停在概览时每 3 秒刷新一次。/ Home: stats, current tasks and recent jobs; refreshed
+// every 3 s while Home is shown.
 loaders.home = async () => {
-  const s = await api('/api/panel/status');
-  const items = [['缓存', s.cache_mb + ' MB'], ['排队中', s.queue], ['外网', s.tunnel.status]];
-  $('#stats').innerHTML = items.map(([k, v]) => `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>`).join('');
-  $('#recent').innerHTML = s.recent.length ? s.recent.map((r) =>
-    `<li><span>${esc(r.title || r.id)} · 第 ${r.no} 话 <span class="muted">${esc(r.lang)}</span></span><span class="muted">${esc(r.note)} · ${r.sec} 秒 · ${when(r.at)}</span></li>`).join('')
-    : '<li class="muted">还没有转过</li>';
+  clearTimeout(homeTimer);
+  try {
+    const [s, t] = await Promise.all([api('/api/panel/status'), api('/api/panel/tasks')]);
+    const items = [['缓存', s.cache_mb + ' MB'], ['排队中', s.queue], ['外网', s.tunnel.status]];
+    $('#stats').innerHTML = items.map(([k, v]) => `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>`).join('');
+    drawTasks(t.items);
+    $('#recent').innerHTML = s.recent.length ? s.recent.map((r) =>
+      `<li><span>${esc(r.title || r.id)} · ${epName(r.lang, r.no)} <span class="muted">${isUp(r.lang) ? '' : esc(r.lang)}</span></span><span class="muted">${esc(r.note)} · ${r.sec} 秒 · ${when(r.at)}</span></li>`).join('')
+      : '<li class="muted">还没有转过</li>';
+  } finally {
+    if (!$('section[data-panel=home]').hidden) homeTimer = setTimeout(() => loaders.home().catch((e) => console.warn(e)), 3000);
+  }
 };
+function drawTasks(list) {
+  $('#tasksCancelAll').hidden = !list.length;
+  let pos = 0;
+  $('#tasks').innerHTML = list.length ? list.map((t, i) => {
+    const st = t.cancelling ? '取消中…' : t.running ? (t.total ? `转换中 ${t.done}/${t.total}` : '准备中…') : `排队第 ${++pos} 个`;
+    return `<li><span>${esc(t.name || t.id)} · ${epName(t.lang, t.no)} <span class="muted">${SRC_NAME[t.src] || ''}</span></span>
+      <span><span class="muted">${st}</span> <button class="ghost" data-i="${i}"${t.cancelling ? ' disabled' : ''}>取消</button></span></li>`;
+  }).join('') : '<li class="muted">没有任务，服务器闲着</li>';
+  $$('#tasks button').forEach((b) => { b.onclick = () => cancelTasks({ items: [list[b.dataset.i]] }, b); });
+}
+async function cancelTasks(body, btn) {
+  if (btn) btn.disabled = true;
+  try { drawTasks((await api('/api/panel/tasks/cancel', { method: 'POST', body })).items); }
+  catch (e) { alert(e.message); if (btn) btn.disabled = false; }
+}
+$('#tasksCancelAll').onclick = () => { if (confirm('取消所有排着和正在转的任务？')) cancelTasks({ all: true }); };
 
 // ---- 发现页 / Store ----
 const LANGS = { 'zh-hant': '繁體中文', en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch', th: 'ภาษาไทย', id: 'Indonesia' };
@@ -183,7 +212,7 @@ $('#dQueue').onclick = async () => {
   if (!c || !c.sel.size) return;
   $('#dQueue').disabled = true; $('#dQMsg').textContent = '排队中…';
   try {
-    const r = await api(`/api/panel/queue/${c.id}?lang=${encodeURIComponent(c.lang)}`, { method: 'POST', body: { nos: [...c.sel] } });
+    const r = await api(`/api/panel/queue/${c.id}?lang=${encodeURIComponent(c.lang)}`, { method: 'POST', body: { nos: [...c.sel], name: $('#dTitle').textContent } });
     c.sel.clear();
     await refreshStates(c);
     $('#dQMsg').textContent = `已排进 ${r.added} 话${r.ready ? `，${r.ready} 话本来就转好了` : ''}；整个队列 ${r.queue} 话`;
@@ -222,6 +251,39 @@ async function renumber(id) {
     $('#renumMsg').textContent = note;
   } catch (e) { $('#renumMsg').textContent = e.message; }
 }
+
+// ---- 上传转换 / Upload conversion ----
+// 用 XHR 传，能显示上传进度；几个文件一个一个传。/ Uploads use XHR for progress; several files go one at a time.
+function putFile(file, spread, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', `/api/panel/upload?name=${encodeURIComponent(file.name)}&spread=${encodeURIComponent(spread)}`);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    x.onload = () => {
+      let data = null;
+      try { data = JSON.parse(x.responseText); } catch (_) {}
+      if (x.status === 401) { showGate(); reject(new Error('请先登录面板')); return; }
+      if (x.status >= 200 && x.status < 300) resolve(data);
+      else reject(new Error((data && (data.detail || data.error)) || ('HTTP ' + x.status)));
+    };
+    x.onerror = () => reject(new Error('上传断了'));
+    x.send(file);
+  });
+}
+$('#upGo').onclick = async () => {
+  const files = [...$('#upFiles').files];
+  if (!files.length) return;
+  $('#upGo').disabled = true;
+  $('#upList').innerHTML = files.map((f, i) => `<li><span>${esc(f.name)} <span class="muted">${(f.size / 1048576).toFixed(1)} MB</span></span><span class="muted" id="up${i}">等待上传</span></li>`).join('');
+  for (const [i, f] of files.entries()) {
+    const out = $('#up' + i);
+    try {
+      const r = await putFile(f, $('#upSpread').value, (p) => { out.textContent = `上传中 ${Math.round(p * 100)}%`; });
+      out.textContent = `已排进队列（${r.kind === 'pdf' ? 'PDF' : 'CBZ'}，${r.pages} 页）`;
+    } catch (e) { out.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  }
+  $('#upFiles').value = ''; $('#upGo').disabled = false;
+};
 
 // ---- 插件 / Extensions ----
 let exts = [];
@@ -360,7 +422,7 @@ loaders.cache = async () => {
   $('#cacheSum').textContent = r.items.length ? `${r.items.length} 话，共 ${r.mb} MB` : '';
   $('#cacheList').innerHTML = r.items.length ? r.items.map((i) => {
     const q = `lang=${encodeURIComponent(i.lang)}&id=${encodeURIComponent(i.id)}&no=${i.no}`;
-    return `<li><span>${esc(i.series || i.id)} · 第 ${i.no} 话${i.title ? ' ' + esc(i.title) : ''} <span class="muted">${i.pages ? i.pages + ' 页 · ' : ''}${i.mb} MB · ${when(i.at)}</span></span><a class="button" href="/api/panel/cache/file?${q}" download>下载</a></li>`;
+    return `<li><span>${esc(i.series || i.id)} · ${epName(i.lang, i.no)}${i.title ? ' ' + esc(i.title) : ''} <span class="muted">${i.pages ? i.pages + ' 页 · ' : ''}${i.mb} MB · ${when(i.at)}</span></span><a class="button" href="/api/panel/cache/file?${q}" download>下载</a></li>`;
   }).join('') : '<li class="muted">缓存里没有转好的话</li>';
 };
 

@@ -21,7 +21,7 @@
   <header>
     <b>webtoon 面板</b><span id="ver" class="muted"></span>
     <nav>
-      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="eh">E-Hentai</a><a data-tab="cache">缓存</a><a data-tab="device">设备与外网</a>
+      <a data-tab="home" class="on">概览</a><a data-tab="store">发现</a><a data-tab="upload">上传</a><a data-tab="mihon" id="mihonTab" hidden>插件</a><a data-tab="eh">E-Hentai</a><a data-tab="cache">缓存</a><a data-tab="device">设备与外网</a>
       <a data-tab="settings">设置</a>
     </nav>
     <button id="logout" class="ghost">退出</button>
@@ -30,6 +30,11 @@
   <main>
     <section data-panel="home">
       <div class="grid" id="stats"></div>
+      <div class="card">
+        <div class="tools"><h2>当前任务</h2><button class="ghost" id="tasksCancelAll" hidden>全部取消</button></div>
+        <p class="muted">正在转的在最上面，下面按轮到的先后排；设备和 App 要的话排在面板选的话和上传前面。取消正在转的会在下一张图之前停下；设备要的话被取消后，设备上显示“已在面板取消”。</p>
+        <ul id="tasks" class="list"></ul>
+      </div>
       <div class="card">
         <h2>最近转换</h2>
         <p class="muted">设备要哪一话，服务器才去 WEBTOON 拉原图、转灰度、按屏幕切页，打包成 CBZ 缓存一阵。服务器不保存订阅，订阅在设备的 TF 卡上。</p>
@@ -70,6 +75,23 @@
         <ul id="dEps" class="list"></ul>
         <p id="dMore" hidden><button class="ghost" id="dMoreBtn"></button></p>
       </div>
+    </section>
+
+    <section data-panel="upload" hidden>
+      <form id="upForm" method="post" action="#" onsubmit="return false" class="card">
+        <h2>上传转换</h2>
+        <p class="muted">上传 CBZ（ZIP）或 PDF，服务器像下载的话一样转灰度、按屏幕大小分页，打包成 CBZ 放进缓存，转好后在“缓存”页下载；上传的源文件转完就删。竖长条的漫画在分镜空白处切页，普通漫画一张一页。进度在“概览”的当前任务里看，那里也能取消。</p>
+        <label>文件（可以一次选几个，单个最大 2 GB） <input id="upFiles" type="file" accept=".cbz,.zip,.pdf,application/pdf,application/zip" multiple></label>
+        <label>跨页（横向的整张图）
+          <select id="upSpread">
+            <option value="split_rtl">拆成两页，右页在前（日漫）</option>
+            <option value="split_ltr">拆成两页，左页在前</option>
+            <option value="rotate">旋转 90° 整页显示</option>
+            <option value="fit">整张缩小显示</option>
+          </select></label>
+        <button id="upGo">上传并转换</button>
+        <ul id="upList" class="list"></ul>
+      </form>
     </section>
 
     <section data-panel="mihon" hidden>

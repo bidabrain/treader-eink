@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, config, convert, ehentai, jobs, mihon, source, tunnel
+from . import auth, config, convert, ehentai, jobs, mihon, source, tunnel, upload
 
 WEB = Path(__file__).parent / "web"
 LIST_MAX = 120
@@ -71,9 +72,14 @@ async def source_error(_request: Request, e: source.SourceError):
 WEBTOON = "webtoon"     # 来源里 WEBTOON 自己的 key / WEBTOON's own key among the sources
 
 
-def _check(lang: str, tid: str) -> str:
-    """检查编号和语言，返回实际用的语言（插件作品一律是 mihon，设备发来的 lang 不管）。/ Validate the id and language
-    and return the language actually used (always mihon for extension titles, whatever the device sent)."""
+def _check(lang: str, tid: str, uploads: bool = False) -> str:
+    """检查编号和语言，返回实际用的语言（插件作品一律是 mihon，设备发来的 lang 不管）。上传的文件只有面板的缓存和
+    任务能用（uploads）。/ Validate the id and language and return the language actually used (always mihon for
+    extension titles, whatever the device sent). Uploads are reachable only from the panel's cache and tasks."""
+    if jobs.is_upload(tid):
+        if not uploads:
+            raise HTTPException(400, "路径不对")
+        return jobs.UPLOAD_LANG
     if jobs.is_eh(tid):
         ehentai.split_id(tid)
         return ehentai.LANG
@@ -284,6 +290,7 @@ async def panel_states(tid: str, lang: str = "zh-hant"):
 
 class QueueBody(BaseModel):
     nos: list[int]
+    name: str = ""
 
 
 @app.post("/api/panel/queue/{tid}")
@@ -297,7 +304,8 @@ async def panel_queue(tid: str, body: QueueBody, lang: str = "zh-hant"):
         raise HTTPException(400, "没有选话")
     if len(nos) > QUEUE_MAX:
         raise HTTPException(400, f"一次最多排 {QUEUE_MAX} 话")
-    got = [jobs.enqueue(lang, tid, no) for no in nos]
+    name = body.name.strip()[:120]
+    got = [jobs.enqueue(lang, tid, no, name) for no in nos]
     added, ready = got.count("added"), got.count("ready")
     return {"added": added, "ready": ready, "queue": jobs.pending()}
 
@@ -312,6 +320,76 @@ async def panel_queue_cancel(tid: str, lang: str = "zh-hant"):
 @app.get("/api/panel/episode/{tid}/{no:int}.cbz")
 async def panel_episode_file(tid: str, no: int, lang: str = "zh-hant"):
     return _episode_file(lang, tid, no)
+
+
+# ---- 面板：上传转换与任务 / Panel: upload conversion and tasks ----
+
+UPLOAD_MAX_MB = 2048
+
+
+@app.put("/api/panel/upload")
+async def panel_upload(request: Request, name: str = "", spread: str = "split_rtl"):
+    """上传一个 CBZ 或 PDF（请求体就是文件本身），存好后排进转换队列；转好的在缓存里，源文件转完就删。
+    Upload one CBZ or PDF (the request body is the file itself), then queue it; the result lands in the cache and the
+    source is deleted once converted."""
+    if spread not in convert.SPREADS:
+        raise HTTPException(400, "跨页方式不对")
+    tmp = config.UPLOAD_DIR / f"{secrets.token_hex(8)}.src"
+    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    size, head = 0, b""
+    try:
+        with tmp.open("wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > UPLOAD_MAX_MB * 1048576:
+                    raise HTTPException(413, f"文件太大（上限 {UPLOAD_MAX_MB} MB）")
+                if len(head) < 8:
+                    head += chunk[:8]
+                f.write(chunk)
+        kind = upload.kind_of(head)
+        if not kind:
+            raise HTTPException(400, "只支持 CBZ（ZIP）和 PDF")
+        try:
+            pages = await asyncio.to_thread(upload.count, tmp, kind)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "文件打不开（损坏或加了密码）") from None
+        if not pages:
+            raise HTTPException(400, "文件里没有图片")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    name = re.sub(r"\.(cbz|zip|pdf)$", "", re.sub(r"[\x00-\x1f]", "", name).strip(), flags=re.I)[:120] or "上传的漫画"
+    tid = jobs.add_upload(tmp, kind, name, spread)
+    return {"id": tid, "kind": kind, "pages": pages, "queue": jobs.pending()}
+
+
+@app.get("/api/panel/tasks")
+async def panel_tasks():
+    """现在在做和排着的任务（设备、面板选话、上传），正在转的在前。/ Jobs running and queued (device, panel picks,
+    uploads), the running one first."""
+    return {"items": jobs.tasks()}
+
+
+class TaskRef(BaseModel):
+    lang: str
+    id: str
+    no: int
+
+
+class CancelBody(BaseModel):
+    items: list[TaskRef] = []
+    all: bool = False
+
+
+@app.post("/api/panel/tasks/cancel")
+async def panel_tasks_cancel(body: CancelBody):
+    """取消选中的任务，或者 all 全部取消；正在转的在下一张图之前停下。设备要的话被取消后，设备会看到“已在面板取消”。
+    Cancel the given jobs, or all of them; a running one stops before its next image. A cancelled device request
+    shows "已在面板取消" on the device."""
+    refs = [(t["lang"], t["id"], t["no"]) for t in jobs.tasks()] if body.all else \
+        [(r.lang, r.id, r.no) for r in body.items]
+    n = sum(jobs.cancel_task(lang, tid, no) for lang, tid, no in refs)
+    return {"cancelled": n, "items": jobs.tasks()}
 
 
 @app.get("/api/panel/settings")
@@ -359,12 +437,14 @@ async def panel_cache_file(lang: str, id: str, no: int):
     """浏览器下载缓存里的一话，文件名带系列名和话号。不动“最近用过”的时间，免得下载把它从清理里救出来。/ Download a
     cached episode in the browser, named with the series and number. Leaves the last-used time alone so a download does
     not save it from pruning."""
-    path = jobs.cbz_path(_check(lang, id), id, no)
+    lang = _check(lang, id, uploads=True)
+    path = jobs.cbz_path(lang, id, no)
     if not path.is_file():
         raise HTTPException(404, "这一话已经不在缓存里")
     series = next((i["series"] for i in jobs.list_cache() if (i["lang"], i["id"], i["no"]) == (lang, id, no)), "")
     safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", series).strip() or id
-    return FileResponse(path, media_type="application/vnd.comicbook+zip", filename=f"{safe} 第{no}话.cbz")
+    name = f"{safe}.cbz" if jobs.is_upload(id) else f"{safe} 第{no}话.cbz"
+    return FileResponse(path, media_type="application/vnd.comicbook+zip", filename=name)
 
 
 @app.post("/api/panel/cache/clear")

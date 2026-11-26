@@ -6,16 +6,25 @@ Conversion queue and cache: when a device asks for an episode that is not conver
 the source images, cut pages and pack; converted CBZs stay under /data/cache for a while. Each episode converts once
 and jobs run one at a time (never hammering WEBTOON). Source images are dropped after conversion, only the CBZ is
 kept; past the retention days or size cap the least recently used go first.
+
+面板上传的 CBZ / PDF 也走这个队列（语言目录 upload、编号 u 开头、话号 1），源文件转完就删。面板能取消任何排着或
+正在转的任务：正在转的在下一张图之前停下；被取消的记成“已在面板取消”的错误，设备问到时就停下不再重排。
+CBZ / PDF uploads from the panel use the same queue (language dir upload, ids starting with u, episode 1) and their
+source files are deleted once converted. The panel can cancel any queued or running job: a running one stops before
+its next image; cancelled jobs are recorded as the error "已在面板取消" so a device asking for them stops instead of
+queueing them again.
 """
 from __future__ import annotations
 
 import asyncio
 import itertools
 import os
+import re
+import secrets
 import time
 from pathlib import Path
 
-from . import config, convert, ehentai, mihon, source
+from . import config, convert, ehentai, mihon, source, upload
 
 _state: dict[tuple[str, str, int], dict] = {}
 # 来源名 → (时间, 错误)：一个插件来源卡在 Cloudflare 验证上、或 E-Hentai 额度用完 / 封 IP / 没登录后，这段时间里它
@@ -31,6 +40,23 @@ _queue: asyncio.PriorityQueue | None = None
 _seq = itertools.count()
 _running: tuple[str, str, int] | None = None   # 正在转的那一话 / The episode being converted
 recent: list[dict] = []          # 面板显示最近做过的 / Recent jobs for the panel
+UPLOAD_LANG = "upload"
+UPLOAD_RE = re.compile(r"^u[0-9a-f]{12}$")
+_uploads: dict[str, dict] = {}   # 上传编号 → 源文件、类型、名字、跨页方式 / Upload id -> source file, kind, name, spread
+CANCELLED = "已在面板取消"
+INTERNAL = ("panel", "cancel", "prio", "seq")   # 不往外给的字段 / Fields kept internal
+
+
+class Cancelled(Exception):
+    """面板取消了正在转的这一话。/ The panel cancelled the episode being converted."""
+
+
+def is_upload(tid: str) -> bool:
+    return bool(UPLOAD_RE.match(tid))
+
+
+def _public(st: dict) -> dict:
+    return {k: v for k, v in st.items() if k not in INTERNAL}
 
 
 def is_eh(tid: str) -> bool:
@@ -86,10 +112,12 @@ def _forget_errors() -> None:
 
 
 def _put(key: tuple[str, str, int], panel: bool) -> None:
-    _queue.put_nowait((1 if panel else 0, next(_seq), key))
+    st = _state[key]
+    st["prio"], st["seq"] = 1 if panel else 0, next(_seq)
+    _queue.put_nowait((st["prio"], st["seq"], key))
 
 
-def status(lang: str, tid: str, no: int, start: bool = True, panel: bool = False) -> dict:
+def status(lang: str, tid: str, no: int, start: bool = True, panel: bool = False, name: str = "") -> dict:
     """这一话的状态：ready（附大小）、pending（附进度）或 error；不在队列里又没转过时开始转。设备问到面板排着的话时
     把它提到前面。/ An episode's state: ready (with size), pending (with progress) or error; starts converting when
     neither queued nor converted. A device asking for a panel-queued episode moves it to the front."""
@@ -102,18 +130,19 @@ def status(lang: str, tid: str, no: int, start: bool = True, panel: bool = False
         st = None                    # 出错两分钟后允许重试 / Allow a retry two minutes after an error
     if st:
         if start and not panel and st["state"] == "pending" and st.get("panel") and key != _running:
-            st["panel"] = False
+            st["panel"], st["src"] = False, "device"
             _put(key, False)         # 旧条目留在后面，轮到时会跳过 / The old entry stays behind and is skipped
-        return {k: v for k, v in st.items() if k != "panel"}
+        return _public(st)
     if not start:
         return {"state": "none"}
-    st = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "queued": pending(), "panel": panel}
+    st = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "queued": pending(), "panel": panel,
+          "src": "panel" if panel else "device", "name": name}
     _state[key] = st
     _put(key, panel)
-    return {k: v for k, v in st.items() if k != "panel"}
+    return _public(st)
 
 
-def enqueue(lang: str, tid: str, no: int) -> str:
+def enqueue(lang: str, tid: str, no: int, name: str = "") -> str:
     """面板选话：转好了给 ready，已经在排给 pending，否则排进队列给 added（刚出错的也马上重排）。/ Panel selection:
     ready when converted, pending when already queued, otherwise queued and added (a fresh error is retried at once)."""
     path = cbz_path(lang, tid, no)
@@ -124,8 +153,57 @@ def enqueue(lang: str, tid: str, no: int) -> str:
     if st and st["state"] == "pending":
         return "pending"
     _state.pop(key, None)
-    status(lang, tid, no, panel=True)
+    status(lang, tid, no, panel=True, name=name)
     return "added"
+
+
+def add_upload(path: Path, kind: str, name: str, spread: str) -> str:
+    """把面板上传的文件排进队列（和面板选的话同一优先级），返回编号。/ Queue a panel upload (same priority as panel
+    picks) and return its id."""
+    tid = "u" + secrets.token_hex(6)
+    _uploads[tid] = {"path": path, "kind": kind, "name": name, "spread": spread}
+    key = (UPLOAD_LANG, tid, 1)
+    _state[key] = {"state": "pending", "done": 0, "total": 0, "at": time.time(), "queued": pending(), "panel": True,
+                   "src": "upload", "name": name}
+    _put(key, True)
+    return tid
+
+
+def _drop_upload(tid: str) -> None:
+    up = _uploads.pop(tid, None)
+    if up:
+        Path(up["path"]).unlink(missing_ok=True)
+
+
+def tasks() -> list[dict]:
+    """排着和正在转的任务，正在转的在前，其余按轮到的先后。/ Queued and running jobs, the running one first, the
+    rest in the order they will run."""
+    items = []
+    for (lang, tid, no), st in list(_state.items()):
+        if st["state"] != "pending":
+            continue
+        items.append({"lang": lang, "id": tid, "no": no, "name": st.get("name", ""), "src": st.get("src", "device"),
+                      "done": st.get("done", 0), "total": st.get("total", 0), "running": (lang, tid, no) == _running,
+                      "cancelling": bool(st.get("cancel")), "order": (st.get("prio", 1), st.get("seq", 0))})
+    items.sort(key=lambda i: (not i["running"], i["order"]))
+    for i in items:
+        del i["order"]
+    return items
+
+
+def cancel_task(lang: str, tid: str, no: int) -> bool:
+    """取消一个排着或正在转的任务；正在转的在下一张图之前停下。/ Cancel a queued or running job; a running one stops
+    before its next image."""
+    key = (lang, tid, int(no))
+    st = _state.get(key)
+    if not st or st["state"] != "pending":
+        return False
+    if key == _running:
+        st["cancel"] = True
+        return True
+    _state[key] = {"state": "error", "error": CANCELLED, "at": time.time()}
+    _drop_upload(tid)
+    return True
 
 
 def pending() -> int:
@@ -145,7 +223,7 @@ def states(lang: str, tid: str) -> dict[int, dict]:
                 out[int(p.stem)] = {"state": "ready", "size": p.stat().st_size}
     for (l, t, no), st in list(_state.items()):
         if l == lang and t == tid and no not in out:
-            out[no] = {k: v for k, v in st.items() if k != "panel"}
+            out[no] = _public(st)
             if (l, t, no) == _running:
                 out[no]["running"] = True
     return out
@@ -182,6 +260,8 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
         else:
             pager = convert.Pager(cfg["page_w"], cfg["page_h"], sink=writer.add)
         for i, url in enumerate(urls):
+            if st.get("cancel"):
+                raise Cancelled()
             data = await _fetch(tid, url)
             await asyncio.to_thread(pager.feed, data)
             del data
@@ -203,6 +283,78 @@ async def _convert(key: tuple[str, str, int], meta: dict) -> None:
         raise
 
 
+def _convert_upload(key: tuple[str, str, int], up: dict, meta: dict) -> None:
+    """在线程里转一个上传的文件：读不了的图跳过，一页也没有才算失败。/ Convert an upload in a thread: unreadable images
+    are skipped; it fails only when no page comes out."""
+    lang, tid, no = key
+    st = _state[key]
+    cfg = config.load()
+    st["total"] = upload.count(up["path"], up["kind"])
+    path = cbz_path(lang, tid, no)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".part")
+    writer = convert.CbzWriter(tmp, cfg["quality"])
+    try:
+        pager = convert.AutoPager(cfg["page_w"], cfg["page_h"], sink=writer.add, spread=up["spread"])
+        for i, data in enumerate(upload.pages(up["path"], up["kind"], cfg["page_w"], cfg["page_h"])):
+            if st.get("cancel"):
+                raise Cancelled()
+            try:
+                pager.feed(data)
+            except Exception:  # noqa: BLE001
+                pass                 # 坏图跳过 / Skip a broken image
+            st["done"] = i + 1
+        rest = pager.finish()
+        if not pager.count:
+            raise source.SourceError(400, "文件里没有能用的图片")
+        for page in rest:
+            writer.add(page)
+        rtl = not pager.strip and up["spread"] == "split_rtl"
+        writer.close({**meta, "no": no, "lang": "", "format": "Webtoon" if pager.strip else "",
+                      "manga": "YesAndRightToLeft" if rtl else "No"})
+        os.replace(tmp, path)
+    except BaseException:
+        writer.abort()
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+async def _run_upload(key: tuple[str, str, int], meta: dict) -> None:
+    tid = key[1]
+    up = _uploads.get(tid)
+    if not up:
+        raise source.SourceError(410, "上传的文件不见了，请重新上传")
+    meta.update(series=up["name"], author="", title="")
+    try:
+        await asyncio.to_thread(_convert_upload, key, up, meta)
+    finally:
+        _drop_upload(tid)
+
+
+async def _run_episode(key: tuple[str, str, int], st: dict, meta: dict) -> None:
+    lang, tid, no = key
+    src = ""
+    try:
+        info = await _info(lang, tid)
+        meta["web"] = meta["web"] or info.get("web", "")
+        ep = next((e for e in info["episodes"] if e["no"] == no), None)
+        meta.update(series=info["title"], author=info["author"], title=ep["title"] if ep else "")
+        st["name"] = st.get("name") or info["title"]
+        src = info.get("src", "") if is_ext(tid) else ""
+    except source.SourceError:
+        pass
+    blocked = _cf_block.get(src) if src else None
+    if blocked and time.time() - blocked[0] < CF_PAUSE:
+        left = max(1, round((CF_PAUSE - (time.time() - blocked[0])) / 60))
+        raise source.SourceError(502, f"{blocked[1]}；约 {left} 分钟后再试")
+    try:
+        await _convert(key, meta)
+    except source.SourceError as e:
+        if src and _blocking(tid, str(e)):
+            _cf_block[src] = (time.time(), str(e))
+        raise
+
+
 async def worker() -> None:
     global _queue, _running
     _queue = asyncio.PriorityQueue()
@@ -217,29 +369,15 @@ async def worker() -> None:
             continue
         _running = key
         t0 = time.time()
-        meta = {"web": "" if is_ext(tid) else f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
-        src = ""
+        meta = {"web": "" if is_ext(tid) or is_upload(tid) else
+                f"{config.BASE}/{lang}/x/x/list?title_no={tid.lstrip('c')}"}
         try:
-            try:
-                info = await _info(lang, tid)
-                meta["web"] = meta["web"] or info.get("web", "")
-                ep = next((e for e in info["episodes"] if e["no"] == no), None)
-                meta.update(series=info["title"], author=info["author"], title=ep["title"] if ep else "")
-                src = info.get("src", "") if is_ext(tid) else ""
-            except source.SourceError:
-                pass
-            blocked = _cf_block.get(src) if src else None
-            if blocked and time.time() - blocked[0] < CF_PAUSE:
-                left = max(1, round((CF_PAUSE - (time.time() - blocked[0])) / 60))
-                raise source.SourceError(502, f"{blocked[1]}；约 {left} 分钟后再试")
-            try:
-                await _convert(key, meta)
-            except source.SourceError as e:
-                if src and _blocking(tid, str(e)):
-                    _cf_block[src] = (time.time(), str(e))
-                raise
+            await (_run_upload(key, meta) if is_upload(tid) else _run_episode(key, st, meta))
             _state.pop(key, None)
             note = "完成"
+        except Cancelled:
+            _state[key] = {"state": "error", "error": CANCELLED, "at": time.time()}
+            note = "已取消"
         except source.SourceError as e:
             _state[key].update(state="error", error=str(e), at=time.time())
             note = f"失败：{e}"
