@@ -10,6 +10,7 @@
  */
 
 #include "heap_diag.h"
+#include "perf_diag.h"
 #include "book_cover.h"
 #include "hupu_img.h"
 #include "mem_reclaim.h"
@@ -124,6 +125,7 @@ void app_main(void) {
     // here is rolled back on the next reset.
     esp_ota_mark_app_valid_cancel_rollback();
     heap_diag_start();
+    perf_diag_boot();
     // 内存不够时可以整个放掉的缓存：书库封面、拼音词库、帖子图片（都能从 TF 卡再读回来）。
     // Caches that can go entirely when memory runs short: library covers, the pinyin lexicon and post images (all read
     // back from the card).

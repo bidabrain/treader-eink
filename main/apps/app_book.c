@@ -78,6 +78,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include "../perf_diag.h"
 #include "app.h"
 #include "app_registry.h"
 #include "book_layout.h"
@@ -1539,7 +1540,10 @@ static void free_book(void) {
 static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool last_page) {
     loading_detail(ctx, "正在加载和排版…", "长章节需要更多时间，请稍候");
     html_text_t loaded = {0};
+    PERF_T0(t_load);
     esp_err_t err = book_chapter_load_blocks(chapter, &loaded);
+    PERF_LOG("chapter %u load+parse: %ld ms, %u B text", (unsigned)chapter, PERF_US(t_load) / 1000, (unsigned)loaded.len);
+    PERF_T0(t_layout);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "chapter load failed: %s", esp_err_to_name(err));
         copy_text(s_message, sizeof(s_message), book_error_message(err));
@@ -1553,6 +1557,8 @@ static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool las
     while (ok && !book_layout_complete() &&
            (last_page || book_layout_page_start_offset(book_layout_page_count()) <= offset))
         ok = book_layout_extend(2);
+    PERF_LOG("chapter %u first layout: %ld ms, %u pages so far", (unsigned)chapter, PERF_US(t_layout) / 1000,
+             (unsigned)book_layout_page_count());
     if (!ok) {
         html_text_free(&loaded);
         bool restored = s_text && book_layout_build_blocks(s_text, s_text_len, s_blocks, s_block_count, body_rect(), s_px);

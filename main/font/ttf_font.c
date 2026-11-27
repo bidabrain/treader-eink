@@ -27,6 +27,7 @@
 #include "freertos/semphr.h"
 
 #include "settings.h"
+#include "../perf_diag.h"
 #include "esp_heap_caps.h"
 #ifdef ESP_PLATFORM
 #include "multi_heap.h"
@@ -1806,8 +1807,10 @@ static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
             glyph_free(entry);
             return NULL;
         }
+        PERF_T0(t_raster);
         stbtt_MakeGlyphBitmap(&font_info, raw, width, height, width, scale, scale, gid);
         pack_levels(raw, width, height, entry->bitmap);
+        perf_glyph_add(PERF_US(t_raster));
     }
 
     int advance = 0;

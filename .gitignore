@@ -20,6 +20,7 @@
 **/build/
 build-analyze/
 build-diag/
+build-perf/
 build/
 *.o
 *.a

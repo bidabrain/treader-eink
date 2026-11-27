@@ -36,6 +36,7 @@
  * features; one copy is easier to keep and to fit to the display size.
  */
 
+#include "../perf_diag.h"
 #include "app_loop.h"
 
 #include <stdio.h>
@@ -410,6 +411,7 @@ void app_loop_run(const app_loop_config_t* config) {
         }
         // 设置页改了显示大小也在下一轮生效。/ A display-size change in settings applies from the next tick too.
         apply_scale(current);
+        perf_loop_tick();
         cst836u_touch_t touch = { 0 };
         esp_err_t err = cst836u_read(config->tp, &touch);
         if (err != ESP_OK) {

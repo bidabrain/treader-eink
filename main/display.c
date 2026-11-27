@@ -8,6 +8,7 @@
  * underrun.
  */
 
+#include "perf_diag.h"
 #include "display.h"
 
 #include <stdbool.h>
@@ -105,11 +106,21 @@ static enum EpdDrawError hl_update(
             ESP_LOGI(TAG, "promote to GC16 after %d soft refreshes", APP_GC16_EVERY);
         }
     }
+#ifdef TREADER_PERF_DIAG
+    long glyphs, glyph_us;
+    perf_glyph_take(&glyphs, &glyph_us);
+    PERF_T0(t_update);
+#endif
+    enum EpdDrawError err;
     if (area != NULL) {
-        return full ? epd_hl_update_area_full(hl, mode, 25, *area)
-                    : epd_hl_update_area(hl, mode, 25, *area);
+        err = full ? epd_hl_update_area_full(hl, mode, 25, *area)
+                   : epd_hl_update_area(hl, mode, 25, *area);
+    } else {
+        err = full ? epd_hl_update_screen_full(hl, mode, 25) : epd_hl_update_screen(hl, mode, 25);
     }
-    return full ? epd_hl_update_screen_full(hl, mode, 25) : epd_hl_update_screen(hl, mode, 25);
+    PERF_LOG("refresh mode %d%s %dx%d: %ld ms; glyphs since last %ld in %ld ms", mode & 0xF, full ? " full" : "",
+             area ? area->width : 0, area ? area->height : 0, PERF_US(t_update) / 1000, glyphs, glyph_us / 1000);
+    return err;
 }
 
 enum EpdDrawError update_display_mode(

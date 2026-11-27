@@ -32,6 +32,7 @@ idf_component_register(
         "app_main.c"
         "display.c"
         "heap_diag.c"
+        "perf_diag.c"
         "mem_reclaim.c"
         "sleep.c"
         "settings.c"
@@ -124,4 +125,11 @@ endif()
 # port every minute (heap_diag.c).
 if(TREADER_HEAP_DIAG)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE TREADER_HEAP_DIAG=1)
+endif()
+
+# 耗时诊断固件：idf.py -B build-perf -DTREADER_PERF_DIAG=1 build，串口 perf 标签打读卡、解压、解图、光栅化和刷屏耗时（perf_diag.h）。
+# Timing diagnostic build: idf.py -B build-perf -DTREADER_PERF_DIAG=1 build prints card read, inflate, decode, raster
+# and refresh times under the perf tag (perf_diag.h).
+if(TREADER_PERF_DIAG)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE TREADER_PERF_DIAG=1)
 endif()

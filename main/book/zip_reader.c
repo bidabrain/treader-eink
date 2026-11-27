@@ -9,6 +9,7 @@
  * Frozen: read-only files and bounded PSRAM; reject encryption, ZIP64, multiple disks and duplicate paths.
  */
 #include "zip_reader.h"
+#include "../perf_diag.h"
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -267,13 +268,24 @@ esp_err_t zip_extract(zip_reader_t* z, int index, void* dst, size_t cap) {
     uint32_t data_pos = entry->offset + prefix;
     uint8_t empty_output;
     uint8_t* output = dst ? dst : &empty_output;
+    PERF_T0(t_read);
+#ifdef TREADER_PERF_DIAG
+    long read_us = 0, inflate_us = 0;
+#endif
     if (entry->method == 0) {
         if (!read_at(z, data_pos, output, entry->unpacked)) return ESP_FAIL;
+#ifdef TREADER_PERF_DIAG
+        read_us = PERF_US(t_read);
+#endif
     } else {
         uint8_t* input = heap_caps_malloc(entry->packed ? entry->packed : 1, PSRAM);
         tinfl_decompressor* state = heap_caps_malloc(sizeof(*state), PSRAM);
         if (!input || !state) { free(input); free(state); return ESP_ERR_NO_MEM; }
         bool ok = read_at(z, data_pos, input, entry->packed);
+#ifdef TREADER_PERF_DIAG
+        read_us = PERF_US(t_read);
+#endif
+        PERF_T0(t_inflate);
         if (ok) {
             tinfl_init(state);
             size_t in_size = entry->packed, out_size = entry->unpacked;
@@ -281,8 +293,17 @@ esp_err_t zip_extract(zip_reader_t* z, int index, void* dst, size_t cap) {
                                                    TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
             ok = status == TINFL_STATUS_DONE && in_size == entry->packed && out_size == entry->unpacked;
         }
+#ifdef TREADER_PERF_DIAG
+        inflate_us = PERF_US(t_inflate);
+#endif
         free(input); free(state);
         if (!ok) return ESP_ERR_INVALID_SIZE;
     }
-    return zip_crc32(output, entry->unpacked) == entry->crc ? ESP_OK : ESP_ERR_INVALID_CRC;
+    PERF_T0(t_crc);
+    const bool crc_ok = zip_crc32(output, entry->unpacked) == entry->crc;
+    PERF_LOG("zip %s: %u->%u B, read %ld ms (%ld KB/s), inflate %ld ms, crc %ld ms", entry->method ? "deflate" : "store",
+             (unsigned)entry->packed, (unsigned)entry->unpacked, read_us / 1000,
+             read_us ? (long)((int64_t)entry->packed * 1000000 / 1024 / read_us) : 0L, inflate_us / 1000,
+             PERF_US(t_crc) / 1000);
+    return crc_ok ? ESP_OK : ESP_ERR_INVALID_CRC;
 }

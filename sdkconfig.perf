@@ -1,0 +1,4 @@
+# 耗时诊断固件追加的配置，只给 build-perf 用：任务 CPU 统计。
+# Extra settings for the timing diagnostic build only (build-perf): per-task CPU statistics.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y

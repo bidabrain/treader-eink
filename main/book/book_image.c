@@ -13,6 +13,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "vendor/tjpgd.h"
+#include "../perf_diag.h"
+
+#ifdef TREADER_PERF_DIAG
+// 这次解码最后走到的解码器。/ The decoder this decode last reached.
+static const char* s_perf_path = "";
+#define PERF_PATH(name) (s_perf_path = (name))
+#else
+#define PERF_PATH(name) ((void)0)
+#endif
 #include "miniz.h"
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
@@ -350,10 +359,13 @@ static bool decode_boxed(const uint8_t* data, size_t len, size_t budget, unsigne
     portEXIT_CRITICAL(&init_lock);
     xSemaphoreTake(lock, portMAX_DELAY);
 #endif
+    PERF_T0(t_decode);
     s_box_w = box_w;
     s_box_h = box_h;
     s_cover = cover;
     bool ok = decode_locked(data, len, budget, pixels, width, height);
+    PERF_LOG("decode %s %u B -> %ux%u: %ld ms%s", s_perf_path, (unsigned)len, ok ? (unsigned)*width : 0u,
+             ok ? (unsigned)*height : 0u, PERF_US(t_decode) / 1000, ok ? "" : " FAILED");
     s_box_w = 648;
     s_box_h = 1000;
     s_cover = false;
@@ -386,13 +398,16 @@ static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
     if (!pixels || !width || !height) return false;
     *pixels = NULL; *width = *height = 0;
     if (!data || !len || len > IMAGE_INPUT_MAX || allocated) return false;
+    PERF_PATH("png");
     if (png_decode(data,len,budget,pixels,width,height)) return true;
     // 普通基线 JPEG 先走 JPEGDEC 快速通道；不合格或失败再用 tjpgd 按 MCU 缩小；小型渐进 JPEG 仍可走有界完整解码。
     // Plain baseline JPEG tries the JPEGDEC fast path first; ineligible or failed ones fall back to MCU-scaled tjpgd;
     // bounded full decoding still handles small progressive JPEGs.
+    PERF_PATH("jpegdec");
     if (len >= 2 && data[0] == 0xff && data[1] == 0xd8 &&
         (book_jpegdec_decode(data, len, budget, pixels, width, height) ||
-         jpeg_decode(data, len, budget, pixels, width, height))) return true;
+         (PERF_PATH("tjpgd"), jpeg_decode(data, len, budget, pixels, width, height)))) return true;
+    PERF_PATH("stb");
     int w, h, channels;
 #ifdef ESP_PLATFORM
     const size_t free_psram = heap_caps_get_free_size(PSRAM_CAPS);
