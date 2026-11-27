@@ -49,6 +49,8 @@
 #define NVS_KEY_TIME_AUTO "time_auto"
 #define NVS_KEY_HUPU_IMG "hupu_img"   // 虎扑显示图片 / Hupu shows images
 #define NVS_KEY_HUPU_PAGES "hupu_pg"  // 虎扑关注每个专区取几页 / Pages per followed Hupu zone
+#define NVS_KEY_WEREAD "weread_on"   // 书城里有微信读书 / WeRead in the bookstore
+#define NVS_KEY_WEREAD_FMT "weread_fmt" // 微信读书下载格式 / WeRead download format
 #define NVS_KEY_TURN_ZONE "turn_zone" // 看书时的翻页区域 / Reader tap zones
 #define NVS_KEY_TZ "tz"
 #define NVS_KEY_PIN_FAILS "pin_fails" // 连续输错次数 / Consecutive wrong PIN tries
@@ -84,6 +86,8 @@ static uint8_t s_pin_fails;
 static bool s_time_auto = true;
 static bool s_hupu_img;   // 默认不显示图片 / Images off by default
 static uint8_t s_hupu_pages = 1;
+static bool s_weread;            // 默认关 / Off by default
+static bool s_weread_epub;         // 默认 TXT / TXT by default
 static uint8_t s_turn_zone;   // 默认左右 / Left and right by default
 static uint8_t s_tz;
 static bool s_pin_on;
@@ -203,6 +207,9 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_TIME_AUTO, &time_auto) == ESP_OK) s_time_auto = time_auto != 0;
     uint8_t hupu_img = 0;
     if (nvs_get_u8(h, NVS_KEY_HUPU_IMG, &hupu_img) == ESP_OK) s_hupu_img = hupu_img != 0;
+    uint8_t weread = 0, weread_fmt = 0;
+    if (nvs_get_u8(h, NVS_KEY_WEREAD, &weread) == ESP_OK) s_weread = weread != 0;
+    if (nvs_get_u8(h, NVS_KEY_WEREAD_FMT, &weread_fmt) == ESP_OK) s_weread_epub = weread_fmt != 0;
     uint8_t hupu_pages = 1;
     if (nvs_get_u8(h, NVS_KEY_HUPU_PAGES, &hupu_pages) == ESP_OK && hupu_pages >= 1 && hupu_pages <= APP_HUPU_PAGES_MAX)
         s_hupu_pages = hupu_pages;
@@ -582,6 +589,22 @@ void app_settings_set_hupu_images(bool on) {
     if (on == s_hupu_img) return;
     s_hupu_img = on;
     nvs_put_u8(NVS_KEY_HUPU_IMG, on ? 1 : 0);
+}
+
+bool app_settings_weread(void) { return s_weread; }
+
+void app_settings_set_weread(bool on) {
+    if (on == s_weread) return;
+    s_weread = on;
+    nvs_put_u8(NVS_KEY_WEREAD, on ? 1 : 0);
+}
+
+bool app_settings_weread_epub(void) { return s_weread_epub; }
+
+void app_settings_set_weread_epub(bool on) {
+    if (on == s_weread_epub) return;
+    s_weread_epub = on;
+    nvs_put_u8(NVS_KEY_WEREAD_FMT, on ? 1 : 0);
 }
 
 uint8_t app_settings_hupu_pages(void) { return s_hupu_pages; }

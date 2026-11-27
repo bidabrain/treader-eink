@@ -26,6 +26,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "read_pico_weread.h"
 #include "tomato.h"
 #include "zip_reader.h"
 
@@ -75,7 +76,8 @@ static bool has_ext(const char* path, const char* ext) {
     return dot && !strcasecmp(dot, ext);
 }
 
-// 找封面源文件：EPUB 是书本身，番茄 TXT 是下载时存的图。/ Cover source: the EPUB itself, or the image saved for a Tomato TXT.
+// 找封面源文件：EPUB 是书本身；TXT 是番茄或微信读书下载时存的图。/ Cover source: the EPUB itself, or for a TXT the
+// image Tomato or WeRead saved at download.
 static bool cover_source(const char* book, char* src, size_t cap, bool* epub, struct stat* st) {
     *epub = has_ext(book, ".epub");
     if (*epub || book_image_name(book)) {
@@ -86,6 +88,8 @@ static bool cover_source(const char* book, char* src, size_t cap, bool* epub, st
         if (!has_ext(book, ".txt") || strncmp(book, TOMATO_BOOKS_DIR "/", dir_len + 1) || strchr(book + dir_len + 1, '/'))
             return false;
         if (snprintf(src, cap, "%s/%s.img", TOMATO_COVER_DIR, book + dir_len + 1) >= (int)cap) return false;
+        if (stat(src, st) == 0 && st->st_size > 0) return true;
+        if (snprintf(src, cap, "%s/%s.img", WEREAD_COVER_DIR, book + dir_len + 1) >= (int)cap) return false;
     }
     return stat(src, st) == 0 && st->st_size > 0;
 }

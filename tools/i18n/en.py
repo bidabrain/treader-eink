@@ -42,7 +42,7 @@ FONT = ROOT / "main" / "assets" / "builtin.ttf"
 # 要翻译的源码目录；生成的表、第三方代码、搜索字表不碰。/ Source trees to translate; generated tables, vendored
 # code and the search tables are left alone.
 SCAN = ["main", "components/tomato", "components/read_pico_transfer", "components/read_pico_usb",
-        "components/read_pico_totp", "components/read_pico"]
+        "components/read_pico_totp", "components/read_pico", "components/read_pico_weread"]
 SKIP = ("fallback.h", "stb_truetype.h", "gbk_table.h", "/vendor/", "/build/")
 HTML = (".html",)
 CJK = re.compile("[　-ヿ㐀-鿿＀-￯]")
@@ -75,7 +75,7 @@ def sources(root: Path):
     for d in SCAN:
         for p in sorted((root / d).rglob("*")):
             rel = p.relative_to(root).as_posix()
-            if p.is_file() and p.suffix in (".c", ".h", *HTML) and not any(s in rel for s in SKIP):
+            if p.is_file() and p.suffix in (".c", ".cpp", ".h", *HTML) and not any(s in rel for s in SKIP):
                 yield p
 
 

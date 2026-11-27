@@ -45,6 +45,7 @@
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "read_pico_sd.h"
+#include "read_pico_weread.h"
 #include "read_pico_transfer.h"
 #include "settings.h"
 #include "tomato.h"
@@ -85,7 +86,7 @@ extern const char server_form_start[] asm("_binary_server_form_html_start");
 extern const char server_form_end[] asm("_binary_server_form_html_end");
 
 typedef enum {
-    P_HOME, P_PROXY, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SYNC, P_POWER, P_ABOUT,
+    P_HOME, P_PROXY, P_DISPLAY, P_TABS, P_TRANSFER, P_SOURCES, P_SRC_TOMATO, P_SRC_SERVER, P_SRC_HUPU, P_SRC_WEREAD, P_SYNC, P_POWER, P_ABOUT,
     P_TIME, P_TZ, P_TSET, P_TURN
 } page_t;
 
@@ -135,6 +136,7 @@ enum {
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
     R_TAUTO, R_TZONE, R_TSET,
     R_HIMG, R_HPAGES,
+    R_WR_ON, R_WR_FMT, R_WR_ACC,
     R_PX_ON, R_PX_TYPE, R_PX_ADDR, R_PX_USER, R_PX_PASS,
 };
 
@@ -193,6 +195,11 @@ static const row_t HUPU_ROWS[] = {
     {R_HIMG, NULL, "显示图片", 190},
     {R_HPAGES, NULL, "关注每个专区", 262},
 };
+static const row_t WEREAD_ROWS[] = {
+    {R_WR_ON, NULL, "书城里显示", 190},
+    {R_WR_FMT, NULL, "下载格式", 262},
+    {R_WR_ACC, NULL, "账号", 334},
+};
 static const row_t SYNC_ROWS[] = {
     {R_WEB, NULL, "手机网页填写", 190},
     {R_DAV, NULL, "WebDAV", 274},
@@ -217,11 +224,12 @@ static const row_t TIME_ROWS[] = {
 // 网页填写的二维码不随显示大小放大（和图片一样），扫码不受影响。/ The web-form QR code keeps its size (like
 // images); scanning is unaffected.
 #define WEB_QR 220
-// 内容来源页：番茄、各个自建服务器、虎扑，最后是验证器。/ Content sources page: Tomato, each self-hosted server,
-// Hupu, then the authenticator.
-#define SOURCES (3 + S_COUNT)
+// 内容来源页：番茄、各个自建服务器、虎扑、微信读书，最后是验证器。/ Content sources page: Tomato, each self-hosted
+// server, Hupu, WeRead, then the authenticator.
+#define SOURCES (4 + S_COUNT)
 #define SRC_HUPU (1 + S_COUNT)
-#define SRC_AUTH (2 + S_COUNT)
+#define SRC_WEREAD (2 + S_COUNT)
+#define SRC_AUTH (3 + S_COUNT)
 
 // 底部标签页：每个标签一行。/ Tab page: one row per tab.
 #define TAB_TOP TR_S(210)   // “底部标签”页第一段的标题 / First section heading on the tab-bar page
@@ -232,6 +240,7 @@ static const row_t TIME_ROWS[] = {
 
 static page_t s_page;
 static int s_open_source = -1;  // 别的页要求直接打开某个来源（tr_tab_t）/ Another page asked for a source (tr_tab_t)
+static bool s_wr_confirm;      // 微信读书“账号”点过一次，再点就退出登录 / WeRead account tapped once; the next tap signs out
 static bool s_open_transfer;  // 书库的传书按钮要求打开“传书”/ The library's transfer button asked for "Transfer"
 
 // 键盘编辑：番茄（地址→密码）、WebDAV（地址→用户名→密码）、榜单、自建服务器地址和令牌。
@@ -418,6 +427,10 @@ static void row_value(int id, char* out, size_t cap) {
     case R_WT_SIMP: snprintf(out, cap, "%s ›", tomato_wt_simp() ? "开" : "关"); break;
     case R_WT_MAX: snprintf(out, cap, "%d 话 ›", tomato_wt_max()); break;
     case R_HPAGES: snprintf(out, cap, "%d 页 ›", app_settings_hupu_pages()); break;
+    case R_WR_FMT: snprintf(out, cap, "%s", app_settings_weread_epub() ? "EPUB（带插图）›" : "TXT（快）›"); break;
+    case R_WR_ACC:
+        snprintf(out, cap, "%s", !weread_logged_in() ? "未登录" : s_wr_confirm ? "再点一次退出登录" : "已登录 · 退出登录");
+        break;
     case R_DAV: snprintf(out, cap, "%.150s ›", s_has_dav ? host_of(s_dav.url) : "未设置"); break;
     case R_DAV_SYNC: {
         tomato_status_t st;
@@ -905,6 +918,9 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_tarot());
         } else if (r->id == R_HIMG) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_hupu_images());
+        } else if (r->id == R_WR_ON) {
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_weread());
+
         } else if (r->id == R_PX_ON) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, s_px.on);
         } else {
@@ -1189,10 +1205,25 @@ static void draw_sources(uint8_t* fb) {
     }
     draw_cat(fb, CAT_TOP + SRC_HUPU * h, h, TR_ICON_BALL, "虎扑",
              app_settings_hupu_images() ? "显示图片" : "只看文字（图片已关）", false);
+    draw_cat(fb, CAT_TOP + SRC_WEREAD * h, h, TR_ICON_BOOKS, "微信读书",
+             !app_settings_weread() ? "未开启" : weread_logged_in() ? "已登录 · 在书城里" : "未登录 · 在书城里扫码", false);
     const int n = tr_auth_count();
     if (n >= 0) snprintf(sum, sizeof(sum), "%d 个账号 · PIN 与自动上锁", n);
     else snprintf(sum, sizeof(sum), "%s · PIN 与自动上锁", auth_state_text());
     draw_cat(fb, CAT_TOP + SRC_AUTH * h, h, TR_ICON_KEY, "验证器", sum, true);
+}
+
+/* ---- 微信读书 / WeRead ---- */
+
+static void draw_weread(uint8_t* fb) {
+    draw_back_title(fb, "微信读书");
+    draw_message(fb);
+    draw_rows(fb, WEREAD_ROWS, COUNT(WEREAD_ROWS));
+    const int lines = tr_wrap(fb, TR_MARGIN, TR_S(444), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+            "打开后书城顶上多出“番茄 / 微信读书”切换。用手机微信扫码登录，同步你在微信读书里的书架，整本下载进书库："
+            "TXT 只要文字、快；EPUB 保留插图和排版、慢。只能下你的账号能读的书，不上传阅读进度。", 5);
+    tr_wrap(fb, TR_MARGIN, TR_S(444) + (lines + 1) * TR_S(36), TR_W - 2 * TR_MARGIN, TR_S(24), TR_S(36),
+            "协议引擎来自开源项目 CrossMux（MIT 许可），走的是微信读书的非官方网页接口，微信读书改版后可能失效。", 3);
 }
 
 /* ---- 虎扑 / Hupu ---- */
@@ -1334,7 +1365,9 @@ static void draw_edit(uint8_t* fb) {
 // pager at the bottom.
 static int s_about_page;
 static bool about_paged(void) { return TR_S(1186) > TR_H; }
-static int about_device_y(void) { return about_paged() ? TR_S(558) : TR_S(1030); }
+// 正常档致谢多了微信读书一行，设备入口往下让 24（底下原本有空）。/ At the normal size the credits gained the WeRead
+// line, so the device entries move down 24 into the room left below.
+static int about_device_y(void) { return about_paged() ? TR_S(558) : TR_S(1054); }
 static int about_test_y(void) { return about_device_y() + TR_S(76); }
 #define ABOUT_PAGER_Y (TR_H - TR_S(110))
 
@@ -1346,6 +1379,7 @@ static const char* const CREDITS[] = {
     "寒蝉端黑体 · SIL OFL 1.1",
     "stb_truetype、stb_image、TJpgDec、cJSON",
     "Tomato-Novel-Downloader 下载服务",
+    "CrossMux 微信读书引擎、FreeInk SDK · MIT",
 };
 
 static void about_row(uint8_t* fb, int y, const char* label, const char* value) {
@@ -1364,8 +1398,8 @@ static void draw_credits(uint8_t* fb, int y) {
         const int n = tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(28), TR_S(36), CREDITS[i], 2);
         y += TR_S(42) + (n - 1) * TR_S(36);
     }
-    tr_wrap(fb, TR_MARGIN, y + TR_S(16), TR_W - 2 * TR_MARGIN, TR_S(26), TR_S(38),
-            "非官方固件，与 MindReset、番茄小说没有隶属关系。各组件按各自许可使用，详见项目仓库。", 3);
+    tr_wrap(fb, TR_MARGIN, y, TR_W - 2 * TR_MARGIN, TR_S(26), TR_S(38),
+            "非官方固件，与 MindReset、番茄小说、微信读书没有隶属关系。各组件按各自许可使用，详见项目仓库。", 3);
 }
 
 static void draw_about(uint8_t* fb) {
@@ -1620,6 +1654,7 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
         break;
     case P_SRC_SERVER: draw_server(fb); break;
     case P_SRC_HUPU: draw_hupu(fb); break;
+    case P_SRC_WEREAD: draw_weread(fb); break;
     case P_SYNC:
         draw_back_title(fb, "同步");
         draw_message(fb);
@@ -1778,7 +1813,8 @@ static app_redraw_t go_back(void) {
     if (s_page == P_SRC_SERVER || s_page == P_SRC_TOMATO || s_page == P_SYNC) web_stop();
     s_page = s_page == P_ABOUT || s_page == P_TIME ? P_POWER : s_page == P_TZ || s_page == P_TSET ? P_TIME :
              s_page == P_TURN ? P_DISPLAY :
-             s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU ? P_SOURCES : P_HOME;
+             s_page == P_SRC_TOMATO || s_page == P_SRC_SERVER || s_page == P_SRC_HUPU || s_page == P_SRC_WEREAD ? P_SOURCES
+                                                                                                            : P_HOME;
     return APP_REDRAW_PAGE;
 }
 
@@ -1788,6 +1824,7 @@ static app_redraw_t touch_sources(app_ctx_t* ctx, uint16_t y) {
     const int i = (y - CAT_TOP) / h;
     if (i == 0) return open_page(P_SRC_TOMATO);
     if (i == SRC_HUPU) return open_page(P_SRC_HUPU);
+    if (i == SRC_WEREAD) { s_wr_confirm = false; return open_page(P_SRC_WEREAD); }
     if (i == SRC_AUTH) {
         // 验证器的设置由它自己的页面画，看起来仍在设置里。/ The authenticator draws its own settings, still under
         // Settings.
@@ -1955,6 +1992,28 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         app_settings_set_hupu_pages(n >= APP_HUPU_PAGES_MAX ? 1 : n + 1);
         return APP_REDRAW_PAGE;
     }
+    case R_WR_ON:
+        app_settings_set_weread(!app_settings_weread());
+        snprintf(s_message, sizeof(s_message), "%s", app_settings_weread() ? "已开启，书城里切到“微信读书”" : "已关闭");
+        return APP_REDRAW_PAGE;
+    case R_WR_FMT:
+        app_settings_set_weread_epub(!app_settings_weread_epub());
+        snprintf(s_message, sizeof(s_message), "%s", app_settings_weread_epub() ? "之后下成 EPUB：保留插图和排版，比较慢"
+                                                                               : "之后下成 TXT：只要文字，比较快");
+        return APP_REDRAW_PAGE;
+    case R_WR_ACC: {
+        // 退出登录要点两次。/ Signing out takes two taps.
+        if (!weread_logged_in()) {
+            snprintf(s_message, sizeof(s_message), "%s", "在书城的“微信读书”里扫码登录");
+            return APP_REDRAW_PAGE;
+        }
+        if (!s_wr_confirm) { s_wr_confirm = true; return APP_REDRAW_PAGE; }
+        s_wr_confirm = false;
+        const esp_err_t err = weread_logout();
+        snprintf(s_message, sizeof(s_message), "%s", err == ESP_OK ? "已退出登录，下载的书还在书库"
+                                                   : err == ESP_ERR_INVALID_STATE ? "后台在下载或同步，完成后再试" : "退出失败");
+        return APP_REDRAW_PAGE;
+    }
     case R_HIMG:
         // 关：马上生效；开：先提醒。/ Off takes effect at once; on asks first.
         if (!app_settings_hupu_images()) { s_hupu_ask = true; return APP_REDRAW_PAGE; }
@@ -2083,6 +2142,7 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         if (s_hupu_ask) return touch_hupu_ask(x, y);
         id = row_hit(HUPU_ROWS, COUNT(HUPU_ROWS), y);
         break;
+    case P_SRC_WEREAD: id = row_hit(WEREAD_ROWS, COUNT(WEREAD_ROWS), y); break;
     case P_TRANSFER: return touch_transfer(ctx, y);
     case P_PROXY: id = row_hit(PROXY_ROWS, COUNT(PROXY_ROWS), y); break;
     case P_DISPLAY: id = row_hit(DISPLAY_ROWS, COUNT(DISPLAY_ROWS), y); break;

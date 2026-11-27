@@ -190,6 +190,47 @@
   jsDelivr 对分支内容最多缓存 12 小时，所以经镜像看到的榜单可能晚半天。
 - 不做安卓版的轮播横幅和随机抽 10 本。
 
+## 微信读书
+
+书城里的另一个来源（`main/apps/app_tr_weread.c`），协议引擎在 `components/read_pico_weread`：`vendor/` 是 [CrossMux](https://github.com/0x1abin/crossmux)
+的 WeReadWebApi 和 FreeInk SDK 的流式 JSON 解析器（MIT，原样保留，改动列在组件的 `LICENSE`），`port/` 是接到 ESP-IDF 和 TF 卡的适配层，
+`weread_service.cpp` 把它接进番茄的后台任务。
+
+- **开关**：设置 › 内容来源 › 微信读书 › “书城里显示”，默认关。打开后书库的“书城”一直在；番茄服务器也设了时，书城标题行右边是
+  “番茄 / 微信读书”切换，“书城”回到上次用的那个。另外两项：“下载格式”（TXT / EPUB，默认 TXT）和“账号”（点两次退出登录）。
+- **第一次进来**先看说明（非官方接口、只读、引擎来源），点“同意并继续”后才能登录，同意记在缓存目录的 `disclaimer.accepted`。
+- **登录**：点“扫码登录”，后台任务联网向微信读书要一个确认网址，页面画成二维码；手机微信扫码并确认后自动同步书架。
+  登录信息（vid、skey、刷新令牌）用 AES-256-GCM 加密存在 `weixin/cache/session.bin`，钥匙是第一次登录时生成的随机数，只存在本机 NVS
+  （命名空间 `weread`），卡拿到别的设备或电脑上解不开。过期时引擎先用刷新令牌续期，续不上就在任务中途再出一次二维码，扫完接着做。
+- **同步**：只在点“同步”或登录成功时联网。取书架，再取每本书的封面原图到缓存（已有的不重下）；最后给已下成 TXT、还没封面的书补封面。
+  书架是 3×3 封面网格，按页翻；已下载的书第二行加粗“已下载”。
+- **数据从哪来**：微信读书网页版没有整本文件，引擎模拟网页阅读器逐章取数据（网文 `t_0`、`t_1` 两段，出版书 `e_0`、`e_1`、`e_3` 三段），
+  去掉段头、拼接、换回打乱的字节、Base64 解码，得到这一章的纯文本（网文）或 HTML 片段（出版书）。
+- **下载成 TXT（默认）**：每章还原后去掉标签直接追加到一个文件：块级标签换段，script / style 和图片不要，实体还原。每章前写一行书库认得的
+  标题（不像“第 N 章”的写成“第 N 章 标题”），开头写书名和作者。不转 XHTML、不下插图、不打包。章节不少于 8 章且 PSRAM 够时分两路并行：
+  主路下前半本，第二个后台任务（栈 14 KB，内部 RAM）下后半本，各写一个分段（第二路的临时文件在书目录的 `w2/` 下，复用主路取到的目录），
+  都完成后按顺序拼成 `books/书名-书号.txt`。只有主路能出二维码：第二路要登录或出错就放弃，主路下完前半本再把后半本整个补下。
+  封面原图复制成 `weixin/covers/书名-书号.txt.img`，书库按番茄 TXT 的做法找它；在书库删书时一起删。整本给成 EPUB 文件的少数书 TXT 下不了，
+  提示改格式。
+- **下载成 EPUB**：逐章清洗成 XHTML、按需下插图，最后打包成 EPUB（ZIP 只存不压），写到 `books/书名-书号.epub`。单路，比 TXT 慢很多。
+- **共同**：只有完整的文件才换进书库，取消或失败不会留下半本。文件名记进 `weixin/books.txt`，书库据此标“微信读书”、多一档筛选。
+  已下载的书按钮变成“开始阅读”，下面一行可以重新下载（覆盖同名文件，旧的封面缩略图作废）。
+- **TF 卡和速度**：这块板子的 TF 卡是 1 线 SDMMC，建删小文件很慢（每个几百毫秒）。所以每章用完就删的中间文件（`shard*.part`、
+  `encoded.part`、`decoded.part`）放在 PSRAM（`port/HalStorage.cpp` 的内存文件，PSRAM 最大块不到 1 MB 就照旧写卡，单个超过 4 MB 或中途
+  不够时转存到卡上）；其余引擎文件各配 8 KB 的 PSRAM 读写缓冲，关文件就放。实测网文 TXT 单路每章约 0.8 秒，两路约 0.6 秒，主要花在网络。
+- **章节缓存与清理**：EPUB 的章节和插图先存在 `weixin/cache/<书号>/chapters/`、`images/`，打包成功后删掉。取消或失败时先留着，
+  留在页面上再点下载会接着下；离开微信读书页（后台没在下载时）或开始下别的书时，残留全部清掉。删除一律先把目录改名挪进 `weixin/.trash/`
+  （一次目录操作），再由低优先级的后台任务慢慢删，界面不等；退出登录也是把整个 `cache/` 挪进去。
+- **后台**：同步和下载都排进番茄的后台任务（`tomato_sync_start_ext`），和番茄、小红书等一样同一时间只跑一个。同步算浏览类，
+  前台别的请求可以打断；下载算下载类，不打断，锁屏时等它下完（和番茄下载一样）。下载在跑时书库状态行显示“微信读书 · 正在下载章节
+  N / M”和进度条（每 3 秒最多刷一次），下完自动重扫书库。联网复用番茄的 Wi-Fi、校时、代理和 TLS 会话复用。
+- **内存**：每个引擎操作约 10 KB 放 PSRAM；开始联网前 PSRAM 最大连续块不到 256 KB 就先放掉能重建的缓存，失败原因是内存不足时再放一次并提示重试。
+  任务结束（完成、取消、失败）时先等第二路退出，再放两个引擎操作和所有内存中间文件。并行时内部 RAM 会少约 25 KB（第二个任务栈和第二条 TLS
+  连接），结束后回来。
+- **只读**：不上传进度和笔记、不改云端书架；在书库删书只删本地文件，书在微信读书书架上还在，可以再下。退出登录删登录信息、书架和封面缓存，
+  已下载的书和 `books.txt` 留着。
+- **限制**：只能下账号能读的书（已购、免费、会员可读）；接口是非官方网页接口，微信读书改版后可能失效，需要跟上游 CrossMux 更新。
+
 ## 漫画
 
 底部第二个标签（`main/apps/app_comic.c`，数据在 `main/book/comic_store.c`），和书库分开管理。界面见 [design/ui.html](design/ui.html) 的“漫画”和“Wi-Fi 传书”“USB 传书”几节。
@@ -427,7 +468,7 @@ Treader 设备和 WebDAV 服务器之间同步（和以前的 Tomato-Novel 安�
 
 ```
 /sdcard/
-├── books/                 # 系统书架；番茄下载的 TXT 也放这里
+├── books/                 # 系统书架；番茄下载的 TXT、微信读书下载的 TXT / EPUB 也放这里
 ├── comics/                # 漫画：子文件夹是系列，直接放的 CBZ 是单本
 ├── rednote/               # 小红书缓存（feed.json、rec.json、n/ 笔记、rc/ 推荐封面），可以整个删
 ├── webtoon/               # 发现漫画缓存（store.json、search.json、t/ 详情、c/ 封面），可以整个删
@@ -444,6 +485,10 @@ Treader 设备和 WebDAV 服务器之间同步（和以前的 Tomato-Novel 安�
     ├── shelf.json         # 番茄书架元数据，设备自动维护
     ├── store/             # 书城榜单缓存和详情页封面
     └── covers/            # 番茄书封面原图，下载时自动保存
+└── weixin/                # 微信读书
+    ├── books.txt          # 下载过的书的文件名，书库据此认出来源；退出登录也保留
+    ├── covers/            # 下成 TXT 的书的封面（书的文件名.img）；在书库删书时一起删
+    └── cache/             # 登录信息（本机钥匙加密）、书架、封面、下载中间文件；退出登录时清空
 ```
 
 `config.json`：
@@ -530,6 +575,7 @@ idf.py -p COM3 flash monitor
 
 - 官方固件：MindReset，Apache-2.0；`components/epdiy` 为 LGPL-3.0；内置字体为 SIL OFL-1.1。
 - 界面风格参考 [RickyOS](https://dot.mindreset.tech/docs/read_0/start/rickyos)（Ricky AI Studio）；锁屏壁纸、图片封面、网页刷机、TF 卡升级的思路参考 [Take Easy](https://take-easy.pages.dev/)。只借鉴设计与思路，未使用其代码。
+- 微信读书协议引擎来自 [CrossMux](https://github.com/0x1abin/crossmux)（MIT），JSON 解析器来自 [FreeInk SDK](https://github.com/0x1abin/freeink-sdk)（MIT），见 `components/read_pico_weread/LICENSE`。
 - 验证器导入网页内嵌 [jsQR](https://github.com/cozmo/jsQR) 1.4.0（Apache-2.0）识别二维码照片。
 - 拼音引擎算法与 PICOIME1 词库格式改编自 [XH View OS For Pico](https://github.com/XHFO/XH-View-OS-For-Pico)（XH Lab，Apache-2.0），见 `components/pinyin_ime/NOTICE`。
 - 词库数据来自 jieba 0.42.1 与 pypinyin 0.55.0（MIT），见 `sdcard/ime/licenses/`。

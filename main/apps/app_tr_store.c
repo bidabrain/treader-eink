@@ -71,6 +71,11 @@ extern const app_desc_t app_book;
 // next entry and come back here on return (defined in app_tr_tomato.c).
 void tr_tomato_open_search(void);
 extern const app_desc_t app_tr_store;
+// 书城来源切换（定义在 app_tr_weread.c）；书城页只在设了番茄服务器时进来。/ The store source switch (defined in
+// app_tr_weread.c); this page is only reached with a Tomato server set.
+void tr_store_mark(bool weread);
+void tr_store_draw_source(uint8_t* fb, bool tomato_on, bool weread);
+bool tr_store_source_hit(app_ctx_t* ctx, bool tomato_on, bool weread, uint16_t x, uint16_t y);
 
 typedef enum { V_HOME, V_RANK, V_DETAIL } view_t;
 typedef enum { OP_NONE, OP_RANK, OP_COVER, OP_DOWNLOAD } op_t;
@@ -288,6 +293,7 @@ static int layout_chips(EpdRect* rects, int* idx, int* page, int max, int* pages
 static void draw_back_home(uint8_t* fb) {
     tr_text(fb, TR_MARGIN, TR_S(92), TR_S(44), "‹", EPD_DRAW_ALIGN_LEFT, false);
     tr_text(fb, TR_S(96), TR_S(96), TR_S(40), "书城", EPD_DRAW_ALIGN_LEFT, true);
+    tr_store_draw_source(fb, true, false);
 }
 
 static const char* busy_text(void) {
@@ -593,6 +599,7 @@ static app_redraw_t turn_chips(int turn) {
 
 static app_redraw_t touch_home(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (y < TR_S(150) && x < TR_S(300)) { ctx->request_app = &app_book; return APP_REDRAW_NONE; }
+    if (tr_store_source_hit(ctx, true, false, x, y)) return APP_REDRAW_NONE;
     if (ui_rect_hit(SEARCH_BAR, x, y)) {
         tr_tomato_open_search();
         ctx->request_app = &app_tr_tomato;
@@ -783,6 +790,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
 
 static void on_enter(app_ctx_t* ctx) {
     (void)ctx;
+    tr_store_mark(false);
     if (!s_cats) s_cats = heap_caps_calloc(TOMATO_RANK_CAT_MAX, sizeof(*s_cats), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s_books) s_books = heap_caps_calloc(TOMATO_RANK_BOOK_MAX, sizeof(*s_books), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s_shelf) s_shelf = heap_caps_calloc(TOMATO_SHELF_MAX, sizeof(*s_shelf), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);

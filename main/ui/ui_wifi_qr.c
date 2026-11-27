@@ -83,6 +83,15 @@ bool ui_wifi_qr_prepare_url(const char* url) {
     return prepare_payload(url);
 }
 
+bool ui_wifi_qr_prepare_https(const char* url) {
+    ui_wifi_qr_clear();
+    static const char PREFIX[] = "https://weread.qq.com/";
+    if (!url || strncmp(url, PREFIX, sizeof(PREFIX) - 1) || strlen(url) > 300) return false;
+    for (const char* p = url; *p; ++p)
+        if ((unsigned char)*p <= ' ' || (unsigned char)*p >= 0x7f) return false;
+    return prepare_payload(url);
+}
+
 void ui_wifi_qr_draw(uint8_t* fb, EpdRect area) {
     epd_fill_rect(area, 0xff, fb);
     if (!s_side) return;

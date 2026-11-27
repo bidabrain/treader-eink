@@ -42,6 +42,13 @@
 - 所有列表都按页显示，点按钮或滑一下翻一整页，墨水屏不做滚动
 - 另有一个和固件书库（含番茄）功能相同的独立安卓 App（搜书、下载、书城、阅读，WebDAV 和设备互通进度），见 [tomato/android](tomato/android/README.md)
 
+**微信读书**（不需要服务器，设备直连 weread.qq.com；默认关，在“设置 › 内容来源 › 微信读书”打开）
+- 入口：打开后书城顶上多出“番茄 / 微信读书”切换（没设番茄服务器时“书城”直接进微信读书）
+- 设备上出二维码，手机微信扫码确认就登录；同步你账号里的微信读书书架（带封面），点一本整本下载进书库：默认 TXT（只要文字，长书两路并行，一千多章十来分钟），也可以选 EPUB（保留插图和排版，慢）
+- 只读：不上传阅读进度和笔记，在设备上删书不影响微信读书的书架；只能下你的账号能读的书
+- 书库筛选多一档“微信读书”；后台下载时书库状态行显示进度条，下完新书直接出现
+- 协议引擎来自 [CrossMux](https://github.com/0x1abin/crossmux)（MIT），用的是微信读书网页版的非官方接口，改版后可能失效
+
 **虎扑**（只读，不需要服务器，移植自安卓版 [虎扑 X](https://github.com/bidabrain/hupuX)）
 - 推荐：首页推荐，每页 5 条，带缩略图
 - 关注：在设备上关注专区（不用登录），各专区最新帖子混排；全部专区按分类浏览，专区帖子可按最新回复或最新发布
@@ -173,6 +180,7 @@
 | `wallpapers/` | 自己放 | 锁屏壁纸，JPG/PNG，单张不超过 2 MB，建议 684×1216 竖图 |
 | `tomato/config.json` | 可选 | 服务器、WebDAV、榜单地址，也可以在设备“设置”里填 |
 | `hupu/` | 自动生成 | 虎扑推荐、帖子、专区、赛程、评分和图片缓存，有上限，可以整个删掉；`follow.json` 是关注的专区 |
+| `weixin/` | 自动生成 | 微信读书：`books.txt` 记哪些书是从微信读书下的，`cache/` 是登录信息、书架和封面（退出登录时清空） |
 
 设备会自己生成 `tomato/` 下的书架、书城缓存，以及 `.treader/` 下的封面和壁纸缓存（可以整个删掉）。已经刷好 Treader 的话，也可以在“设置 → 电源与设备 → TF 卡”里格式化，它会建好上面这些文件夹。
 
@@ -250,6 +258,38 @@ python -m esptool --chip esp32s3 merge-bin -o treader-full.bin --flash-mode dio 
 3. 设置 → 传书 → Wi-Fi 传书，连上 2.4 GHz 网络（也可以在这里用浏览器给设备传书）。
 4. 设置 → 内容来源 → 番茄服务器，填你的服务器地址和密码（固件里已内置的话显示“内置服务器”）。
 5. 书库 → 右上角“书城” → 搜一本书下载试试。第一次联网时会顺便对时。
+
+### 更换 TF 卡
+
+把旧卡的内容原样搬到新卡就行，书、阅读进度、番茄书架、保存的 Wi-Fi、验证器、微信读书登录都会跟过去。下面以 Mac 为例。
+
+**1. 新卡格式化成 FAT32**（固件不认 exFAT；64 GB 以上的新卡出厂多是 exFAT，必须重新格式化）。最省事的是把新卡插进设备，在“设置 → 电源与设备 → TF 卡”里格式化。想把分配单元设成 32 KB（大文件读写更快）就在电脑上做：
+
+```
+diskutil list                                              # 按容量找到新卡，比如 /dev/disk4，务必确认没认错
+diskutil eraseDisk FAT32 PICO MBRFormat /dev/disk4         # 整张卡格式化成 FAT32，卷名 PICO
+diskutil unmount /dev/disk4s1
+sudo newfs_msdos -F 32 -c 64 -v PICO /dev/rdisk4s1         # 每簇 64 扇区 = 32 KB
+diskutil mount /dev/disk4s1
+```
+
+> ⚠️ 磁盘编号填错会清空那块盘，无法恢复。拿不准就用 Mac 的“磁盘工具”或 [SD 卡格式化工具](https://www.sdcard.org/downloads/formatter/)（选 FAT32）。Windows 自带的格式化不能把 32 GB 以上的卡格式化成 FAT32，可以用 SD 卡格式化工具。
+
+**2. 连隐藏文件夹一起复制**（`.treader/` 等是隐藏的，在访达里全选拖过去会漏）：
+
+```
+rsync -a --exclude='.Spotlight-V100' --exclude='.fseventsd' --exclude='.Trashes' /Volumes/旧卡名/ /Volumes/PICO/
+```
+
+**3. 清掉 macOS 生成的 `._` 文件**（Mac 往 FAT 卡上写文件会多出 `._书名.txt` 这类附属文件，书库会把它们当成书）：
+
+```
+dot_clean -m /Volumes/PICO
+```
+
+然后推出新卡，插回设备。
+
+保存的 Wi-Fi、验证器账号和微信读书登录在卡上是加密的，钥匙存在**设备自己**里，所以换卡后插在同一台设备上照常能用（验证器用原来的 PIN 解锁）；卡拿到别的设备上就解不开。只写程序区的升级刷机不影响这些钥匙，刷机网页的“完整安装 / 擦除整片”会清掉它们，那之后要重新连 Wi-Fi、重新扫码登录微信读书、从手机重新导入验证器。
 
 ## 按键
 
@@ -445,7 +485,7 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | --- | --- |
 | [MindReset/read_pico_firmware](https://github.com/MindReset/read_pico_firmware) | 官方示例固件，Treader 的底层（Apache-2.0） |
 | [RickyOS](https://dot.mindreset.tech/docs/read_0/start/rickyos)（Ricky AI Studio，[GitHub](https://github.com/chinoryunqin/RickyOS)） | 系统界面风格的参考：状态栏、底部标签页、细线与留白的排版 |
-| [Take Easy](https://take-easy.pages.dev/)（[GitHub](https://github.com/takeeasy-cui/take-easy-firmware)） | 功能思路的参考：锁屏壁纸、图片封面、网页刷机、TF 卡升级 |
+| [Take Easy](https://take-easy.pages.dev/)（[GitHub](https://github.com/takeeasy-cui/take-easy-firmware)） | 功能思路的参考：锁屏壁纸、图片封面、网页刷机、TF 卡升级、设备上直接用微信读书 |
 | [vroland/epdiy](https://github.com/vroland/epdiy) | 墨水屏驱动（LGPL-3.0） |
 | [zhongbai2333/Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) | 番茄小说下载服务器 |
 | [bidabrain/Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) | 安卓版番茄阅读器，接口与更新规则的来源 |
@@ -457,6 +497,8 @@ Wi-Fi 按中国信道（1～13）工作。设备只用 IPv4；电脑能打开而
 | [JPEGDEC](https://github.com/bitbank2/JPEGDEC)（BitBank Software） | 普通基线 JPG 的快速解码，解码时直接转灰度并缩小（Apache-2.0） |
 | stb_truetype、stb_image、TJpgDec、cJSON | 字体渲染、图片解码（其余 JPG 和 PNG）、JSON 解析 |
 | [jsQR](https://github.com/cozmo/jsQR) | 验证器导入网页识别二维码照片（Apache-2.0） |
+| [CrossMux](https://github.com/0x1abin/crossmux) | 微信读书协议引擎：扫码登录、书架同步、整本打包 EPUB，`components/read_pico_weread/vendor` 来自它（MIT） |
+| [FreeInk SDK](https://github.com/0x1abin/freeink-sdk) | 微信读书引擎用的流式 JSON 解析器（MIT） |
 
 RickyOS 和 Take Easy 都是小纸 Pico 社区的优秀系统，Treader 只参考了它们的设计和功能思路，没有使用它们的代码。
 

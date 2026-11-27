@@ -40,7 +40,7 @@
 
 typedef enum {
     OP_CHECK, OP_UPDATE, OP_SEARCH, OP_DOWNLOAD, OP_WEBDAV, OP_RANK, OP_RANK_COVER, OP_HUPU, OP_RED, OP_WB, OP_X, OP_WT,
-    OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME, OP_CHECK_ONE
+    OP_OTA_CHECK, OP_OTA_DOWNLOAD, OP_TIME, OP_CHECK_ONE, OP_EXT
 } op_t;
 
 // 同步任务的大缓冲，任务开始时在 PSRAM 分配。/ The task's large buffers, allocated in PSRAM when it starts.
@@ -74,6 +74,7 @@ static tomato_red_req_t s_red;
 static tomato_wb_req_t s_wb;
 static tomato_x_req_t s_x;
 static tomato_wt_req_t s_wt;
+static tomato_ext_job_t s_ext;
 static tomato_ota_info_t s_ota;        // 检查结果，也是下载目标 / Check result, also the download target
 static bool s_ota_valid;
 // 每启动一次任务加一；页面据此认出“这是不是我发起的那个任务”。/ Bumped per started job so a page can tell its own job.
@@ -166,7 +167,7 @@ void tomato_sync_cancel(void) { s_cancel = true; }
 static bool browsing(void) {
     return s_op == OP_HUPU || s_op == OP_RED || s_op == OP_WB || s_op == OP_X ||
            (s_op == OP_WT && s_wt.job != TOMATO_WT_UPDATE) || s_op == OP_RANK || s_op == OP_RANK_COVER ||
-           s_op == OP_SEARCH;
+           s_op == OP_SEARCH || (s_op == OP_EXT && !s_ext.download);
 }
 
 bool tomato_sync_preemptible(void) {
@@ -931,7 +932,8 @@ static void sync_task(void* arg) {
     // WebDAV 同步和书城不需要番茄服务器。/ WebDAV sync and the bookstore do not need the Tomato server.
     const bool needs_server =
         s_op != OP_WEBDAV && s_op != OP_RANK && s_op != OP_RANK_COVER && s_op != OP_HUPU && s_op != OP_RED &&
-        s_op != OP_WB && s_op != OP_X && s_op != OP_WT && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD && s_op != OP_TIME;
+        s_op != OP_WB && s_op != OP_X && s_op != OP_WT && s_op != OP_OTA_CHECK && s_op != OP_OTA_DOWNLOAD && s_op != OP_TIME &&
+        s_op != OP_EXT;
     if (needs_server && tomato_config_load(&cfg) != ESP_OK) { fail(ESP_ERR_NOT_FOUND, "未设置服务器"); goto out; }
     tomato_shelf_load(shelf, TOMATO_SHELF_MAX, &count);
     // 没事可做就不连网。/ Skip networking when there is nothing to do.
@@ -1034,6 +1036,17 @@ static void sync_task(void* arg) {
         else fail(s_cancel ? ESP_ERR_INVALID_STATE : err, msg);
         break;
     }
+    case OP_EXT: {
+        set_phase(TOMATO_DOWNLOADING, s_ext.step ? s_ext.step : "正在加载");
+        // 微信读书的接口要求时间准；联网时没校上就再试一次。/ WeRead needs a correct clock; retry when the
+        // connect did not set it.
+        if (!tomato_time_valid()) tomato_net_sync_time(8000);
+        char msg[96] = "";
+        err = s_ext.run(s_ext.ctx, &s_cancel, set_progress, msg, sizeof(msg));
+        if (err == ESP_OK) set_phase(TOMATO_DONE, msg);
+        else fail(s_cancel ? ESP_ERR_INVALID_STATE : err, s_cancel ? "已取消" : msg);
+        break;
+    }
     case OP_TIME:
         set_phase(TOMATO_CHECKING, "正在校时");
         if (tomato_net_sync_time(8000)) set_phase(TOMATO_DONE, "已校时");
@@ -1078,7 +1091,9 @@ static esp_err_t start(op_t op) {
     // 只有新的搜索才清结果，其他操作保留，返回结果页还能看到。/ Only a new search clears hits; other ops keep them.
     if (op != OP_SEARCH) s_status.hit_count = hits;
     portEXIT_CRITICAL(&s_lock);
-    if (xTaskCreate(sync_task, "tomato_sync", TASK_STACK, NULL, 4, NULL) != pdPASS) {
+    // 微信读书引擎的 JSON 和 TLS 调用栈更深，多给 2 KB。/ The WeRead engine's JSON and TLS calls nest deeper: 2 KB more.
+    const uint32_t stack = op == OP_EXT ? TASK_STACK + 2048 : TASK_STACK;
+    if (xTaskCreate(sync_task, "tomato_sync", stack, NULL, 4, NULL) != pdPASS) {
         s_busy = false;
         return ESP_ERR_NO_MEM;
     }
@@ -1138,7 +1153,8 @@ bool tomato_wt_updating(void) {
 bool tomato_sync_downloading(void) {
     portENTER_CRITICAL(&s_lock);
     const bool yes = s_busy && !s_cancel &&
-                     (s_op == OP_DOWNLOAD || s_op == OP_UPDATE || (s_op == OP_WT && s_wt.job == TOMATO_WT_UPDATE));
+                     (s_op == OP_DOWNLOAD || s_op == OP_UPDATE || (s_op == OP_WT && s_wt.job == TOMATO_WT_UPDATE) ||
+                      (s_op == OP_EXT && s_ext.download));
     portEXIT_CRITICAL(&s_lock);
     return yes;
 }
@@ -1161,6 +1177,12 @@ esp_err_t tomato_sync_start_wt(const tomato_wt_req_t* req) {
     return start(OP_WT);
 }
 esp_err_t tomato_sync_start_webdav(void) { return start(OP_WEBDAV); }
+esp_err_t tomato_sync_start_ext(const tomato_ext_job_t* job) {
+    if (!job || !job->run) return ESP_ERR_INVALID_ARG;
+    if (s_busy) return ESP_ERR_INVALID_STATE;
+    s_ext = *job;
+    return start(OP_EXT);
+}
 esp_err_t tomato_sync_start_time(void) { return start(OP_TIME); }
 
 esp_err_t tomato_sync_start_ota_check(void) { return start(OP_OTA_CHECK); }

@@ -125,6 +125,14 @@ void app_settings_set_time_auto(bool on);
 bool app_settings_hupu_images(void);
 void app_settings_set_hupu_images(bool on);
 
+/// 书城里显示微信读书（默认关）。/ Show WeRead in the bookstore (off by default).
+bool app_settings_weread(void);
+void app_settings_set_weread(bool on);
+/// 微信读书下载成 EPUB（带插图和排版，慢）；默认 TXT（只要文字，快）。/ WeRead downloads EPUB (illustrations and
+/// layout, slower); TXT by default (text only, faster).
+bool app_settings_weread_epub(void);
+void app_settings_set_weread_epub(bool on);
+
 /// 刷新虎扑关注时每个专区取几页（1～APP_HUPU_PAGES_MAX，默认 1）。/ Pages read per zone when refreshing the Hupu
 /// following feed (1 to APP_HUPU_PAGES_MAX, 1 by default).
 #define APP_HUPU_PAGES_MAX 3

@@ -99,6 +99,7 @@
 #include "read_pico_sd.h"
 #include "read_pico_search.h"
 #include "settings.h"
+#include "read_pico_weread.h"
 #include "tomato.h"
 #include "tr_kbd.h"
 #include "tr_nav.h"
@@ -149,6 +150,7 @@ typedef struct {
     uint32_t recent;
     bool selected, removed, search_match;
     bool tomato;               ///< 番茄下载的书 / Downloaded from Tomato
+    bool weread;               ///< 微信读书下载的书 / Downloaded from WeRead
     uint16_t new_chapters;     ///< 番茄检查到、还没下载的新章节数 / New chapters found by a Tomato check, not downloaded yet
     uint16_t fresh_chapters;   ///< 已下载、打开后还没看的新章节数 / New chapters downloaded but not opened since
     char title[96];            ///< 番茄书名，空则用文件名 / Tomato title; empty means use the file name
@@ -159,6 +161,8 @@ typedef struct {
 static const char* TAG = "book";
 extern const app_desc_t app_transfer;
 extern const app_desc_t app_tr_store;
+// 书城打开番茄还是微信读书（定义在 app_tr_weread.c）。/ Whether "书城" opens Tomato or WeRead (in app_tr_weread.c).
+const app_desc_t* tr_store_entry(bool tomato_on);
 static book_view_t s_view;
 static shelf_entry_t* s_shelf;
 static size_t s_shelf_capacity;
@@ -219,11 +223,39 @@ typedef enum { TOM_NONE = 0, TOM_CHECK, TOM_UPDATE, TOM_ONE } tom_op_t;
 static tom_op_t s_tom_op;
 static uint32_t s_tom_seq, s_tom_rev;
 static bool s_tom_cfg;
+// “书城”在不在：番茄服务器设了，或者开了微信读书。/ Whether "书城" shows: a Tomato server is set or WeRead is on.
+static bool store_on(void) { return s_tom_cfg || app_settings_weread(); }
+// 来源筛选几档：开了微信读书（或书库里有它的书）多一档。/ Source filter steps: one more with WeRead on (or its books
+// in the library).
+static bool s_has_weread;
+static int filter_steps(void) { return app_settings_weread() || s_has_weread ? 4 : 3; }
 static char s_tom_note[96];
 // 更新中点了一下“更新中”胶囊，等第二下才取消；点别处复原。/ The running pill was tapped once; a second tap cancels and
 // any other tap resets it.
 static bool s_tom_confirm_cancel, s_tom_cancelling;
 static int64_t s_tom_poll_ms, s_tom_draw_ms;
+// 微信读书在后台下载：状态行和进度条照番茄的样子显示，下完重扫书库。/ A WeRead download in the background: the status
+// line and bar show it like Tomato's, and the library rescans when it ends.
+static bool s_wr_dl;
+static uint32_t s_wr_rev;
+static bool weread_downloading(void) { return weread_busy() && tomato_sync_downloading(); }
+static void weread_busy_line(const weread_snapshot_t* sn, char* out, size_t cap) {
+    // 下载途中登录过期：二维码在书城的微信读书页上，提醒回去扫。/ The sign-in expired mid-download: the QR is on the
+    // store's WeRead page, so say to go back and scan.
+    if (sn->stage == WEREAD_STAGE_QR) {
+        snprintf(out, cap, "%s", "微信读书 · 登录过期，到书城扫码");
+        return;
+    }
+    const char* what = sn->stage == WEREAD_STAGE_IMAGES ? "正在下载插图"
+                     : sn->stage == WEREAD_STAGE_PACKAGING ? "正在打包" : "正在下载章节";
+    if (sn->total) snprintf(out, cap, "微信读书 · %s %u / %u", what, (unsigned)sn->done, (unsigned)sn->total);
+    else snprintf(out, cap, "微信读书 · %s…", what);
+}
+static int weread_busy_pct(const weread_snapshot_t* sn) {
+    if (!sn->total) return 10;
+    const int pct = (int)((uint64_t)sn->done * 100 / sn->total);
+    return pct > 99 ? 99 : pct;
+}
 static uint32_t s_tom_bytes;
 #define TOM_BYTES_REDRAW_MS 2000   // 下载中按字节刷进度的间隔 / Interval for byte-driven progress redraws while downloading
 
@@ -1161,7 +1193,7 @@ static void draw_grid_cell(uint8_t* fb, const shelf_entry_t* e, EpdRect r, int r
     const char* ext = strrchr(e->name, '.');
     const EpdRect cover = {r.x + (r.width - g.cover_w) / 2, r.y, g.cover_w, g.cover_h};
     tr_book_cover(fb, cover, e->path, title, e->tomato ? e->author : "",
-                  e->tomato ? "番茄" : ext && !strcasecmp(ext, ".epub") ? "EPUB" : "TXT", done);
+                  e->tomato ? "番茄" : e->weread ? "微信读书" : ext && !strcasecmp(ext, ".epub") ? "EPUB" : "TXT", done);
     if (s_view == BULK) copy_text(mark, sizeof(mark), e->selected ? "已选" : "");
     else if (e->new_chapters) snprintf(mark, sizeof(mark), "+%u", e->new_chapters);
     else if (e->fresh_chapters) snprintf(mark, sizeof(mark), "+%u", e->fresh_chapters);
@@ -1198,7 +1230,7 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
     else if (s_view == BULK) snprintf(line, sizeof(line), "已选 %u 本 · 筛选或重扫会清除勾选", (unsigned)selected_count());
     else if (s_tom_note[0]) snprintf(line, sizeof(line), "%d 本 · %s", s_visible_count, s_tom_note);
     else snprintf(line, sizeof(line), "%d 本 · %s", s_visible_count, s_recent_sort ? "按最近阅读" : "按书名");
-    if (s_tom_cfg && s_view == SHELF) {
+    if (store_on() && s_view == SHELF) {
         const EpdRect st = store_rect();
         tr_text(fb, st.x + st.width - TR_S(12), st.y + TR_S(18), TR_S(30), "书城", EPD_DRAW_ALIGN_RIGHT, true);
     }
@@ -1217,13 +1249,19 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
             tr_progress(fb, UI_MARGIN, TR_S(196), ui_content_width(), tomato_busy_pct(&st));
         }
     }
+    if (!tom_running() && weread_downloading() && s_view == SHELF && !s_save_failed && !note[0]) {
+        weread_snapshot_t sn;
+        weread_snapshot(&sn);
+        weread_busy_line(&sn, line, sizeof(line));
+        tr_progress(fb, UI_MARGIN, TR_S(196), ui_content_width(), weread_busy_pct(&sn));
+    }
     tr_fit(line, TR_S(28), line_w);
     // 出错和待重试的提示用黑字，平常的数量行用深灰。/ Errors and retries stay black; the plain count line is dark gray.
     if (s_save_failed || note[0]) tr_text(fb, UI_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT, false);
     else tr_text_dim(fb, UI_MARGIN, TR_S(156), TR_S(28), line, EPD_DRAW_ALIGN_LEFT);
 
     // 书都在 TF 卡上，筛选改成按来源。/ All books are on the card, so filter by source instead.
-    const char* const chips[3] = {s_filter == 0 ? "全部" : s_filter == 1 ? "本地" : "番茄",
+    const char* const chips[3] = {s_filter == 0 ? "全部" : s_filter == 1 ? "本地" : s_filter == 2 ? "番茄" : "微信读书",
                                   s_recent_sort ? "按最近" : "按书名", s_view == BULK ? "完成" : "管理"};
     tr_pill(fb, chip_rect(0), chips[0], s_filter != 0, chip_px(chip_rect(0), chips[0], TR_S(28)));
     tr_pill(fb, chip_rect(1), chips[1], false, chip_px(chip_rect(1), chips[1], TR_S(28)));
@@ -1292,6 +1330,7 @@ static void draw_shelf(app_ctx_t* ctx, uint8_t* fb) {
         else if (mark[0]) tr_text_dim(fb, r.x + r.width, r.y + TR_S(8), TR_S(28), mark, EPD_DRAW_ALIGN_RIGHT);
         const char* ext = strrchr(e->name, '.');
         if (e->tomato) snprintf(meta, sizeof(meta), "番茄%s%s", e->author[0] ? " · " : "", e->author);
+        else if (e->weread) snprintf(meta, sizeof(meta), "微信读书");
         else snprintf(meta, sizeof(meta), "%s%s", ext && !strcasecmp(ext, ".epub") ? "EPUB" : "TXT", e->is_flash ? " · 内置" : "");
         tr_fit(meta, TR_S(26), tw);
         tr_text_dim(fb, tx, r.y + TR_S(52), TR_S(26), meta, EPD_DRAW_ALIGN_LEFT);
@@ -1626,8 +1665,9 @@ static app_redraw_t resume_choice(app_ctx_t* ctx, bool confirmed) {
 }
 /* ---- 书架数据 / Shelf data ---- */
 static bool shelf_matches(const shelf_entry_t* item) {
-    // 来源：0 全部、1 本地、2 番茄。/ Source: 0 all, 1 local, 2 Tomato.
-    return item->search_match && (s_filter == 0 || (s_filter == 1 && !item->tomato) || (s_filter == 2 && item->tomato));
+    // 来源：0 全部、1 本地、2 番茄、3 微信读书。/ Source: 0 all, 1 local, 2 Tomato, 3 WeRead.
+    return item->search_match && (s_filter == 0 || (s_filter == 1 && !item->tomato && !item->weread) ||
+                                  (s_filter == 2 && item->tomato) || (s_filter == 3 && item->weread));
 }
 static int compare_books(const void* a, const void* b) {
     const shelf_entry_t* x = a;
@@ -1744,6 +1784,7 @@ static void refresh_continue(void) {
 }
 static void scan_shelf(app_ctx_t* ctx) {
     refresh_continue();
+    s_has_weread = false;
     s_count = 0;
     s_visible_count = 0;
     s_message[0] = 0;
@@ -1780,6 +1821,8 @@ static void scan_shelf(app_ctx_t* ctx) {
             if (!shelf_reserve()) { truncated = true; break; }
             copy_text(item->name, sizeof(item->name), ent->d_name);
             item->search_match = read_pico_search_match(item->name, s_query);
+            item->weread = !roots[i].is_flash && weread_is_book(item->path);
+            s_has_weread = s_has_weread || item->weread;
             item->size = st.st_size;
             item->is_flash = roots[i].is_flash;
             book_progress_t p;
@@ -1842,6 +1885,7 @@ static void manage_apply(app_ctx_t* ctx) {
             retry->entry.removed = true;
             s_file_removed = true;
             if (tomato_file_of(s_managed.path)) tomato_shelf_remove_file(tomato_file_of(s_managed.path));
+            weread_forget_book(s_managed.path);
             // 封面缓存跟着书一起删，TF 卡不越用越大。/ Delete the cover cache with the book so the card does not keep growing.
             book_cover_forget(s_managed.path);
             pending_discard(s_managed.path);
@@ -2064,6 +2108,7 @@ static void batch_apply(app_ctx_t* ctx) {
                     retry->entry.removed = true;
                     item.removed = true; pending_discard(item.path);
                     if (tomato_file_of(item.path)) tomato_shelf_remove_file(tomato_file_of(item.path));
+                    weread_forget_book(item.path);
                     book_cover_forget(item.path);
                     book_store_notify_changed(); s_store_revision = book_store_revision();
                 } else delete_retry_discard(item.path);
@@ -2239,7 +2284,7 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
         }
         if (confirm) return APP_REDRAW_PAGE;
         if (ui_rect_hit(chip_rect(0), x, y)) {
-            s_filter = (s_filter + 1) % 3; clear_selection(); s_batch_message[0] = 0;
+            s_filter = (s_filter + 1) % filter_steps(); clear_selection(); s_batch_message[0] = 0;
             sort_shelf(ctx);
             return APP_REDRAW_PAGE;
         }
@@ -2280,8 +2325,8 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             retry_progress();
             return APP_REDRAW_PAGE;
         }
-        if (s_tom_cfg && s_view == SHELF && ui_rect_hit(store_rect(), x, y)) {
-            ctx->request_app = &app_tr_store;
+        if (store_on() && s_view == SHELF && ui_rect_hit(store_rect(), x, y)) {
+            ctx->request_app = tr_store_entry(s_tom_cfg);
             return APP_REDRAW_NONE;
         }
         if (card_shown() && ui_rect_hit(card_rect(), x, y)) {
@@ -2369,6 +2414,8 @@ static void on_enter(app_ctx_t* ctx) {
     // the new file size and skips the book being read.
     tomato_config_t cfg;
     s_tom_cfg = tomato_config_load(&cfg) == ESP_OK;
+    // 关了微信读书又没有它的书：筛选退回“全部”。/ WeRead off with none of its books: the filter falls back to all.
+    if (s_filter >= filter_steps()) s_filter = 0;
     memset(&cfg, 0, sizeof(cfg));
     tomato_sync_set_file_hook(tomato_file_hook);
     tomato_sync_set_open_check(app_book_path_is_open);
@@ -2517,7 +2564,7 @@ static int control_at(app_ctx_t* ctx, uint16_t x, uint16_t y, EpdRect* rect) {
         *rect = tomato_hint_rect();
         if (tomato_hint_shown() && ui_rect_hit(*rect, x, y)) return CONTROL_TOMATO_HINT;
         *rect = store_rect();
-        if (s_tom_cfg && s_view == SHELF && ui_rect_hit(*rect, x, y)) return CONTROL_STORE;
+        if (store_on() && s_view == SHELF && ui_rect_hit(*rect, x, y)) return CONTROL_STORE;
         *rect = card_rect();
         if (card_shown() && ui_rect_hit(*rect, x, y)) {
             // 点击判断用卡片本身；刷新区域放大 8 像素，包住画在外圈的按下描边。
@@ -2727,6 +2774,31 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
             !(ctx->touch && ctx->touch->touched)) {
             s_tom_rev = st.revision;
             s_tom_bytes = st.bytes;
+            s_tom_draw_ms = ctx->now_ms;
+            render(ctx, ctx->fb);
+            s_area = tomato_busy_rect();
+            s_mode = MODE_DU;
+            return APP_REDRAW_AREA;
+        }
+    }
+    // 微信读书在后台下载：进度变了局刷状态行，下完重扫书库让新书出现。/ A WeRead download in the background: DU the
+    // status line when progress moves, rescan when it ends so the new book appears.
+    if ((s_wr_dl || weread_downloading()) && !s_scan_pending && ctx->now_ms - s_tom_poll_ms >= 400 &&
+        (s_view == SHELF || s_view == BULK)) {
+        s_tom_poll_ms = ctx->now_ms;
+        if (!weread_downloading()) {
+            s_wr_dl = false;
+            const int leaf = ctx->leaf;
+            scan_shelf(ctx);
+            ctx->leaf = leaf < leaves() ? leaf : leaves() - 1;
+            return APP_REDRAW_PAGE;
+        }
+        weread_snapshot_t sn;
+        weread_snapshot(&sn);
+        if (!s_wr_dl) { s_wr_dl = true; s_wr_rev = sn.revision; return APP_REDRAW_PAGE; }
+        if (s_view == SHELF && sn.revision != s_wr_rev && ctx->now_ms - s_tom_draw_ms >= TOM_BYTES_REDRAW_MS &&
+            !(ctx->touch && ctx->touch->touched)) {
+            s_wr_rev = sn.revision;
             s_tom_draw_ms = ctx->now_ms;
             render(ctx, ctx->fb);
             s_area = tomato_busy_rect();

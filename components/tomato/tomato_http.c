@@ -31,6 +31,11 @@
 #define JSON_MAX (256 * 1024)
 #define JSON_FIRST (32 * 1024)
 #define IO_CHUNK 4096
+// 下载写卡的缓冲：C 库默认只有 128 字节（CONFIG_FATFS_VFS_FSTAT_BLKSIZE=0），收到的数据被拆成碎块写卡；凑满 32 KB
+// 再写，1 线 TF 卡上快得多。放 PSRAM，关文件后释放。/ The download's card write buffer: the C library default is only
+// 128 bytes (CONFIG_FATFS_VFS_FSTAT_BLKSIZE=0), which splits incoming data into tiny card writes; gathering 32 KB first
+// is much faster on the 1-bit TF card. It lives in PSRAM and is freed after the file closes.
+#define WRITE_BUF (32 * 1024)
 #define TX_BUF 2048
 #define TIMEOUT_MS 15000
 // 图片超时短一些：网络卡住时取消（比如换去看别的帖子）能更快生效。/ A shorter image timeout so a cancel (say, opening
@@ -408,6 +413,8 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
     // 下载缓冲放 PSRAM，别和 TLS 抢内部 RAM。/ Download buffers live in PSRAM so they never compete with TLS.
     char* buf = heap_caps_malloc(IO_CHUNK, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!buf) return ESP_ERR_NO_MEM;
+    // 分不到就用默认缓冲，只是慢一点。/ Without it the default buffer is used, only slower.
+    char* wbuf = heap_caps_malloc(WRITE_BUF, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     esp_http_client_handle_t c = NULL;
     FILE* f = NULL;
     bool keep_part = false;
@@ -452,6 +459,7 @@ esp_err_t tomato_http_download(const tomato_config_t* cfg, const char* path, con
         if (length > 0) *expect = have + (uint32_t)length;
         f = fopen(part, have ? "ab" : "wb");
         if (!f) { err = ESP_FAIL; break; }
+        if (wbuf) setvbuf(f, wbuf, _IOFBF, WRITE_BUF);
         *bytes = have;
         err = ESP_OK;
         int64_t mark_us = esp_timer_get_time();
@@ -504,6 +512,7 @@ done:
     if (f) fclose(f);
     if (err != ESP_OK && !keep_part) remove(part);
     heap_caps_free(buf);
+    heap_caps_free(wbuf);   // 文件都关了才放 / Only once every file is closed
     if (c) {
         esp_http_client_close(c);
         esp_http_client_cleanup(c);

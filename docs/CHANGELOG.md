@@ -3,6 +3,14 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-27 · Treader 1.2.18
+
+- 新增微信读书（默认关，设置 › 内容来源 › 微信读书打开）：书城顶上多出“番茄 / 微信读书”切换；设备上扫码登录，同步你的微信读书书架（带封面），整本下载进书库：默认 TXT（只要文字，长书两路并行，一千多章十来分钟），也可以选 EPUB（保留插图和排版，慢）。只读，不上传进度，设备上删书不影响云端书架；书库筛选多一档“微信读书”，后台下载时书库显示进度条。登录信息用本机钥匙加密存在 TF 卡。协议引擎来自开源项目 [CrossMux](https://github.com/0x1abin/crossmux)（MIT），感谢原作者；用的是非官方网页接口，微信读书改版后可能失效。
+  New WeRead source (off by default; Settings > Sources > WeRead): the store gets a Tomato / WeRead switch; sign in by scanning a QR code on the device with WeChat, sync your WeRead shelf with covers and download whole books into the library: TXT by default (text only, long books in two parallel streams, a thousand-plus chapters in about ten minutes) or EPUB (keeps images and layout, slower). Read-only: no progress is uploaded and deleting a book on the device leaves the cloud shelf alone; the library filter gains WeRead and shows a progress bar while it downloads. The sign-in is stored on the card encrypted under a device key. The protocol engine comes from the open-source [CrossMux](https://github.com/0x1abin/crossmux) project (MIT), with thanks to its authors; it uses unofficial web interfaces and may stop working when WeRead changes.
+
+- 番茄小说和漫画下载写 TF 卡时先在内存里凑满 32 KB 再写（原来按 128 字节零碎地写），网速快时下载更快。
+  Tomato and comic downloads gather 32 KB in memory before writing to the TF card (it used to write in 128-byte pieces), so fast links download quicker.
+
 ## 2026-11-27 · Treader 1.2.17
 
 - 页数多的 CBZ 漫画打开更快：打开时把包里所有文件名一次记在内存里，列图片、排序、查翻页方向不再一个个去 TF 卡读；TF 卡上的大文件打开 FAT 快速跳转，跳到文件里任意位置不用从头顺着簇链数，漫画翻页和大字体读字形也跟着变快。

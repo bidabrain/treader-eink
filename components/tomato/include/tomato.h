@@ -704,6 +704,19 @@ typedef enum {
 /// Make room for the foreground: cancel a browsing job (waiting at most 0.3 s); downloads and sync are left alone.
 /// Never blocks the UI for long.
 tomato_preempt_t tomato_sync_preempt(void);
+/// 外部组件的后台任务（微信读书）：联网、校时之后在后台任务里调 run，返回值和 msg 作为结果。cancel 变真时尽快返回。
+/// A background job from another component (WeRead): run is called on the task after the network is up and the time
+/// is set; its return and msg become the result. Return soon after cancel turns true.
+typedef esp_err_t (*tomato_ext_run_t)(void* ctx, const volatile bool* cancel, void (*progress)(int current, int total),
+                                      char* msg, size_t cap);
+typedef struct {
+    tomato_ext_run_t run;
+    void* ctx;
+    bool download;      ///< 下载类：锁屏不睡、前台不打断；否则算浏览类 / Download: holds the lock and is not preempted;
+                        ///< otherwise it counts as browsing
+    const char* step;   ///< 开始时的提示 / Message shown at the start
+} tomato_ext_job_t;
+esp_err_t tomato_sync_start_ext(const tomato_ext_job_t* job);
 /// 后台任务是否在跑。/ Whether the task is running.
 bool tomato_sync_busy(void);
 void tomato_sync_get_status(tomato_status_t* out);

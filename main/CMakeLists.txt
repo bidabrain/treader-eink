@@ -5,6 +5,7 @@ set(main_requires
     read_pico_search
     read_pico_totp
     read_pico_wifi_vault
+    read_pico_weread
     tomato
     pinyin_ime
     espressif__qrcode
@@ -53,6 +54,7 @@ idf_component_register(
         "apps/app_tr_wall.c"
         "apps/app_tr_card.c"
         "apps/app_tr_store.c"
+        "apps/app_tr_weread.c"
         "apps/app_tr_update.c"
         "apps/app_tr_hupu.c"
         "apps/app_tr_xhs.c"

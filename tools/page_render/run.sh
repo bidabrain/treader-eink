@@ -17,7 +17,7 @@ INC="-Itools/page_render/stubs -Itools/page_render -I$CJSON -I$SRC/main -I$SRC/m
 -I$SRC/main/apps -I$SRC/main/book -I$SRC/main/factory -I$SRC/components/epdiy/src -I$SRC/components/epdiy/include"
 for d in "$SRC"/components/*/include managed_components/*/include; do INC="$INC -I$d"; done
 CFLAGS="-std=gnu11 -O1 -g -w -fno-pie -no-pie -DPAGE_RENDER_HOST ${HR_EXTRA_CFLAGS:-}"
-COMMON="tools/page_render/page_render.c $SRC/main/ui/tr_ui.c $SRC/main/ui/ui_kit.c $SRC/main/ui/datamatrix.c \
+COMMON="tools/page_render/page_render.c tools/page_render/weread_stubs.c $SRC/main/ui/tr_ui.c $SRC/main/ui/ui_kit.c $SRC/main/ui/datamatrix.c \
 $SRC/main/font/ttf_font.c $SRC/main/settings.c"
 pages=("$@")
 if [ ${#pages[@]} -eq 0 ]; then

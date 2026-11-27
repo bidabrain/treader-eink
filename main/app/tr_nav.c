@@ -14,6 +14,7 @@ extern const app_desc_t app_tr_xhs;
 extern const app_desc_t app_tr_weibo;
 extern const app_desc_t app_tr_x;
 extern const app_desc_t app_tr_store;
+extern const app_desc_t app_tr_weread;
 extern const app_desc_t app_tr_all;
 extern const app_desc_t app_tr_auth;
 
@@ -38,7 +39,7 @@ const app_desc_t* tr_nav_tab_app(int tab) {
 int tr_nav_app_tab(const app_desc_t* app) {
     if (!app) return -1;
     // 书城和番茄搜索是书库的子页。/ The bookstore and Tomato search are library sub-pages.
-    if (app == &app_tr_store || app == &app_tr_tomato) return TR_TAB_LIBRARY;
+    if (app == &app_tr_store || app == &app_tr_tomato || app == &app_tr_weread) return TR_TAB_LIBRARY;
     for (int t = 0; t < TR_TAB_MAX; t++)
         if (tr_nav_tab_app(t) == app) return t;
     return -1;

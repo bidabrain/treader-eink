@@ -42,6 +42,13 @@ It is more than firmware: Tomato, RedNote and Weibo each have an **Android app**
 - Every list is paged: tap a button or swipe once to turn a whole page, the e-ink screen never scrolls
 - There is also a standalone Android app with the same features as the firmware Library (Tomato included) (search, download, Store, reading, progress shared with the device over WebDAV), see [tomato/android](tomato/android/README.md)
 
+**WeRead** (no server; the device talks to weread.qq.com directly; off by default, turn it on under Settings > Sources > WeRead)
+- Entry: the Store gets a Tomato / WeRead switch at the top (without a Tomato server, Store opens WeRead directly)
+- Sign in by scanning a QR code on the device with WeChat; sync your WeRead shelf with covers and download any book whole into the library: TXT by default (text only, long books in two parallel streams, a thousand-plus chapters in about ten minutes) or EPUB (keeps images and layout, slower)
+- Read-only: progress and notes are never uploaded, and deleting a book on the device leaves your WeRead shelf alone; only books your account can read
+- The library filter gains WeRead, and a background download shows a progress bar in the library; the new book appears when done
+- The protocol engine comes from [CrossMux](https://github.com/0x1abin/crossmux) (MIT) and uses unofficial WeRead web interfaces, which may break when WeRead changes
+
 **Hupu** (read-only, no server needed, ported from the Android [hupuX](https://github.com/bidabrain/hupuX))
 - Recommended: the front-page recommendations, 5 per page, with thumbnails
 - Following: follow boards on the device (no sign-in), with the latest posts of all followed boards mixed together; browse all boards by category, and sort a board's posts by latest reply or latest post
@@ -250,6 +257,38 @@ Writing takes about a minute, then the device restarts; settings, progress and b
 4. Settings → Content sources → Tomato server, enter your server address and password (if one is built into the firmware it shows "Built-in server").
 5. Library → "Store" at the top right → search for a book and try downloading it. The clock is synced the first time the device goes online.
 
+### Replacing the SD card
+
+Copy the old card's contents to the new one as they are, and books, reading progress, the Tomato shelf, saved Wi-Fi, the authenticator and the WeRead sign-in all come along. A Mac is used below.
+
+**1. Format the new card as FAT32** (the firmware does not read exFAT; new cards of 64 GB and up usually ship as exFAT and must be reformatted). The easiest way is to put the new card in the device and format it under Settings > Power & device > SD card. For a 32 KB allocation unit (faster with large files), format it on the computer:
+
+```
+diskutil list                                              # find the new card by its size, e.g. /dev/disk4; make sure it is the right one
+diskutil eraseDisk FAT32 PICO MBRFormat /dev/disk4         # whole card as FAT32, volume name PICO
+diskutil unmount /dev/disk4s1
+sudo newfs_msdos -F 32 -c 64 -v PICO /dev/rdisk4s1         # 64 sectors per cluster = 32 KB
+diskutil mount /dev/disk4s1
+```
+
+> ⚠️ A wrong disk number wipes that disk for good. If unsure, use Disk Utility or the [SD Card Formatter](https://www.sdcard.org/downloads/formatter/) (choose FAT32). Windows' built-in format cannot make cards over 32 GB FAT32; use the SD Card Formatter.
+
+**2. Copy everything, hidden folders included** (`.treader/` and others are hidden, so selecting all in Finder misses them):
+
+```
+rsync -a --exclude='.Spotlight-V100' --exclude='.fseventsd' --exclude='.Trashes' /Volumes/OLD_CARD/ /Volumes/PICO/
+```
+
+**3. Remove the `._` files macOS creates** (a Mac writing to a FAT card adds companions such as `._book.txt`, which the library would list as books):
+
+```
+dot_clean -m /Volumes/PICO
+```
+
+Then eject the new card and put it in the device.
+
+Saved Wi-Fi, authenticator accounts and the WeRead sign-in are encrypted on the card with keys kept in **the device itself**, so after the swap they work as before in the same device (the authenticator unlocks with your old PIN); on another device they cannot be opened. Firmware upgrades that write only the app leave these keys alone; the web flasher's "full install / erase all" removes them, after which you rejoin Wi-Fi, sign in to WeRead again and re-import the authenticator from your phone.
+
 ## Keys
 
 Three touch keys below the screen, plus the power key on the side:
@@ -446,7 +485,7 @@ Compared with the official firmware, NVS has not moved, so settings can be kept 
 | --- | --- |
 | [MindReset/read_pico_firmware](https://github.com/MindReset/read_pico_firmware) | Official demo firmware, the foundation of Treader (Apache-2.0) |
 | [RickyOS](https://dot.mindreset.tech/docs/read_0/start/rickyos) (Ricky AI Studio, [GitHub](https://github.com/chinoryunqin/RickyOS)) | Reference for the system UI style: status bar, bottom tabs, hairlines and whitespace in the layout |
-| [Take Easy](https://take-easy.pages.dev/) ([GitHub](https://github.com/takeeasy-cui/take-easy-firmware)) | Reference for feature ideas: lock screen wallpapers, image covers, web flashing, SD card updates |
+| [Take Easy](https://take-easy.pages.dev/) ([GitHub](https://github.com/takeeasy-cui/take-easy-firmware)) | Reference for feature ideas: lock screen wallpapers, image covers, web flashing, SD card updates, on-device WeRead |
 | [vroland/epdiy](https://github.com/vroland/epdiy) | E-ink driver (LGPL-3.0) |
 | [zhongbai2333/Tomato-Novel-Downloader](https://github.com/zhongbai2333/Tomato-Novel-Downloader) | Tomato novel download server |
 | [bidabrain/Tomato-Novel](https://github.com/bidabrain/Tomato-Novel) | Android Tomato reader, source of the API usage and update rules |
@@ -458,6 +497,8 @@ Compared with the official firmware, NVS has not moved, so settings can be kept 
 | [JPEGDEC](https://github.com/bitbank2/JPEGDEC) (BitBank Software) | Fast decoding of ordinary baseline JPGs, converting to grayscale and downscaling while decoding (Apache-2.0) |
 | stb_truetype, stb_image, TJpgDec, cJSON | Font rendering, image decoding (other JPGs and PNG), JSON parsing |
 | [jsQR](https://github.com/cozmo/jsQR) | QR code photo recognition on the Authenticator import page (Apache-2.0) |
+| [CrossMux](https://github.com/0x1abin/crossmux) | WeRead protocol engine: QR sign-in, shelf sync and whole-book EPUB packing; `components/read_pico_weread/vendor` comes from it (MIT) |
+| [FreeInk SDK](https://github.com/0x1abin/freeink-sdk) | The streaming JSON parser used by the WeRead engine (MIT) |
 
 RickyOS and Take Easy are both excellent systems from the Read Pico community. Treader only took inspiration from their design and feature ideas and uses none of their code.
 

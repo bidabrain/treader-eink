@@ -1,0 +1,57 @@
+read_pico_weread — 来源、许可与改动 / Sources, licenses and changes
+
+1. vendor/ 第三方代码 / Third-party code in vendor/
+
+   CrossMux（https://github.com/0x1abin/crossmux）提交 86ef6dccc5b243698766560c129e0106a2507d07，MIT，全文见
+   LICENSE-CrossMux.txt：
+     lib/WeReadWebApi/src/*          → vendor/WeRead*.{h,cpp}
+     lib/Memory/Memory.h             → vendor/Memory.h
+     lib/Epub/Epub/htmlEntities.*    → vendor/Epub/htmlEntities.*（源自 atomic14 diy-esp32-epub-reader，MIT，
+                                       全文见 LICENSE-atomic14.txt / from atomic14, MIT, see LICENSE-atomic14.txt）
+     src/util/StringUtils.cpp 的 sanitizeFilename、lib/Utf8 的 utf8NextCodepoint → vendor/StringUtils.h（合成一个头文件）
+
+   FreeInk SDK（https://github.com/0x1abin/freeink-sdk）提交 c77ef90da4ffaa5e5ce35a238e572cc023260d5e（CrossMux 用的子模块），
+   MIT，全文见 LICENSE-FreeInk-SDK.txt：
+     libs/network/JsonSax/{include,src}/StreamingJsonParser.* → vendor/StreamingJsonParser.*
+
+   感谢 CrossMux 和 FreeInk 的作者。/ Thanks to the authors of CrossMux and FreeInk.
+
+2. 对 vendor/ 的改动（都标了 "Treader:" 注释）/ Changes to vendor/ (each marked with a "Treader:" comment)
+
+   - WeReadBrowse.cpp、WeReadStore.cpp：StringUtils 的 include 从 CrossMux 源码树的相对路径改成本目录。
+     The StringUtils include points at this directory instead of a CrossMux tree path.
+   - WeReadClient.cpp：去掉 Epub.h、JpegToBmpConverter.h、PngToBmpConverter.h、BookCacheUtils.h；TimeUtils 改本目录。
+     Drop the Epub, JPEG/PNG-to-BMP and BookCacheUtils includes; TimeUtils from this directory.
+   - WeReadClient.cpp：persistCoverOverride() 直接返回 true（没有 CrossMux 的 EPUB 封面覆盖缓存）；convertCoverSource()
+     不转 BMP 缩略图，保留原图给打包（书库自己从 EPUB 取封面）；打包后不再清 CrossMux 的阅读缓存（两处）。
+     persistCoverOverride() returns true (no CrossMux cover-override cache); convertCoverSource() keeps the source image
+     for packaging instead of a BMP thumbnail (the library takes covers from the EPUB); packaging no longer clears the
+     CrossMux reader caches (two places).
+   - WeReadHttpClient.cpp：开了 CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS 时保存 TLS 会话，和固件其他联网一样走简化握手。
+     Save the TLS session under CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS, like the rest of the firmware.
+   - WeReadClient.cpp：每下完 10 章调一次 logDownloadMetrics("progress")，真机测速用。
+     Call logDownloadMetrics("progress") every 10 chapters for on-device speed tuning.
+
+   - WeReadClient.h / .cpp：DownloadOptions 加 plainTextOutput（输出 TXT：还原后经 port/TextOut 直接追加，不转 XHTML、
+     不下插图、不打包；整本 EPUB 文件的书报 WholeBookOnly）和并行用的 workSuffix、reuseToc、textPartPath、textFinalize；
+     Operation 加 txtOut_，reset() 先关它；preparePaths() 按这些选项定路径。
+     DownloadOptions gains plainTextOutput (TXT output: restored text appended through port/TextOut with no XHTML,
+     illustrations or packaging; whole-book EPUB files report WholeBookOnly) and, for parallel downloads, workSuffix,
+     reuseToc, textPartPath and textFinalize; Operation gains txtOut_, closed first in reset(); preparePaths() follows
+     these options.
+
+   编译选项（CMakeLists.txt）：ENABLE_CHINESE_VERSION、LOG_LEVEL=1、BOARD_HAS_PSRAM，关掉 format 和 implicit-fallthrough 警告。
+   Build options (CMakeLists.txt): ENABLE_CHINESE_VERSION, LOG_LEVEL=1, BOARD_HAS_PSRAM; format and
+   implicit-fallthrough warnings off.
+
+3. Treader 新写的部分 / Parts written for Treader
+
+   include/、port/、weread_service.cpp、CMakeLists.txt 是 Treader 的代码，Apache-2.0（见仓库根目录 LICENSE）。
+   include/, port/, weread_service.cpp and CMakeLists.txt are Treader code under Apache-2.0 (see the repository LICENSE).
+   port/ 按 CrossMux 的 Arduino / HAL 接口重新实现，没有使用其他固件的适配代码。
+   port/ reimplements CrossMux's Arduino / HAL interfaces without using another firmware's adapter code.
+
+4. 升级引擎 / Upgrading the engine
+
+   整体换掉 vendor/ 下对应文件，再按第 2 节重新打补丁，更新上面的提交号。
+   Replace the matching files under vendor/ wholesale, re-apply section 2 and update the commits above.
