@@ -120,19 +120,24 @@ const uint8_t* hupu_img_get(const char* jpg, int w, int h) {
     char path[PATH_LEN + 24];
     cache_path(jpg, w, h, path, sizeof(path));
     tomato_hupu_cache_lock();
-    FILE* f = fopen(path, "rb");
-    if (f) {
-        char magic[4];
-        uint16_t dims[2];
-        uint8_t* px = heap_caps_malloc((size_t)w * h, PSRAM_CAPS);
-        bool ok = px && fread(magic, 1, 4, f) == 4 && !memcmp(magic, "HPG1", 4) && fread(dims, sizeof(dims), 1, f) == 1 &&
-                  dims[0] == w && dims[1] == h && fread(px, 1, (size_t)w * h, f) == (size_t)w * h;
-        fclose(f);
-        if (ok) { tomato_hupu_cache_unlock(); insert(key, w, h, px); return px; }
-        heap_caps_free(px);
+    // 缓存是“HPG1”、宽高两个 uint16、再接像素；读进来把像素挪到开头直接用。/ The cache is "HPG1", width and height
+    // as two uint16, then the pixels; once read, the pixels move to the front and are used in place.
+    const size_t want = (size_t)w * h;
+    uint8_t* buf = NULL;
+    size_t n = 0;
+    if (tomato_cache_load(path, want + 8, &buf, &n) == ESP_OK) {
+        uint16_t dims[2] = {0, 0};
+        if (n == want + 8) memcpy(dims, buf + 4, sizeof(dims));
+        if (n == want + 8 && !memcmp(buf, "HPG1", 4) && dims[0] == w && dims[1] == h) {
+            memmove(buf, buf + 8, want);
+            tomato_hupu_cache_unlock();
+            insert(key, w, h, buf);
+            return buf;
+        }
+        heap_caps_free(buf);
     }
-    struct stat st;
-    const bool have = stat(jpg, &st) == 0 && st.st_size > 0;
+    size_t jpg_len = 0;
+    const bool have = tomato_cache_size(jpg, &jpg_len) && jpg_len > 0;
     tomato_hupu_cache_unlock();
     if (!have) return NULL;   // 还没下载 / Not downloaded yet
     for (int i = 0; i < s_queue_count; i++)
@@ -147,31 +152,19 @@ const uint8_t* hupu_img_get(const char* jpg, int w, int h) {
 }
 
 static uint8_t* read_file(const char* path, size_t* len) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    uint8_t* buf = n > 0 && (size_t)n <= FILE_MAX ? heap_caps_malloc((size_t)n, PSRAM_CAPS) : NULL;
-    bool ok = buf && fread(buf, 1, (size_t)n, f) == (size_t)n;
-    fclose(f);
-    if (!ok) { heap_caps_free(buf); return NULL; }
-    *len = (size_t)n;
+    uint8_t* buf = NULL;
+    if (tomato_cache_load(path, FILE_MAX, &buf, len) != ESP_OK || !*len) { heap_caps_free(buf); *len = 0; return NULL; }
     return buf;
 }
 
 static void write_cache(const char* jpg, int w, int h, const uint8_t* px) {
-    char path[PATH_LEN + 24], tmp[PATH_LEN + 32];
+    char path[PATH_LEN + 24];
     cache_path(jpg, w, h, path, sizeof(path));
-    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-    FILE* f = fopen(tmp, "wb");
-    if (!f) return;
+    uint8_t head[8];
     const uint16_t dims[2] = {(uint16_t)w, (uint16_t)h};
-    bool ok = fwrite("HPG1", 1, 4, f) == 4 && fwrite(dims, sizeof(dims), 1, f) == 1 &&
-              fwrite(px, 1, (size_t)w * h, f) == (size_t)w * h;
-    ok = fclose(f) == 0 && ok;
-    remove(path);
-    if (!ok || rename(tmp, path) != 0) remove(tmp);
+    memcpy(head, "HPG1", 4);
+    memcpy(head + 4, dims, sizeof(dims));
+    tomato_cache_store2(path, head, sizeof(head), px, (size_t)w * h);
 }
 
 // 解一张排队的图；成功返回缩放好的像素。known 表示文件头是 JPEG / PNG（失败多半是内存，值得再试）。

@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "cache_pack.h"
 #include "app.h"
 #include "book_cover.h"
 #include "esp_log.h"
@@ -324,8 +325,12 @@ static app_redraw_t start(void) {
     void* card = NULL;
     // 卡要交给电脑：验证器先上锁。/ The card goes to the computer: lock the authenticator first.
     tr_auth_lock();
+    // 缓存包：等手上的读写和后台那一步做完，之后不碰卡；交卡没成就恢复。/ The cache pack: finish operations in hand
+    // and the background step, then stay off the card; resume when the handover did not happen.
+    cpack_pause();
     esp_err_t err = read_pico_sd_take_for_usb(&card);
     if (err == ESP_ERR_NOT_FINISHED || err == ESP_ERR_NOT_FOUND) {
+        cpack_resume();
         snprintf(s_msg, sizeof(s_msg), err == ESP_ERR_NOT_FOUND ? "没有 TF 卡。" : "TF 卡正忙，稍后再试。");
         return APP_REDRAW_PAGE;
     }

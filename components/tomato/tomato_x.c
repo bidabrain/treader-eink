@@ -82,7 +82,7 @@ void tomato_x_square_path(const char* id, int k, char* out, size_t cap) {
 
 static void mkdirs(void) {
     mkdir(TOMATO_X_DIR, 0775);
-    mkdir(TOMATO_X_DIR "/p", 0775);
+    tomato_cache_mkdir(TOMATO_X_DIR "/p");
 }
 
 /* ---- JSON 小工具 / JSON helpers ---- */
@@ -293,7 +293,7 @@ static esp_err_t run_feed(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
         const int pics = json_int(n, "pics");
         if (json_int(n, "images") <= 0) continue;
         tomato_x_post_dir(id, dir, sizeof(dir));
-        mkdir(dir, 0775);
+        tomato_cache_mkdir(dir);
         tomato_safe_id(id, sid, sizeof(sid));
         bool flushed = false;
         if (pics >= 2) {
@@ -362,7 +362,7 @@ static esp_err_t run_post(const tomato_srv_t* srv, const tomato_x_req_t* r, cons
         pics = json_int(root, "pics");
         cJSON_Delete(root);
         mkdirs();
-        mkdir(dir, 0775);
+        tomato_cache_mkdir(dir);
         err = tomato_cache_write_json(file, out);
         cJSON_Delete(out);
         if (err != ESP_OK) { snprintf(msg, cap, "写不进 TF 卡"); return err; }
@@ -441,7 +441,7 @@ static esp_err_t run_comments(const tomato_srv_t* srv, const tomato_x_req_t* r, 
     cJSON_Delete(root);
     mkdirs();
     tomato_x_post_dir(sid, dir, sizeof(dir));
-    mkdir(dir, 0775);
+    tomato_cache_mkdir(dir);
     tomato_x_comments_path(sid, file, sizeof(file));
     err = tomato_cache_write_json(file, out);
     cJSON_Delete(out);

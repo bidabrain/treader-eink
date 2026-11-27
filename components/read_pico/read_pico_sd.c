@@ -33,10 +33,17 @@ static int probe_state;
 static portMUX_TYPE state_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool media_invalidated;
 static read_pico_sd_info_t cached_info;
+// 挂载代数：挂上、卸下、发现失效都加一。/ Mount generation: bumped on mount, unmount and detected invalidation.
+static volatile uint32_t s_generation;
+
+uint32_t read_pico_sd_generation(void) { return s_generation; }
 
 // 失效只影响快照，消费者释放句柄前不得卸载卡。/ Invalidation changes snapshots only; consumers must close handles before unmount.
 static void observe_media_locked(bool present) {
-    if (!present && (cached_info.mounted || probe_state == 1)) media_invalidated = true;
+    if (!present && (cached_info.mounted || probe_state == 1)) {
+        if (!media_invalidated) s_generation++;
+        media_invalidated = true;
+    }
     cached_info.present = present;
     if (!present || media_invalidated) {
         memset(&cached_info, 0, sizeof(cached_info));
@@ -135,11 +142,14 @@ static esp_err_t mount_card(bool format_if_failed) {
     if (err != ESP_OK) {
         card = NULL;
         ESP_LOGW(TAG, "Mount failed: %s", esp_err_to_name(err));
+    } else {
+        s_generation++;
     }
     return err;
 }
 
 static void close_card(void) {
+    s_generation++;
     if (card != NULL) {
         esp_err_t err = esp_vfs_fat_sdcard_unmount(SD_MOUNT_POINT, card);
         if (err != ESP_OK) {
@@ -243,6 +253,7 @@ esp_err_t read_pico_sd_check(void) {
     ESP_LOGW(TAG, "card stopped answering (%s): treat as removed", esp_err_to_name(err));
     portENTER_CRITICAL(&state_lock);
     if (probe_state == 2 && cached_info.mounted) {
+        if (!media_invalidated) s_generation++;
         media_invalidated = true;
         const bool present = cached_info.present;
         memset(&cached_info, 0, sizeof(cached_info));

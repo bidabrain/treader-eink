@@ -287,24 +287,7 @@ static bool alloc_all(void) {
 
 /* ---- 文件 / Files ---- */
 
-static cJSON* read_json(const char* path) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char* buf = n > 0 && n < 1024 * 1024 ? heap_caps_malloc((size_t)n + 1, PSRAM_CAPS) : NULL;
-    bool ok = buf && fread(buf, 1, (size_t)n, f) == (size_t)n;
-    fclose(f);
-    cJSON* root = NULL;
-    if (ok) {
-        buf[n] = 0;
-        tomato_json_use_psram();
-        root = cJSON_Parse(buf);
-    }
-    heap_caps_free(buf);
-    return root;
-}
+static cJSON* read_json(const char* path) { return tomato_cache_read_json(path); }
 
 static void str(char* out, size_t cap, const cJSON* o, const char* key) {
     const cJSON* v = cJSON_GetObjectItemCaseSensitive(o, key);
@@ -318,39 +301,13 @@ static double dnum(const cJSON* o, const char* key) {
 }
 
 static bool exists(const char* path) {
-    struct stat st;
-    return stat(path, &st) == 0 && st.st_size > 0;
+    size_t n = 0;
+    return tomato_cache_size(path, &n) && n > 0;
 }
 
 // 从 JPEG 文件头读宽高（服务器出的是基线 JPEG，SOF 在开头不远）。/ Read width and height from the JPEG header
 // (the server writes baseline JPEGs with the SOF near the start).
-static bool jpeg_size(const char* path, int* w, int* h) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return false;
-    uint8_t b[4];
-    bool ok = false;
-    if (fread(b, 1, 2, f) == 2 && b[0] == 0xFF && b[1] == 0xD8) {
-        for (int guard = 0; guard < 64; guard++) {
-            int c = fgetc(f);
-            while (c == 0xFF) c = fgetc(f);
-            if (c == EOF) break;
-            if (fread(b, 1, 2, f) != 2) break;
-            const int len = (b[0] << 8) | b[1];
-            if ((c >= 0xC0 && c <= 0xC3) || (c >= 0xC5 && c <= 0xC7) || (c >= 0xC9 && c <= 0xCB)) {
-                uint8_t s[5];
-                if (fread(s, 1, 5, f) == 5) {
-                    *h = (s[1] << 8) | s[2];
-                    *w = (s[3] << 8) | s[4];
-                    ok = *w > 0 && *h > 0;
-                }
-                break;
-            }
-            if (len < 2 || fseek(f, len - 2, SEEK_CUR) != 0) break;
-        }
-    }
-    fclose(f);
-    return ok;
-}
+static bool jpeg_size(const char* path, int* w, int* h) { return tomato_cache_jpeg_size(path, w, h); }
 
 // 数字缩成“1.2万”。/ Shorten counts to "1.2万".
 static void fmt_count(char* out, size_t cap, int n) {
@@ -767,15 +724,15 @@ static bool load_post(const char* id) {
     char dir[64], path[80], cpath[96];
     tomato_wb_post_dir(id, dir, sizeof(dir));
     snprintf(path, sizeof(path), "%s/post.json", dir);
-    struct stat st, cst;
-    if (stat(path, &st) != 0 || st.st_size <= 0) return false;
+    size_t file_len = 0, comments_len = 0;
+    if (!tomato_cache_size(path, &file_len) || !file_len) return false;
     cJSON* root = read_json(path);
     if (!root) return false;
     // 内存池：正文文件加评论文件（评论可能稍后才到，按 32 KB 预留）。/ Arena: the post file plus the comments file
     // (comments may arrive later, so reserve 32 KB).
     tomato_wb_comments_path(id, cpath, sizeof(cpath));
-    const size_t comments = stat(cpath, &cst) == 0 && cst.st_size > 32768 ? (size_t)cst.st_size : 32768;
-    s_arena_cap = (size_t)st.st_size + comments + 1024;
+    const size_t comments = tomato_cache_size(cpath, &comments_len) && comments_len > 32768 ? comments_len : 32768;
+    s_arena_cap = file_len + comments + 1024;
     s_arena = heap_caps_malloc(s_arena_cap, PSRAM_CAPS);
     if (!s_arena) { cJSON_Delete(root); s_arena_cap = 0; return false; }
     s_user = keep_key(root, "user");

@@ -259,6 +259,11 @@ int tomato_list_insert_older(cJSON* items, const char* after, cJSON* older, cons
 void tomato_url_cursor(char* out, size_t cap, const char* cursor);
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,
                         uint64_t max_bytes);
+/// root 是放进缓存包的目录时记下正在看的 keep、提醒后台回收并返回 true；否则返回 false。/ When root is a folder moved
+/// into the cache pack, note the open item keep, nudge collection and return true; otherwise false.
+bool tomato_pack_prune(const char* root, const char* keep);
+/// 建缓存目录；放进缓存包的目录不建。/ Create a cache folder, except folders moved into the cache pack.
+void tomato_cache_mkdir(const char* dir);
 /// 列表文件里把 id 标成看过。/ Mark id as seen in a list file.
 void tomato_cache_mark_seen(const char* list_file, const char* id);
 /// 封面目录太大时，只留 keep 里这些书的封面和缩略图。/ When the cover dir grows too big, keep only these books' covers and thumbnails.

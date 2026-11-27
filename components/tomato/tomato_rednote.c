@@ -117,8 +117,8 @@ static esp_err_t red_poll(const tomato_red_config_t* cfg, const char* first, con
 
 static void mkdirs(void) {
     mkdir(TOMATO_RED_DIR, 0775);
-    mkdir(TOMATO_RED_DIR "/n", 0775);
-    mkdir(TOMATO_RED_DIR "/rc", 0775);
+    tomato_cache_mkdir(TOMATO_RED_DIR "/n");
+    tomato_cache_mkdir(TOMATO_RED_DIR "/rc");
 }
 
 static void copy_str(cJSON* to, const char* key, const cJSON* from, const char* from_key) {
@@ -163,6 +163,8 @@ static bool listed_in(const cJSON* items, const char* id) {
 
 // 推荐封面只留当前列表的。/ Keep only the current list's recommendation covers.
 static void prune_covers(const cJSON* items) {
+    // 放进缓存包后由包按推荐列表回收。/ Once in the cache pack, the pack collects them by the recommendation list.
+    if (tomato_pack_prune(TOMATO_RED_DIR "/rc", NULL)) return;
     DIR* d = opendir(TOMATO_RED_DIR "/rc");
     if (!d) return;
     struct dirent* e;
@@ -299,7 +301,7 @@ static esp_err_t run_feed(const tomato_red_config_t* cfg, const tomato_red_req_t
         tomato_red_img_path(id, 0, dest, sizeof(dest));
         if (exists(dest)) continue;
         tomato_red_note_dir(id, dir, sizeof(dir));
-        mkdir(dir, 0775);
+        tomato_cache_mkdir(dir);
         char sid[32];
         safe_id(id, sid, sizeof(sid));
         snprintf(rel, sizeof(rel), "img/%s/thumb.jpg", sid);
@@ -429,7 +431,7 @@ static esp_err_t run_note(const tomato_red_config_t* cfg, const tomato_red_req_t
         }
         cJSON_Delete(root);
         mkdirs();
-        mkdir(dir, 0775);
+        tomato_cache_mkdir(dir);
         err = write_json(file, out);
         cJSON_Delete(out);
         if (err != ESP_OK) { snprintf(msg, cap, "写不进 TF 卡"); return err; }

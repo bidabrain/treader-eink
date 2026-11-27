@@ -51,6 +51,10 @@ esp_err_t read_pico_sd_sync(void);
 /// For USB transfer: unmount the filesystem and initialize the bare card; *out receives an sdmmc_card_t*. The card no
 /// longer belongs to the device and only a restart recovers; close every card handle first.
 esp_err_t read_pico_sd_take_for_usb(void** out);
+/// 挂载代数：挂上、卸下或发现卡失效时变化。缓存可以拿它判断卡换没换过。
+/// Mount generation: changes on mount, unmount or detected card invalidation. Caches use it to tell whether the card
+/// changed.
+uint32_t read_pico_sd_generation(void);
 
 #ifdef __cplusplus
 }

@@ -33,6 +33,7 @@
 #include "freertos/idf_additions.h"
 #include "nvs.h"
 #include "tomato_internal.h"
+#include "cache_pack.h"
 
 #define TAG "tomato_srv"
 #define IO_CHUNK 4096
@@ -145,8 +146,8 @@ void tomato_url_cursor(char* out, size_t cap, const char* cursor) {
 }
 
 bool tomato_file_exists(const char* path) {
-    struct stat st;
-    return stat(path, &st) == 0 && st.st_size > 0;
+    size_t n = 0;
+    return tomato_cache_size(path, &n) && n > 0;
 }
 
 /* ---- HTTP ---- */
@@ -594,6 +595,7 @@ void tomato_srv_batch_flush(tomato_srv_batch_t* b) {
 /* ---- 缓存文件 / Cache files ---- */
 
 esp_err_t tomato_cache_write(const char* dest, const void* data, size_t len) {
+    if (cpack_owns(dest)) return cpack_put(dest, data, len);
     char tmp[128];
     snprintf(tmp, sizeof(tmp), "%s.part", dest);
     FILE* f = fopen(tmp, "wb");
@@ -617,19 +619,12 @@ esp_err_t tomato_cache_write_json(const char* dest, const cJSON* root) {
 }
 
 cJSON* tomato_cache_read_json(const char* path) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char* buf = n > 0 && n < TOMATO_SRV_JSON_MAX ? heap_caps_malloc((size_t)n + 1, PSRAM_CAPS) : NULL;
-    bool ok = buf && fread(buf, 1, (size_t)n, f) == (size_t)n;
-    fclose(f);
+    uint8_t* buf = NULL;
+    size_t n = 0;
     cJSON* root = NULL;
-    if (ok) {
-        buf[n] = 0;
+    if (tomato_cache_load(path, TOMATO_SRV_JSON_MAX - 1, &buf, &n) == ESP_OK && n > 0) {
         tomato_json_use_psram();
-        root = cJSON_Parse(buf);
+        root = cJSON_Parse((const char*)buf);
     }
     heap_caps_free(buf);
     return root;
@@ -806,6 +801,9 @@ int tomato_list_insert_older(cJSON* items, const char* after, cJSON* older, cons
 
 void tomato_cache_prune(const char* root, const char* const* lists, int list_count, const char* keep, int keep_dirs,
                         uint64_t max_bytes) {
+    // 放进缓存包的目录由包自己按上限回收，这里只告诉它正在看哪条。/ Folders moved into the cache pack are collected
+    // by the pack against its cap; here it only learns which item is open.
+    if (tomato_pack_prune(root, keep)) return;
     item_dir_t* dirs = heap_caps_calloc(DIRS_MAX, sizeof(item_dir_t), PSRAM_CAPS);
     if (!dirs) return;
     DIR* d = opendir(root);

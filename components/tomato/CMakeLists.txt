@@ -3,9 +3,10 @@
 idf_component_register(
     SRCS "tomato_net.c" "tomato_http.c" "tomato_store.c" "tomato_sync.c" "tomato_webdav.c" "tomato_rank.c" "tomato_hupu.c"
          "tomato_rednote.c" "tomato_selfhost.c" "tomato_weibo.c" "tomato_x.c" "tomato_webtoon.c" "tomato_ota.c" "tomato_proxy.c"
+         "tomato_cachepack.c"
     INCLUDE_DIRS "include"
     REQUIRES espressif__cjson
-    PRIV_REQUIRES read_pico_transfer esp_wifi esp_netif lwip esp_event esp_http_client esp-tls mbedtls heap fatfs nvs_flash esp_timer
+    PRIV_REQUIRES read_pico_transfer read_pico_cache_pack esp_wifi esp_netif lwip esp_event esp_http_client esp-tls mbedtls heap fatfs nvs_flash esp_timer
                   esp_timer
 )
 

@@ -305,6 +305,27 @@ esp_err_t tomato_sync_start_hupu(const tomato_hupu_req_t* req);
 /// 虎扑缓存文件锁：界面读写缓存和后台清理缓存互斥。/ Hupu cache file lock shared by UI cache I/O and worker pruning.
 void tomato_hupu_cache_lock(void);
 void tomato_hupu_cache_unlock(void);
+
+/* ---- 缓存文件 / Cache files ---- */
+
+/// 开机挂卡后调用一次：小红书、微博、X 的帖子缓存放进 TF 卡上的缓存包（/sdcard/.treader/cache），旧的帖子目录第一次
+/// 用到时挪进回收站后台删掉。generation 是卡的挂载代数，free_bytes 是卡上剩余字节，都可以为 NULL。
+/// Call once after the card is mounted at boot: Xiaohongshu, Weibo and X post caches go into the cache pack on the TF
+/// card (/sdcard/.treader/cache), and the old post folders move to the trash on first use and are deleted in the
+/// background. generation is the card's mount generation and free_bytes its free byte count; either may be NULL.
+void tomato_cache_pack_setup(uint32_t (*generation)(void), uint64_t (*free_bytes)(void));
+/// 缓存文件有没有、多大（缓存包里的或普通文件）。/ Whether a cache file exists and its size (in the pack or a file).
+bool tomato_cache_size(const char* path, size_t* len);
+/// 整个读进 PSRAM（末尾补 0），用 heap_caps_free 放掉；比 max 大返回 ESP_ERR_INVALID_SIZE。/ Read it whole into PSRAM
+/// (with a trailing 0), freed with heap_caps_free; larger than max returns ESP_ERR_INVALID_SIZE.
+esp_err_t tomato_cache_load(const char* path, size_t max, uint8_t** out, size_t* len);
+/// 写一个缓存文件，数据分两段（a 在前 b 在后）；断电不会留下半个。/ Write a cache file from two parts (a then b); a power
+/// cut never leaves half of one.
+esp_err_t tomato_cache_store2(const char* path, const void* a, size_t alen, const void* b, size_t blen);
+/// 读 JSON 缓存文件，读不出或解析不了返回 NULL。/ Read a JSON cache file; NULL when unreadable or unparsable.
+struct cJSON* tomato_cache_read_json(const char* path);
+/// 从 JPEG 缓存文件头读宽高。/ Read width and height from a cached JPEG's header.
+bool tomato_cache_jpeg_size(const char* path, int* w, int* h);
 void tomato_hupu_post_path(const char* tid, char* out, size_t cap);
 /// 图片地址对应的本地 JPG（缩略图缓存同名加尺寸）。/ Local JPEG for an image URL (thumbnail caches share the name).
 void tomato_hupu_img_path(const char* url, char* out, size_t cap);

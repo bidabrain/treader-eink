@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "cache_pack.h"
 #include "app.h"
 #include "book_cover.h"
 #include "esp_log.h"
@@ -189,7 +190,9 @@ static void do_format(void) {
     if (ttf_font_ready() && !ttf_font_is_builtin()) ttf_font_open_builtin();
     book_cover_release();
     pinyin_ime_unload();
+    cpack_pause();   // 缓存包和它的后台先停下 / Stop the cache pack and its background first
     esp_err_t err = read_pico_sd_format();
+    cpack_resume();
     if (err == ESP_OK) {
         bool dirs = make_dirs();
         tr_lock_wallpaper_set(NULL);   // 原壁纸已被删除 / The old wallpaper is gone
@@ -231,7 +234,9 @@ static app_redraw_t on_touch(app_ctx_t* ctx, const cst836u_touch_t* touch) {
         if (ttf_font_ready() && !ttf_font_is_builtin()) ttf_font_open_builtin();
         book_cover_release();
         pinyin_ime_unload();
+        cpack_pause();
         s_remounting = read_pico_sd_remount() == ESP_ERR_NOT_FINISHED;
+        cpack_resume();
         snprintf(s_msg, sizeof(s_msg), s_remounting ? "正在挂载…" : "挂载失败");
         refresh();
         return APP_REDRAW_PAGE;

@@ -5,6 +5,7 @@ set(main_requires
     read_pico_search
     read_pico_totp
     read_pico_wifi_vault
+    read_pico_cache_pack
     read_pico_weread
     tomato
     pinyin_ime

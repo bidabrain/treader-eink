@@ -11,6 +11,9 @@
 
 #include "heap_diag.h"
 #include "perf_diag.h"
+#include "cache_pack.h"
+#include "esp_vfs_fat.h"
+#include "read_pico_sd.h"
 #include "book_cover.h"
 #include "hupu_img.h"
 #include "mem_reclaim.h"
@@ -43,6 +46,13 @@ extern const uint8_t lock_4bpp_bin_start[] asm("_binary_lock_4bpp_bin_start");
 extern const uint8_t lock_4bpp_bin_end[] asm("_binary_lock_4bpp_bin_end");
 extern const uint8_t loading_4bpp_bin_start[] asm("_binary_loading_4bpp_bin_start");
 extern const uint8_t loading_4bpp_bin_end[] asm("_binary_loading_4bpp_bin_end");
+
+// 卡上剩余字节，读不到返回 UINT64_MAX（当作不缺空间）。/ Free bytes on the card; UINT64_MAX when unknown (treated as
+// plenty).
+static uint64_t card_free_bytes(void) {
+    uint64_t total = 0, free_bytes = 0;
+    return esp_vfs_fat_info("/sdcard", &total, &free_bytes) == ESP_OK ? free_bytes : UINT64_MAX;
+}
 
 // 已标定则开机读一次喂给 epdiy。未标定先用板级默认出开机图，随后拦住进标定页。
 // Load VCOM once when set. Otherwise keep the board default for the splash,
@@ -132,6 +142,10 @@ void app_main(void) {
     mem_reclaim_register(book_cover_release);
     mem_reclaim_register(pinyin_ime_unload);
     mem_reclaim_register(hupu_img_trim);
+    // 帖子缓存放进 TF 卡上的缓存包；内存紧时它的索引也能放掉，下次用时再从卡上读。/ Post caches live in the cache
+    // pack on the TF card; under memory pressure its index can go too and is read from the card on next use.
+    tomato_cache_pack_setup(read_pico_sd_generation, card_free_bytes);
+    mem_reclaim_register(cpack_release);
 
     app_loop_run(&(app_loop_config_t){
         .hl = &hl,
