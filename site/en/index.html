@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Treader · Reading firmware for Read Pico</title>
-<meta name="description" content="Treader is open-source e-ink reading firmware for Read Pico: TXT/EPUB reading, CBZ comics, Tomato (Fanqie novels), RedNote, Weibo and Hupu. Flash it right in your browser; the firmware is read locally and never uploaded.">
+<meta name="description" content="Treader is open-source e-ink reading firmware for Read Pico: TXT/EPUB reading, CBZ comics, Tomato (Fanqie novels), WeRead, RedNote, Weibo and Hupu. Flash it right in your browser; the firmware is read locally and never uploaded.">
 <link rel="alternate" hreflang="zh-CN" href="../">
 <link rel="alternate" hreflang="en" href="./">
 <style>
@@ -217,7 +217,7 @@
   <div class="wrap">
     <span class="eyebrow">Read Pico · open-source reading firmware · Android apps</span>
     <h1>A reading system<br>redesigned for e-ink</h1>
-    <p class="sub">Local TXT / EPUB, CBZ comics and Tomato (Fanqie novels), plus RedNote, Weibo and Hupu, all laid out anew for a 4.7-inch 16-level grayscale screen and the ESP32-S3. Flash it right in your browser; the firmware file never leaves your computer.</p>
+    <p class="sub">Local TXT / EPUB, CBZ comics, Tomato (Fanqie novels) and WeRead, plus RedNote, Weibo and Hupu, all laid out anew for a 4.7-inch 16-level grayscale screen and the ESP32-S3. Flash it right in your browser; the firmware file never leaves your computer.</p>
     <p class="sub">It is more than firmware for the Pico: Tomato, RedNote and Weibo each have an Android app with grayscale pages, page-by-page turning and the same layout as the device, so your phone reads like an e-ink screen too. Tomato reading progress and bookshelf also sync with the Pico over WebDAV. There are offline two-step codes as well: the Authenticator on the device, plus an Android app that can send accounts to the Pico.</p>
     <div class="cta">
       <a class="btn solid" href="#flash">Flash in browser</a>
@@ -251,6 +251,23 @@
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>Hupu</h3><p>Recommended, followed boards, scores and player ratings, threads and top-voted replies; no sign-in and no server needed.</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>Transfer</h3><p>Upload books, fonts and comics from a web page over Wi-Fi, or connect a USB cable and copy straight to the SD card as a USB drive.</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>Sync &amp; updates</h3><p>WebDAV syncs reading progress and the Tomato bookshelf. Tap "Check for updates" on the device to upgrade online (downloaded to the SD card first, resumes after interruptions, written only after it verifies), or put the firmware on the SD card to upgrade; if it fails to boot, it rolls back to the previous version automatically.</p></div>
+    </div>
+    <div class="feat wide" id="weread">
+      <div>
+        <div class="ic"><svg><use href="#i-book"/></svg></div>
+        <h3>WeRead · your shelf on the device</h3>
+        <p>Turn it on in Settings and the Store gets a Tomato / WeRead switch. Scan the QR code on the device with WeChat to sign in, sync your WeRead shelf with covers, and download any book whole into the library to read offline. No server of your own is needed; the device talks to WeRead directly.</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/README.en.md">Details</a>
+        </div>
+      </div>
+      <ul>
+        <li>TXT by default, text only: long books download in two parallel streams, a thousand-plus chapters in about ten minutes; the cover is saved and shows in the library</li>
+        <li>Books that need illustrations and layout can be downloaded as EPUB instead (set in Settings), which is slower</li>
+        <li>Read-only: reading progress and notes are never uploaded, and deleting a book on the device leaves your WeRead shelf alone</li>
+        <li>The sign-in is stored on the SD card encrypted with this device's own key, so the card cannot be read elsewhere</li>
+        <li>Only books your account can read; it uses unofficial web interfaces and may break when WeRead changes. The protocol engine comes from the open-source <a href="https://github.com/0x1abin/crossmux">CrossMux</a> project (MIT)</li>
+      </ul>
     </div>
     <div class="feat wide" id="webtoon">
       <div>
@@ -493,7 +510,7 @@
 <footer>
   <div class="wrap">
     <span>Treader · open-source reading firmware · based on the MindReset Read Pico example firmware · flashing done by Espressif's <a href="https://github.com/espressif/esptool-js">esptool-js</a></span>
-    <span>Unofficial firmware, not affiliated with MindReset, Tomato (Fanqie novels), RedNote or Weibo. Flashing carries risk; back up first.</span>
+    <span>Unofficial firmware, not affiliated with MindReset, Tomato (Fanqie novels), WeRead, RedNote or Weibo. Flashing carries risk; back up first.</span>
   </div>
 </footer>
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Treader · 小纸 Pico 阅读固件</title>
-<meta name="description" content="Treader 是给小纸 Pico 用的开源墨水屏阅读固件：TXT/EPUB 阅读、CBZ 漫画、番茄小说、小红书、微博、虎扑。在浏览器里直接刷机，固件只在本机读取，不会上传。">
+<meta name="description" content="Treader 是给小纸 Pico 用的开源墨水屏阅读固件：TXT/EPUB 阅读、CBZ 漫画、番茄小说、微信读书、小红书、微博、虎扑。在浏览器里直接刷机，固件只在本机读取，不会上传。">
 <style>
   :root {
     --bg: #f5f4ef; --paper: #fbfaf6; --card: #ffffff; --ink: #141414; --mid: #67665f; --soft: #8d8b83;
@@ -215,7 +215,7 @@
   <div class="wrap">
     <span class="eyebrow">小纸 Pico · Read Pico 开源阅读固件 · 安卓 App</span>
     <h1>为墨水屏<br>重新设计的阅读系统</h1>
-    <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
+    <p class="sub">本地 TXT / EPUB、CBZ 漫画、番茄小说、微信读书，再加上小红书、微博、虎扑——全部为 4.7 寸 16 级灰度屏和 ESP32-S3 重新排版。浏览器里就能刷机，固件文件不会离开你的电脑。</p>
     <p class="sub">不只是 Pico 上的固件：番茄小说、小红书、微博各有一个安卓 App，黑白灰度、按页翻、和设备一样的排版，在手机上也是墨水屏的阅读体验；番茄的阅读进度和书架还能用 WebDAV 和 Pico 互通。还有离线的两步验证码：设备上的验证器，加上能把账号发送到 Pico 的安卓 App。</p>
     <div class="cta">
       <a class="btn solid" href="#flash">在线刷机</a>
@@ -249,6 +249,23 @@
       <div class="feat"><div class="ic"><svg><use href="#i-ball"/></svg></div><h3>虎扑</h3><p>推荐、关注专区、比分和球员评分，帖子和“亮了”回复；不登录、不需要服务器。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-wifi"/></svg></div><h3>传书</h3><p>Wi-Fi 网页上传书、字体和漫画；或者用数据线把 TF 卡当 U 盘直接拷。</p></div>
       <div class="feat"><div class="ic"><svg><use href="#i-sync"/></svg></div><h3>同步与升级</h3><p>WebDAV 同步阅读进度和番茄书架；设备上点“检查更新”就能在线升级（先下到 TF 卡，断了接着下，校验通过才写入），也可以把固件放进 TF 卡升级，起不来自动退回旧版。</p></div>
+    </div>
+    <div class="feat wide" id="weread">
+      <div>
+        <div class="ic"><svg><use href="#i-book"/></svg></div>
+        <h3>微信读书 · 书架下到设备上</h3>
+        <p>在设置里打开后，书城顶上多出“番茄 / 微信读书”切换。设备上出二维码，手机微信扫码确认就登录，同步你在微信读书里的书架（带封面），点一本整本下载进书库，离线阅读。不需要自建服务器，设备直连微信读书。</p>
+        <div class="row">
+          <a class="btn small" href="https://github.com/bidabrain/treader-eink/blob/main/docs/TREADER.md#微信读书">说明</a>
+        </div>
+      </div>
+      <ul>
+        <li>默认下成 TXT，只要文字：长书分两路同时下，一千多章十来分钟；封面另存，书库里照样显示</li>
+        <li>需要插图和排版的书可以在设置里改成 EPUB，慢一些</li>
+        <li>只读：不上传阅读进度和笔记；在设备上删书不影响微信读书的书架，随时可以再下</li>
+        <li>登录信息用这台设备自己的钥匙加密存在 TF 卡上，卡拿到别处解不开</li>
+        <li>只能下你的账号能读的书；用的是网页版的非官方接口，改版后可能失效。协议引擎来自开源项目 <a href="https://github.com/0x1abin/crossmux">CrossMux</a>（MIT）</li>
+      </ul>
     </div>
     <div class="feat wide" id="webtoon">
       <div>
@@ -490,7 +507,7 @@
 <footer>
   <div class="wrap">
     <span>Treader · 开源阅读固件 · 基于 MindReset Read Pico 示例固件 · 刷写由 Espressif 的 <a href="https://github.com/espressif/esptool-js">esptool-js</a> 完成</span>
-    <span>非官方固件，与 MindReset、番茄小说、小红书、微博没有隶属关系。刷机有风险，请先备份。</span>
+    <span>非官方固件，与 MindReset、番茄小说、微信读书、小红书、微博没有隶属关系。刷机有风险，请先备份。</span>
   </div>
 </footer>
 
