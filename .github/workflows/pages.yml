@@ -27,10 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v6
-      # 截图只在 docs/images 存一份，发布时复制；英文页的截图在 docs/images/en。/ Screenshots live only in docs/images
-      # and are copied at publish time; the English page's are in docs/images/en.
+      # 截图只在 docs/images 存一份，发布时复制；英文页的截图在 docs/images/en，实机照片在 docs/images/device。
+      # / Screenshots live only in docs/images and are copied at publish time; the English page's are in
+      # docs/images/en, device photos in docs/images/device.
       - name: Copy screenshots
-        run: mkdir -p site/img/en && cp docs/images/*.png site/img/ && cp docs/images/en/*.png site/img/en/
+        run: |
+          mkdir -p site/img/en site/img/device
+          cp docs/images/*.png site/img/ && cp docs/images/en/*.png site/img/en/
+          cp docs/images/device/*.jpg site/img/device/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

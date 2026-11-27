@@ -80,6 +80,14 @@
   .shot { background: #ecebe6; border: 1px solid var(--line); border-radius: 22px; overflow-x: auto; }
   .shot img { min-width: 900px; width: 100%; }
   .shot-note { color: var(--mid); font-size: 14px; margin-top: 12px; }
+  .photos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin: 0; }
+  .photos figure { margin: 0; }
+  .photos img { display: block; width: 100%; height: auto; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 16px; border: 1px solid var(--line); background: #ecebe6; }
+  .photos figcaption { text-align: center; color: var(--mid); font-size: 14px; margin-top: 8px; }
+  @media (max-width: 760px) {
+    .photos { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 58%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+    .photos figure { scroll-snap-align: start; }
+  }
 
   /* 生态 / Ecosystem */
   .eco { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -326,6 +334,21 @@
     </div>
     <div class="shot"><img id="shotImg" src="../img/en/screens-reading.png" width="1508" height="708" alt="Treader screenshots"></div>
     <p class="shot-note">The screenshots are drawn by the firmware's real UI code, with demo content. For what each page does, see the <a href="https://github.com/bidabrain/treader-eink/blob/main/docs/design/ui.html">design mockups</a> (download and open in a browser).</p>
+  </section>
+
+  <section id="photos">
+    <div class="head">
+      <small>ON THE DEVICE</small>
+      <h2>Photos of the real thing</h2>
+      <p>Shot straight off a Read Pico: what the 16-gray e-ink panel actually looks like (Chinese UI shown).</p>
+    </div>
+    <div class="photos">
+      <figure><img src="../img/device/device-library.jpg" width="723" height="1280" loading="lazy" alt="Library: continue reading and the cover shelf"><figcaption>Library</figcaption></figure>
+      <figure><img src="../img/device/device-comics.jpg" width="729" height="1280" loading="lazy" alt="My comics: series covers and WEBTOON follow-along"><figcaption>Comics</figcaption></figure>
+      <figure><img src="../img/device/device-xhs.jpg" width="724" height="1280" loading="lazy" alt="Xiaohongshu recommendations"><figcaption>Xiaohongshu</figcaption></figure>
+      <figure><img src="../img/device/device-weibo.jpg" width="707" height="1280" loading="lazy" alt="Weibo following feed with thumbnails"><figcaption>Weibo</figcaption></figure>
+      <figure><img src="../img/device/device-lock.jpg" width="717" height="1280" loading="lazy" alt="Daily tarot on the wallpaper lock screen"><figcaption>Lock screen &amp; daily tarot</figcaption></figure>
+    </div>
   </section>
 
   <section id="eco">
