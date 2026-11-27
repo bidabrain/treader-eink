@@ -55,10 +55,11 @@ static void ttf_free(void* ptr, void* userdata) {
 #pragma GCC diagnostic pop
 
 /* ---- 调参 / Tunables ---- */
-// 光栅化位图 LRU 上限，PSRAM。原来是 1.5 MB；字形放进专用区后改成 1 MB，省下的留给全屏图。
-// Raster bitmap LRU cap, PSRAM. It was 1.5 MB; with glyphs in their own arena it is now 1 MB, leaving the rest for
-// full-screen images.
-#define TTF_CACHE_LIMIT (1024 * 1024)
+// 光栅化位图 LRU 上限，PSRAM。原来是 1.5 MB，放进专用区后 1 MB；位图改成每像素 4 位（屏幕只有 16 级灰）后同样的字
+// 只占一半，上限再减到 512 KB，省下的留给全屏图。
+// Raster bitmap LRU cap, PSRAM. It was 1.5 MB, then 1 MB in the arena; with 4-bit pixels (the panel has 16 grays) the
+// same glyphs take half, so the cap is now 512 KB and the rest goes to full-screen images.
+#define TTF_CACHE_LIMIT (512 * 1024)
 // 字形缓存的专用区：上限再加 1/8 给每块的管理开销和区内零碎。/ The glyph cache arena: the cap plus 1/8 for per-block
 // overhead and slack inside the arena.
 #define TTF_ARENA_BYTES (TTF_CACHE_LIMIT + TTF_CACHE_LIMIT / 8)
@@ -107,7 +108,7 @@ typedef struct glyph_entry {
     int16_t left;
     int16_t top;
     int16_t advance_x;
-    uint8_t* bitmap;
+    uint8_t* bitmap;       // 每像素 4 位，偶数列在高半字节，每行 (width+1)/2 字节 / 4 bits a pixel, even columns in the high nibble, (width+1)/2 bytes a row
     size_t bitmap_bytes;
     struct glyph_entry* hash_next;
     struct glyph_entry* lru_prev;
@@ -1740,6 +1741,42 @@ static int glyph_index(uint32_t codepoint) {
     return 0;
 }
 
+static void ttf_cover_lut_init(void);
+static uint8_t s_cover[256];
+
+// 光栅化用的 8 位临时图，留着复用，只在更大的字形来时变大。/ The 8-bit raster scratch, kept for reuse and grown only
+// for a bigger glyph.
+static uint8_t* raster_scratch(size_t n) {
+    static uint8_t* buf;
+    static size_t cap;
+    if (n <= cap) return buf;
+    uint8_t* grown = heap_caps_realloc(buf, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (grown == NULL) return NULL;
+    buf = grown;
+    cap = n;
+    return buf;
+}
+
+// 8 位覆盖率按屏上的伽马换成 16 级墨量，两像素一字节。黑字白底、白字黑底和原来逐像素一样，灰字边缘至多差一级。
+// Turn 8-bit coverage into 16 ink levels through the panel gamma, two pixels a byte. Black on white and white on black
+// match the old output pixel for pixel; gray text edges differ by at most one level.
+static void pack_levels(const uint8_t* raw, int width, int height, uint8_t* out) {
+    ttf_cover_lut_init();
+    const int stride = (width + 1) / 2;
+    memset(out, 0, (size_t)stride * height);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            const uint8_t level = (uint8_t)(s_cover[raw[(size_t)y * width + x]] * 15 / 255);
+            out[(size_t)y * stride + x / 2] |= (x & 1) ? level : (uint8_t)(level << 4);
+        }
+    }
+}
+
+static inline uint8_t glyph_level(const glyph_entry_t* glyph, int gx, int gy) {
+    const uint8_t b = glyph->bitmap[(size_t)gy * ((glyph->width + 1) / 2) + gx / 2];
+    return (gx & 1) ? (b & 15) : (b >> 4);
+}
+
 static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
     int gid = glyph_index(codepoint);
     if (!pack_glyph_tree(gid)) return NULL;
@@ -1753,8 +1790,11 @@ static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
     if (width < 0) width = 0;
     if (height < 0) height = 0;
 
-    size_t bitmap_bytes = (size_t)width * (size_t)height;
+    const size_t raw_bytes = (size_t)width * (size_t)height;
+    const size_t bitmap_bytes = (size_t)((width + 1) / 2) * (size_t)height;
     cache_reserve(bitmap_bytes + sizeof(glyph_entry_t));
+    uint8_t* raw = raw_bytes > 0 ? raster_scratch(raw_bytes) : NULL;
+    if (raw_bytes > 0 && raw == NULL) return NULL;
 
     glyph_entry_t* entry = glyph_alloc_evicting(sizeof(*entry));
     if (entry == NULL) return NULL;
@@ -1766,9 +1806,8 @@ static glyph_entry_t* rasterize_glyph(uint32_t codepoint, int pixel_height) {
             glyph_free(entry);
             return NULL;
         }
-        stbtt_MakeGlyphBitmap(
-            &font_info, entry->bitmap, width, height, width, scale, scale, gid
-        );
+        stbtt_MakeGlyphBitmap(&font_info, raw, width, height, width, scale, scale, gid);
+        pack_levels(raw, width, height, entry->bitmap);
     }
 
     int advance = 0;
@@ -2107,8 +2146,8 @@ int ttf_text_width_px(int pixel_height, const char* text) {
     return measure_width(clamp_px(pixel_height), text);
 }
 
-// 线性抗锯齿的中间灰在这块屏上偏亮。按 TTF_COVER_GAMMA 抬覆盖率，半透明边缘更深。
-static uint8_t s_cover[256];
+// 线性抗锯齿的中间灰在这块屏上偏亮。按 TTF_COVER_GAMMA 抬覆盖率，半透明边缘更深。/ Linear antialiasing grays look
+// light on this panel; TTF_COVER_GAMMA lifts coverage so soft edges darken.
 
 /* ---- 绘制 / Draw ---- */
 static void ttf_cover_lut_init(void) {
@@ -2124,8 +2163,8 @@ static void ttf_cover_lut_init(void) {
     ready = true;
 }
 
-static uint8_t mix_ink(uint8_t alpha, uint8_t fg, uint8_t bg) {
-    return (uint8_t)(bg + s_cover[alpha] * ((int)fg - (int)bg) / 255);
+static uint8_t mix_ink(uint8_t level, uint8_t fg, uint8_t bg) {
+    return (uint8_t)(bg + level * ((int)fg - (int)bg) / 15);
 }
 
 void ttf_draw_text(
@@ -2140,7 +2179,6 @@ void ttf_draw_text_px(
     enum EpdFontFlags align, uint8_t fg, uint8_t bg
 ) {
     if (!font_ready || framebuffer == NULL || text == NULL) return;
-    ttf_cover_lut_init();
     pixel_height = clamp_px(pixel_height);
     warm_text_io(pixel_height, text);
 
@@ -2161,10 +2199,10 @@ void ttf_draw_text_px(
             for (int gy = 0; gy < glyph->height; gy++) {
                 int yy = y - glyph->top + gy;
                 for (int gx = 0; gx < glyph->width; gx++) {
-                    uint8_t alpha = glyph->bitmap[gy * glyph->width + gx];
-                    if (alpha == 0) continue;
+                    const uint8_t level = glyph_level(glyph, gx, gy);
+                    if (level == 0) continue;
                     epd_draw_pixel(
-                        cursor_x + glyph->left + gx, yy, mix_ink(alpha, fg, bg) << 4, framebuffer
+                        cursor_x + glyph->left + gx, yy, mix_ink(level, fg, bg) << 4, framebuffer
                     );
                 }
             }
@@ -2198,8 +2236,9 @@ void ttf_draw_text_px_bw(
             for (int gy = 0; gy < glyph->height; gy++) {
                 int yy = y - glyph->top + gy;
                 for (int gx = 0; gx < glyph->width; gx++) {
-                    uint8_t alpha = glyph->bitmap[gy * glyph->width + gx];
-                    uint8_t ink = alpha >= 128 ? fg : bg;
+                    // 原来是 8 位覆盖率过半；换成墨量是 10 级以上（只差覆盖率 128、129 两档）。/ Was 8-bit
+                    // coverage at half or more; as ink that is level 10 and up (only coverage 128 and 129 differ).
+                    uint8_t ink = glyph_level(glyph, gx, gy) >= 10 ? fg : bg;
                     if (ink == bg) continue;
                     epd_draw_pixel(cursor_x + glyph->left + gx, yy, ink << 4, framebuffer);
                 }

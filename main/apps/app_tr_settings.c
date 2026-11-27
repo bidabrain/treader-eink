@@ -129,7 +129,7 @@ typedef struct {
 } row_t;
 
 enum {
-    R_SIZE, R_FONT, R_WALL, R_TURN, R_FTURN, R_DEPTH,
+    R_SIZE, R_FONT, R_WALL, R_TAROT, R_TURN, R_FTURN, R_DEPTH,
     R_SRV, R_STORE, R_WEB, R_URL, R_TOKEN, R_TEST, R_LIST, R_MORE, R_WT_LANG, R_WT_SIMP, R_WT_MAX,
     R_DAV, R_DAV_SYNC,
     R_SLEEP, R_IDLE, R_PIN, R_TIME, R_CARD, R_ABOUT,
@@ -142,9 +142,10 @@ static const row_t DISPLAY_ROWS[] = {
     {R_SIZE, NULL, "显示大小", 190},
     {R_FONT, NULL, "字体", 262},
     {R_WALL, NULL, "锁屏壁纸", 334},
-    {R_TURN, NULL, "翻页区域", 406},
-    {R_FTURN, NULL, "翻页刷新", 478},
-    {R_DEPTH, NULL, "文字深浅", 550},
+    {R_TAROT, NULL, "今日塔罗", 406},
+    {R_TURN, NULL, "翻页区域", 478},
+    {R_FTURN, NULL, "翻页刷新", 550},
+    {R_DEPTH, NULL, "文字深浅", 622},
 };
 // 看书时的翻页区域：名称和一句说明，顺序同 app_turn_zone_t。/ Reader tap zones: name and one-line note, in
 // app_turn_zone_t order.
@@ -900,6 +901,8 @@ static void draw_rows(uint8_t* fb, const row_t* rows, int n) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, s_web_on);
         } else if (r->id == R_TAUTO) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_time_auto());
+        } else if (r->id == R_TAROT) {
+            draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_tarot());
         } else if (r->id == R_HIMG) {
             draw_switch(fb, TR_W - TR_MARGIN, y + (h - TR_S(54)) / 2, app_settings_hupu_images());
         } else if (r->id == R_PX_ON) {
@@ -1972,6 +1975,10 @@ static app_redraw_t touch_row(app_ctx_t* ctx, int id) {
         return open_page(P_TSET);
     case R_CARD: ctx->request_app = &app_tr_card; return APP_REDRAW_NONE;
     case R_ABOUT: s_about_page = 0; return open_page(P_ABOUT);
+    case R_TAROT:
+        app_settings_set_tarot(!app_settings_tarot());
+        snprintf(s_message, sizeof(s_message), app_settings_tarot() ? "锁屏壁纸上显示今日塔罗" : "已关闭今日塔罗");
+        return APP_REDRAW_PAGE;
     case R_PX_ON:
         if (!s_px.on && (!s_px.host[0] || !s_px.port)) {
             snprintf(s_message, sizeof(s_message), "先填代理地址");

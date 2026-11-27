@@ -26,6 +26,7 @@
 #define NVS_KEY_WAKE "lwake"
 #define NVS_KEY_BOOT "lboot"
 #define NVS_KEY_PICKUP "pickup"
+#define NVS_KEY_TAROT "tarot_on"
 #define NVS_KEY_SHELF_GRID "shelfgrid"
 #define NVS_KEY_FAST_TURN "fastturn"
 #define NVS_KEY_TEXT_DEPTH "txtdepth2"
@@ -61,6 +62,7 @@ static char s_font[FONT_PATH_MAX];
 static uint8_t s_last_wake;
 static uint8_t s_last_boot;
 static bool s_pickup_wake;
+static bool s_tarot = true;
 static bool s_shelf_grid;
 static bool s_fast_turn;
 static uint8_t s_text_depth;
@@ -154,6 +156,8 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_BOOT, &boot) == ESP_OK) s_last_boot = boot;
     uint8_t pickup = 0;
     if (nvs_get_u8(h, NVS_KEY_PICKUP, &pickup) == ESP_OK) s_pickup_wake = pickup != 0;
+    uint8_t tarot = 1;
+    if (nvs_get_u8(h, NVS_KEY_TAROT, &tarot) == ESP_OK) s_tarot = tarot != 0;
     uint8_t grid = 0;
     if (nvs_get_u8(h, NVS_KEY_SHELF_GRID, &grid) == ESP_OK) s_shelf_grid = grid != 0;
     uint8_t fast = 0;
@@ -290,6 +294,16 @@ void app_settings_set_pickup_wake(bool on) {
     if (s_pickup_wake == on) return;
     s_pickup_wake = on;
     nvs_put_u8(NVS_KEY_PICKUP, on ? 1 : 0);
+}
+
+bool app_settings_tarot(void) {
+    return s_tarot;
+}
+
+void app_settings_set_tarot(bool on) {
+    if (s_tarot == on) return;
+    s_tarot = on;
+    nvs_put_u8(NVS_KEY_TAROT, on ? 1 : 0);
 }
 
 bool app_settings_shelf_grid(void) {

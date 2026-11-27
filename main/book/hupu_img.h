@@ -35,5 +35,10 @@ void hupu_img_drop_pending(void);
 /// 释放内存里的全部图（离开虎扑页时调用）。/ Free all in-memory images (when leaving the Hupu page).
 void hupu_img_release(void);
 
+/// 只放掉内存里的图（TF 卡上都有缓存，用时读回），排队和失败记录不动；给 mem_reclaim 用。
+/// Drop only the images in memory (all cached on the card and read back when needed), keeping the queue and failure
+/// records; for mem_reclaim.
+void hupu_img_trim(void);
+
 /// 把 w×h 灰度像素抖动画到 (x, y)，border 时加双线框。/ Dither w x h gray pixels at (x, y), with a double frame if border.
 void hupu_img_draw(uint8_t* fb, int x, int y, int w, int h, const uint8_t* px, bool border);

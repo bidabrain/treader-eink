@@ -62,6 +62,17 @@ bool book_screen_build(const char* image_path);
 uint8_t* book_screen_load(const char* image_path);
 /// 把全屏缓冲画进 fb。/ Paint a full-screen buffer into fb.
 void book_screen_draw(uint8_t* fb, const uint8_t* packed);
+/// 亮度表的格子边长和行列数：每格是那 16×16 像素的平均灰度（0 黑～255 白）。/ Luminance grid cell size and
+/// dimensions: each cell is the mean gray of its 16x16 pixels (0 black to 255 white).
+#define BOOK_SCREEN_LUM_CELL 16
+#define BOOK_SCREEN_LUM_W ((BOOK_SCREEN_W + BOOK_SCREEN_LUM_CELL - 1) / BOOK_SCREEN_LUM_CELL)
+#define BOOK_SCREEN_LUM_H ((BOOK_SCREEN_H + BOOK_SCREEN_LUM_CELL - 1) / BOOK_SCREEN_LUM_CELL)
+/// 不整张读进内存，从 TF 卡上的全屏缓存一段段读着画进 fb（只用几 KB）；lum 非空时顺便填好亮度表
+/// （BOOK_SCREEN_LUM_W × BOOK_SCREEN_LUM_H）。没有新鲜缓存或读错返回 false，fb 可能画了一半。
+/// Paint the card's full-screen cache into fb a strip at a time without loading it whole (a few KB); with lum set,
+/// also fill the luminance grid (BOOK_SCREEN_LUM_W x BOOK_SCREEN_LUM_H). False without a fresh cache or on a read
+/// error, possibly with fb half painted.
+bool book_screen_draw_file(uint8_t* fb, const char* image_path, uint8_t* lum);
 /// 是不是能当壁纸的图片（JPEG/PNG）。/ Whether a file name is a usable image (JPEG/PNG).
 bool book_image_name(const char* name);
 

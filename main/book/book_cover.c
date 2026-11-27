@@ -558,17 +558,20 @@ bool book_screen_build(const char* image) {
     uint8_t* data = file_bytes(image, &len);
     uint8_t* gray = NULL;
     uint16_t w = 0, h = 0;
-    bool ok = data && book_image_decode(data, len, 648u * 1000u, &gray, &w, &h);
+    // 直接解成铺满全屏的大小；正好是全屏大小时不再要一块全屏缓冲缩放。/ Decode straight to the size filling the
+    // screen; at exactly the screen size no second full-screen buffer is needed for scaling.
+    bool ok = data && book_image_decode_fit(data, len, BOOK_SCREEN_W, BOOK_SCREEN_H, true, &gray, &w, &h);
     heap_caps_free(data);
-    uint8_t* full = ok ? heap_caps_malloc((size_t)BOOK_SCREEN_W * BOOK_SCREEN_H, PSRAM_CAPS) : NULL;
+    const bool exact = ok && w == BOOK_SCREEN_W && h == BOOK_SCREEN_H;
+    uint8_t* full = !ok ? NULL : exact ? gray : heap_caps_malloc((size_t)BOOK_SCREEN_W * BOOK_SCREEN_H, PSRAM_CAPS);
     uint8_t* packed = full ? heap_caps_calloc(1, BOOK_SCREEN_BYTES, PSRAM_CAPS) : NULL;
     ok = packed != NULL;
     if (ok) {
-        fit_image(gray, w, h, full, BOOK_SCREEN_W, BOOK_SCREEN_H);
+        if (!exact) fit_image(gray, w, h, full, BOOK_SCREEN_W, BOOK_SCREEN_H);
         ok = dither_pack(full, packed);
     }
     free(gray);
-    heap_caps_free(full);
+    if (!exact) heap_caps_free(full);
     if (ok) {
         mkdir(COVER_ROOT, 0775);
         mkdir(SCREEN_DIR, 0775);
@@ -598,15 +601,49 @@ uint8_t* book_screen_load(const char* image) {
     return packed;
 }
 
-void book_screen_draw(uint8_t* fb, const uint8_t* packed) {
-    for (int y = 0; y < BOOK_SCREEN_H; y++) {
-        const uint8_t* row = packed + (size_t)y * (BOOK_SCREEN_W / 2);
+static void draw_rows(uint8_t* fb, const uint8_t* packed, int y0, int rows) {
+    for (int y = y0; y < y0 + rows; y++) {
+        const uint8_t* row = packed + (size_t)(y - y0) * (BOOK_SCREEN_W / 2);
         for (int x = 0; x < BOOK_SCREEN_W; x += 2) {
             const uint8_t b = row[x / 2];
             epd_draw_pixel(x, y, (uint8_t)((b >> 4) * 17), fb);
             epd_draw_pixel(x + 1, y, (uint8_t)((b & 0x0F) * 17), fb);
         }
     }
+}
+
+void book_screen_draw(uint8_t* fb, const uint8_t* packed) { draw_rows(fb, packed, 0, BOOK_SCREEN_H); }
+
+// 一条（至多 16 行）的每 16 列算一个平均灰度。/ One mean gray per 16 columns of a strip of up to 16 rows.
+static void lum_row(const uint8_t* packed, int rows, uint8_t* out) {
+    for (int c = 0; c < BOOK_SCREEN_LUM_W; c++) {
+        const int x0 = c * BOOK_SCREEN_LUM_CELL;
+        const int x1 = x0 + BOOK_SCREEN_LUM_CELL < BOOK_SCREEN_W ? x0 + BOOK_SCREEN_LUM_CELL : BOOK_SCREEN_W;
+        uint32_t sum = 0;
+        for (int y = 0; y < rows; y++) {
+            const uint8_t* row = packed + (size_t)y * (BOOK_SCREEN_W / 2);
+            for (int x = x0; x < x1; x += 2) sum += (row[x / 2] >> 4) + (row[x / 2] & 0x0F);
+        }
+        out[c] = (uint8_t)(sum * 17 / ((uint32_t)rows * (uint32_t)(x1 - x0)));
+    }
+}
+
+bool book_screen_draw_file(uint8_t* fb, const char* image, uint8_t* lum) {
+    enum { STRIP = BOOK_SCREEN_LUM_CELL };
+    FILE* f = image ? open_screen(image) : NULL;
+    if (!f) return false;
+    uint8_t* buf = heap_caps_malloc(STRIP * (BOOK_SCREEN_W / 2), MALLOC_CAP_DEFAULT);
+    bool ok = buf != NULL;
+    for (int y = 0; ok && y < BOOK_SCREEN_H; y += STRIP) {
+        const int rows = BOOK_SCREEN_H - y < STRIP ? BOOK_SCREEN_H - y : STRIP;
+        const size_t n = (size_t)rows * (BOOK_SCREEN_W / 2);
+        ok = fread(buf, 1, n, f) == n;
+        if (ok) draw_rows(fb, buf, y, rows);
+        if (ok && lum) lum_row(buf, rows, lum + (size_t)(y / STRIP) * BOOK_SCREEN_LUM_W);
+    }
+    heap_caps_free(buf);
+    fclose(f);
+    return ok;
 }
 
 void book_screen_prune(const char* keep) {

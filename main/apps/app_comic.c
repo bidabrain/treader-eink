@@ -39,6 +39,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "hupu_img.h"
+#include "mem_reclaim.h"
 #include "settings.h"
 #include "tomato.h"
 #include "tr_nav.h"
@@ -307,6 +308,15 @@ static void covers_release(void) {
     s_cover_scaled = NULL;
 }
 
+static void page_free(pagebuf_t* b);
+
+// 内存紧张时：放掉封面缓存和预解码的下一页（都能重做）。/ When memory runs short: drop the covers and the prefetched
+// next page (both rebuild).
+static void comic_reclaim(void) {
+    covers_release();
+    page_free(&s_buf[1]);
+}
+
 static cover_t* cover_find(const char* key) {
     for (int i = 0; i < COVER_SLOTS; i++)
         if (s_covers[i].key[0] && !strcmp(s_covers[i].key, key)) {
@@ -348,8 +358,10 @@ static int first_image(zip_reader_t* z) {
     return best;
 }
 
-// 解码 zip 里的一张图到灰度（不超过 648×1000）。/ Decode one zip image to gray (at most 648x1000).
-static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w, uint16_t* h) {
+// 解码 zip 里的一张图到灰度：box_w 为 0 时不超过 648×1000，否则等比装进 box_w×box_h。/ Decode one zip image to
+// gray: within 648x1000 when box_w is 0, else fitted inside box_w x box_h.
+static bool decode_entry(zip_reader_t* z, int entry, unsigned box_w, unsigned box_h, uint8_t** gray, uint16_t* w,
+                         uint16_t* h) {
     const size_t len = zip_entry_size(z, entry);
     // 大于 2 MB 的图要确认 PSRAM 放得下（原文件加解码还要的余量）。/ Images over 2 MB need room for the file plus decoding.
     if (!len || len > PAGE_INPUT_MAX) {
@@ -364,7 +376,8 @@ static bool decode_entry(zip_reader_t* z, int entry, uint8_t** gray, uint16_t* w
     uint8_t* data = heap_caps_malloc(len, PSRAM_CAPS);
     if (!data) { ESP_LOGW(TAG, "page %d: no memory for %u bytes", entry, (unsigned)len); return false; }
     const esp_err_t zerr = zip_extract(z, entry, data, len);
-    bool ok = zerr == ESP_OK && book_image_decode(data, len, 648u * 1000u, gray, w, h);
+    bool ok = zerr == ESP_OK && (box_w ? book_image_decode_fit(data, len, box_w, box_h, false, gray, w, h)
+                                       : book_image_decode(data, len, 648u * 1000u, gray, w, h));
     // 解不了的页记下是哪一步、多大、开头几个字节，真机上好查。/ Log which step failed, the size and the first bytes
     // of an undecodable page to diagnose on the device.
     if (!ok) ESP_LOGW(TAG, "page %d: %s, %u bytes, %02x %02x %02x %02x, psram free %u", entry,
@@ -444,7 +457,7 @@ static void cover_build(const comic_entry_t* e) {
         heap_caps_free(data);
     } else {
         if (zip_open(src, &z) == ESP_OK) entry = first_image(z);
-        ok = entry >= 0 && decode_entry(z, entry, &gray, &gw, &gh);
+        ok = entry >= 0 && decode_entry(z, entry, 0, 0, &gray, &gw, &gh);
         zip_close(z);
     }
     if (!ok) { c->failed = true; return; }
@@ -904,7 +917,16 @@ static void save_progress(bool flush) {
 static bool decode_page_once(pagebuf_t* b, int idx) {
     uint8_t* gray = NULL;
     uint16_t gw = 0, gh = 0;
-    if (!s_zip || idx < 0 || idx >= s_page_count || !decode_entry(s_zip, s_pages[idx], &gray, &gw, &gh)) return false;
+    if (!s_zip || idx < 0 || idx >= s_page_count || !decode_entry(s_zip, s_pages[idx], AREA_W, AREA_H, &gray, &gw, &gh))
+        return false;
+    // 原图不比屏幕小时解出来就是显示大小，直接用，不再要第二块缓冲。/ A source no smaller than the screen decodes at the
+    // display size; use it as is without a second buffer.
+    if ((gw == AREA_W && gh <= AREA_H) || (gh == AREA_H && gw <= AREA_W)) {
+        b->px = gray;
+        b->w = gw;
+        b->h = gh;
+        return true;
+    }
     float s = (float)AREA_W / gw;
     if ((float)AREA_H / gh < s) s = (float)AREA_H / gh;
     b->w = (int)(gw * s);
@@ -922,10 +944,11 @@ static bool decode_page_once(pagebuf_t* b, int idx) {
     return b->px != NULL;
 }
 
-// 当前页第一次没解出来（多半是 PSRAM 一时不够）：放掉字形缓存和书库封面缓存（用到再生成），再解一次；预解码的下一页
-// 不值得这样做，它失败了翻到时由 ensure_current 重解。/ A current page that fails once (mostly PSRAM briefly short):
-// free the glyph cache and the library cover cache (both rebuild on use) and decode once more; a prefetched next page
-// is not worth it, and ensure_current decodes it again when it is turned to.
+// 当前页第一次没解出来（多半是 PSRAM 一时不够）：放掉全系统能重建的缓存（包括这一页的封面和预解码的下一页），再解
+// 一次；预解码的下一页不值得这样做，它失败了翻到时由 ensure_current 重解。/ A current page that fails once (mostly
+// PSRAM briefly short): free every rebuildable cache in the system (this page's covers and prefetched next page
+// included) and decode once more; a prefetched next page is not worth it, and ensure_current decodes it again when it
+// is turned to.
 static void decode_page(pagebuf_t* b, int idx) {
     const bool current = b == &s_buf[0];
     for (int attempt = 0;; attempt++) {
@@ -935,11 +958,8 @@ static void decode_page(pagebuf_t* b, int idx) {
         page_free(b);
         b->idx = idx;
         if (attempt > 0 || !current) break;
-        const size_t before = heap_caps_get_largest_free_block(PSRAM_CAPS);
-        ttf_font_cache_clear();
-        book_cover_release();
-        ESP_LOGW(TAG, "page %d: retrying after freeing caches, largest block %u -> %u", idx, (unsigned)before,
-                 (unsigned)heap_caps_get_largest_free_block(PSRAM_CAPS));
+        ESP_LOGW(TAG, "page %d: retrying after reclaiming", idx);
+        mem_reclaim("comic page");
     }
     b->failed = true;
 }
@@ -1754,6 +1774,7 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
 }
 
 static void on_enter(app_ctx_t* ctx) {
+    mem_reclaim_register(comic_reclaim);
     (void)ctx;
     if (!s_shelf) s_shelf = heap_caps_calloc(COMIC_SHELF_MAX, sizeof(*s_shelf), PSRAM_CAPS);
     if (!s_vols) s_vols = heap_caps_calloc(COMIC_VOLUME_MAX, COMIC_NAME_MAX, PSRAM_CAPS);
@@ -1800,6 +1821,7 @@ static void on_enter(app_ctx_t* ctx) {
 
 static void comic_on_exit(app_ctx_t* ctx) {
     (void)ctx;
+    mem_reclaim_unregister(comic_reclaim);
     auto_turn_set_active(false);
     save_progress(false);
     comic_progress_flush();

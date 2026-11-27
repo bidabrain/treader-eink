@@ -28,6 +28,11 @@
 // stb_image 的分配上限：按当时剩余 PSRAM 留 1.5 MB 余量，最少 4 MB、最多 8 MB。/ stb_image allocation cap: free PSRAM
 // minus a 1.5 MB margin, between 4 MB and 8 MB.
 static size_t IMAGE_HEAP_MAX = IMAGE_HEAP_MIN;
+// 这一次解码的输出框（锁内有效）：默认 648×1000 等比装进；book_image_decode_fit 换成调用方的框和铺满规则。
+// This decode's output box (valid under the lock): 648x1000 fit-inside by default; book_image_decode_fit swaps in the
+// caller's box and the fill rule.
+static unsigned s_box_w = 648, s_box_h = 1000;
+static bool s_cover;
 typedef union { size_t size; max_align_t align; } allocation_t;
 static size_t allocated;
 
@@ -80,6 +85,33 @@ static uint8_t png_paeth(int a, int b, int c) {
 // 非交错 PNG 边解压边还原：每次只留两行，按目标尺寸取样，大图也只占几十 KB；交错或 16 位的交给 stb_image。
 // Stream non-interlaced PNG: inflate and unfilter one row at a time, sampling straight into the target size, so even
 // large images need only tens of KB; interlaced or 16-bit images fall back to stb_image.
+// 等比装进 bw×bh，至少 1×1。/ Fit inside bw x bh keeping the aspect, at least 1x1.
+static void contain(uint64_t w, uint64_t h, unsigned bw, unsigned bh, unsigned* ow, unsigned* oh) {
+    if (w > bw) { h = h * bw / w; w = bw; }
+    if (h > bh) { w = w * bh / h; h = bh; }
+    *ow = w ? (unsigned)w : 1;
+    *oh = h ? (unsigned)h : 1;
+}
+
+void book_image_out_size(unsigned iw, unsigned ih, size_t budget, unsigned* ow, unsigned* oh) {
+    if (s_cover && iw && ih) {
+        uint64_t w = iw, h = ih;
+        // 两边都比框大才缩到刚好铺满；宽对齐时高够就按宽，否则按高。/ Shrink to just fill only when both sides exceed
+        // the box: match the width when the height still covers, else match the height.
+        if (w > s_box_w && h > s_box_h) {
+            const uint64_t at_w = h * s_box_w / w;
+            if (at_w >= s_box_h) { h = at_w; w = s_box_w; }
+            else { w = w * s_box_h / h; h = s_box_h; }
+        }
+        if (w * h <= budget) {
+            *ow = w ? (unsigned)w : 1;
+            *oh = h ? (unsigned)h : 1;
+            return;
+        }
+    }
+    contain(iw, ih, s_box_w, s_box_h, ow, oh);
+}
+
 typedef struct {
     unsigned w, h, type, bits, channels, dw, dh, dy, y;
     size_t row_n, filled, bpp;
@@ -185,12 +217,7 @@ static bool png_decode(const uint8_t* data, size_t len, size_t budget,
         at += n + 12;
     }
     if (!ended || !idat || (s.type == 3 && (!s.palette || s.trans_n > s.palette_n))) return false;
-    s.dw = s.w;
-    s.dh = s.h;
-    if (s.dw > 648) { s.dh = (unsigned)((uint64_t)s.dh * 648 / s.dw); s.dw = 648; }
-    if (s.dh > 1000) { s.dw = (unsigned)((uint64_t)s.dw * 1000 / s.dh); s.dh = 1000; }
-    if (!s.dw) s.dw = 1;
-    if (!s.dh) s.dh = 1;
+    book_image_out_size(s.w, s.h, budget, &s.dw, &s.dh);
     if ((size_t)s.dw * s.dh > budget) return false;
     s.row_n = ((size_t)s.w * s.channels * s.bits + 7) / 8;
     s.bpp = s.channels * s.bits / 8 ? s.channels * s.bits / 8 : 1;
@@ -289,11 +316,7 @@ static bool jpeg_decode(const uint8_t* data, size_t len, size_t budget,
     bool ok = false;
     if (jd_prepare(&jd, jpeg_read, work, 8192, &io) != JDR_OK || !jd.width || !jd.height ||
         jd.width > 8192 || jd.height > 8192 || (uint64_t)jd.width * jd.height > 16u * 1024u * 1024u) goto done;
-    io.width = jd.width; io.height = jd.height;
-    if (io.width > 648) { io.height = io.height * 648 / io.width; io.width = 648; }
-    if (io.height > 1000) { io.width = io.width * 1000 / io.height; io.height = 1000; }
-    if (!io.width) io.width = 1;
-    if (!io.height) io.height = 1;
+    book_image_out_size(jd.width, jd.height, budget, &io.width, &io.height);
     if ((size_t)io.width * io.height > budget) goto done;
     unsigned scale = 0;
     // 阅读插图允许至多两倍放大，优先在 JPEG 解码阶段降采样。/ Allow at most 2x enlargement to reduce work during JPEG decoding.
@@ -313,10 +336,11 @@ done:
 static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
                           uint8_t** pixels, uint16_t* width, uint16_t* height);
 
-// 插图和封面共用全局分配计数，必须一次只解一张；加锁后从哪个任务调用都安全。
-// Illustrations and covers share the global allocation count, so decode one at a time; the lock makes any caller task safe.
-bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
-                       uint8_t** pixels, uint16_t* width, uint16_t* height) {
+// 插图和封面共用全局分配计数和输出框，必须一次只解一张；加锁后从哪个任务调用都安全。
+// Illustrations and covers share the global allocation count and output box, so decode one at a time; the lock makes
+// any caller task safe.
+static bool decode_boxed(const uint8_t* data, size_t len, size_t budget, unsigned box_w, unsigned box_h, bool cover,
+                         uint8_t** pixels, uint16_t* width, uint16_t* height) {
 #ifdef ESP_PLATFORM
     static StaticSemaphore_t storage;
     static SemaphoreHandle_t lock;
@@ -325,12 +349,36 @@ bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
     if (!lock) lock = xSemaphoreCreateMutexStatic(&storage);
     portEXIT_CRITICAL(&init_lock);
     xSemaphoreTake(lock, portMAX_DELAY);
-    bool ok = decode_locked(data, len, budget, pixels, width, height);
-    xSemaphoreGive(lock);
-    return ok;
-#else
-    return decode_locked(data, len, budget, pixels, width, height);
 #endif
+    s_box_w = box_w;
+    s_box_h = box_h;
+    s_cover = cover;
+    bool ok = decode_locked(data, len, budget, pixels, width, height);
+    s_box_w = 648;
+    s_box_h = 1000;
+    s_cover = false;
+#ifdef ESP_PLATFORM
+    xSemaphoreGive(lock);
+#endif
+    return ok;
+}
+
+bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
+                       uint8_t** pixels, uint16_t* width, uint16_t* height) {
+    return decode_boxed(data, len, budget, 648, 1000, false, pixels, width, height);
+}
+
+bool book_image_decode_fit(const uint8_t* data, size_t len, unsigned box_w, unsigned box_h, bool cover,
+                           uint8_t** pixels, uint16_t* width, uint16_t* height) {
+    if (!box_w || !box_h || box_w > 16384 || box_h > 16384) {
+        if (pixels) *pixels = NULL;
+        if (width) *width = 0;
+        if (height) *height = 0;
+        return false;
+    }
+    const size_t area = (size_t)box_w * box_h;
+    return decode_boxed(data, len, area > 648u * 1000u ? area : 648u * 1000u, box_w, box_h, cover, pixels, width,
+                        height);
 }
 
 static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
@@ -355,11 +403,9 @@ static bool decode_locked(const uint8_t* data, size_t len, size_t budget,
     // Progressive JPEG and interlaced or 16-bit PNG decode whole: about 5 bytes per pixel, so size them to the cap.
     if (!stbi_info_from_memory(data, (int)len, &w, &h, &channels) ||
         w <= 0 || h <= 0 || (uint64_t)w * h * 5u > IMAGE_HEAP_MAX) return false;
-    int dw = w, dh = h;
-    if (dw > 648) { dh = (int)((int64_t)dh * 648 / dw); dw = 648; }
-    if (dh > 1000) { dw = (int)((int64_t)dw * 1000 / dh); dh = 1000; }
-    if (dw < 1) dw = 1;
-    if (dh < 1) dh = 1;
+    unsigned uw, uh;
+    book_image_out_size((unsigned)w, (unsigned)h, budget, &uw, &uh);
+    const int dw = (int)uw, dh = (int)uh;
     size_t size = (size_t)dw * dh;
     if (size > budget) return false;
     uint8_t* gray = stbi_load_from_memory(data, (int)len, &w, &h, &channels, 2);

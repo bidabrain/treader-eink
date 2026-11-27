@@ -134,6 +134,9 @@ static void refresh_cands(tr_kbd_t* kbd) {
     kbd->cand_count = 0;
     kbd->cand_first = 0;
     if (composing_mode(kbd) && kbd->ime_ok && kbd->comp[0]) {
+        // 内存紧张时词库可能被 mem_reclaim 放掉了，用时再读回来。/ mem_reclaim may have dropped the lexicon when
+        // memory ran short; read it back when needed.
+        if (!pinyin_ime_ready()) pinyin_ime_load(NULL);
         kbd->cand_count = pinyin_ime_query(kbd->comp, kbd->mode == TR_KBD_T9 ? PINYIN_IME_T9 : PINYIN_IME_QWERTY,
                                            kbd->cands, TR_KBD_CANDS);
     }

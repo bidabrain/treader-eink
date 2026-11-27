@@ -24,6 +24,7 @@
 #include "epdiy.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "mem_reclaim.h"
 #include "tomato.h"
 
 #define TAG "hupu_img"
@@ -183,9 +184,14 @@ static uint8_t* build(const job_t* job, bool* known, size_t* len) {
              ((data[0] == 0xff && data[1] == 0xd8) || (data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G'));
     uint8_t* gray = NULL;
     uint16_t gw = 0, gh = 0;
-    const bool decoded = *known && book_image_decode(data, *len, 648u * 1000u, &gray, &gw, &gh);
+    // 直接解成铺满目标的大小：正好是目标大小（看大图都是）就不用再要一块缓冲缩放。
+    // Decode straight to the size that fills the target; when it is the target size (every full view is) no second
+    // buffer is needed for scaling.
+    const bool decoded = *known && book_image_decode_fit(data, *len, job->w, job->h, true, &gray, &gw, &gh);
     heap_caps_free(data);
-    uint8_t* px = decoded ? heap_caps_malloc((size_t)job->w * job->h, PSRAM_CAPS) : NULL;
+    if (!decoded) return NULL;
+    if (gw == job->w && gh == job->h) return gray;
+    uint8_t* px = heap_caps_malloc((size_t)job->w * job->h, PSRAM_CAPS);
     if (px) book_image_fill(gray, gw, gh, px, job->w, job->h);
     free(gray);
     return px;
@@ -200,13 +206,12 @@ bool hupu_img_tick(void) {
     size_t len;
     tomato_hupu_cache_lock();
     uint8_t* px = build(&job, &known, &len);
-    if (!px && known && mem_used()) {
-        // 文件没问题却解不出：多半是 PSRAM 一时不够。内存里的图在 TF 卡上都有缓存，放掉再试一次，用时再读回来。
-        // A sound file that will not build is most likely short on PSRAM. Images held in memory are all cached on the
-        // card, so free them and try once more; they are read back when needed.
-        const size_t held = mem_used();
-        for (int i = 0; i < SLOT_MAX; i++) free_slot(&s_slots[i]);
-        ESP_LOGW(TAG, "retry after freeing %u bytes: %s", (unsigned)held, job.jpg);
+    if (!px && known) {
+        // 文件没问题却解不出：多半是 PSRAM 一时不够。放掉全系统能重建的缓存（包括这里内存中的图，TF 卡上都有）再试一次。
+        // A sound file that will not build is most likely short on PSRAM. Free every rebuildable cache in the system
+        // (this module's in-memory images included; all are on the card) and try once more.
+        ESP_LOGW(TAG, "retry after reclaiming: %s", job.jpg);
+        mem_reclaim("hupu_img");
         px = build(&job, &known, &len);
     }
     if (px) {
@@ -237,6 +242,10 @@ bool hupu_img_pending(void) { return s_queue_count > 0; }
 void hupu_img_drop_pending(void) {
     s_queue_count = 0;
     s_built = false;
+}
+
+void hupu_img_trim(void) {
+    for (int i = 0; i < SLOT_MAX; i++) free_slot(&s_slots[i]);
 }
 
 void hupu_img_release(void) {

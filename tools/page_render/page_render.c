@@ -302,6 +302,8 @@ static void overlaps(char* out, size_t cap) {
             const int h = (a->y1 < b->y1 ? a->y1 : b->y1) - (a->y0 > b->y0 ? a->y0 : b->y0);
             if (w < 3 || h < 3) continue;
             if (s_bar_top && a->y0 >= s_bar_top && b->y0 >= s_bar_top) continue;   // 标签栏自己 / The bar itself
+            // 描边：同一段字错开几个像素重画。/ An outline: the same text redrawn a few pixels off.
+            if (!strcmp(a->what, b->what) && abs(a->x0 - b->x0) <= 8 && abs(a->y0 - b->y0) <= 8) continue;
             if (n++ < 6) {
                 const size_t len = strlen(out);
                 snprintf(out + len, cap - len, " [%s]x[%s]", a->what, b->what);

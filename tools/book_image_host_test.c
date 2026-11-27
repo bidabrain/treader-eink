@@ -69,6 +69,26 @@ int main(int argc,char** argv) {
         for(size_t p=0;p<(size_t)w*h;++p) assert(pixels[p]==128);
         free(data);free(pixels);
     }
+    // 直接解成显示大小：装进框、铺满框、铺满太大退回装进框、原图更小不放大。
+    // Decode straight to the display size: fit inside, fill, too-large fill falling back to fit, smaller sources kept.
+    const struct { int file; unsigned bw, bh; bool cover; unsigned w, h; } fits[]={
+        {0,684,1160,false,684,911},{0,684,911,true,684,911},{1,495,1100,true,495,1100},{1,120,120,true,120,266},
+        {1,684,300,true,135,300},{2,120,120,true,9,17},{1,684,1160,false,522,1160},
+    };
+    for(size_t i=0;i<sizeof(fits)/sizeof(fits[0]);++i) {
+        size_t len;uint8_t* data=read_file(argv[fits[i].file+4],&len),*pixels=NULL;uint16_t w,h;
+        assert(book_image_decode_fit(data,len,fits[i].bw,fits[i].bh,fits[i].cover,&pixels,&w,&h));
+        assert(w==fits[i].w && h==fits[i].h);
+        for(size_t p=0;p<(size_t)w*h;++p) assert(pixels[p]==128);
+        free(data);free(pixels);
+    }
+    // 解完恢复默认 648×1000 规则。/ The default 648x1000 rule is back afterwards.
+    {
+        size_t len;uint8_t* data=read_file(argv[4],&len),*pixels=NULL;uint16_t w,h;
+        assert(book_image_decode(data,len,1000000,&pixels,&w,&h) && w==648 && h==863);
+        assert(!book_image_decode_fit(data,len,0,10,true,&pixels,&w,&h) && !pixels && !w && !h);
+        free(data);
+    }
     book_epub_t* book=NULL;assert(book_epub_open(argv[3],&book)==ESP_OK);
     html_text_t text={0};assert(book_epub_load(book,0,&text)==ESP_OK);
     size_t decoded=0,refs=0;

@@ -3,6 +3,15 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-27 · Treader 1.2.16
+
+- 新增今日塔罗：设了锁屏壁纸时，锁屏下半部悬浮显示今天的塔罗牌（牌面、牌名、正逆位、关键词、今日讯息和建议），每行字按底下壁纸的明暗自动用黑字白边或白字黑边。牌义内置、不联网，同一天始终是同一张牌，换壁纸不影响。设置 → 显示与阅读 → 今日塔罗可以关掉（默认开）。
+  New daily tarot: with a lock wallpaper set, today's card floats over the lower half of the lock screen (card face, name, upright or reversed, keywords, today's message and advice), each line black with a white outline or white with a black one depending on the wallpaper beneath. Meanings are built in and need no network; the card stays the same all day and does not change with the wallpaper. Turn it off under Settings > Display & reading > Daily tarot (on by default).
+- 设了壁纸锁屏却显示书卡：锁屏时壁纸要一整块约 400 KB 的内存，内存零碎时申请不到就悄悄退回书卡。现在从 TF 卡上的壁纸缓存边读边画，只用几 KB；缓存要重建时内存不够会先放缓存再试，仍不行才显示书卡，串口日志写原因。
+  A set wallpaper could lock to the book card: the lock needed one ~400 KB block and quietly fell back when fragmented memory could not supply it. The lock now paints the card's wallpaper cache strip by strip with a few KB; a rebuild short of memory frees caches and retries, and only then shows the book card, logging why.
+- 更省内存，大图不容易“打不开”：X、小红书、微博看大图、漫画翻页和做壁纸都直接解成要显示的大小，不再先解一张 648×1000 再缩放（峰值少约 650 KB，整屏图也更清楚）；字形缓存改成每像素 4 位、上限从 1 MB 降到 512 KB，常驻内存少约 560 KB（黑字白底不变，灰字边缘至多差一级灰）；图片解不出时先放掉所有能从 TF 卡读回的缓存（书库封面、拼音词库、帖子图片、漫画封面和下一页）再试一次，词库用时自动读回。
+  Leaner memory so big images fail less: full views on X, Xiaohongshu and Weibo, comic pages and wallpapers decode straight to the display size instead of 648x1000 then scaling (about 650 KB less at peak, sharper full-screen images); the glyph cache stores 4 bits a pixel with its cap down from 1 MB to 512 KB, about 560 KB less resident (black on white unchanged, gray text edges at most one level off); an image that will not decode first frees every cache that can be read back from the card (library covers, pinyin lexicon, post images, comic covers and the next page) and retries, the lexicon reloading when needed.
+
 ## 2026-11-27 · Treader 1.2.15
 
 - 显示大小放大后，漫画书架和书库网格一页能放更多：100% 和 115% 都是每页 6 本（115% 封面缩小，“继续看 / 继续阅读”卡片保留），130% 每页 3 本、封面放大填满屏幕，不再下面空一大块。100% 的样子不变。

@@ -17,3 +17,13 @@
 /// size (sides up to 16384); progressive JPEG and interlaced or 16-bit PNG decode whole, capped by free PSRAM (~1-1.6 MP).
 bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
                        uint8_t** pixels, uint16_t* width, uint16_t* height);
+
+/// 直接解成要显示的大小，省掉先解 648×1000 再缩放的那块中间图。cover 为假时等比装进 box_w×box_h；为真时取刚好铺满
+/// box_w×box_h 的最小尺寸（调用方再居中裁切），超过 max(框面积, 648×1000) 时退回装进框里。都不放大原图，原图更小时
+/// 输出原图大小，调用方自己放大。规则和上限同 book_image_decode。
+/// Decode straight to the display size, skipping the 648x1000 intermediate that is scaled afterwards. With cover false
+/// the image fits inside box_w x box_h keeping its aspect; with cover true it is the smallest size filling box_w x box_h
+/// (the caller crops the center), falling back to fitting inside the box above max(box area, 648x1000). Neither enlarges
+/// the source: a smaller source comes back at its own size for the caller to enlarge. Otherwise as book_image_decode.
+bool book_image_decode_fit(const uint8_t* data, size_t len, unsigned box_w, unsigned box_h, bool cover,
+                           uint8_t** pixels, uint16_t* width, uint16_t* height);

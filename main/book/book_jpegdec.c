@@ -29,8 +29,6 @@
 
 #define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 #define SIDE_MAX 16384u
-#define OUT_W 648u
-#define OUT_H 1000u
 
 static unsigned be16(const uint8_t* p) { return (unsigned)p[0] << 8 | p[1]; }
 
@@ -163,11 +161,8 @@ bool book_jpegdec_decode(const uint8_t* data, size_t len, size_t budget,
                          uint8_t** pixels, uint16_t* width, uint16_t* height) {
     unsigned iw = 0, ih = 0;
     if (!pixels || !width || !height || len > INT32_MAX || !book_jpegdec_eligible(data, len, &iw, &ih)) return false;
-    unsigned w = iw, h = ih;
-    if (w > OUT_W) { h = (unsigned)((uint64_t)h * OUT_W / w); w = OUT_W; }
-    if (h > OUT_H) { w = (unsigned)((uint64_t)w * OUT_H / h); h = OUT_H; }
-    if (!w) w = 1;
-    if (!h) h = 1;
+    unsigned w, h;
+    book_image_out_size(iw, ih, budget, &w, &h);
     if ((size_t)w * h > budget) return false;
     unsigned scale = 0;
     // 至多两倍放大，与 tjpgd 路径一致。/ At most 2x enlargement, as on the tjpgd path.
