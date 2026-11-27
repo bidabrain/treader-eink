@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-27 · Treader 1.2.17
+
+- 页数多的 CBZ 漫画打开更快：打开时把包里所有文件名一次记在内存里，列图片、排序、查翻页方向不再一个个去 TF 卡读；TF 卡上的大文件打开 FAT 快速跳转，跳到文件里任意位置不用从头顺着簇链数，漫画翻页和大字体读字形也跟着变快。
+  Large CBZ comics open faster: opening keeps every file name in the archive in memory, so listing, sorting and checking the reading direction no longer read the TF card name by name; FAT fast seek on large card files jumps anywhere without walking the cluster chain from the start, which also speeds comic page turns and glyph reads from large fonts.
+
 ## 2026-11-27 · Treader 1.2.16
 
 - 新增今日塔罗：设了锁屏壁纸时，锁屏下半部悬浮显示今天的塔罗牌（牌面、牌名、正逆位、关键词、今日讯息和建议），每行字按底下壁纸的明暗自动用黑字白边或白字黑边。牌义内置、不联网，同一天始终是同一张牌，换壁纸不影响。设置 → 显示与阅读 → 今日塔罗可以关掉（默认开）。

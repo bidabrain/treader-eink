@@ -38,6 +38,13 @@ CONFIG_FREERTOS_HZ=1000
 # Pass long filenames to UI and fopen as UTF-8; on-disk LFN stays UTF-16 without a CP936 table.
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_API_ENCODING_UTF_8=y
+# 大文件（几百页的 CBZ、字体）里来回跳读：给只读打开的文件记一张簇位置表，不用每次从文件头顺着 FAT 链数；
+# 256 字能记 127 段，边下边写、碎成很多段的文件也够用（每个打开的文件约 1 KB）。
+# Seeking around large files (CBZ with hundreds of pages, fonts): keep a cluster map for read-only files instead of
+# walking the FAT chain from the start each time; 256 words hold 127 fragments, enough for files written piecemeal
+# while downloading (about 1 KB per open file).
+CONFIG_FATFS_USE_FASTSEEK=y
+CONFIG_FATFS_FAST_SEEK_BUFFER_SIZE=256
 
 # 传书热点；优先把网络缓冲放PSRAM，避免占用显示所需内部内存。
 # Transfer AP prefers PSRAM network buffers, preserving internal display memory.

@@ -22,9 +22,14 @@
 #define NAME_MAX_BYTES 1024U
 #define DIRECTORY_MAX (8U * 1024U * 1024U)
 #define DIRECTORY_WINDOW 65536U
+// 目录不超过这么大时，打开就把所有文件名留在内存里，之后取名字不再读卡（几百页的漫画约几十 KB）。
+// With a directory up to this size, opening keeps every name in memory so later lookups skip the card (tens of KB for
+// a comic of a few hundred pages).
+#define NAME_POOL_MAX (256U * 1024U)
 
 typedef struct {
     uint32_t name_pos, hash;
+    uint32_t name_off;   // 在名字池里的位置 / Offset in the name pool
     uint16_t name_len;
     uint32_t offset, packed, unpacked, crc;
     uint16_t method, flags;
@@ -33,6 +38,7 @@ typedef struct {
 struct zip_reader {
     FILE* file;
     zip_entry_t* entries;
+    char* names;   // 名字池，每个名字以 0 结尾；目录太大时为 NULL，名字从卡上读 / Name pool, each name NUL-ended; NULL for a large directory, names then come from the card
     uint32_t size, directory;
     uint16_t count;
     char name_scratch[NAME_MAX_BYTES + 1];
@@ -55,6 +61,10 @@ static int entry_compare(const void* a, const void* b) {
     return (x > y) - (x < y);
 }
 static bool entry_name(const zip_reader_t* z, const zip_entry_t* entry, char* out) {
+    if (z->names) {
+        memcpy(out, z->names + entry->name_off, entry->name_len + 1U);
+        return true;
+    }
     if (!read_at((zip_reader_t*)z, entry->name_pos, out, entry->name_len)) return false;
     out[entry->name_len] = 0;
     return true;
@@ -87,6 +97,7 @@ void zip_close(zip_reader_t* z) {
     if (z->file) fclose(z->file);
 
     free(z->entries);
+    free(z->names);
     free(z);
 }
 
@@ -136,7 +147,11 @@ esp_err_t zip_open(const char* path, zip_reader_t** out) {
     if (z->count) {
         z->entries = heap_caps_calloc(z->count, sizeof(*z->entries), PSRAM);
         if (!z->entries) { err = ESP_ERR_NO_MEM; goto fail; }
+        // 名字总长不会超过目录大小；分不到就照旧从卡上读。/ Names never exceed the directory size; without the
+        // memory, read them from the card as before.
+        if (dir_size <= NAME_POOL_MAX) z->names = heap_caps_malloc(dir_size, PSRAM);
     }
+    uint32_t pool_used = 0;
     uint32_t pos = z->directory;
     for (unsigned i = 0; i < z->count; ++i) {
         err = ESP_ERR_INVALID_SIZE;
@@ -174,6 +189,12 @@ esp_err_t zip_open(const char* path, zip_reader_t** out) {
         }
         if (memchr(h + 46, 0, name_len)) goto fail;
         entry->hash = name_hash((const char*)h + 46, name_len);
+        if (z->names) {
+            entry->name_off = pool_used;
+            memcpy(z->names + pool_used, h + 46, name_len);
+            z->names[pool_used + name_len] = 0;
+            pool_used += name_len + 1U;
+        }
         if (!extras_valid(z, pos + 46U + name_len, extra_len)) goto fail;
         pos += record_len;
     }
@@ -214,6 +235,7 @@ int zip_find(const zip_reader_t* z, const char* name) {
 
 const char* zip_entry_name(const zip_reader_t* z, int index) {
     if (!z || index < 0 || index >= z->count) return NULL;
+    if (z->names) return z->names + z->entries[index].name_off;
     char* name = ((zip_reader_t*)z)->name_scratch;
     return entry_name(z, &z->entries[index], name) ? name : NULL;
 }
