@@ -309,10 +309,11 @@ void tomato_hupu_cache_unlock(void);
 /* ---- 缓存文件 / Cache files ---- */
 
 /// 开机挂卡后调用一次：小红书、微博、X 的帖子缓存放进 TF 卡上的缓存包（/sdcard/.treader/cache），旧的帖子目录第一次
-/// 用到时挪进回收站后台删掉。generation 是卡的挂载代数，free_bytes 是卡上剩余字节，都可以为 NULL。
+/// 用到时挪进回收站（设备不删，用户在电脑上删）。generation 是卡的挂载代数，free_bytes 是卡上剩余字节，都可以为 NULL。
 /// Call once after the card is mounted at boot: Xiaohongshu, Weibo and X post caches go into the cache pack on the TF
-/// card (/sdcard/.treader/cache), and the old post folders move to the trash on first use and are deleted in the
-/// background. generation is the card's mount generation and free_bytes its free byte count; either may be NULL.
+/// card (/sdcard/.treader/cache), and the old post folders move to the trash on first use (the device never deletes
+/// it; users do so on a computer). generation is the card's mount generation and free_bytes its free byte count;
+/// either may be NULL.
 void tomato_cache_pack_setup(uint32_t (*generation)(void), uint64_t (*free_bytes)(void));
 /// 缓存文件有没有、多大（缓存包里的或普通文件）。/ Whether a cache file exists and its size (in the pack or a file).
 bool tomato_cache_size(const char* path, size_t* len);

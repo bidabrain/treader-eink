@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-11-28 · Treader 1.2.20
+
+- 修复 1.2.19 里小红书、微博、X 看大图时“存为壁纸”存不了：大图已经放进缓存包，存壁纸还按原来的文件路径去读。
+  Fixed "save as wallpaper" failing on Xiaohongshu, Weibo and X full images in 1.2.19: the images had moved into the cache pack but saving still read them from their old file paths.
+
 ## 2026-11-28 · Treader 1.2.19
 
 - 小红书、微博、X 的帖子缓存（正文、缩略图、大图、灰度缓存）改存进 TF 卡上的缓存包 `.treader/cache/`：几个只追加写的大段文件代替原来成千上万个小文件，存图、清理不再在 FAT 上反复建删改名，刷新列表和清缓存更快；每个来源上限 128 MB，超了从最旧的段回收（列表里还有的留正文和缩略图），卡上空间不够时自动收紧，不会越用越大。升级后第一次用到时，旧的帖子目录整个挪进 `.treader/trash/`（只是挪个位置，一两秒），图片按需重新下载，列表照常显示。**老用户升级后**：设备不会自动删 `.treader/trash/`（在 TF 卡上逐个删上万个小文件要占卡好几个小时，会卡），想腾出空间请在电脑上把它整个删掉（`.treader` 是隐藏文件夹，要先显示隐藏文件）；不删也不影响使用。新卡没有这个文件夹。

@@ -98,8 +98,10 @@ static void name_part(const char* in, char* out, size_t max) {
 tr_wall_save_t tr_lock_wallpaper_save(const char* src, const char* source, const char* author, int n, char* out,
                                       size_t cap) {
     out[0] = 0;
-    struct stat st;
-    if (!src || stat(src, &st) != 0 || st.st_size <= 0 || st.st_size > WALL_SRC_MAX) return TR_WALL_FAILED;
+    // 帖子大图在缓存包里，不是卡上的文件，按缓存接口读（普通文件也走这里）。/ Post images live in the cache pack, not as
+    // card files, so read through the cache API (plain files go through it too).
+    size_t src_len = 0;
+    if (!src || !tomato_cache_size(src, &src_len) || src_len == 0 || src_len > WALL_SRC_MAX) return TR_WALL_FAILED;
     const char* ext = strrchr(src, '.');
     if (!ext || (strcasecmp(ext, ".jpg") && strcasecmp(ext, ".jpeg") && strcasecmp(ext, ".png"))) ext = ".jpg";
     char who[64], from[24], base[112];
@@ -116,22 +118,21 @@ tr_wall_save_t tr_lock_wallpaper_save(const char* src, const char* source, const
         else snprintf(path, sizeof(path), WALL_DIR "/%s(%d)%s", base, k, ext);
         struct stat old;
         if (stat(path, &old) != 0) break;
-        if (old.st_size == st.st_size) {
+        if ((size_t)old.st_size == src_len) {
             snprintf(out, cap, "%s", path);
             return TR_WALL_EXISTS;
         }
     }
     if (k >= 100) return TR_WALL_FAILED;
-    FILE* in = fopen(src, "rb");
-    uint8_t* buf = in ? heap_caps_malloc((size_t)st.st_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : NULL;
-    bool ok = buf && fread(buf, 1, (size_t)st.st_size, in) == (size_t)st.st_size;
-    if (in) fclose(in);
+    uint8_t* buf = NULL;
+    size_t got = 0;
+    bool ok = tomato_cache_load(src, WALL_SRC_MAX, &buf, &got) == ESP_OK && got == src_len;
     // 先写 .part 再改名，断电不会留下半张图。/ Write .part then rename so a power cut never leaves half an image.
     char tmp[192];
     snprintf(tmp, sizeof(tmp), "%s.part", path);
     if (ok) {
         FILE* f = fopen(tmp, "wb");
-        ok = f && fwrite(buf, 1, (size_t)st.st_size, f) == (size_t)st.st_size;
+        ok = f && fwrite(buf, 1, src_len, f) == src_len;
         if (f) ok = fclose(f) == 0 && ok;
         ok = ok && rename(tmp, path) == 0;
         if (!ok) remove(tmp);
