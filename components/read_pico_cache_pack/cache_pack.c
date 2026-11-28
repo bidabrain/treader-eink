@@ -50,8 +50,6 @@ static uint32_t crc32_le(uint32_t crc, const void* buf, size_t len) {
     return esp_rom_crc32_le(crc, (const uint8_t*)buf, (uint32_t)len);
 }
 static void yield_now(void) { vTaskDelay(1); }
-// 清回收站时每删一个歇一下，少和界面抢卡。/ Pause after each trash delete so the UI gets the card more often.
-static void trash_pause(void) { vTaskDelay(pdMS_TO_TICKS(10)); }
 #else
 #include <pthread.h>
 #define LOGI(...) do { if (getenv("CPACK_VERBOSE")) { printf(__VA_ARGS__); printf("\n"); } } while (0)
@@ -79,7 +77,6 @@ static uint32_t crc32_le(uint32_t crc, const void* buf, size_t len) {
     return ~crc;
 }
 static void yield_now(void) { }
-static void trash_pause(void) { }
 #endif
 
 /* ---- 格式 / Format ---- */
@@ -107,8 +104,6 @@ static void trash_pause(void) { }
 #define TABLE_MAX (1u << 17)
 // 卡上剩余空间低于这个就压低上限，让出空间。/ Below this much free card space the cap shrinks to give space back.
 #define FREE_LOW (48ull * 1024 * 1024)
-// 一次清回收站最多删这么多个文件就让一让。/ Emptying the trash yields after this many files.
-#define TRASH_BATCH 32
 #define PATH_MAX_LEN 200
 
 typedef struct {
@@ -165,8 +160,8 @@ static char s_root[96];
 static char s_trash[96];
 static bool s_inited;
 static volatile bool s_suspended;
-// 后台碰卡（回收、清回收站、问剩余空间）时拿着，暂停时等它做完手上这一步。/ Held while the background touches the
-// card (collection, trash emptying, free-space queries); pausing waits for the step in hand.
+// 后台碰卡（回收、问剩余空间）时拿着，暂停时等它做完手上这一步。/ Held while the background touches the card
+// (collection, free-space queries); pausing waits for the step in hand.
 static lock_t s_bg_lock;
 static uint32_t (*s_gen_fn)(void);
 static uint64_t (*s_free_fn)(void);
@@ -1093,60 +1088,11 @@ static void trash_move(const char* dir, const char* tag) {
         struct stat st;
         snprintf(to, sizeof(to), "%s/%s%03u", s_trash, tag, seq++ % 1000u);
         if (stat(to, &st) == 0) continue;
-        if (rename(dir, to) == 0) { LOGI("moved %s to trash", dir); wake_service(); }
+        if (rename(dir, to) == 0) LOGI("moved %s to trash", dir);
         else LOGW("trash %s: %d", dir, errno);
         return;
     }
     LOGW("trash %s: no free name", dir);
-}
-
-// 删 path 下的东西，最多 *budget 个文件；删空了返回 true。/ Delete what is under path, at most *budget files; true once
-// it is empty.
-static bool remove_tree(char* path, size_t cap, int depth, int* budget) {
-    if (depth > 6) return false;
-    DIR* d = opendir(path);
-    if (!d) return remove(path) == 0 || errno == ENOENT;
-    const size_t base = strlen(path);
-    bool empty = true;
-    struct dirent* e;
-    while (*budget > 0 && (e = readdir(d))) {
-        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        if (base + 1 + strlen(e->d_name) >= cap) { empty = false; continue; }
-        snprintf(path + base, cap - base, "/%s", e->d_name);
-        struct stat st;
-        bool gone;
-        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) gone = remove_tree(path, cap, depth + 1, budget);
-        else { gone = remove(path) == 0; (*budget)--; trash_pause(); }
-        if (!gone) empty = false;
-        path[base] = 0;
-        if (s_suspended) { empty = false; break; }
-    }
-    if (*budget <= 0) empty = false;
-    closedir(d);
-    path[base] = 0;
-    return empty && rmdir(path) == 0;
-}
-
-// 清一批回收站：从第一项起，删不动的（只读文件、名字太长）跳到下一项；这一批删掉了东西返回 true。一项都删不动（卡
-// 出问题）就停，等下次唤醒。/ Empty one trash batch: from the first entry on, skipping entries that will not go
-// (read-only files, overlong names); true when this batch deleted something. Nothing deletable (a card problem) stops
-// until the next wake-up.
-static bool trash_step(void) {
-    if (!s_trash[0] || s_suspended) return false;
-    DIR* d = opendir(s_trash);
-    if (!d) return false;
-    char path[PATH_MAX_LEN + 64];
-    bool progress = false;
-    struct dirent* e;
-    while (!progress && (e = readdir(d))) {
-        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") || strlen(e->d_name) > 100) continue;
-        snprintf(path, sizeof(path), "%s/%.100s", s_trash, e->d_name);
-        int budget = TRASH_BATCH;
-        const bool emptied = remove_tree(path, sizeof(path), 0, &budget);
-        progress = emptied || budget < TRASH_BATCH;
-    }
-    closedir(d);
-    return progress;
 }
 
 static void service_round(void) {
@@ -1163,14 +1109,6 @@ static void service_round(void) {
             if (!more) break;
         }
     }
-}
-
-// 清一批回收站，拿着后台锁。/ Empty one trash batch under the background lock.
-static bool trash_round(void) {
-    lock_take(&s_bg_lock);
-    const bool more = !s_suspended && trash_step();
-    lock_give(&s_bg_lock);
-    return more;
 }
 
 /* ---- 后台任务 / Background task ---- */
@@ -1195,7 +1133,6 @@ static void service_task(void* arg) {
     for (;;) {
         if (!s_suspended) {
             service_round();
-            while (!s_suspended && trash_round()) vTaskDelay(pdMS_TO_TICKS(20));
         }
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(120000));
     }
@@ -1289,7 +1226,6 @@ void cpack_resume(void) {
 #ifdef CPACK_HOST_TEST
 void cpack_test_service(void) {
     service_round();
-    while (trash_round()) { }
 }
 
 void cpack_test_unload(void) {

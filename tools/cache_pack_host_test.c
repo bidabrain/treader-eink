@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * 中文：缓存包主机测试：读写、覆盖、删除、重启后重建、掉电留下的半条、数据和段尾损坏、上限与回收、门槛升级、
- * 超限拒写、剩余空间不足、换卡、旧目录挪进回收站并清空，以及和内存模型对照的随机读写。
+ * 超限拒写、剩余空间不足、换卡、旧目录挪进回收站（后台不删），以及和内存模型对照的随机读写。
  *
  * English: host test for the cache pack: read and write, replace, delete, rebuild after a restart, half records left
  * by a power cut, damaged data and footers, the cap and collection, threshold escalation, refusing writes far over the
- * cap, low free space, card swaps, old folders moved to the trash and emptied, and random operations checked against an
+ * cap, low free space, card swaps, old folders moved to the trash (and left there), and random operations checked against an
  * in-memory model.
  */
 
@@ -413,8 +413,10 @@ static void test_migrate(void) {
     assert(stat(SD "/rednote/n", &st) != 0 && stat(SD "/rednote/rc", &st) != 0);
     assert(stat(SD "/rednote/feed.json", &st) == 0);   // 列表文件不动 / The list file stays
     assert(count_files(TRASH) == 2);
+    // 后台不删回收站：真机上逐个删上万个小文件会占卡好几个小时。/ The background leaves the trash alone: deleting tens
+    // of thousands of small files one by one holds the card for hours on the device.
     cpack_test_service();
-    assert(count_files(TRASH) == 0);
+    assert(count_files(TRASH) == 2);
     assert(same_seeded(P("a/new"), 10, 1));
     puts("migrate ok");
 }

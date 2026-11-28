@@ -53,8 +53,9 @@ typedef struct {
     const char* root;
     /// 总大小上限（字节，含段头和段尾索引）。/ Total size cap in bytes (segment headers and footers included).
     uint64_t cap_bytes;
-    /// 升级前的旧缓存目录，第一次用这个池时整个挪进回收站，NULL 结束；可以为 NULL。/ Pre-upgrade cache folders, moved whole
-    /// into the trash the first time the pool is used, NULL-terminated; may be NULL.
+    /// 升级前的旧缓存目录，第一次用这个池时整个挪进回收站（只改名，不删，用户可在电脑上删），NULL 结束；可以为 NULL。
+    /// Pre-upgrade cache folders, moved whole into the trash the first time the pool is used (a rename only, never
+    /// deleted; the user may delete it on a computer), NULL-terminated; may be NULL.
     const char* const* old_dirs;
     /// 一轮回收开始时调用，返回传给 live 的上下文；返回 NULL 表示这轮不能判断（例如列表读坏了），这轮不回收。
     /// Called when a collection round starts; returns the context passed to live; NULL means this round cannot judge
@@ -79,10 +80,11 @@ typedef struct {
 } cpack_stats_t;
 
 /// 初始化，root 是放段文件的目录（例如 "/sdcard/.treader/cache"），trash 是回收站目录；可重复调用，只有第一次生效。
-/// 设备上会起一个低优先级后台任务做垃圾回收和清空回收站。
+/// 设备上会起一个低优先级后台任务做垃圾回收。回收站不自动清空：在 FAT 上逐个删上万个小文件要占卡好几个小时，界面会卡。
 /// Initialize with root as the segment directory (e.g. "/sdcard/.treader/cache") and trash as the trash directory;
-/// repeat calls are ignored. On the device it starts a low-priority background task for collection and trash
-/// emptying.
+/// repeat calls are ignored. On the device it starts a low-priority background task for collection. The trash is not
+/// emptied automatically: deleting tens of thousands of small files one by one on FAT holds the card for hours and
+/// stalls the UI.
 esp_err_t cpack_init(const char* root, const char* trash);
 
 /// 登记一个池；返回 ESP_OK 或参数错误。初始化后、第一次读写前调用。/ Register a pool; returns ESP_OK or an argument
@@ -150,7 +152,7 @@ void cpack_resume(void);
 bool cpack_stats(const char* name, cpack_stats_t* out);
 
 #ifdef CPACK_HOST_TEST
-/// 主机测试用：同步做完一轮回收和清空回收站。/ Host tests: run one collection round and trash emptying synchronously.
+/// 主机测试用：同步做完一轮回收。/ Host tests: run one collection round synchronously.
 void cpack_test_service(void);
 /// 主机测试用：放掉所有池的内存状态（模拟重启），配置保留。/ Host tests: drop every pool's memory state (a simulated
 /// restart), keeping the configuration.
