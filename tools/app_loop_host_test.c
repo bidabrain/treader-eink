@@ -4,6 +4,7 @@
  * page), stood in for here by a stub page.
  */
 #include "app_loop.h"
+#include "app_touch.h"
 #include "ui_gesture.h"
 #include "ui_menu.h"
 #include <assert.h>
@@ -34,9 +35,17 @@ static int media_lost, builtin_opens, font_opens, probes, loss_step;
 int E0470_WAVEFORM;
 int ui_scale_pct = 100;
 void ui_set_scale(int pct) { ui_scale_pct = pct; }
+// 采样任务替身：页面回调里“刷屏”期间按这张表读触摸。/ Sampling-task stand-in: touch read from this table while a page
+// callback is "presenting".
+typedef struct { int x, y, count; int64_t ms; } busy_t;
+static busy_t busy[8];
+static int busy_n, busy_i, busy_pause, busy_done;
+static int64_t busy_cost_us;
+static bool in_sampler;
 int cst836u_read(void* h, cst836u_touch_t* t) {
     (void)h;
     sample_t s = samples[step];
+    if (in_sampler) s = (sample_t){ busy[busy_i].x, busy[busy_i].y, busy[busy_i].count, 0 };
     *t = (cst836u_touch_t){ .touched=s.count>0, .count=s.count, .x=s.x, .y=s.y };
     t->points[0].active=s.count>0;
     return s.error;
@@ -105,14 +114,33 @@ static void lock_hook(app_ctx_t*c) {(void)c;on_locks++;}
 static void render(app_ctx_t*c,uint8_t*f) {(void)c;(void)f;}
 static void home_render(app_ctx_t*c,uint8_t*f) {(void)f;rendered_leaf=c->leaf;home_renders++;}
 static void home_enter(app_ctx_t*c) {c->leaf=0;enters++;home_enters++;}
+// 第一次回调里模拟一次耗时刷屏：采样任务按表读，时间往后走 busy_cost_us。/ The first callback simulates a slow
+// present: the sampling task reads the table and time moves on by busy_cost_us.
+static void run_busy(void) {
+    if (!busy_n || busy_done) return;
+    busy_done = 1;
+    if (busy_pause) app_touch_pause();
+    // 模拟密码键盘：自己读完触摸、在手指还按着时返回。/ Simulate the PIN pad: it reads touch itself and returns with
+    // the finger still down.
+    if (busy_pause == 2) app_touch_resume();
+    const int64_t base = esp_timer_get_time() / 1000;
+    in_sampler = true;
+    for (busy_i = 0; busy_i < busy_n; busy_i++) app_touch_test_sample(&busy, base + busy[busy_i].ms);
+    in_sampler = false;
+    if (busy_pause == 1) app_touch_resume();
+    time_offset += busy_cost_us;
+}
+static void add_busy(int x,int y,int count,int64_t ms) {busy[busy_n++]=(busy_t){x,y,count,ms};}
 static app_redraw_t touch(app_ctx_t*c,const cst836u_touch_t*t) {
     (void)t;touch_calls++;assert(c->pressed&&c->consumed);
+    run_busy();
     if(request_on_touch)c->request_app=&second;
     if(menu_on_touch)c->request_menu=true;
     return response;
 }
 static app_redraw_t gesture(app_ctx_t*c,const ui_gesture_event_t*e) {
     events[e->type]++;
+    if(e->type==UI_GESTURE_TAP)run_busy();
     if(e->type==UI_GESTURE_CANCEL&&cancel_clobber) {c->request_app=NULL;c->request_menu=true;c->request_return=false;}
     if(e->type==UI_GESTURE_PRESS&&request_on_touch)c->request_app=&second;
     return response;
@@ -126,6 +154,7 @@ static app_redraw_t tick(app_ctx_t*c) {
     return full_tick ? APP_REDRAW_FULL : APP_REDRAW_NONE;
 }
 static void reset(void) {
+    app_touch_test_reset();busy_n=busy_i=busy_pause=busy_done=0;busy_cost_us=300000;in_sampler=false;
     media_test=sd_font=saved_sd_font=false;media_lost=builtin_opens=font_opens=probes=0;loss_step=-1;
     memset(mounted_steps,0,sizeof(mounted_steps));
     long_keys=locks=on_locks=holds=stops=0;downloading=hold_woke=false;
@@ -259,6 +288,60 @@ int main(void) {
     reset();first.on_lock=lock_hook;powers_down=true;downloading=true;hold_woke=true;time_step=1000000;lock_due=true;
     add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
     assert(holds==1&&locks==0&&on_locks==1&&exits==0&&enters==1&&stops==0&&downloading);++n;
+    // 刷屏期间抬手又点了一下：第二下排着，刷完按顺序交给页面。/ Lifting and tapping again during a present: the second
+    // tap is queued and reaches the page in order once the present is done.
+    reset();add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(200,400,1,100);add_busy(0,0,0,180);run();
+    assert(touch_calls==2);++n;
+    // 主循环卡了太久（按下已过 1.5 秒）：这一下整笔丢掉。/ The loop was stuck too long (pressed over 1.5 s ago): the
+    // stroke is dropped whole.
+    reset();busy_cost_us=2000000;add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(200,400,1,100);add_busy(0,0,0,180);run();
+    assert(touch_calls==1);++n;
+    // 手势页同样：轻点两下得到两次 TAP。/ Gesture pages likewise: two quick taps give two TAPs.
+    reset();first.on_gesture=gesture;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(200,400,1,100);add_busy(0,0,0,180);run();
+    assert(events[UI_GESTURE_TAP]==2&&events[UI_GESTURE_PRESS]==2);++n;
+    // 刷屏期间在空白处按住 0.6 秒再松：回放按当时的时间算，是长按不是轻点。/ Holding 0.6 s on content during a present:
+    // replay uses the recorded times, so it is a long press, not a tap.
+    reset();first.on_gesture=gesture;busy_cost_us=1000000;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(200,400,1,100);add_busy(200,400,1,400);add_busy(200,400,1,700);add_busy(0,0,0,800);run();
+    assert(events[UI_GESTURE_TAP]==1&&events[UI_GESTURE_LONG_PRESS]==1);++n;
+    // 刷屏期间滑了一下：抬起前的位置补进去，认得出是滑动。/ A swipe during a present: the last position before the lift
+    // is queued, so it reads as a swipe.
+    reset();first.on_gesture=gesture;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(500,400,1,100);add_busy(300,400,1,140);add_busy(100,400,1,180);add_busy(0,0,0,200);run();
+    assert(events[UI_GESTURE_SWIPE_L]==1);++n;
+    // 刷屏期间短按中键：松手时交给页面，不因为刷屏耗时被当成长按刷新。/ A short middle press during a present goes to the
+    // page on release instead of counting as the hold refresh because the present was slow.
+    reset();first.owns_keys=true;busy_cost_us=1000000;add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(240,1500,1,100);add_busy(0,0,0,200);run();
+    assert(keys[1]==1&&fulls==1);++n;
+    // 刷屏期间按住中键 0.6 秒：是整屏刷新。/ Holding the middle key 0.6 s during a present is the full refresh.
+    reset();first.owns_keys=true;busy_cost_us=1000000;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(240,1500,1,100);add_busy(240,1500,1,400);add_busy(240,1500,1,700);add_busy(0,0,0,800);run();
+    assert(!keys[1]&&fulls==2);++n;
+    // 页面自己读触摸（暂停）期间点的不排队。/ Taps while a page reads touch itself (paused) are not queued.
+    reset();busy_pause=1;add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(200,400,1,100);add_busy(0,0,0,180);run();
+    assert(touch_calls==1);++n;
+    // 密码键盘按下第 4 位就返回、手指还按着：这一笔不再被当成页面上的一下。/ The PIN pad returns on the 4th digit's
+    // press with the finger still down: that stroke is not taken as a tap on the page.
+    reset();busy_pause=2;add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(200,400,1,30);add_busy(200,400,1,200);add_busy(0,0,0,300);run();
+    assert(touch_calls==1);++n;
+    reset();first.on_gesture=gesture;busy_pause=2;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(200,400,1,30);add_busy(200,400,1,200);add_busy(0,0,0,300);run();
+    assert(events[UI_GESTURE_TAP]==1&&events[UI_GESTURE_PRESS]==1);++n;
+    // 键盘返回后抬手再点一下：照常排着、照常交给页面。/ Lifting and tapping again after the pad returns: queued and
+    // delivered as usual.
+    reset();busy_pause=2;add(100,400,1,0);for(int i=0;i<6;i++)add(0,0,0,0);
+    add_busy(200,400,1,30);add_busy(0,0,0,100);add_busy(300,400,1,200);add_busy(0,0,0,260);run();
+    assert(touch_calls==2);++n;
+    // 切页时排着的点击不带到新页。/ Taps queued across a page switch do not reach the new page.
+    reset();request_on_touch=true;second.on_touch=touch;add(100,400,1,0);for(int i=0;i<5;i++)add(0,0,0,0);
+    add_busy(0,0,0,30);add_busy(200,400,1,100);add_busy(0,0,0,180);run();
+    assert(touch_calls==1&&enters==2);++n;
     printf("app_loop: %d scheduler scenarios passed\n", n);
     return 0;
 }

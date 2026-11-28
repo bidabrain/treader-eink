@@ -20,6 +20,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "app_touch.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
 #include "esp_log.h"
@@ -130,8 +131,8 @@ static int key_at(uint16_t x, uint16_t y, bool cancel) {
     return -1;
 }
 
-tr_pin_result_t tr_pin_pad(EpdiyHighlevelState* hl, cst836u_handle_t tp, const char* title, const char* hint,
-                           bool cancel, int timeout_ms, int64_t ignore_power_until_ms, char out[5]) {
+static tr_pin_result_t pad_run(EpdiyHighlevelState* hl, cst836u_handle_t tp, const char* title, const char* hint,
+                               bool cancel, int timeout_ms, int64_t ignore_power_until_ms, char out[5]) {
     uint8_t* fb = epd_hl_get_framebuffer(hl);
     int n = 0;
     memset(out, 0, 5);
@@ -177,6 +178,16 @@ tr_pin_result_t tr_pin_pad(EpdiyHighlevelState* hl, cst836u_handle_t tp, const c
         push_top(hl);
         if (n == 4) return TR_PIN_ENTERED;
     }
+}
+
+// 键盘自己读触摸，期间不让采样任务替主循环排点击，回去时排着的也丢掉。/ The pad reads touch itself, so the sampling
+// task queues nothing for the loop meanwhile, and whatever was queued is dropped on the way back.
+tr_pin_result_t tr_pin_pad(EpdiyHighlevelState* hl, cst836u_handle_t tp, const char* title, const char* hint,
+                           bool cancel, int timeout_ms, int64_t ignore_power_until_ms, char out[5]) {
+    app_touch_pause();
+    const tr_pin_result_t r = pad_run(hl, tp, title, hint, cancel, timeout_ms, ignore_power_until_ms, out);
+    app_touch_resume();
+    return r;
 }
 
 // 锁定画面的标题和倒计时行；area 是它们占的那一块。/ The locked title and countdown line; area is the block they use.

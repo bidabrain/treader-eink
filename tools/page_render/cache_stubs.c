@@ -56,3 +56,8 @@ bool tomato_cache_jpeg_size(const char* path, int* w, int* h) {
     (void)h;
     return false;
 }
+
+// 触摸采样（tr_pin.c 进出键盘时暂停）：截图里什么也不做。/ Touch sampling (tr_pin.c pauses it around the pad): a
+// no-op for screenshots.
+void app_touch_pause(void) {}
+void app_touch_resume(void) {}

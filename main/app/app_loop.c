@@ -34,10 +34,17 @@
  * became the All page (an ordinary page). "Menu" above now means the All page: KEY3, the handle and request_menu open
  * it at the same moments as before, and request_return with no origin opens it too. Reason: both listed the same
  * features; one copy is easier to keep and to fit to the display size.
+ * Treader 修订（2026-11-28，用户要求）：触摸改从 app_touch 读。刷屏期间点的那一下由采样任务排着，下一轮按顺序回放，手势和按键
+ * 按住多久按那一帧读到的时间算；切页、整页重画、锁屏之后排着的丢掉。原因：刷屏时抬手又点的第二下以前整个丢掉。
+ * Treader revision (2026-11-28, user request): touch now comes from app_touch. A tap made during a present is queued by
+ * the sampling task and replayed in order on the next ticks, with gesture and key hold times taken from when each
+ * frame was read; whatever is queued is dropped after a page switch, a whole redraw or a lock. Reason: a second tap
+ * made while the screen was still refreshing used to be lost whole.
  */
 
 #include "../perf_diag.h"
 #include "app_loop.h"
+#include "app_touch.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -166,6 +173,8 @@ static void switch_to(
     apply_scale(next);
     if (next->on_enter != NULL) next->on_enter(ctx);
     app_present(ctx, next, next->enter_full ? APP_REDRAW_FULL : APP_REDRAW_PAGE);
+    // 切页期间点的是旧页，不带到新页。/ Taps made during the switch were aimed at the old page; drop them.
+    app_touch_flush();
     ESP_LOGI(TAG, "page -> %s", next->title);
 }
 
@@ -290,6 +299,8 @@ static void lock_and_resume(
 ) {
     *held_key = -1;
     cancel_gesture(ctx, current, gesture);
+    // 锁屏画面和密码键盘期间不替主循环排触摸。/ No touch is queued for the loop during the lock face and the PIN pad.
+    app_touch_pause();
     // 每次锁屏都先让页面存好进度（浅睡也是）：锁屏书卡读到的是最新进度，锁着时没电也不丢。
     // Let the page save progress before every lock (light sleep too): the lock card shows the latest progress and
     // nothing is lost if the battery dies while locked.
@@ -332,6 +343,7 @@ static void lock_and_resume(
     ctx->pressed = false;
     ctx->released = false;
     app_present(ctx, current, APP_REDRAW_PAGE);
+    app_touch_resume();
 }
 
 // 整屏 GC16 重画当前页（中键长按）。/ Full GC16 redraw of the page (middle-key hold).
@@ -395,6 +407,7 @@ void app_loop_run(const app_loop_config_t* config) {
     // 首帧必须整屏 GC16：fb 里还是 app_main 画的开机图，DU 盖不掉。
     // First frame must be full GC16: fb still holds the splash; DU cannot cover it.
     app_present(&ctx, current, APP_REDRAW_FULL);
+    app_touch_start(config->tp);
     ESP_LOGI(TAG, "UI ready on %s", current->title);
 
     int64_t alive_ms = 0;
@@ -413,7 +426,12 @@ void app_loop_run(const app_loop_config_t* config) {
         apply_scale(current);
         perf_loop_tick();
         cst836u_touch_t touch = { 0 };
-        esp_err_t err = cst836u_read(config->tp, &touch);
+        // 主循环忙着的时候点的几下由采样任务排着，这里按顺序拿；in_ms 是那一帧读到的时间，手势和按键时长都按它算。
+        // Taps made while the loop was busy were queued by the sampling task and come here in order; in_ms is when the
+        // frame was read, and gestures and key hold times are measured with it.
+        int64_t in_ms = 0;
+        esp_err_t err = app_touch_read(config->tp, &touch, &in_ms);
+        ctx.input_ms = in_ms;
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "CST836U read failed: %s", esp_err_to_name(err));
             memset(&touch, 0, sizeof(touch));
@@ -451,6 +469,7 @@ void app_loop_run(const app_loop_config_t* config) {
                 ctx.pressed = ctx.released = false;
                 was_touched = touch.touched;
                 app_present(&ctx, current, APP_REDRAW_FULL);
+                app_touch_flush();
                 // 本轮旧输入不再触发动作，下一轮恢复正常事件处理。
                 // Discard this tick's stale input, then resume normal dispatch next tick.
                 vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
@@ -473,13 +492,13 @@ void app_loop_run(const app_loop_config_t* config) {
             if (key == UI_KEY_2) {
                 // 中键先不动作，松手或按满 0.5 秒再定是回首页还是刷新。/ Defer the middle key until release or 500 ms.
                 key2_pending = touch.count == 1;
-                key2_since_ms = ctx.now_ms;
+                key2_since_ms = in_ms;
             } else if (key >= 0 && current->owns_keys) {
                 app_redraw_t redraw = current->on_key ? current->on_key(&ctx, key) : APP_REDRAW_NONE;
                 present_page(&ctx, current, &gesture, redraw);
                 if (current->on_key_long && touch.count == 1) {
                     held_key = key;
-                    held_since_ms = ctx.now_ms;
+                    held_since_ms = in_ms;
                 }
             } else if (key == UI_KEY_3 || handle_hit) {
                 // KEY3 和把手打开“全部”页（它自己接管三键，在那里再按 KEY3 由它决定翻页或返回）。
@@ -504,7 +523,9 @@ void app_loop_run(const app_loop_config_t* config) {
         if (err == ESP_OK) was_touched = touch.touched;
         if (current->on_gesture && err == ESP_OK) {
             ui_gesture_event_t event;
-            if (ui_gesture_feed(&gesture, &ctx, &event)) {
+            app_ctx_t at = ctx;
+            at.now_ms = in_ms;
+            if (ui_gesture_feed(&gesture, &at, &event)) {
                 app_redraw_t redraw = current->on_gesture(&ctx, &event);
                 present_page(&ctx, current, &gesture, redraw);
                 if (redraw != APP_REDRAW_NONE) ctx.consumed = true;
@@ -561,6 +582,7 @@ void app_loop_run(const app_loop_config_t* config) {
                 cancel_gesture(&ctx, current, &gesture);
                 ctx.consumed = true;
                 app_present(&ctx, current, APP_REDRAW_FULL);
+                app_touch_flush();
                 ESP_LOGI(TAG, "TTF font ready");
             }
         }
@@ -568,9 +590,9 @@ void app_loop_run(const app_loop_config_t* config) {
         if (held_key >= 0) {
             if (ctx.request_app || ctx.request_menu || ctx.request_return || !touch.touched ||
                 touch.count != 1 || ui_key_hit_test(touch.x, touch.y) != held_key ||
-                ctx.now_ms < held_since_ms) {
+                in_ms < held_since_ms) {
                 held_key = -1;
-            } else if (!pressed && ctx.now_ms - held_since_ms >= UI_LONG_PRESS_MS) {
+            } else if (!pressed && in_ms - held_since_ms >= UI_LONG_PRESS_MS) {
                 int key = held_key;
                 held_key = -1;
                 ctx.consumed = true;
@@ -581,7 +603,7 @@ void app_loop_run(const app_loop_config_t* config) {
             const bool on_key2 = touch.touched && touch.count == 1 && ui_key_hit_test(touch.x, touch.y) == UI_KEY_2;
             if (ctx.request_app || ctx.request_menu || ctx.request_return || (touch.touched && !on_key2)) {
                 key2_pending = false;   // 滑走、多指或已经要切页 / Slid away, multi-touch, or already switching
-            } else if (on_key2 && ctx.now_ms - key2_since_ms >= UI_LONG_PRESS_MS) {
+            } else if (on_key2 && in_ms - key2_since_ms >= UI_LONG_PRESS_MS) {
                 key2_pending = false;
                 ctx.consumed = true;
                 full_refresh(&ctx, current);
@@ -633,6 +655,7 @@ void app_loop_run(const app_loop_config_t* config) {
                 // Restore the shared leaf after initialization overrides its default.
                 ctx.leaf = return_leaf;
                 app_present(&ctx, current, APP_REDRAW_PAGE);
+                app_touch_flush();
             } else if (next && next != current) {
                 return_app = current;
                 return_leaf = ctx.leaf;

@@ -63,6 +63,10 @@ typedef struct {
     /// 现在恒为 false：开机不再初始化连续 DU。/ Always false now: continuous DU is not set up at boot.
     bool continuous_ready;
     int64_t now_ms;
+    /// 这一轮触摸帧读到的时间（毫秒）。刷屏时排着的点击回放时比 now_ms 早，判断双击这类按点击间隔算的用它。/ When this
+    /// tick's touch frame was read (ms). Queued taps replayed after a present carry an earlier time than now_ms; use it
+    /// for anything measured between taps, such as double taps.
+    int64_t input_ms;
     /// 去抖后的触摸快照：空槽已清零，抬手后保留最后一次坐标。
     /// / Debounced touch: empty slots cleared; last coords kept after lift.
     const cst836u_touch_t* touch;

@@ -33,6 +33,7 @@ PSRAM 占用诊断版：`idf.py -B build-diag -DTREADER_HEAP_DIAG=1 build`，每
 | `main/app_main.c` | 开机装配：板级 init、读设置、定 VCOM、开机图、字体，然后交给 `app_loop`。/ Boot wiring, then `app_loop`. |
 | `main/app/app.h` | `app_desc_t` / `app_ctx_t` / `app_redraw_t` 契约。/ Page contract. |
 | `main/app/app_loop.c` | 与页面无关的事件循环：触摸去抖、三键与菜单把手（KEY3 / 把手打开“全部”页）、切页、刷屏、锁屏、SD 字体延迟加载。/ Shared event loop; KEY3 and the handle open the All page. |
+| `main/app/app_touch.c` | 触摸采样：主循环 20 ms 没来读（刷屏、解码）时由优先级 6 的小任务替它读，按下、抬起带时间排进短队列，主循环先按顺序拿完再读芯片；按下超过 1.5 秒的整笔丢掉，切页、锁屏、密码键盘之后清空；顺带把主循环提到优先级 5（下载任务是 4）。页面自己读触摸时要 `app_touch_pause` / `app_touch_resume`。/ Touch sampling: when the loop has not read for 20 ms (presenting, decoding) a priority-6 task reads for it and queues presses and lifts with times; the loop drains the queue in order before reading the chip; strokes pressed over 1.5 s ago are dropped whole and the queue clears after page switches, locks and the PIN pad; it also raises the loop to priority 5 (downloads run at 4). A page reading touch itself wraps that in `app_touch_pause` / `app_touch_resume`. |
 | `main/app/app_registry.c` | 只剩开机首页和自检页两个入口；功能列表在 `tr_ui` 的 `tr_tab_t`，切页映射在 `tr_nav.c`。/ Only the boot and self-test entries; features are `tr_tab_t` in `tr_ui`, mapped to pages in `tr_nav.c`. |
 | `main/app/app_config.h` | 均衡 / ALL_DU 刷新档位。/ Refresh profile. |
 | `main/ui/` | `ui_scale.h` 显示大小（`UI_S`/`TR_S`）；`ui_kit` 排版常量与绘制原语；`tr_ui` 新风格控件与底部标签栏；`ui_menu` 只剩菜单把手和屏下三键区。页面互不引用。/ Shared drawing, the tab bar, and the handle / key strip; pages do not include each other. |

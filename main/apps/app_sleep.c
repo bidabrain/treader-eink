@@ -16,6 +16,7 @@
  */
 
 #include "app.h"
+#include "app_touch.h"
 #include "display.h"
 #include "esp_log.h"
 #include "read_pico_pmu.h"
@@ -314,6 +315,9 @@ static int sleep_hit_test(const sleep_geom_t* g, uint16_t x, uint16_t y) {
 static void sleep_try(app_ctx_t* ctx) {
     app_sleep_mode_t mode = app_settings_sleep_mode();
     sleep_show_notice(ctx, mode);
+    // 试睡期间不替主循环排触摸，醒来时排着的丢掉。/ Nothing is queued for the loop during a trial sleep; the queue is
+    // dropped on waking.
+    app_touch_pause();
     app_lock_wait_key_idle(800);
     if (mode != APP_SLEEP_LIGHT) {
         // 和真正锁屏一样，断主机电之前先停下后台下载和同步，免得写到一半的 TF 卡文件坏掉。
@@ -327,6 +331,7 @@ static void sleep_try(app_ctx_t* ctx) {
     app_lock_ignore_for(APP_LOCK_IGNORE_BOOT_MS);
     // 试睡醒来和真正锁屏一样要过锁屏密码。/ Waking from a trial sleep passes the lock PIN like a real lock.
     tr_pin_gate(ctx->hl, ctx->tp, ctx->acc, NULL);
+    app_touch_resume();
 }
 
 static app_redraw_t sleep_on_hit(app_ctx_t* ctx, int hit) {

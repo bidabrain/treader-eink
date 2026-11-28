@@ -1363,8 +1363,8 @@ static app_redraw_t tap_list(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     if (seg >= 0 && seg != (int)s_seg) return show_seg((seg_t)seg);
     if (seg >= 0) {
         // 双击当前分段：回到第一页（最新的）。/ Double tap on the current segment: back to the first (newest) page.
-        const bool twice = ctx->now_ms - s_seg_tap_ms < 600;
-        s_seg_tap_ms = twice ? 0 : ctx->now_ms;
+        const bool twice = ctx->input_ms - s_seg_tap_ms < 600;
+        s_seg_tap_ms = twice ? 0 : ctx->input_ms;
         if (!twice || s_list_page == 0) return APP_REDRAW_NONE;
         s_list_page = 0;
         hupu_img_drop_pending();

@@ -8,6 +8,9 @@ User-visible changes by date and author; Git retains implementation history. See
 - 小红书、微博、X 的帖子缓存（正文、缩略图、大图、灰度缓存）改存进 TF 卡上的缓存包 `.treader/cache/`：几个只追加写的大段文件代替原来成千上万个小文件，存图、清理不再在 FAT 上反复建删改名，刷新列表和清缓存更快；每个来源上限 128 MB，超了从最旧的段回收（列表里还有的留正文和缩略图），卡上空间不够时自动收紧，不会越用越大。升级后第一次用到时，旧的帖子目录整个挪进 `.treader/trash/` 后台删掉，图片按需重新下载，列表照常显示。
   Xiaohongshu, Weibo and X post caches (text, thumbnails, full images, gray caches) now live in a cache pack on the TF card under `.treader/cache/`: a few append-only segment files replace thousands of small files, so storing images and pruning no longer create, delete and rename files on FAT, and refreshing lists and pruning are faster; each source is capped at 128 MB and collected oldest segment first (listed posts keep their text and thumbnails), tightening on its own when the card runs short, so it never keeps growing. On first use after upgrading, the old post folders move whole into `.treader/trash/` and are deleted in the background; images download again on demand and lists show as before.
 
+- 翻页、刷屏时点的下一下不再丢：屏幕还在刷的时候抬手又点一下，刷完马上按顺序接着处理（以前要等刷完再点才有反应）；后台下载、解码时界面也优先响应触摸，不再卡一下再跳。点下去超过 1.5 秒还没轮到的（比如打开大文件卡住时）整下丢掉，不会过后突然动作。
+  A tap made while the screen is still refreshing is no longer lost: lift and tap again mid-refresh and it is handled in order as soon as the refresh ends (it used to need another tap afterwards); touch also takes priority over background downloads and decoding, so the UI no longer stalls and then jumps. A tap still waiting 1.5 s after it was pressed (say, while a large file opens) is dropped rather than firing late.
+
 ## 2026-11-27 · Treader 1.2.18
 
 - 新增微信读书（默认关，设置 › 内容来源 › 微信读书打开）：书城顶上多出“番茄 / 微信读书”切换；设备上扫码登录，同步你的微信读书书架（带封面），整本下载进书库：默认 TXT（只要文字，长书两路并行，一千多章十来分钟），也可以选 EPUB（保留插图和排版，慢）。只读，不上传进度，设备上删书不影响云端书架；书库筛选多一档“微信读书”，后台下载时书库显示进度条。登录信息用本机钥匙加密存在 TF 卡。协议引擎来自开源项目 [CrossMux](https://github.com/0x1abin/crossmux)（MIT），感谢原作者；用的是非官方网页接口，微信读书改版后可能失效。

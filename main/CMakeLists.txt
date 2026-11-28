@@ -38,6 +38,7 @@ idf_component_register(
         "sleep.c"
         "settings.c"
         "app/app_loop.c"
+        "app/app_touch.c"
         "app/app_registry.c"
         "ui/ui_kit.c"
         "ui/ui_gesture.c"
